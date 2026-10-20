@@ -724,3 +724,607 @@ body {
   overflow: auto;
   padding: 16px 18px 20px;
 }
+
+/* 小号输入对话框（M0-6 新建/重命名，WebView 无 prompt） */
+.modal.sm {
+  width: min(430px, 92vw);
+}
+
+.modal.sm .modal-body {
+  padding: 16px 18px 14px;
+}
+
+.entry-label {
+  display: block;
+  font-size: 11px;
+  color: var(--txt-3);
+  letter-spacing: 0.04em;
+  margin-bottom: 7px;
+}
+
+.entry-input {
+  width: 100%;
+  height: 34px;
+  padding: 0 11px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.entry-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.entry-input::placeholder {
+  color: var(--txt-3);
+  opacity: 0.7;
+}
+
+.entry-hint {
+  margin-top: 9px;
+  font-size: 10.5px;
+  color: var(--txt-3);
+  line-height: 1.7;
+}
+
+.modal-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+}
+
+/* ── 侧栏（M0-6 · 来自设计稿 sidebar） ──── */
+.sidebar {
+  width: var(--side-w);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg-2);
+  border-right: 1px solid var(--line);
+}
+
+.resizer {
+  width: 5px;
+  flex: none;
+  cursor: col-resize;
+  position: relative;
+  background: transparent;
+}
+
+.resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.resizer:hover::after,
+.resizer.dragging::after {
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+body.col-resizing {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.side-head {
+  padding: 11px 12px 10px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.side-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.side-title h2 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+}
+
+.proj-name {
+  margin-top: 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  min-width: 0;
+}
+
+.proj-name .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proj-name .tag {
+  margin-left: auto;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 6px;
+  border-radius: 99px;
+  font-weight: 600;
+  flex: none;
+}
+
+.side-actions {
+  display: flex;
+  gap: 3px;
+  margin-top: 10px;
+}
+
+.side-actions .wide {
+  width: auto;
+  padding: 0 10px;
+  gap: 6px;
+  grid-auto-flow: column;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.side-actions .wide.primary {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+}
+
+.side-actions .wide.primary:hover {
+  background: var(--accent-2);
+  color: #fff;
+}
+
+.side-actions .wide:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* ── 项目树 ─────────────────────────────── */
+.tree {
+  flex: 1;
+  overflow: auto;
+  padding: 7px 6px 12px;
+}
+
+.tree::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.tree::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb {
+  background: var(--bg-4);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.tree::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--txt-3);
+  background-clip: padding-box;
+}
+
+.tnode {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 25px;
+  padding: 0 7px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--txt-2);
+  white-space: nowrap;
+  position: relative;
+}
+
+.tnode:hover {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+.tnode.sel {
+  background: var(--accent-soft);
+  color: var(--txt);
+}
+
+.tnode.sel .ic {
+  color: var(--accent);
+}
+
+.tnode .chev {
+  width: 12px;
+  height: 12px;
+  transition: transform 0.15s;
+  color: var(--txt-3);
+  flex: none;
+}
+
+.tnode.open-dir .chev {
+  transform: rotate(90deg);
+}
+
+.tnode .nm {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tnode .badge {
+  margin-left: auto;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  opacity: 0.7;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+.tnode .dirt {
+  margin-left: auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--warn);
+  flex: none;
+}
+
+.ic.file-tex {
+  color: var(--accent);
+}
+
+.ic.file-img {
+  color: var(--warn);
+}
+
+.ic.file-pdf {
+  color: var(--err);
+}
+
+.ic.file-bib {
+  color: var(--ok);
+}
+
+.tree-empty {
+  padding: 26px 14px;
+  text-align: center;
+  color: var(--txt-3);
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+.tree-empty .btn {
+  margin-top: 10px;
+}
+
+/* ── 侧栏底部项目概要 ───────────────────── */
+.side-foot {
+  border-top: 1px solid var(--line-soft);
+  padding: 11px 13px 13px;
+  background: var(--bg-2);
+  flex: none;
+}
+
+.side-foot h3 {
+  font-size: 9.5px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+  margin-bottom: 9px;
+  font-weight: 600;
+}
+
+.kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+
+.kv .k {
+  color: var(--txt-3);
+}
+
+.kv .v {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--txt-2);
+  background: var(--bg-4);
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: 1px solid var(--line-soft);
+  max-width: 55%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kv .v.engine {
+  color: var(--accent);
+  border-color: var(--accent-soft);
+  background: var(--accent-soft);
+}
+
+.log-link {
+  margin-top: 11px;
+  width: 100%;
+  height: 28px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  transition: all 0.15s;
+  letter-spacing: 0.02em;
+}
+
+.log-link:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.log-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── 右键菜单 ───────────────────────────── */
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ctx {
+  position: fixed;
+  display: none;
+  min-width: 206px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.34);
+  padding: 6px;
+  z-index: 200;
+}
+
+.ctx.open {
+  display: block;
+  animation: pop 0.12s ease;
+}
+
+.mi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--txt);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mi:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mi .ic {
+  width: 14px;
+  height: 14px;
+  color: var(--txt-3);
+}
+
+.mi:hover .ic {
+  color: inherit;
+}
+
+.mi .sc {
+  margin-left: auto;
+  color: var(--txt-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.mi .danger {
+  color: var(--err);
+}
+
+.mi:hover .danger {
+  color: var(--err);
+}
+
+.msep {
+  height: 1px;
+  background: var(--line-soft);
+  margin: 5px 6px;
+}
+
+.mi[disabled] {
+  opacity: 0.42;
+  pointer-events: none;
+}
+
+/* ── 全局状态栏（M0-6 · 来自设计稿 statusbar） ── */
+.statusbar {
+  height: 26px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 8px;
+  background: var(--bg-3);
+  border-top: 1px solid var(--line);
+  font-size: 10.5px;
+  color: var(--txt-3);
+  letter-spacing: 0.03em;
+  user-select: none;
+}
+
+.sbtn {
+  height: 21px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: var(--txt-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  transition: all 0.15s;
+}
+
+.sbtn:hover:not(:disabled) {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+.sbtn:disabled {
+  cursor: default;
+  opacity: 0.8;
+}
+
+.sbtn .ic {
+  width: 13px;
+  height: 13px;
+}
+
+.sbtn.right {
+  margin-left: auto;
+}
+
+.sbtn .sfile {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sbtn .sdirty {
+  color: var(--warn);
+}
+
+.statusbar .divider {
+  width: 1px;
+  height: 13px;
+  background: var(--line);
+  margin: 0 5px;
+}
+
+.stat-ico {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  margin-left: 6px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 99px;
+  background: var(--txt-3);
+  opacity: 0.55;
+}
+
+.dot.ok {
+  background: var(--ok);
+  opacity: 1;
+}
+
+.dot.err {
+  background: var(--err);
+  opacity: 1;
+}
+
+.dot.run {
+  background: var(--accent);
+  opacity: 1;
+}
+
+.bar-progress {
+  width: 74px;
+  height: 3px;
+  border-radius: 99px;
+  background: var(--bg-4);
+  overflow: hidden;
+  display: none;
+}
+
+.bar-progress.on {
+  display: block;
+}
+
+.bar-progress i {
+  display: block;
+  height: 100%;
+  width: 30%;
+  background: var(--accent);
+  border-radius: 99px;
+  animation: slide 1.2s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0% {
+    margin-left: -32%;
+  }
+  100% {
+    margin-left: 102%;
+  }
+}
+
+.engine-chip {
+  font-family: var(--font-mono);
+  color: var(--accent);
+}

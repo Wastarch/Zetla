@@ -37,6 +37,9 @@ export interface ProjectTree {
   nodes: ProjectNode[];
 }
 
+/** 新建条目类型（create_entry.kind，M0-6） */
+export type EntryKind = "tex" | "file" | "dir";
+
 /** 项目信息（create_project 返回） */
 export interface ProjectInfo {
   path: string;

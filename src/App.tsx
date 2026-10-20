@@ -1,11 +1,15 @@
 // LaTeX 工作台 · 应用入口
 // M0-5：mockup 全屏结构 .app > .workspace > .center（M0-6 加 sidebar、M0-12 加 titlebar/menubar/preview）
 // 原 M0-1~M0-3 验收卡片收进「验收面板」抽屉，M0-12 布局壳落地后移除。
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { compileApi, coreApi, type PingReply } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
 import { EditorWorkspace } from "@/editor/EditorWorkspace";
+import { Sidebar } from "@/project/Sidebar";
+import { CtxMenu } from "@/project/CtxMenu";
+import { EntryDialog } from "@/project/EntryDialog";
 import { Icon } from "@/ui/Icon";
+import { StatusBar } from "@/ui/StatusBar";
 import type { TexDistInfo } from "@/types";
 import "./styles/zetla.css";
 import "./App.css";
@@ -139,6 +143,31 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [labOpen, setLabOpen] = useState(false);
 
+  // M0-6：侧栏 .resizer 拖拽（仅运行时，不持久化 —— M0-12 接 load/save_app_config）
+  const [sideW, setSideW] = useState(258);
+  const draggingRef = useRef(false);
+  const startResize = useCallback(() => {
+    draggingRef.current = true;
+    document.body.classList.add("col-resizing");
+  }, []);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      setSideW(Math.min(Math.max(e.clientX, 170), 560));
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.classList.remove("col-resizing");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
   async function doPing() {
     try {
       setError(null);
@@ -155,8 +184,20 @@ function App() {
   return (
     <div className="app">
       <div className="workspace">
+        <Sidebar style={{ width: sideW }} />
+        <div
+          className="resizer"
+          title="拖拽调整侧栏宽度"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            startResize();
+          }}
+        />
         <EditorWorkspace onOpenLab={() => setLabOpen(true)} />
       </div>
+      <StatusBar />
+      <CtxMenu />
+      <EntryDialog />
       {labOpen && (
         <LabDrawer
           onClose={() => setLabOpen(false)}

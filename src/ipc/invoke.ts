@@ -2,6 +2,7 @@
 // 每新增一个 Tauri command，先在此补签名，再实现 Rust 端（类型即协议）
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
+  EntryKind,
   FileDoc,
   ProjectInfo,
   ProjectTree,
@@ -37,6 +38,12 @@ export const templateApi = {
 // ── 项目/文档 ─────────────────────────────────────────────
 export const projectApi = {
   scanProject: (path: string) => call<ProjectTree>("scan_project", { path }),
+  /** 新建条目（M0-6），返回最终绝对路径 */
+  createEntry: (path: string, kind: EntryKind) =>
+    call<string>("create_entry", { path, kind }),
+  removeEntry: (path: string) => call<void>("remove_entry", { path }),
+  /** 重命名/移动（M0-6），返回新绝对路径 */
+  renameEntry: (from: string, to: string) => call<string>("rename_entry", { from, to }),
   readFile: (path: string) => call<FileDoc>("read_file", { path }),
   writeFile: (path: string, content: string, options?: WriteOptions) =>
     call<void>("write_file", { path, content, options }),
