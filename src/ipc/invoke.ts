@@ -19,7 +19,7 @@ export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T>
 // ── 环境/编译 ──────────────────────────────────────────────
 export const compileApi = {
   detectTexDistribution: () => call<TexDistInfo>("detect_tex_distribution"),
-  // M0-3 实现：
+  // M0-3b 实现：
   // compileProject: (root: string) => call<CompileHandle>("compile_project", { root }),
   // cancelCompile: (handle: string) => call<void>("cancel_compile", { handle }),
 };

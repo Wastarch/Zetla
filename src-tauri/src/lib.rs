@@ -13,6 +13,8 @@ pub fn run() {
             commands::fsdoc::read_file,
             commands::fsdoc::write_file,
             commands::fsdoc::revert_file,
+            // 编译引擎（M0-3a）
+            commands::compile::detect_tex_distribution,
             // M0-2+ 逐步注册：
             // detect_tex_distribution, compile_project, cancel_compile, parse_tex_log,
             // list_templates, get_template, create_project, import_template,

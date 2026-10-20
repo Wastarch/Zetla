@@ -1,8 +1,64 @@
 import { useEffect, useState } from "react";
-import { coreApi, projectApi, type PingReply } from "@/ipc/invoke";
+import { compileApi, coreApi, projectApi, type PingReply } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
-import type { FileDoc } from "@/types";
+import type { FileDoc, TexDistInfo } from "@/types";
 import "./App.css";
+
+/**
+ * M0-3a：TeX 发行版检测卡片
+ */
+function EnvCard() {
+  const [info, setInfo] = useState<TexDistInfo | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function detect() {
+    setLoading(true);
+    try {
+      setErr(null);
+      setInfo(await compileApi.detectTexDistribution());
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    detect();
+  }, []);
+
+  return (
+    <div className="card">
+      <h2>TeX 环境检测</h2>
+      {err && <p className="error">失败: {err}</p>}
+      {info && (
+        <>
+          {info.found ? (
+            <p>
+              <strong>{info.distribution}</strong>
+              {info.version ? ` ${info.version}` : ""} · 推荐引擎{" "}
+              <code>{info.recommended}</code>
+            </p>
+          ) : (
+            <p className="error">
+              未检测到 TeX 发行版，请先安装 MiKTeX（Windows）或 TeX Live
+            </p>
+          )}
+          <p className="meta">
+            引擎:{" "}
+            {info.engines.length > 0
+              ? info.engines.map((e) => <code key={e}>{e} </code>)
+              : "无"}
+          </p>
+        </>
+      )}
+      <button onClick={detect} disabled={loading}>
+        {loading ? "检测中…" : "重新检测"}
+      </button>
+    </div>
+  );
+}
 
 /**
  * M0-2 验收界面：持久层读写测试（M0-6 编辑壳落地后整体替换）
@@ -120,7 +176,9 @@ function App() {
   return (
     <main className="container">
       <h1>LaTeX 工作台</h1>
-      <p className="milestone">M0-2 · 持久层</p>
+      <p className="milestone">M0-3a · 发行版检测</p>
+
+      <EnvCard />
 
       <div className="card">
         <h2>IPC 往返（ping）</h2>
