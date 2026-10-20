@@ -5,6 +5,43 @@
 .logo.react:hover {
   filter: drop-shadow(0 0 2em #61dafb);
 }
+
+/* ── M0-1 验收界面 ─────────────────────────── */
+.milestone {
+  margin-top: -0.5em;
+  opacity: 0.65;
+  font-size: 0.9em;
+}
+
+.card {
+  max-width: 480px;
+  margin: 1em auto;
+  padding: 1em 1.5em;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.card h2 {
+  margin: 0 0 0.5em;
+  font-size: 1.05em;
+}
+
+.error {
+  color: #d33;
+}
+
+@media (prefers-color-scheme: dark) {
+  .card {
+    border-color: rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.25);
+  }
+  .error {
+    color: #ff7b7b;
+  }
+}
+
 :root {
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
