@@ -22,6 +22,7 @@ pub fn run() {
             commands::project::create_entry,
             commands::project::remove_entry,
             commands::project::rename_entry,
+            commands::project::copy_entry,
             // M0-2+ 逐步注册：
             // detect_tex_distribution, compile_project, cancel_compile, parse_tex_log,
             // list_templates, get_template, create_project, import_template,

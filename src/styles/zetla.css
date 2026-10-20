@@ -910,6 +910,11 @@ body.col-resizing {
   padding: 7px 6px 12px;
 }
 
+/* 树容器接收 Ctrl+C/X/V 焦点（点行即聚焦），去掉默认焦点框 */
+.tree:focus {
+  outline: none;
+}
+
 .tree::-webkit-scrollbar,
 .modal-body::-webkit-scrollbar {
   width: 9px;

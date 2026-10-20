@@ -6,7 +6,7 @@ import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { projectApi } from "@/ipc/invoke";
 import { useBuffersStore } from "@/editor/useBuffers";
-import type { EntryKind, ProjectTree } from "@/types";
+import type { EntryKind, ProjectNode, ProjectTree } from "@/types";
 
 /** 统一 toast 反馈（写入编辑域 notice） */
 export function notify(text: string, kind: "ok" | "err" = "ok"): void {
@@ -24,6 +24,28 @@ export interface CtxState {
 export type EntryDialog =
   | { mode: "create"; kind: "tex" | "dir"; dir: string; initial: string }
   | { mode: "rename"; from: string; initial: string };
+
+/** 树剪贴板（会话级内存，不进系统剪贴板、不持久化） */
+export interface Clip {
+  mode: "copy" | "cut";
+  paths: string[];
+}
+
+/** 在树节点中递归查找（键盘粘贴需要判断选中是文件还是目录） */
+export function findNode(
+  nodes: ProjectNode[] | undefined,
+  path: string,
+): ProjectNode | null {
+  if (!nodes) return null;
+  for (const n of nodes) {
+    if (n.path === path) return n;
+    if (n.type === "dir" && n.children) {
+      const hit = findNode(n.children, path);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
 
 export function base(p: string): string {
   const segs = p.split(/[\\/]/);
@@ -66,6 +88,8 @@ interface ProjectState {
   openDirs: Set<string>;
   ctx: CtxState | null;
   entryDialog: EntryDialog | null;
+  /** 树剪贴板（复制/剪切，会话级） */
+  clip: Clip | null;
 
   openProjectDialog: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
@@ -84,6 +108,13 @@ interface ProjectState {
   renameEntry: (from: string, name: string) => Promise<void>;
   removeEntry: (path: string) => Promise<void>;
   revealInExplorer: (path: string) => Promise<void>;
+
+  /** 复制到剪贴板（粘贴时用 copy_entry 实际复制） */
+  copyPaths: (paths: string[]) => void;
+  /** 剪切到剪贴板（粘贴时用 rename_entry 移动） */
+  cutPaths: (paths: string[]) => void;
+  /** 粘贴到目标目录（冲突报错中止；剪切成功后清空剪贴板） */
+  pasteInto: (targetDir: string) => Promise<void>;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -93,6 +124,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   openDirs: new Set<string>(),
   ctx: null,
   entryDialog: null,
+  clip: null,
 
   openProjectDialog: async () => {
     try {
@@ -252,6 +284,64 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({ ctx: null });
     } catch (e) {
       notify(String(e), "err");
+    }
+  },
+
+  copyPaths: (paths) => {
+    if (paths.length === 0) return;
+    set({ clip: { mode: "copy", paths }, ctx: null });
+    notify(`已复制 ${paths.length} 项 · 右键目标处粘贴`, "ok");
+  },
+
+  cutPaths: (paths) => {
+    if (paths.length === 0) return;
+    set({ clip: { mode: "cut", paths }, ctx: null });
+    notify(`已剪切 ${paths.length} 项 · 右键目标处粘贴`, "ok");
+  },
+
+  pasteInto: async (targetDir) => {
+    const clip = get().clip;
+    if (!clip || clip.paths.length === 0) {
+      notify("剪贴板为空", "err");
+      return;
+    }
+    // 防呆：目录不能粘贴到自身或其子目录
+    for (const src of clip.paths) {
+      if (
+        targetDir === src ||
+        targetDir.startsWith(src + "/") ||
+        targetDir.startsWith(src + "\\")
+      ) {
+        notify(`不能粘贴到「${base(src)}」自身或其子目录`, "err");
+        return;
+      }
+    }
+    const created: string[] = [];
+    for (const src of clip.paths) {
+      const dst = joinPath(targetDir, base(src));
+      try {
+        if (clip.mode === "copy") await projectApi.copyEntry(src, dst);
+        else await projectApi.renameEntry(src, dst);
+        created.push(dst);
+      } catch (e) {
+        // 冲突/失败：中止后续（已完成的保留）
+        notify(`粘贴失败 ${base(src)}：${String(e)}`, "err");
+        break;
+      }
+    }
+    set((s) => ({
+      ctx: null,
+      clip: clip.mode === "cut" ? null : s.clip,
+      selected: created[created.length - 1] ?? s.selected,
+    }));
+    await get().refresh();
+    if (created.length > 0) {
+      notify(
+        clip.mode === "copy"
+          ? `已复制 ${created.length} 项到 ${base(targetDir)}`
+          : `已移动 ${created.length} 项到 ${base(targetDir)}`,
+        "ok",
+      );
     }
   },
 }));

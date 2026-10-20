@@ -304,6 +304,66 @@ pub fn rename_entry(from: String, to: String) -> Result<String, String> {
     Ok(to_str(&dst))
 }
 
+// ── 复制（M0-6 补充：树复制粘贴） ──────────────────────────
+
+const COPY_MAX_DEPTH: u32 = 32;
+const COPY_MAX_ENTRIES: usize = 5000;
+
+/// 复制文件/目录（目标已存在则报错，不覆盖、不自动改名）
+#[tauri::command]
+pub fn copy_entry(from: String, to: String) -> Result<String, String> {
+    let src = guard_path(&from)?;
+    let dst = guard_path(&to)?;
+    if !src.exists() {
+        return Err(format!("源不存在: {}", from));
+    }
+    if src == dst {
+        return Err("源与目标相同".into());
+    }
+    if dst.exists() {
+        return Err(format!("目标已存在: {}", to));
+    }
+    if let Some(parent) = dst.parent() {
+        if !parent.as_os_str().is_empty() && !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("创建目标目录失败 {}: {}", parent.display(), e))?;
+        }
+    }
+    if src.is_dir() {
+        let mut count = 0usize;
+        copy_dir(&src, &dst, 0, &mut count)?;
+    } else {
+        std::fs::copy(&src, &dst).map_err(|e| format!("复制失败 {}: {}", src.display(), e))?;
+    }
+    Ok(to_str(&dst))
+}
+
+/// 递归复制目录（深度/条目上限保护；单条目读取错误跳过）
+fn copy_dir(src: &Path, dst: &Path, depth: u32, count: &mut usize) -> Result<(), String> {
+    if depth > COPY_MAX_DEPTH {
+        return Err("目录层级过深，已中止".into());
+    }
+    std::fs::create_dir_all(dst).map_err(|e| format!("创建目录失败 {}: {}", dst.display(), e))?;
+    let read = std::fs::read_dir(src)
+        .map_err(|e| format!("读取目录失败 {}: {}", src.display(), e))?;
+    for item in read {
+        if *count >= COPY_MAX_ENTRIES {
+            return Err("复制条目数超限，已中止".into());
+        }
+        let Ok(entry) = item else { continue };
+        *count += 1;
+        let from_p = entry.path();
+        let to_p = dst.join(entry.file_name());
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            copy_dir(&from_p, &to_p, depth + 1, count)?;
+        } else {
+            std::fs::copy(&from_p, &to_p)
+                .map_err(|e| format!("复制失败 {}: {}", from_p.display(), e))?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,5 +509,72 @@ mod tests {
         assert!(rename_entry("".into(), "x.tex".into()).is_err());
         assert!(rename_entry("x.tex".into(), "".into()).is_err());
         assert!(rename_entry("no_such_file.tex".into(), "y.tex".into()).is_err());
+    }
+
+    #[test]
+    fn copy_entry_copies_file_with_content() {
+        let root = tmp_root("copy_file");
+        let src = root.join("a.tex");
+        std::fs::write(&src, "hello copy").unwrap();
+        let dst = root.join("sub").join("b.tex");
+        let got = copy_entry(src.to_str().unwrap().to_string(), dst.to_str().unwrap().to_string())
+            .unwrap();
+        assert!(got.ends_with("b.tex"));
+        assert_eq!(std::fs::read_to_string(&dst).unwrap(), "hello copy");
+        // 源保留
+        assert!(src.exists());
+    }
+
+    #[test]
+    fn copy_entry_copies_dir_recursively() {
+        let root = tmp_root("copy_dir");
+        let src = root.join("pkg");
+        std::fs::create_dir_all(src.join("inner")).unwrap();
+        std::fs::write(src.join("main.tex"), "doc").unwrap();
+        std::fs::write(src.join("inner/chap.tex"), "chap").unwrap();
+
+        let dst = root.join("pkg_copy");
+        copy_entry(src.to_str().unwrap().to_string(), dst.to_str().unwrap().to_string()).unwrap();
+        assert!(dst.join("main.tex").is_file());
+        assert!(dst.join("inner/chap.tex").is_file());
+        assert_eq!(
+            std::fs::read_to_string(dst.join("inner/chap.tex")).unwrap(),
+            "chap"
+        );
+        // 源目录保留
+        assert!(src.join("main.tex").is_file());
+    }
+
+    #[test]
+    fn copy_entry_refuses_existing_target_and_same_path() {
+        let root = tmp_root("copy_conflict");
+        let src = root.join("a.tex");
+        std::fs::write(&src, "x").unwrap();
+        let dst = root.join("b.tex");
+        std::fs::write(&dst, "old").unwrap();
+        assert!(copy_entry(src.to_str().unwrap().to_string(), dst.to_str().unwrap().to_string())
+            .is_err());
+        // 冲突不覆盖
+        assert_eq!(std::fs::read_to_string(&dst).unwrap(), "old");
+        // 同源同目标
+        assert!(copy_entry(src.to_str().unwrap().to_string(), src.to_str().unwrap().to_string())
+            .is_err());
+    }
+
+    #[test]
+    fn copy_entry_errors_on_missing_source() {
+        let root = tmp_root("copy_missing");
+        assert!(copy_entry(
+            root.join("nope.tex").to_str().unwrap().to_string(),
+            root.join("out.tex").to_str().unwrap().to_string(),
+        )
+        .is_err());
+        assert!(!root.join("out.tex").exists());
+    }
+
+    #[test]
+    fn copy_entry_guards_invalid_paths() {
+        assert!(copy_entry("".into(), "x.tex".into()).is_err());
+        assert!(copy_entry("x.tex".into(), "".into()).is_err());
     }
 }

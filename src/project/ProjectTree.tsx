@@ -1,10 +1,11 @@
 // M0-6 · 项目树（对齐 docs/UI/code.html renderTree）
 // 目录展开/文件选中/主文件 badge/缓冲脏点/右键菜单入口
-import { useMemo, type ReactNode } from "react";
+// 补充：Ctrl+C/X/V 复制剪切粘贴、剪切项置灰
+import { useMemo, useRef, type ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
 import { useBuffersStore } from "@/editor/useBuffers";
 import type { ProjectNode } from "@/types";
-import { EXT_IMG, extOf, useProjectStore } from "./useProject";
+import { EXT_IMG, extOf, findNode, notify, parentOf, useProjectStore } from "./useProject";
 
 function iconFor(name: string): { icon: string; cls: string } {
   const ext = extOf(name);
@@ -25,12 +26,47 @@ export function ProjectTree() {
   const refresh = useProjectStore((s) => s.refresh);
   const openFromTree = useProjectStore((s) => s.openFromTree);
   const openProjectDialog = useProjectStore((s) => s.openProjectDialog);
+  const copyPaths = useProjectStore((s) => s.copyPaths);
+  const cutPaths = useProjectStore((s) => s.cutPaths);
+  const pasteInto = useProjectStore((s) => s.pasteInto);
+  const clip = useProjectStore((s) => s.clip);
   const buffers = useBuffersStore((s) => s.buffers);
+  const treeRef = useRef<HTMLDivElement>(null);
 
   const dirtyPaths = useMemo(
     () => new Set(buffers.filter((b) => b.content !== b.savedContent).map((b) => b.path)),
     [buffers],
   );
+
+  // Ctrl+C / Ctrl+X / Ctrl+V（树容器获得焦点时；粘贴目标=选中目录 / 选中文件的父目录 / 项目根）
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    const k = e.key.toLowerCase();
+    if (k === "c" && selected) {
+      e.preventDefault();
+      copyPaths([selected]);
+    } else if (k === "x" && selected) {
+      e.preventDefault();
+      cutPaths([selected]);
+    } else if (k === "v") {
+      e.preventDefault();
+      const st = useProjectStore.getState();
+      if (!st.clip) {
+        notify("剪贴板为空", "err");
+        return;
+      }
+      let target: string | null = root ?? null;
+      if (selected) {
+        const node = findNode(nodes, selected);
+        target = node?.type === "dir" ? selected : parentOf(selected) || root;
+      }
+      if (target) void pasteInto(target);
+    }
+  }
+
+  function isCut(path: string): boolean {
+    return clip?.mode === "cut" && clip.paths.includes(path);
+  }
 
   function renderNodes(list: ProjectNode[], depth: number): ReactNode {
     const pad = 8 + depth * 15;
@@ -41,7 +77,7 @@ export function ProjectTree() {
           <div key={n.path}>
             <div
               className={open ? "tnode open-dir" : "tnode"}
-              style={{ paddingLeft: pad }}
+              style={{ paddingLeft: pad, opacity: isCut(n.path) ? 0.55 : undefined }}
               title={n.path}
               onClick={() => toggleDir(n.path)}
               onContextMenu={(e) => {
@@ -64,7 +100,7 @@ export function ProjectTree() {
         <div
           key={n.path}
           className={isSel ? "tnode sel" : "tnode"}
-          style={{ paddingLeft: pad }}
+          style={{ paddingLeft: pad, opacity: isCut(n.path) ? 0.55 : undefined }}
           title={n.path}
           onClick={() => openFromTree(n.path)}
           onContextMenu={(e) => {
@@ -87,7 +123,11 @@ export function ProjectTree() {
 
   return (
     <div
+      ref={treeRef}
       className="tree"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onClick={() => treeRef.current?.focus()}
       onContextMenu={(e) => {
         // 空白区右键（节点已 stopPropagation）
         e.preventDefault();

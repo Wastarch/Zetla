@@ -44,6 +44,8 @@ export const projectApi = {
   removeEntry: (path: string) => call<void>("remove_entry", { path }),
   /** 重命名/移动（M0-6），返回新绝对路径 */
   renameEntry: (from: string, to: string) => call<string>("rename_entry", { from, to }),
+  /** 复制文件/目录（M0-6 补充），返回新绝对路径；目标已存在会报错 */
+  copyEntry: (from: string, to: string) => call<string>("copy_entry", { from, to }),
   readFile: (path: string) => call<FileDoc>("read_file", { path }),
   writeFile: (path: string, content: string, options?: WriteOptions) =>
     call<void>("write_file", { path, content, options }),
