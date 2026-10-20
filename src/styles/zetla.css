@@ -1,0 +1,726 @@
+/* ============================================================
+   zetla.css —— UI tokens 与编辑面板样式
+   来源：docs/UI/code.html（设计稿）
+   M0-5 落地范围：tokens / 图标 .ic / 按钮控件 / TabBar /
+   编辑区 / 面板状态条 / 空态 / toast / 验收抽屉 / CM6 配色
+   主题：MVP 仅亮色（data-theme="light"）；dark 块保留待 M3
+   ============================================================ */
+
+/* ── tokens ─────────────────────────────── */
+:root {
+  --font-ui: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace;
+  --font-serif: 'Source Serif 4', Georgia, serif;
+  --editor-fs: 13px;
+  --side-w: 258px;
+  --prev-w: 432px;
+  --log-h: 212px;
+  --r-sm: 5px;
+  --r-md: 8px;
+  --r-lg: 12px;
+}
+
+[data-theme='dark'] {
+  --bg: #14161a;
+  --bg-2: #191c21;
+  --bg-3: #202429;
+  --bg-4: #262b31;
+  --line: #2b3037;
+  --line-soft: #23272d;
+  --txt: #d7dbe2;
+  --txt-2: #98a1ac;
+  --txt-3: #69717c;
+  --accent: #5b9dff;
+  --accent-2: #3d7ae0;
+  --accent-soft: rgba(91, 157, 255, 0.15);
+  --ok: #4fc38a;
+  --warn: #e3a54c;
+  --err: #f26a60;
+  --info: #6fa9ff;
+  --editor-bg: #171a1f;
+  --line-hl: rgba(91, 157, 255, 0.075);
+  --sel: rgba(91, 157, 255, 0.24);
+  --paper: #f7f5f0;
+  --paper-ink: #22242a;
+  --shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  --t-com: #6b7480;
+  --t-cmd: #7fb0ff;
+  --t-math: #e0b169;
+  --t-env: #6fd3c4;
+  --t-brace: #7e8794;
+}
+
+[data-theme='light'] {
+  --bg: #e9ecf0;
+  --bg-2: #f4f6f8;
+  --bg-3: #ffffff;
+  --bg-4: #eef1f4;
+  --line: #d8dee5;
+  --line-soft: #e6eaee;
+  --txt: #23272d;
+  --txt-2: #59626d;
+  --txt-3: #8b949e;
+  --accent: #2b62cf;
+  --accent-2: #1e4fae;
+  --accent-soft: rgba(43, 98, 207, 0.11);
+  --ok: #218a5c;
+  --warn: #a86a12;
+  --err: #c2382f;
+  --info: #2b62cf;
+  --editor-bg: #fcfdfe;
+  --line-hl: rgba(43, 98, 207, 0.06);
+  --sel: rgba(43, 98, 207, 0.18);
+  --paper: #fbfaf7;
+  --paper-ink: #22242a;
+  --shadow: 0 18px 50px rgba(20, 28, 40, 0.18);
+  --t-com: #8d959e;
+  --t-cmd: #2b62cf;
+  --t-math: #9a5b0d;
+  --t-env: #0d7a6e;
+  --t-brace: #7a828c;
+}
+
+/* ── base（桌面应用：铺满窗口，禁滚动） ── */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 24px;
+  background: var(--bg);
+  color: var(--txt);
+  -webkit-font-smoothing: antialiased;
+  font-synthesis: none;
+}
+
+.ic {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ic.fill {
+  fill: currentColor;
+  stroke: none;
+}
+
+/* ── app 外壳（M0-12 补 titlebar/menubar） ── */
+.app {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+}
+
+/* ── 编辑面板（center） ─────────────────── */
+.center {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--editor-bg);
+}
+
+.tabbar {
+  height: 36px;
+  flex: none;
+  display: flex;
+  align-items: stretch;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.tabbar::-webkit-scrollbar {
+  height: 0;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 13px;
+  min-width: 0;
+  max-width: 210px;
+  border-right: 1px solid var(--line-soft);
+  cursor: pointer;
+  position: relative;
+  color: var(--txt-3);
+  font-size: 12px;
+  background: transparent;
+  user-select: none;
+  flex: none;
+}
+
+.tab:hover {
+  color: var(--txt-2);
+  background: var(--bg-3);
+}
+
+.tab.active {
+  background: var(--editor-bg);
+  color: var(--txt);
+}
+
+.tab.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.tab .tname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tab .tclose {
+  width: 17px;
+  height: 17px;
+  border: 0;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  color: transparent;
+  display: grid;
+  place-items: center;
+  flex: none;
+  padding: 0;
+}
+
+.tab:hover .tclose {
+  color: var(--txt-3);
+  background: var(--bg-4);
+}
+
+.tab .tclose:hover {
+  color: var(--err);
+}
+
+/* 脏点：以圆点替代关闭按钮（与设计稿一致，点击触发关闭确认） */
+.tab .tdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 99px;
+  background: var(--warn);
+  flex: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  display: block;
+}
+
+.tab-tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 8px;
+  flex: none;
+  border-left: 1px solid var(--line-soft);
+  background: var(--bg-2);
+}
+
+/* ── 控件 ───────────────────────────────── */
+.ibtn {
+  width: 27px;
+  height: 27px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+}
+
+.ibtn:hover {
+  background: var(--bg-4);
+  color: var(--txt);
+  border-color: var(--line);
+}
+
+.ibtn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
+.ibtn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.ibtn .ic {
+  width: 15px;
+  height: 15px;
+}
+
+.mini-btn {
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.15s;
+}
+
+.mini-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn {
+  height: 31px;
+  padding: 0 15px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: all 0.16s;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.btn.primary {
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 500;
+}
+
+.btn.primary:hover {
+  background: var(--accent-2);
+  color: #fff;
+}
+
+/* ── 编辑区 ─────────────────────────────── */
+.code-wrap {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  position: relative;
+}
+
+/* 方案 A：每个已挂载缓冲区一个 CM 实例，非活动 hidden（撤销栈/光标/滚动原生独立） */
+.buffer-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+}
+
+.buffer-pane[hidden] {
+  display: none;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  color: var(--txt-3);
+  background:
+    linear-gradient(0deg, transparent 0 24px, var(--line-soft) 24px 25px, transparent 25px) 0 0 / 100% 25px,
+    var(--editor-bg);
+}
+
+.empty .big {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  color: var(--txt-2);
+}
+
+.empty p {
+  font-size: 12px;
+}
+
+/* ── 面板状态条 ─────────────────────────── */
+.editor-status {
+  height: 24px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 13px;
+  background: var(--bg-2);
+  border-top: 1px solid var(--line);
+  font-size: 10.5px;
+  color: var(--txt-3);
+  letter-spacing: 0.03em;
+  font-family: var(--font-mono);
+}
+
+.editor-status b {
+  color: var(--txt-2);
+  font-weight: 500;
+}
+
+.editor-status .sp {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.editor-status .file-p {
+  max-width: 340px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--txt-2);
+}
+
+.editor-status input {
+  width: 48px;
+  height: 17px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  color: var(--txt);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  outline: none;
+  text-align: center;
+}
+
+.editor-status input:focus {
+  border-color: var(--accent);
+}
+
+/* ── CM6 配色（对齐设计稿编辑区） ──────── */
+.latex-editor {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  background: var(--editor-bg);
+}
+
+.latex-editor .cm-editor {
+  height: 100%;
+  font-family: var(--font-mono);
+  font-size: var(--editor-fs);
+  background: var(--editor-bg);
+  color: var(--txt);
+}
+
+.latex-editor .cm-scroller {
+  font-family: inherit;
+  font-size: inherit;
+  line-height: 1.62;
+}
+
+.latex-editor .cm-content {
+  caret-color: var(--accent);
+  padding: 12px 0 60px;
+}
+
+.latex-editor .cm-gutters {
+  background: var(--editor-bg);
+  color: var(--txt-3);
+  border-right: 1px solid var(--line-soft);
+  font-size: calc(var(--editor-fs) - 1px);
+}
+
+.latex-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 10px 0 14px;
+  min-width: 34px;
+}
+
+.latex-editor .cm-activeLineGutter {
+  background: transparent;
+  color: var(--accent);
+}
+
+.latex-editor .cm-cursor {
+  border-left-color: var(--accent);
+  border-left-width: 2px;
+}
+
+.latex-editor .cm-selectionBackground,
+.latex-editor .cm-content ::selection {
+  background: var(--sel) !important;
+}
+
+.latex-editor .cm-activeLine {
+  background: var(--line-hl);
+}
+
+.latex-editor .cm-matchingBracket,
+.latex-editor .cm-nonmatchingBracket {
+  background: var(--accent-soft);
+  outline: 1px solid var(--accent);
+}
+
+.latex-editor .cm-searchMatch {
+  background: rgba(168, 106, 18, 0.25);
+}
+
+.latex-editor .cm-searchMatch.cm-searchMatch-selected {
+  background: var(--sel);
+  outline: 1px solid var(--accent);
+}
+
+/* CM 查找替换面板（MVP 用内置面板替代设计稿 findbar） */
+.latex-editor .cm-panels {
+  background: var(--bg-3);
+  color: var(--txt);
+  border-bottom: 1px solid var(--line);
+}
+
+.latex-editor .cm-panels input {
+  height: 24px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  color: var(--txt);
+  border-radius: var(--r-sm);
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  outline: none;
+}
+
+.latex-editor .cm-panels input:focus {
+  border-color: var(--accent);
+}
+
+.latex-editor .cm-panels button {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11px;
+}
+
+.latex-editor .cm-panels button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.latex-editor .cm-scroller::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.latex-editor .cm-scroller::-webkit-scrollbar-thumb {
+  background: var(--bg-4);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.latex-editor .cm-scroller::-webkit-scrollbar-thumb:hover {
+  background: var(--txt-3);
+  background-clip: padding-box;
+}
+
+.latex-editor .cm-scroller::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── 空态 Z mark ────────────────────────── */
+.mark {
+  width: 21px;
+  height: 21px;
+  border-radius: 6px;
+  background: linear-gradient(145deg, var(--accent), var(--accent-2));
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-family: var(--font-serif);
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(61, 122, 224, 0.4);
+}
+
+/* ── toast（保存/打开反馈） ─────────────── */
+.toast-wrap {
+  position: fixed;
+  right: 20px;
+  bottom: 42px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  z-index: 400;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--accent);
+  border-radius: var(--r-md);
+  padding: 11px 15px;
+  font-size: 11.5px;
+  color: var(--txt);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.3);
+  animation: toastIn 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  max-width: 360px;
+}
+
+.toast.ok {
+  border-left-color: var(--ok);
+}
+
+.toast.warn {
+  border-left-color: var(--warn);
+}
+
+.toast.err {
+  border-left-color: var(--err);
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateX(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── 验收抽屉（M0-1~M0-5 临时，M0-12 后移除） ── */
+.modal-layer {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 14, 0.55);
+  backdrop-filter: blur(3px);
+  z-index: 300;
+  animation: fade 0.18s ease;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.modal {
+  width: min(760px, 92vw);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  animation: rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.modal-head {
+  height: 48px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 0 17px;
+  border-bottom: 1px solid var(--line);
+}
+
+.modal-head h2 {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.modal-head .sub {
+  font-size: 10.5px;
+  color: var(--txt-3);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.modal-head .x {
+  margin-left: auto;
+}
+
+.modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 18px 20px;
+}
