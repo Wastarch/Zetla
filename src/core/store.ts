@@ -5,6 +5,11 @@ import type { CompileResult, ProjectInfo } from "@/types";
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
 interface AppState {
+  // ── 布局 ──
+  /** M0-12 前移：资源树可见性（视图菜单/快捷键切换） */
+  sidebarVisible: boolean;
+  toggleSidebar: () => void;
+
   // ── 项目 ──
   project: ProjectInfo | null;
   openProject: (p: ProjectInfo) => void;
@@ -21,6 +26,9 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
+  sidebarVisible: true,
+  toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
+
   project: null,
   openProject: (p) => set({ project: p, lastResult: null, compileStatus: "idle" }),
   closeProject: () =>

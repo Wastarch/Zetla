@@ -10,6 +10,7 @@ import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
 import { TemplateWizard } from "@/template/TemplateWizard";
 import { Icon } from "@/ui/Icon";
+import { MenuBar } from "@/ui/MenuBar";
 import { StatusBar } from "@/ui/StatusBar";
 import type { TexDistInfo } from "@/types";
 import "./styles/zetla.css";
@@ -143,6 +144,7 @@ function App() {
   const [ping, setPing] = useState<PingReply | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [labOpen, setLabOpen] = useState(false);
+  const sidebarVisible = useAppStore((s) => s.sidebarVisible);
 
   // M0-6：侧栏 .resizer 拖拽（仅运行时，不持久化 —— M0-12 接 load/save_app_config）
   const [sideW, setSideW] = useState(258);
@@ -184,16 +186,21 @@ function App() {
 
   return (
     <div className="app">
+      <MenuBar />
       <div className="workspace">
-        <Sidebar style={{ width: sideW }} />
-        <div
-          className="resizer"
-          title="拖拽调整侧栏宽度"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            startResize();
-          }}
-        />
+        {sidebarVisible && (
+          <>
+            <Sidebar style={{ width: sideW }} />
+            <div
+              className="resizer"
+              title="拖拽调整侧栏宽度"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                startResize();
+              }}
+            />
+          </>
+        )}
         <EditorWorkspace onOpenLab={() => setLabOpen(true)} />
       </div>
       <StatusBar />

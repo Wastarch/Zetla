@@ -19,16 +19,10 @@ export function Sidebar({ style }: SidebarProps) {
   const refresh = useProjectStore((s) => s.refresh);
 
   async function saveAll() {
-    const bs = useBuffersStore.getState();
-    const dirty = bs.buffers.filter((b) => b.content !== b.savedContent);
-    if (dirty.length === 0) {
+    const saved = await useBuffersStore.getState().saveAllBuffers();
+    if (saved === 0) {
       notify("没有未保存的修改", "ok");
-      return;
     }
-    for (const b of dirty) {
-      await useBuffersStore.getState().saveBuffer(b.path);
-    }
-    notify(`已保存 ${dirty.length} 个文件`, "ok");
   }
 
   return (

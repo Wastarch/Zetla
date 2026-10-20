@@ -132,6 +132,163 @@ body {
   overflow: hidden;
 }
 
+/* ── 顶部菜单栏（M0-12 前移，对齐 mockup .menubar/.drop/.mi） ── */
+.menubar {
+  height: 32px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 8px;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line);
+  user-select: none;
+  position: relative;
+  z-index: 70;
+}
+
+.menu {
+  position: relative;
+}
+
+.menu > button {
+  height: 25px;
+  padding: 0 11px;
+  border: 0;
+  background: transparent;
+  color: var(--txt-2);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+
+.menu:hover > button,
+.menu.open > button {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+.drop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 236px;
+  display: none;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.32);
+  padding: 6px;
+  z-index: 80;
+}
+
+.menu.open .drop {
+  display: block;
+  animation: menu-pop 0.14s ease;
+}
+
+@keyframes menu-pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.mi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--txt);
+  font-family: var(--font-ui);
+  font-size: 12.5px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.mi:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mi .sc {
+  margin-left: auto;
+  color: var(--txt-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+}
+
+.mi:hover .sc {
+  color: var(--accent);
+  opacity: 0.75;
+}
+
+.msep {
+  height: 1px;
+  background: var(--line-soft);
+  margin: 5px 6px;
+}
+
+/* 置灰项：保留可 hover 以显示 title 提示（不用原生 disabled，tooltip 才有效） */
+.mi.off {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.mi.off:hover {
+  background: transparent;
+  color: var(--txt);
+}
+
+/* 关于对话框（.modal.sm 补充） */
+.about .about-mark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.about .about-name {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--txt);
+}
+
+.about .about-name span {
+  color: var(--accent);
+}
+
+.about .about-ver {
+  font-size: 11px;
+  color: var(--txt-3);
+  letter-spacing: 0.03em;
+  margin-top: 2px;
+}
+
+.about .about-desc {
+  font-size: 12.5px;
+  color: var(--txt-2);
+  line-height: 1.75;
+  margin-bottom: 10px;
+}
+
+.about .about-tech {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--txt-3);
+}
+
 .workspace {
   flex: 1;
   display: flex;

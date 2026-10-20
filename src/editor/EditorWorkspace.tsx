@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
 import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
+import { setActiveView } from "./activeView";
 import { selectActive, useBuffersStore } from "./useBuffers";
 
 export interface EditorWorkspaceProps {
@@ -38,12 +39,16 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
   const [cursor, setCursor] = useState({ line: 1, col: 1 });
   const [gotoInput, setGotoInput] = useState("");
 
-  // 激活切换：标记已挂载 + 隐藏→显示后重新测量 + 刷新行/列
+  // 激活切换：标记已挂载 + 隐藏→显示后重新测量 + 刷新行/列 + 登记菜单栏命令桥
   useEffect(() => {
-    if (!activePath) return;
+    if (!activePath) {
+      setActiveView(null);
+      return;
+    }
     markMounted(activePath);
     const h = handles.current[activePath];
     h?.refresh();
+    setActiveView(h?.getView() ?? null);
     const pos = h?.getCursorPos();
     if (pos) setCursor(pos);
   }, [activePath, markMounted]);

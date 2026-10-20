@@ -29,6 +29,8 @@ export interface LaTeXEditorHandle {
   /** 隐藏→显示后重新测量布局（方案 A 切换标签时调用） */
   refresh: () => void;
   focus: () => void;
+  /** 底层 CM6 视图（菜单栏命令桥 activeView.ts 登记用） */
+  getView: () => EditorView | null;
 }
 
 export interface LaTeXEditorProps {
@@ -121,6 +123,9 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
       },
       focus() {
         cmRef.current?.view?.focus();
+      },
+      getView() {
+        return cmRef.current?.view ?? null;
       },
     }));
 

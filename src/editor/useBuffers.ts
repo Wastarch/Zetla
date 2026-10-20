@@ -51,6 +51,10 @@ interface BuffersState {
   updateContent: (path: string, content: string) => void;
   /** 保存指定缓冲：write_file → 回读校验 → markSaved */
   saveBuffer: (path: string) => Promise<void>;
+  /** 保存全部脏缓冲（侧栏/菜单栏共用）；返回保存个数 */
+  saveAllBuffers: () => Promise<number>;
+  /** 脏缓冲数量（退出确认等用） */
+  dirtyCount: () => number;
   /** 首次激活后标记已挂载 */
   markMounted: (path: string) => void;
   clearNotice: () => void;
@@ -166,6 +170,17 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
     }
   },
 
+  saveAllBuffers: async () => {
+    const dirty = get().buffers.filter((b) => b.content !== b.savedContent);
+    for (const b of dirty) {
+      await get().saveBuffer(b.path);
+    }
+    if (dirty.length > 0) {
+      set({ notice: { text: `已保存全部 ${dirty.length} 个文件`, kind: "ok" } });
+    }
+    return dirty.length;
+  },
+
   markMounted: (path) => {
     set((s) => ({
       buffers: s.buffers.map((b) => (b.path === path ? { ...b, mounted: true } : b)),
@@ -178,6 +193,8 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
     const b = get().buffers.find((x) => x.path === path);
     return !!b && b.content !== b.savedContent;
   },
+
+  dirtyCount: () => get().buffers.filter((b) => b.content !== b.savedContent).length,
 }));
 
 /** 便捷选择器（组件内用） */
