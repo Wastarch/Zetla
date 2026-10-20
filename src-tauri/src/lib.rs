@@ -9,6 +9,10 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // 基础设施（M0-1）
             commands::core::ping,
+            // 持久层（M0-2）
+            commands::fsdoc::read_file,
+            commands::fsdoc::write_file,
+            commands::fsdoc::revert_file,
             // M0-2+ 逐步注册：
             // detect_tex_distribution, compile_project, cancel_compile, parse_tex_log,
             // list_templates, get_template, create_project, import_template,

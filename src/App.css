@@ -32,6 +32,39 @@
   color: #d33;
 }
 
+.ok {
+  color: #2a8a3d;
+}
+
+.fs-row {
+  display: flex;
+  gap: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.fs-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.9em;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 0.5em;
+  resize: vertical;
+  background: transparent;
+  color: inherit;
+}
+
+.meta {
+  font-size: 0.9em;
+  opacity: 0.85;
+}
+
 @media (prefers-color-scheme: dark) {
   .card {
     border-color: rgba(255, 255, 255, 0.15);
@@ -39,6 +72,12 @@
   }
   .error {
     color: #ff7b7b;
+  }
+  .ok {
+    color: #6ede8a;
+  }
+  .card textarea {
+    border-color: rgba(255, 255, 255, 0.25);
   }
 }
 
