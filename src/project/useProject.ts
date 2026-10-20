@@ -90,6 +90,10 @@ interface ProjectState {
   entryDialog: EntryDialog | null;
   /** 树剪贴板（复制/剪切，会话级） */
   clip: Clip | null;
+  /** M0-7：从模板新建向导 */
+  wizardOpen: boolean;
+  /** 向导目标目录默认值（右键目录进入时指定） */
+  wizardDir: string | null;
 
   openProjectDialog: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
@@ -115,6 +119,10 @@ interface ProjectState {
   cutPaths: (paths: string[]) => void;
   /** 粘贴到目标目录（冲突报错中止；剪切成功后清空剪贴板） */
   pasteInto: (targetDir: string) => Promise<void>;
+
+  /** 打开/关闭「从模板新建」向导（dir 缺省用项目根） */
+  openWizard: (dir?: string) => void;
+  closeWizard: () => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -125,6 +133,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   ctx: null,
   entryDialog: null,
   clip: null,
+  wizardOpen: false,
+  wizardDir: null,
 
   openProjectDialog: async () => {
     try {
@@ -344,4 +354,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       );
     }
   },
+
+  openWizard: (dir) => set({ wizardOpen: true, wizardDir: dir ?? get().root ?? null }),
+  closeWizard: () => set({ wizardOpen: false, wizardDir: null }),
 }));

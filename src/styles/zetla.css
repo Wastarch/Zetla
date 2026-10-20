@@ -784,6 +784,89 @@ body {
   background: var(--bg-2);
 }
 
+/* ── 从模板新建向导（M0-7） ─────────────── */
+.modal.wizard {
+  width: min(560px, 92vw);
+}
+
+.modal.wizard .modal-body {
+  padding: 16px 18px 14px;
+}
+
+.tpl-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.tpl-card {
+  display: grid;
+  justify-items: start;
+  gap: 5px;
+  padding: 12px 13px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-ui);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.tpl-card .ic {
+  color: var(--accent);
+}
+
+.tpl-card .tn {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--txt);
+}
+
+.tpl-card .td {
+  font-size: 11px;
+  color: var(--txt-3);
+  line-height: 1.6;
+}
+
+.tpl-card .tm {
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 2px 6px;
+  border-radius: 99px;
+  font-weight: 600;
+}
+
+.tpl-card:hover {
+  border-color: var(--txt-3);
+}
+
+.tpl-card.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.fw-field {
+  margin-bottom: 11px;
+}
+
+.fw-row {
+  display: flex;
+  gap: 8px;
+}
+
+.fw-row .entry-input {
+  flex: 1;
+}
+
+.fw-row .btn {
+  flex: none;
+}
+
 /* ── 侧栏（M0-6 · 来自设计稿 sidebar） ──── */
 .sidebar {
   width: var(--side-w);

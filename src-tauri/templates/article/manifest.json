@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1.0",
+  "id": "article",
+  "name": "英文文章 article",
+  "description": "基础 article 文档类：英文短文、作业与报告",
+  "category": "article",
+  "tags": ["英文", "article"],
+  "version": "1.0",
+  "build": {
+    "engine": "xelatex",
+    "mainFile": "main.tex",
+    "outputDir": "build",
+    "synctex": true
+  },
+  "dependencies": {
+    "packages": ["graphicx"]
+  },
+  "variables": [
+    {
+      "key": "title",
+      "label": "标题",
+      "type": "string",
+      "required": true,
+      "default": "Untitled",
+      "placeholder": "Document title"
+    },
+    {
+      "key": "author",
+      "label": "作者",
+      "type": "string",
+      "default": "",
+      "placeholder": "Author（可留空）"
+    }
+  ],
+  "structure": {
+    "dirs": [],
+    "files": [
+      { "target": "main.tex", "source": "main.tex.tmpl", "render": true }
+    ]
+  }
+}

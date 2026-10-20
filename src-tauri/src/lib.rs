@@ -17,6 +17,10 @@ pub fn run() {
             commands::fsdoc::revert_file,
             // 编译引擎（M0-3a）
             commands::compile::detect_tex_distribution,
+            // 模板引擎（M0-7）
+            commands::template::list_templates,
+            commands::template::get_template,
+            commands::template::create_project,
             // 项目管理（M0-6）
             commands::project::scan_project,
             commands::project::create_entry,

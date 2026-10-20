@@ -8,6 +8,7 @@ import { EditorWorkspace } from "@/editor/EditorWorkspace";
 import { Sidebar } from "@/project/Sidebar";
 import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
+import { TemplateWizard } from "@/template/TemplateWizard";
 import { Icon } from "@/ui/Icon";
 import { StatusBar } from "@/ui/StatusBar";
 import type { TexDistInfo } from "@/types";
@@ -106,7 +107,7 @@ function LabDrawer({
           </button>
         </div>
         <div className="modal-body">
-          <p className="milestone">当前切片：M0-5 多文件标签页（编辑器核心 M0-4 ✅）</p>
+          <p className="milestone">当前切片：M0-7 模板引擎 + 新建向导（M0-4~M0-6 ✅）</p>
 
           <EnvCard />
 
@@ -198,6 +199,7 @@ function App() {
       <StatusBar />
       <CtxMenu />
       <EntryDialog />
+      <TemplateWizard />
       {labOpen && (
         <LabDrawer
           onClose={() => setLabOpen(false)}

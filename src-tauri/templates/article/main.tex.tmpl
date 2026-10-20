@@ -1,0 +1,23 @@
+%% ZetLa 内置模板 · article（单文件英文文档）
+%% 占位符语法 <%= var %>（刻意避开 LaTeX 的 {}）
+\documentclass{article}
+
+\usepackage{graphicx}
+
+\title{<%= title %>}
+\author{<%= author %>}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Introduction}
+
+Hello, ZetLa! This document was generated from the \texttt{article} template.
+
+\section{Conclusion}
+
+Happy \LaTeX{} writing.
+
+\end{document}

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1.0",
+  "id": "ctex-cn",
+  "name": "中文文章 ctexart",
+  "description": "基于 ctex 的中文文档：笔记、作业与短文（XeLaTeX）",
+  "category": "article",
+  "tags": ["中文", "ctex", "xelatex"],
+  "version": "1.0",
+  "build": {
+    "engine": "xelatex",
+    "mainFile": "main.tex",
+    "outputDir": "build",
+    "synctex": true
+  },
+  "dependencies": {
+    "packages": ["ctex", "graphicx"]
+  },
+  "variables": [
+    {
+      "key": "title",
+      "label": "标题",
+      "type": "string",
+      "required": true,
+      "default": "未命名文档",
+      "placeholder": "文档标题"
+    },
+    {
+      "key": "author",
+      "label": "作者",
+      "type": "string",
+      "default": "",
+      "placeholder": "作者（可留空）"
+    }
+  ],
+  "structure": {
+    "dirs": [],
+    "files": [
+      { "target": "main.tex", "source": "main.tex.tmpl", "render": true }
+    ]
+  }
+}

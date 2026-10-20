@@ -98,8 +98,8 @@ fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
         entries.push((e.path().to_path_buf(), e.file_type().is_dir()));
     }
 
-    // 2) 主文件启发式（根 main.tex → 含 \documentclass 的最浅 .tex → 第一个 .tex）
-    let main_file = pick_main(root_path, &entries);
+    // 2) 主文件：.ltex/config.json 权威（M0-7 完整版）→ 启发式回退
+    let main_file = config_main_file(root_path).unwrap_or_else(|| pick_main(root_path, &entries));
 
     // 3) 组装树
     let mut children_map: HashMap<PathBuf, Vec<(PathBuf, bool)>> = HashMap::new();
@@ -122,6 +122,20 @@ fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
         main_file,
         nodes,
     })
+}
+
+/// 读 .ltex/config.json 的 mainFile（项目权威入口；M0-7 完整版）。文件缺失/非法/目标不存在 → None 走启发式
+fn config_main_file(root: &Path) -> Option<String> {
+    let cfg = root.join(".ltex").join("config.json");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let mf = v.get("mainFile")?.as_str()?;
+    if mf.trim().is_empty() || Path::new(mf).is_absolute() || mf.split(['/', '\\']).any(|s| s == "..")
+    {
+        return None;
+    }
+    let p = root.join(mf);
+    p.is_file().then(|| to_str(&p))
 }
 
 /// 主文件识别：根 main.tex → 按(深度, 名称)第一个含 \documentclass 的 .tex → 第一个 .tex
@@ -576,5 +590,54 @@ mod tests {
     fn copy_entry_guards_invalid_paths() {
         assert!(copy_entry("".into(), "x.tex".into()).is_err());
         assert!(copy_entry("x.tex".into(), "".into()).is_err());
+    }
+
+    #[test]
+    fn scan_project_prefers_config_main_file() {
+        let root = tmp_root("cfg_main");
+        std::fs::write(root.join("aaa.tex"), "无 documentclass").unwrap();
+        std::fs::write(root.join("realmain.tex"), "\\documentclass{ctexart}").unwrap();
+        let ltex = root.join(".ltex");
+        std::fs::create_dir_all(&ltex).unwrap();
+        // config 显式指定 aaa.tex（启发式会选 realmain.tex）→ 证明 config 优先
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"engine":"xelatex","mainFile":"aaa.tex"}"#,
+        )
+        .unwrap();
+
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert!(tree.main_file.ends_with("aaa.tex"), "config 应优先于启发式");
+        assert!(
+            tree.nodes.iter().any(|n| n.path == tree.main_file && n.is_main),
+            "is_main 应标记 config 指定的主文件"
+        );
+
+        // 非法 config（目标不存在）→ 回退启发式（含 documentclass 的 realmain.tex）
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"mainFile":"missing.tex"}"#,
+        )
+        .unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert!(tree.main_file.ends_with("realmain.tex"));
+
+        // 路径穿越 → 拒绝并回退
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"mainFile":"../evil.tex"}"#,
+        )
+        .unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert!(tree.main_file.ends_with("realmain.tex"), "路径穿越应被拒绝");
+
+        // 绝对路径 → 拒绝并回退
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"mainFile":"C:/evil.tex"}"#,
+        )
+        .unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert!(tree.main_file.ends_with("realmain.tex"));
     }
 }

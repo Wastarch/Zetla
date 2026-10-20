@@ -61,14 +61,8 @@ export function Sidebar({ style }: SidebarProps) {
           <button
             type="button"
             className="ibtn"
-            title="新建文档"
-            disabled={!root}
-            onClick={() =>
-              root &&
-              useProjectStore
-                .getState()
-                .openEntryDialog({ mode: "create", kind: "tex", dir: root, initial: "untitled" })
-            }
+            title="从模板新建文档（M0-7）"
+            onClick={() => useProjectStore.getState().openWizard()}
           >
             <Icon name="file-plus" />
           </button>
@@ -92,8 +86,8 @@ export function Sidebar({ style }: SidebarProps) {
             type="button"
             className="ibtn wide primary"
             style={{ marginLeft: "auto" }}
-            disabled
-            title="模板向导（M0-7 接通）"
+            title="从模板新建项目（M0-7）"
+            onClick={() => useProjectStore.getState().openWizard()}
           >
             <Icon name="layout" />
             模板导入

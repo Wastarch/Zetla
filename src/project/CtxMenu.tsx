@@ -104,6 +104,11 @@ export function CtxMenu() {
         icon: "folder-plus",
         onClick: () => openEntryDialog({ mode: "create", kind: "dir", dir: d, initial: "新建文件夹" }),
       },
+      {
+        label: "从模板新建…",
+        icon: "wand",
+        onClick: () => useProjectStore.getState().openWizard(d),
+      },
       { label: "", icon: "", onClick: () => {} },
       {
         label: "重命名",
@@ -131,6 +136,11 @@ export function CtxMenu() {
         icon: "folder-plus",
         onClick: () =>
           openEntryDialog({ mode: "create", kind: "dir", dir: root, initial: "新建文件夹" }),
+      },
+      {
+        label: "从模板新建…",
+        icon: "wand",
+        onClick: () => useProjectStore.getState().openWizard(root),
       },
       { label: "", icon: "", onClick: () => {} },
       pasteItem(root),
