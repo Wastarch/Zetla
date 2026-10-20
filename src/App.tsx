@@ -1,6 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { compileApi, coreApi, projectApi, type PingReply } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
+import { LaTeXEditor, type LaTeXEditorHandle } from "@/editor/LaTeXEditor";
 import type { FileDoc, TexDistInfo } from "@/types";
 import "./App.css";
 
@@ -61,90 +63,120 @@ function EnvCard() {
 }
 
 /**
- * M0-2 验收界面：持久层读写测试（M0-6 编辑壳落地后整体替换）
+ * M0-4 验收界面：编辑器核心（打开 → 编辑 → Ctrl+S 保存 → 跳行）
  *
- * 验收项：
- * 1. GBK + CRLF 文件 → 读取不乱码，encoding=eol 元数据正确
- * 2. 读→写（不改内容）→ 再读：编码/EOL/内容无损往返
- * 3. 新内容含 LF → 保存后按原 EOL 转 CRLF
- * 4. revert_file 重读
+ * 验收项（开发计划 M0-4）：
+ * 1. GBK 老文档打开不乱码，状态栏显示 encoding/eol
+ * 2. 编辑 → Ctrl+S 保存 → 回读校验内容/编码/换行无损
+ * 3. 脏状态提示（未保存 ●）
+ * 4. gotoLine 程序化跳行（M0-11 错误定位依赖）
+ *
+ * M0-6 编辑壳落地后整体替换为 项目树 + 多标签 + 状态栏
  */
-function FsLab() {
+function EditorLab() {
   const [path, setPath] = useState("");
   const [doc, setDoc] = useState<FileDoc | null>(null);
-  const [draft, setDraft] = useState("");
+  const [value, setValue] = useState("");
+  const [savedValue, setSavedValue] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [lineInput, setLineInput] = useState("1");
+  const editorRef = useRef<LaTeXEditorHandle>(null);
 
-  function report(ok: string, e?: unknown) {
-    setErr(e === undefined ? null : String(e));
-    setMsg(e === undefined ? ok : null);
+  const dirty = path !== "" && value !== savedValue;
+
+  function report(text: string, isError = false) {
+    setErr(isError ? text : null);
+    setMsg(isError ? null : text);
   }
 
-  async function doRead() {
+  async function doOpen() {
     try {
-      const d = await projectApi.readFile(path.trim());
+      const picked = await openFileDialog({
+        multiple: false,
+        filters: [{ name: "LaTeX 源文件", extensions: ["tex", "ltx", "cls", "sty"] }],
+      });
+      if (typeof picked !== "string") return; // 用户取消
+      const d = await projectApi.readFile(picked);
+      setPath(picked);
       setDoc(d);
-      setDraft(d.content);
-      report(`读取成功 · encoding=${d.encoding} · eol=${d.eol}`);
+      setValue(d.content);
+      setSavedValue(d.content);
+      report(`已打开 · encoding=${d.encoding} · eol=${d.eol}`);
     } catch (e) {
-      report("", e);
+      report(String(e), true);
     }
   }
 
-  async function doWrite() {
+  async function doSave() {
+    if (!path) return;
     try {
-      await projectApi.writeFile(path.trim(), draft);
-      const d = await projectApi.readFile(path.trim());
+      await projectApi.writeFile(path, value);
+      const d = await projectApi.readFile(path); // 回读校验往返
+      const intact = d.content === value || d.content === value.replace(/\n/g, "\r\n");
       setDoc(d);
-      setDraft(d.content);
-      const intact = d.content === draft || d.content === draft.replace(/\n/g, "\r\n");
+      setSavedValue(value);
       report(
-        `写入成功 · encoding=${d.encoding} · eol=${d.eol} · 往返${intact ? "无损" : "内容有差异"}`,
+        `保存成功 · encoding=${d.encoding} · eol=${d.eol} · 往返${intact ? "无损" : "内容有差异"}`,
+        !intact,
       );
     } catch (e) {
-      report("", e);
+      report(String(e), true);
     }
   }
 
-  async function doRevert() {
-    try {
-      const d = await projectApi.revertFile(path.trim());
-      setDoc(d);
-      setDraft(d.content);
-      report(`已重读磁盘 · encoding=${d.encoding} · eol=${d.eol}`);
-    } catch (e) {
-      report("", e);
-    }
+  function doGoto() {
+    const n = parseInt(lineInput, 10);
+    if (!Number.isFinite(n)) return;
+    editorRef.current?.gotoLine(n);
   }
 
   return (
-    <div className="card">
-      <h2>持久层 · 读写测试</h2>
+    <div className="card editor-card">
+      <h2>M0-4 · 编辑器核心</h2>
       <div className="fs-row">
+        <button onClick={doOpen}>打开文件…</button>
+        <button onClick={doSave} disabled={!path}>
+          保存 (Ctrl+S)
+        </button>
         <input
-          value={path}
-          onChange={(e) => setPath(e.currentTarget.value)}
-          placeholder="文件绝对路径，如 E:\test\gbk.tex"
+          className="line-input"
+          value={lineInput}
+          onChange={(e) => setLineInput(e.currentTarget.value)}
+          placeholder="行号"
           spellCheck={false}
         />
+        <button onClick={doGoto} disabled={!path}>
+          跳行
+        </button>
       </div>
-      <div className="fs-row">
-        <button onClick={doRead}>读取</button>
-        <button onClick={doWrite}>写回</button>
-        <button onClick={doRevert}>Revert 重读</button>
-      </div>
-      {doc && (
-        <p className="meta">
-          encoding: <strong>{doc.encoding}</strong> · eol: <strong>{doc.eol}</strong>
-        </p>
+      <p className="meta">
+        {path ? (
+          <>
+            文件：<code>{path}</code>
+            {dirty && <strong className="dirty"> ● 未保存</strong>}
+            {doc && (
+              <>
+                {" "}
+                · encoding <b>{doc.encoding}</b> · eol <b>{doc.eol}</b>
+              </>
+            )}
+          </>
+        ) : (
+          "点击「打开文件…」选择一个 .tex 开始编辑"
+        )}
+      </p>
+      {path ? (
+        <LaTeXEditor
+          ref={editorRef}
+          value={value}
+          onChange={setValue}
+          onSave={doSave}
+          placeholder="开始输入 LaTeX…"
+        />
+      ) : (
+        <div className="editor-empty">（未打开文件）</div>
       )}
-      <textarea
-        value={draft}
-        onChange={(e) => setDraft(e.currentTarget.value)}
-        rows={8}
-        spellCheck={false}
-      />
       {msg && <p className="ok">{msg}</p>}
       {err && <p className="error">失败: {err}</p>}
     </div>
@@ -152,8 +184,8 @@ function FsLab() {
 }
 
 /**
- * M0-1/M0-2 验收界面
- * M0-6 编辑壳落地后整体替换为 项目树 + 编辑器 + 状态栏
+ * M0-1 / M0-2 / M0-3a / M0-4 验收界面
+ * M0-6 编辑壳落地后整体替换为 项目树 + 多标签编辑器 + 状态栏
  */
 function App() {
   const [ping, setPing] = useState<PingReply | null>(null);
@@ -176,7 +208,7 @@ function App() {
   return (
     <main className="container">
       <h1>LaTeX 工作台</h1>
-      <p className="milestone">M0-3a · 发行版检测</p>
+      <p className="milestone">M0-4 · 编辑器核心（CM6 打开/保存/跳行）</p>
 
       <EnvCard />
 
@@ -194,7 +226,7 @@ function App() {
         <button onClick={doPing}>重新 Ping</button>
       </div>
 
-      <FsLab />
+      <EditorLab />
 
       <div className="card">
         <h2>全局状态（zustand）</h2>

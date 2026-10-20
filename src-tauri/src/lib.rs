@@ -6,6 +6,8 @@ mod commands;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        // M0-4：文件对话框（打开 .tex / 选项目文件夹）
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             // 基础设施（M0-1）
             commands::core::ping,

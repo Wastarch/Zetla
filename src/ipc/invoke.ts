@@ -19,7 +19,7 @@ export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T>
 // ── 环境/编译 ──────────────────────────────────────────────
 export const compileApi = {
   detectTexDistribution: () => call<TexDistInfo>("detect_tex_distribution"),
-  // M0-3b 实现：
+  // M0-9 实现：
   // compileProject: (root: string) => call<CompileHandle>("compile_project", { root }),
   // cancelCompile: (handle: string) => call<void>("cancel_compile", { handle }),
 };
@@ -30,7 +30,7 @@ export const templateApi = {
   getTemplate: (id: string) => call<TemplateManifest>("get_template", { id }),
   createProject: (templateId: string, vars: Record<string, unknown>, targetPath: string) =>
     call<ProjectInfo>("create_project", { templateId, variables: vars, targetPath }),
-  // M0-4 实现：
+  // M1（MVP 不做）：
   // importTemplate: (path: string) => call<TemplateMeta>("import_template", { path }),
 };
 

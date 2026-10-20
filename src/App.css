@@ -65,6 +65,51 @@
   opacity: 0.85;
 }
 
+/* ── M0-4 编辑器 ─────────────────────────── */
+.editor-card {
+  max-width: 900px;
+  text-align: left;
+}
+
+.editor-card .meta code {
+  word-break: break-all;
+}
+
+.dirty {
+  color: #d33;
+}
+
+.line-input {
+  max-width: 6em;
+  padding: 0.6em 0.5em;
+}
+
+.latex-editor {
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.latex-editor .cm-editor {
+  height: 100%;
+  font-size: 0.92em;
+}
+
+.latex-editor .cm-scroller {
+  font-family: Consolas, "Courier New", monospace;
+}
+
+.editor-empty {
+  height: 30vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(0, 0, 0, 0.25);
+  border-radius: 6px;
+  opacity: 0.6;
+}
+
 @media (prefers-color-scheme: dark) {
   .card {
     border-color: rgba(255, 255, 255, 0.15);
