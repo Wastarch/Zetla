@@ -4,9 +4,9 @@ CodeMirror 6 封装与编辑器 UI 落位于此：
 
 - `LaTeXEditor.tsx` — CM6 单文档受控封装（**M0-4**：LaTeX 高亮、行号、括号配对、查找替换、Ctrl+S、
   `gotoLine`/`getCursorPos`/`getCursorLine`/`openFind`/`refresh`/`focus`；**M0-5** 加 `onCursorChange`）
-- `useBuffers.ts` — 缓冲区 store（**M0-5**：打开/切换/关闭、脏状态、保存写盘+回读校验、原生确认关闭拦截）
+- `useBuffers.ts` — 缓冲区 store（**M0-5**：打开/切换/关闭、脏状态、保存写盘+回读校验、原生确认关闭拦截；**M0-12 前移**加 `cursor`/`setCursor` 供全局状态栏）
 - `TabBar.tsx` — 多文件标签条（**M0-5**：活动 accent 顶条、脏点 `.tdot` 替代关闭按钮、`.tab-tools` 入口）
-- `EditorWorkspace.tsx` — 编辑工作区（**M0-5**：TabBar + 多实例编辑区 + `.editor-status` 状态条 + toast）
+- `EditorWorkspace.tsx` — 编辑工作区（**M0-5**：TabBar + 多实例编辑区 + toast；**M0-12 前移**移除 `.editor-status`，光标上提至 `useBuffers.cursor`）
 
 ## 约定
 

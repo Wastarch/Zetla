@@ -31,6 +31,12 @@ export interface BuffersNotice {
   kind: "ok" | "err";
 }
 
+/** 光标位置（全局状态栏展示；由活动编辑器 onCursorChange 写入） */
+export interface CursorPos {
+  line: number;
+  col: number;
+}
+
 function basename(p: string): string {
   const segs = p.split(/[\\/]/);
   return segs[segs.length - 1] || p;
@@ -40,6 +46,8 @@ interface BuffersState {
   buffers: EditorBuffer[];
   activePath: string | null;
   notice: BuffersNotice | null;
+  /** 光标位置（活动编辑器；状态栏展示） */
+  cursor: CursorPos;
 
   /** 打开文件（去重；已存在则激活）；返回是否成功打开新文件 */
   openFiles: (paths: string[]) => Promise<void>;
@@ -58,6 +66,8 @@ interface BuffersState {
   /** 首次激活后标记已挂载 */
   markMounted: (path: string) => void;
   clearNotice: () => void;
+  /** 更新光标位置（状态栏行/列展示） */
+  setCursor: (pos: CursorPos) => void;
   /** 诊断用：缓冲是否脏 */
   isDirty: (path: string) => boolean;
 }
@@ -66,6 +76,7 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
   buffers: [],
   activePath: null,
   notice: null,
+  cursor: { line: 1, col: 1 },
 
   openFiles: async (paths) => {
     const unique = [...new Set(paths.filter((p) => p && p.trim() !== ""))];
@@ -188,6 +199,8 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
   },
 
   clearNotice: () => set({ notice: null }),
+
+  setCursor: (pos) => set({ cursor: pos }),
 
   isDirty: (path) => {
     const b = get().buffers.find((x) => x.path === path);

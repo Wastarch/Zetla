@@ -252,7 +252,7 @@
             gap: 1px;
             padding: 0 8px;
             background: var(--bg-2);
-            border-bottom: 1px solid var(--line);
+            border-bottom: 1px solid var(--line-soft);
             user-select: none;
             position: relative;
             z-index: 70
@@ -356,6 +356,65 @@
             pointer-events: none
         }
 
+        /* ============ toolbar (新增) ============ */
+        .toolbar {
+            height: 38px;
+            flex: none;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            padding: 0 10px;
+            background: var(--bg-3);
+            border-bottom: 1px solid var(--line);
+            overflow-x: auto;
+            overflow-y: hidden;
+            user-select: none;
+        }
+
+        .toolbar::-webkit-scrollbar {
+            height: 0;
+        }
+
+        .tbtn {
+            height: 26px;
+            padding: 0 10px;
+            border: 1px solid transparent;
+            background: transparent;
+            color: var(--txt-2);
+            border-radius: var(--r-sm);
+            cursor: pointer;
+            font-family: var(--font-ui);
+            font-size: 11.5px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all .15s;
+        }
+
+        .tbtn:hover {
+            background: var(--bg-4);
+            color: var(--txt);
+        }
+
+        .tbtn.on {
+            background: var(--accent-soft);
+            color: var(--accent);
+            border-color: transparent;
+        }
+
+        .tbtn .ic {
+            width: 14px;
+            height: 14px;
+        }
+
+        .tb-sep {
+            width: 1px;
+            height: 16px;
+            background: var(--line);
+            margin: 0 4px;
+            flex: none;
+        }
+
         /* ============ workspace ============ */
         .workspace {
             flex: 1;
@@ -386,7 +445,7 @@
             opacity: .5
         }
 
-        /* sidebar */
+        /* sidebar (VSCode Style) */
         .sidebar {
             width: var(--side-w);
             flex: none;
@@ -403,54 +462,29 @@
         }
 
         .side-head {
-            padding: 11px 12px 10px;
-            border-bottom: 1px solid var(--line-soft)
+            padding: 8px 12px 6px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         .side-title {
-            display: flex;
-            align-items: center;
-            gap: 8px
-        }
-
-        .side-title h2 {
             font-size: 11px;
             font-weight: 600;
-            letter-spacing: .14em;
+            letter-spacing: .05em;
             text-transform: uppercase;
             color: var(--txt-3)
         }
 
-        .proj-name {
-            margin-top: 9px;
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            font-size: 12.5px;
-            font-weight: 500
-        }
-
-        .proj-name .tag {
-            margin-left: auto;
-            font-size: 9.5px;
-            letter-spacing: .1em;
-            text-transform: uppercase;
-            color: var(--accent);
-            background: var(--accent-soft);
-            padding: 2px 6px;
-            border-radius: 99px;
-            font-weight: 600
-        }
-
         .side-actions {
             display: flex;
-            gap: 3px;
-            margin-top: 10px
+            align-items: center;
+            gap: 2px;
         }
 
         .ibtn {
-            width: 27px;
-            height: 27px;
+            width: 24px;
+            height: 24px;
             border: 1px solid transparent;
             background: transparent;
             color: var(--txt-2);
@@ -473,32 +507,10 @@
             border-color: transparent
         }
 
-        .side-actions .wide {
-            width: auto;
-            padding: 0 10px;
-            gap: 6px;
-            grid-auto-flow: column;
-            font-family: var(--font-ui);
-            font-size: 11.5px;
-            font-weight: 500;
-            letter-spacing: .02em
-        }
-
-        .side-actions .wide.primary {
-            background: var(--accent);
-            color: #fff;
-            border-color: transparent
-        }
-
-        .side-actions .wide.primary:hover {
-            background: var(--accent-2);
-            color: #fff
-        }
-
         .tree {
             flex: 1;
             overflow: auto;
-            padding: 7px 6px 12px
+            padding: 0 6px 12px
         }
 
         .tree::-webkit-scrollbar,
@@ -610,75 +622,6 @@
 
         .ic.file-bib {
             color: var(--ok)
-        }
-
-        .side-foot {
-            border-top: 1px solid var(--line-soft);
-            padding: 11px 13px 13px;
-            background: var(--bg-2)
-        }
-
-        .side-foot h3 {
-            font-size: 9.5px;
-            letter-spacing: .15em;
-            text-transform: uppercase;
-            color: var(--txt-3);
-            margin-bottom: 9px;
-            font-weight: 600
-        }
-
-        .kv {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 10px;
-            font-size: 11px;
-            margin-bottom: 7px
-        }
-
-        .kv .k {
-            color: var(--txt-3)
-        }
-
-        .kv .v {
-            font-family: var(--font-mono);
-            font-size: 10.5px;
-            color: var(--txt-2);
-            background: var(--bg-4);
-            padding: 2px 7px;
-            border-radius: 4px;
-            border: 1px solid var(--line-soft)
-        }
-
-        .kv .v.engine {
-            color: var(--accent);
-            border-color: var(--accent-soft);
-            background: var(--accent-soft)
-        }
-
-        .log-link {
-            margin-top: 11px;
-            width: 100%;
-            height: 28px;
-            border: 1px solid var(--line);
-            background: transparent;
-            color: var(--txt-2);
-            border-radius: var(--r-sm);
-            cursor: pointer;
-            font-family: var(--font-ui);
-            font-size: 11.5px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            transition: all .15s;
-            letter-spacing: .02em
-        }
-
-        .log-link:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-            background: var(--accent-soft)
         }
 
         /* ============ editor pane ============ */
@@ -2232,6 +2175,25 @@
         <symbol id="i-eraser" viewBox="0 0 24 24">
             <path d="M20 20H7L3 16a2 2 0 0 1 0-2.8l10-10a2 2 0 0 1 2.8 0l5 5a2 2 0 0 1 0 2.8L13 19" />
         </symbol>
+        <symbol id="i-collapse-all" viewBox="0 0 24 24">
+            <path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7" />
+        </symbol>
+        <!-- 新图标：符号、表格、绘图 -->
+        <symbol id="i-symbol" viewBox="0 0 24 24">
+            <path d="M4 7V4h16v3M9 20h6M12 4v16" />
+        </symbol>
+        <symbol id="i-table" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
+        </symbol>
+        <symbol id="i-diagram" viewBox="0 0 24 24">
+            <circle cx="6" cy="6" r="3" />
+            <circle cx="18" cy="18" r="3" />
+            <path d="M6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3" />
+        </symbol>
+        <symbol id="i-formula" viewBox="0 0 24 24">
+            <path d="M4 20h16M12 4v16M8 4h8" />
+        </symbol>
     </svg>
 
     <!-- ===== app window ===== -->
@@ -2241,8 +2203,7 @@
         <div class="titlebar">
             <div class="mark">Z</div>
             <div class="wordmark">Ze<span>tla</span></div>
-            <div class="doc-title"><b id="tdProject">Zetla 论文项目</b> &nbsp;·&nbsp; <span id="tdFile">main.tex</span>
-                &nbsp;·&nbsp; 本地模式</div>
+            <div class="doc-title"><b id="tdProject">Zetla 论文项目</b></div>
             <div class="win-controls">
                 <button class="win-btn" id="btnMin" title="最小化"><svg class="ic">
                         <use href="#i-min" />
@@ -2259,59 +2220,60 @@
         <!-- menu bar -->
         <div class="menubar" id="menubar"></div>
 
+        <!-- 新增：功能工具栏 (未来模块扩展区) -->
+        <div class="toolbar">
+            <button class="tbtn" data-act="insert-symbol"><svg class="ic">
+                    <use href="#i-symbol" />
+                </svg> 符号</button>
+            <button class="tbtn" data-act="insert-table"><svg class="ic">
+                    <use href="#i-table" />
+                </svg> 表格</button>
+            <button class="tbtn" data-act="insert-diagram"><svg class="ic">
+                    <use href="#i-diagram" />
+                </svg> 绘图</button>
+            <button class="tbtn" data-act="insert-formula"><svg class="ic">
+                    <use href="#i-formula" />
+                </svg> 公式</button>
+            <div class="tb-sep"></div>
+            <button class="tbtn" data-act="insert-image"><svg class="ic">
+                    <use href="#i-image" />
+                </svg> 图片</button>
+            <button class="tbtn" data-act="insert-bib"><svg class="ic">
+                    <use href="#i-bib" />
+                </svg> 引用</button>
+            <div style="margin-left:auto; display:flex; align-items:center; gap:4px;">
+                <button class="tbtn" data-act="format"><svg class="ic">
+                        <use href="#i-wand" />
+                    </svg> 格式化</button>
+            </div>
+        </div>
+
         <!-- workspace -->
         <div class="workspace">
-            <!-- sidebar -->
+            <!-- sidebar (VSCode 风格) -->
             <aside class="sidebar" id="sidebar">
+                <!-- 顶部工具栏 -->
                 <div class="side-head">
-                    <div class="side-title">
-                        <svg class="ic">
-                            <use href="#i-folder" />
-                        </svg>
-                        <h2>项目资源</h2>
-                        <button class="ibtn" style="margin-left:auto" data-act="refresh-tree" title="刷新"><svg
-                                class="ic">
-                                <use href="#i-refresh" />
-                            </svg></button>
-                    </div>
-                    <div class="proj-name">
-                        <svg class="ic" style="color:var(--accent)">
-                            <use href="#i-layout" />
-                        </svg>
-                        Zetla 论文项目
-                        <span class="tag">Local</span>
-                    </div>
+                    <div class="side-title">资源管理器</div>
                     <div class="side-actions">
-                        <button class="ibtn" data-act="new-doc" title="新建文档"><svg class="ic">
+                        <button class="ibtn" data-act="new-doc" title="新建文件"><svg class="ic">
                                 <use href="#i-file-plus" />
                             </svg></button>
-                        <button class="ibtn" data-act="open-project" title="打开项目"><svg class="ic">
+                        <button class="ibtn" data-act="noop" title="新建文件夹"><svg class="ic">
                                 <use href="#i-folder-plus" />
                             </svg></button>
-                        <button class="ibtn" data-act="save-all" title="保存全部"><svg class="ic">
-                                <use href="#i-save" />
+                        <button class="ibtn" data-act="refresh-tree" title="刷新"><svg class="ic">
+                                <use href="#i-refresh" />
                             </svg></button>
-                        <button class="ibtn wide primary" data-act="new-from-tpl" style="margin-left:auto">
-                            <svg class="ic">
-                                <use href="#i-layout" />
-                            </svg>模板导入
-                        </button>
+                        <button class="ibtn" data-act="noop" title="全部折叠"><svg class="ic">
+                                <use href="#i-collapse-all" />
+                            </svg></button>
                     </div>
                 </div>
+
+                <!-- 树状文件列表 -->
                 <div class="tree" id="tree"></div>
-                <div class="side-foot">
-                    <h3>项目概要</h3>
-                    <div class="kv"><span class="k">主 tex 入口</span><span class="v">main.tex</span></div>
-                    <div class="kv"><span class="k">编译引擎</span><span class="v engine" id="sideEngine">XeLaTeX</span>
-                    </div>
-                    <div class="kv"><span class="k">辅助工具</span><span class="v">latexmk · synctex</span></div>
-                    <button class="log-link" data-act="toggle-log">
-                        <svg class="ic">
-                            <use href="#i-terminal" />
-                        </svg>编译日志 <span id="logBadge"
-                            style="color:var(--err);font-family:var(--font-mono);font-size:10px">2 err</span>
-                    </button>
-                </div>
+
             </aside>
             <div class="resizer" id="resizerLeft"></div>
 
@@ -2341,8 +2303,6 @@
                         <div class="mm-view" id="mmView"></div>
                     </div>
                 </div>
-
-                <!-- 移除原有的 editor-status 状态行 -->
             </section>
             <div class="resizer" id="resizerRight"></div>
 
@@ -2434,15 +2394,12 @@
                     id="engineChip">XeLaTeX</span></button>
             <div class="divider"></div>
 
-            <!-- 增加行号和语言显示 -->
             <div class="caret-info" id="statusCaret">行 1，列 1</div>
             <button class="sbtn" style="pointer-events:none; padding-left: 5px;">LaTeX (stex)</button>
             <div class="divider"></div>
 
             <button class="sbtn">UTF-8</button>
             <button class="sbtn" data-act="cycle-eol" id="eolChip">LF</button>
-
-            <!-- 移除主题和设置按钮 -->
         </div>
     </div>
 
@@ -3129,7 +3086,6 @@ latexmk -c main.tex
             if (!state.tabs.some(t => t.name === name)) state.tabs.push({ name, dirty: false });
             state.active = name;
             state.treeSel = name;
-            $('#tdFile').textContent = name;
             renderTabs(); renderTree(); renderEditor();
         }
         function closeTab(name) {
@@ -3137,7 +3093,6 @@ latexmk -c main.tex
             if (i < 0) return;
             state.tabs.splice(i, 1);
             if (state.active === name) state.active = state.tabs.length ? state.tabs[Math.min(i, state.tabs.length - 1)].name : null;
-            if (state.active) $('#tdFile').textContent = state.active;
             renderTabs(); renderEditor();
         }
 
@@ -3488,7 +3443,6 @@ latexmk -c main.tex
             document.documentElement.dataset.theme = state.theme;
             const dark = state.theme === 'dark';
 
-            // 更新设置面板中的状态（由于移除底部按钮，某些同步操作保留）
             const st = $('#setTheme'); if (st) st.value = state.theme;
             toast(dark ? '已切换到暗色主题' : '已切换到亮色主题');
         }
@@ -3725,6 +3679,15 @@ latexmk -c main.tex
             'ctx-rename'() { toast('重命名功能（演示）'); },
             'ctx-explorer'() { toast('已在 Windows 资源管理器中打开所在目录', 'ok'); },
             'ctx-delete'() { toast('删除文件需二次确认（演示）', 'warn'); },
+
+            // 新增：工具栏操作
+            'insert-symbol'() { toast('打开符号面板（M1）'); },
+            'insert-table'() { toast('打开表格编辑器（M1）'); },
+            'insert-diagram'() { toast('打开绘图画布（M2）'); },
+            'insert-formula'() { toast('打开公式面板（M1）'); },
+            'insert-image'() { toast('唤起图片拖拽与插入（M1）'); },
+            'insert-bib'() { toast('打开文献引用搜索（M1）'); },
+
             'noop'() { }
         };
         function createDoc(name, code) {

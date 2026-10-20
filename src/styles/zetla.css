@@ -546,60 +546,6 @@ body {
   font-size: 12px;
 }
 
-/* ── 面板状态条 ─────────────────────────── */
-.editor-status {
-  height: 24px;
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 0 13px;
-  background: var(--bg-2);
-  border-top: 1px solid var(--line);
-  font-size: 10.5px;
-  color: var(--txt-3);
-  letter-spacing: 0.03em;
-  font-family: var(--font-mono);
-}
-
-.editor-status b {
-  color: var(--txt-2);
-  font-weight: 500;
-}
-
-.editor-status .sp {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.editor-status .file-p {
-  max-width: 340px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--txt-2);
-}
-
-.editor-status input {
-  width: 48px;
-  height: 17px;
-  background: var(--editor-bg);
-  border: 1px solid var(--line);
-  color: var(--txt);
-  border-radius: 4px;
-  padding: 0 5px;
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  outline: none;
-  text-align: center;
-}
-
-.editor-status input:focus {
-  border-color: var(--accent);
-}
-
 /* ── CM6 配色（对齐设计稿编辑区） ──────── */
 .latex-editor {
   flex: 1;
@@ -1062,85 +1008,22 @@ body.col-resizing {
   user-select: none;
 }
 
+/* ── 资源管理器头部（VSCode 风格：只有标签） ── */
 .side-head {
-  padding: 11px 12px 10px;
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding: 0 12px;
   border-bottom: 1px solid var(--line-soft);
-}
-
-.side-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.side-title h2 {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--txt-3);
-}
-
-.proj-name {
-  margin-top: 9px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 12.5px;
-  font-weight: 500;
-  min-width: 0;
-}
-
-.proj-name .nm {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.proj-name .tag {
-  margin-left: auto;
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--accent);
-  background: var(--accent-soft);
-  padding: 2px 6px;
-  border-radius: 99px;
-  font-weight: 600;
   flex: none;
 }
 
-.side-actions {
-  display: flex;
-  gap: 3px;
-  margin-top: 10px;
-}
-
-.side-actions .wide {
-  width: auto;
-  padding: 0 10px;
-  gap: 6px;
-  grid-auto-flow: column;
-  font-family: var(--font-ui);
-  font-size: 11.5px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-}
-
-.side-actions .wide.primary {
-  background: var(--accent);
-  color: #fff;
-  border-color: transparent;
-}
-
-.side-actions .wide.primary:hover {
-  background: var(--accent-2);
-  color: #fff;
-}
-
-.side-actions .wide:disabled {
-  opacity: 0.45;
-  pointer-events: none;
+.side-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--txt-3);
 }
 
 /* ── 项目树 ─────────────────────────────── */
@@ -1242,6 +1125,40 @@ body.col-resizing {
   flex: none;
 }
 
+/* ── 根目录行（树的第一层，图标组 hover 才显） ── */
+.tree-root .nm {
+  font-weight: 500;
+  color: var(--txt);
+}
+
+.tree-root-acts {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  flex: none;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.tree-root:hover .tree-root-acts,
+.tree-root:focus-within .tree-root-acts {
+  opacity: 1;
+}
+
+.tree-root-acts .ibtn {
+  width: 24px;
+  height: 24px;
+  border-color: transparent;
+}
+
+.tree-root-acts .ibtn:hover {
+  border-color: transparent;
+  background: var(--bg-2);
+}
+
+/* 根行下直接跟子节点，缩进从 depth 1 起算 */
+
 .ic.file-tex {
   color: var(--accent);
 }
@@ -1268,86 +1185,6 @@ body.col-resizing {
 
 .tree-empty .btn {
   margin-top: 10px;
-}
-
-/* ── 侧栏底部项目概要 ───────────────────── */
-.side-foot {
-  border-top: 1px solid var(--line-soft);
-  padding: 11px 13px 13px;
-  background: var(--bg-2);
-  flex: none;
-}
-
-.side-foot h3 {
-  font-size: 9.5px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--txt-3);
-  margin-bottom: 9px;
-  font-weight: 600;
-}
-
-.kv {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  font-size: 11px;
-  margin-bottom: 7px;
-}
-
-.kv .k {
-  color: var(--txt-3);
-}
-
-.kv .v {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--txt-2);
-  background: var(--bg-4);
-  padding: 2px 7px;
-  border-radius: 4px;
-  border: 1px solid var(--line-soft);
-  max-width: 55%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.kv .v.engine {
-  color: var(--accent);
-  border-color: var(--accent-soft);
-  background: var(--accent-soft);
-}
-
-.log-link {
-  margin-top: 11px;
-  width: 100%;
-  height: 28px;
-  border: 1px solid var(--line);
-  background: transparent;
-  color: var(--txt-2);
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  font-family: var(--font-ui);
-  font-size: 11.5px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  transition: all 0.15s;
-  letter-spacing: 0.02em;
-}
-
-.log-link:hover:not(:disabled) {
-  border-color: var(--accent);
-  color: var(--accent);
-  background: var(--accent-soft);
-}
-
-.log-link:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 
 /* ── 右键菜单 ───────────────────────────── */
@@ -1572,4 +1409,11 @@ body.col-resizing {
 .engine-chip {
   font-family: var(--font-mono);
   color: var(--accent);
+}
+
+.caret-info {
+  font-family: var(--font-mono);
+  color: var(--txt-2);
+  font-size: 10.5px;
+  padding: 0 8px;
 }

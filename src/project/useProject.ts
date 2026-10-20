@@ -99,6 +99,8 @@ interface ProjectState {
   openProject: (root: string) => Promise<void>;
   refresh: () => Promise<void>;
   toggleDir: (path: string) => void;
+  /** 全部折叠（资源管理器头部「全部折叠」按钮） */
+  collapseAll: () => void;
   select: (path: string) => void;
 
   openCtx: (ctx: CtxState) => void;
@@ -157,7 +159,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         root,
         tree,
         selected: tree.mainFile || null,
-        openDirs: new Set<string>(),
+        // 根行作为树的第一层节点，默认展开
+        openDirs: new Set<string>([root]),
         ctx: null,
       });
       notify(
@@ -189,6 +192,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       else next.add(path);
       return { openDirs: next };
     }),
+
+  // 全部折叠：只折叠根以下目录，根行保持展开；根行被收起时点它会先展开根行
+  collapseAll: () => set((s) => ({ openDirs: s.root ? new Set<string>([s.root]) : new Set<string>() })),
 
   select: (path) => set({ selected: path }),
 

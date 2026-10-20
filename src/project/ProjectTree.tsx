@@ -1,11 +1,12 @@
-// M0-6 · 项目树（对齐 docs/UI/code.html renderTree）
+// M0-6 · 项目树（对齐 docs/UI/UI.html renderTree）
 // 目录展开/文件选中/主文件 badge/缓冲脏点/右键菜单入口
 // 补充：Ctrl+C/X/V 复制剪切粘贴、剪切项置灰
+// M0-12 前移：树首行改为「根目录行」（资源管理器头部的图标组移入该行，hover 才显）
 import { useMemo, useRef, type ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
 import { useBuffersStore } from "@/editor/useBuffers";
 import type { ProjectNode } from "@/types";
-import { EXT_IMG, extOf, findNode, notify, parentOf, useProjectStore } from "./useProject";
+import { EXT_IMG, base, extOf, findNode, notify, parentOf, useProjectStore } from "./useProject";
 
 function iconFor(name: string): { icon: string; cls: string } {
   const ext = extOf(name);
@@ -22,6 +23,7 @@ export function ProjectTree() {
   const openDirs = useProjectStore((s) => s.openDirs);
   const selected = useProjectStore((s) => s.selected);
   const toggleDir = useProjectStore((s) => s.toggleDir);
+  const collapseAll = useProjectStore((s) => s.collapseAll);
   const openCtx = useProjectStore((s) => s.openCtx);
   const refresh = useProjectStore((s) => s.refresh);
   const openFromTree = useProjectStore((s) => s.openFromTree);
@@ -66,6 +68,11 @@ export function ProjectTree() {
 
   function isCut(path: string): boolean {
     return clip?.mode === "cut" && clip.paths.includes(path);
+  }
+
+  /** 新建条目（VSCode 语义：空文档 / 空目录，模板向导仍走菜单与右键） */
+  function createEntry(kind: "tex" | "dir", dir: string) {
+    useProjectStore.getState().openEntryDialog({ mode: "create", kind, dir, initial: "" });
   }
 
   function renderNodes(list: ProjectNode[], depth: number): ReactNode {
@@ -145,18 +152,91 @@ export function ProjectTree() {
             打开项目文件夹…
           </button>
         </div>
-      ) : !nodes || nodes.length === 0 ? (
-        <div className="tree-empty">
-          项目为空
-          <br />
-          右键空白处可新建文档
-          <br />
-          <button className="btn" onClick={() => void refresh()}>
-            刷新
-          </button>
-        </div>
       ) : (
-        renderNodes(nodes, 0)
+        <>
+          {/* 根目录行：树的第一层（所有节点的父行），图标组 hover 才显 */}
+          <div
+            className={
+              openDirs.has(root) ? "tnode tree-root open-dir" : "tnode tree-root"
+            }
+            style={{ paddingLeft: 8 }}
+            title={root}
+            onClick={() => toggleDir(root)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // 根行用「空白」菜单：新建/模板/粘贴/刷新，不含重命名/删除/剪切
+              openCtx({ x: e.clientX, y: e.clientY, kind: "blank", path: root });
+            }}
+          >
+            <Icon name="chev" className="chev" size={12} />
+            <Icon name="folder" size={15} />
+            <span className="nm">{base(root)}</span>
+            <span className="tree-root-acts">
+              <button
+                type="button"
+                className="ibtn"
+                title="新建文件"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  createEntry("tex", root);
+                }}
+              >
+                <Icon name="file-plus" size={14} />
+              </button>
+              <button
+                type="button"
+                className="ibtn"
+                title="新建文件夹"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  createEntry("dir", root);
+                }}
+              >
+                <Icon name="folder-plus" size={14} />
+              </button>
+              <button
+                type="button"
+                className="ibtn"
+                title="刷新"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void refresh();
+                }}
+              >
+                <Icon name="refresh" size={14} />
+              </button>
+              <button
+                type="button"
+                className="ibtn"
+                title="全部折叠"
+                // 唯一置灰条件：根行展开且没有其他目录可折叠
+                disabled={openDirs.has(root) && openDirs.size === 1}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  collapseAll();
+                }}
+              >
+                <Icon name="collapse-all" size={14} />
+              </button>
+            </span>
+          </div>
+
+          {openDirs.has(root) &&
+            (!nodes || nodes.length === 0 ? (
+              <div className="tree-empty">
+                项目为空
+                <br />
+                右键空白处可新建文档
+                <br />
+                <button className="btn" onClick={() => void refresh()}>
+                  刷新
+                </button>
+              </div>
+            ) : (
+              renderNodes(nodes, 1)
+            ))}
+        </>
       )}
     </div>
   );

@@ -1,6 +1,8 @@
-// M0-6 · 全局状态栏（对齐 docs/UI/code.html .statusbar，1A 占位态）
-// 灰点「待编译」+ 进度条(隐藏) + 日志⛔ + 引擎 chip⛔ + 当前文件/脏/编码/换行 + 设置⛔
-// 接通节奏：M0-9 编译状态与引擎 · M0-10 日志 · M0-11 错误定位 · 设置后置 M1
+// M0-6 · 全局状态栏（对齐 mockup UI.html .statusbar）
+// 左：状态点 + 编译文案 + 进度条 + 日志⛔ + 引擎 chip⛔
+// 右（.right 组）：行/列 · LaTeX 语言 · 当前文件/脏 · 编码 · 换行
+// M0-12 前移：光标位置从编辑器内部状态行上提到此处；移除设置/主题按钮（设置 M1 · 主题 M3）
+// 接通节奏：M0-9 编译状态与引擎 · M0-10 日志 · M0-11 错误定位
 import { Icon } from "@/ui/Icon";
 import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -17,6 +19,7 @@ export function StatusBar() {
   const active = useBuffersStore((s) =>
     s.activePath ? s.buffers.find((b) => b.path === s.activePath) ?? null : null,
   );
+  const cursor = useBuffersStore((s) => s.cursor);
 
   const running = compileStatus === "running";
   const statusText =
@@ -70,9 +73,16 @@ export function StatusBar() {
         引擎 <span className="engine-chip">XeLaTeX</span>
       </button>
 
-      {/* 当前文件 / 脏状态 */}
+      {/* 右侧：光标 / 语言 / 文件 / 编码 / 换行 */}
       {active && (
         <>
+          <span className="divider" />
+          <div className="sbtn right caret-info" title="光标位置">
+            行 {cursor.line}，列 {cursor.col}
+          </div>
+          <span className="sbtn" title="文档语言">
+            LaTeX
+          </span>
           <span className="divider" />
           <button
             type="button"
@@ -83,7 +93,6 @@ export function StatusBar() {
             <span className="sfile">{base(active.path)}</span>
             {dirty && <span className="sdirty">● 未保存</span>}
           </button>
-          <span className="divider" />
           <button type="button" className="sbtn" disabled title="文件编码">
             {active.encoding.toUpperCase()}
           </button>
@@ -92,17 +101,6 @@ export function StatusBar() {
           </button>
         </>
       )}
-
-      {/* 右侧：全局设置（后置 M1）——主题切换按钮 MVP 不放 */}
-      <button
-        type="button"
-        className="sbtn right"
-        disabled
-        title="全局设置（后置 M1）"
-      >
-        <Icon name="sliders" />
-        设置
-      </button>
     </footer>
   );
 }
