@@ -20,9 +20,11 @@ export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T>
 // ── 环境/编译 ──────────────────────────────────────────────
 export const compileApi = {
   detectTexDistribution: () => call<TexDistInfo>("detect_tex_distribution"),
-  // M0-9 实现：
-  // compileProject: (root: string) => call<CompileHandle>("compile_project", { root }),
-  // cancelCompile: (handle: string) => call<void>("cancel_compile", { handle }),
+  /** 开始编译（立即返回；进度/结果走 compile_progress / compile_finished 事件） */
+  compileProject: (root: string, mainFile: string, engine: string) =>
+    call<void>("compile_project", { root, mainFile, engine }),
+  /** 取消当前编译（杀掉子进程） */
+  cancelCompile: () => call<void>("cancel_compile"),
 };
 
 // ── 模板 ──────────────────────────────────────────────────

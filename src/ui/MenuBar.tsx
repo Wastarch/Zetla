@@ -1,6 +1,6 @@
 // 顶部菜单栏（M0-12 前移）—— 对齐 docs/UI/code.html .menubar/.drop/.mi
-// 只接通已有能力；未到切片的功能置灰并在 tooltip 标注接通切片（构建 M0-9/10、
-// PDF M0-13、设置 M1、明暗主题 M3）。撤销/重做/注释经命令桥 src/editor/activeView.ts
+// 只接通已有能力；未到切片的功能置灰并在 tooltip 标注接通切片（编译 M0-9 已接、
+// 日志解析 M0-10、PDF M0-13、设置 M1、明暗主题 M3）。撤销/重做/注释经命令桥 src/editor/activeView.ts
 // 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力，菜单不重复接）。
 import { useEffect, useRef, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
@@ -10,6 +10,7 @@ import { getActiveView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useAppStore } from "@/core/store";
 import { useProjectStore } from "@/project/useProject";
+import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { Icon } from "@/ui/Icon";
 
 /** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
@@ -56,6 +57,9 @@ export function MenuBar() {
   // 状态驱动菜单可用性（re-render 由 zustand 订阅触发）
   const activePath = useBuffersStore((s) => s.activePath);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+  const logVisible = useAppStore((s) => s.logVisible);
+  const running = useAppStore((s) => s.compileStatus === "running");
+  const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
 
   const canEdit = activePath !== null;
 
@@ -158,11 +162,24 @@ export function MenuBar() {
     {
       label: "构建",
       items: [
-        { label: "开始编译", sc: "Ctrl+B", enabled: false, hint: "编译引擎 M0-9 接通" },
-        { label: "终止编译", enabled: false, hint: "编译引擎 M0-9 接通" },
+        {
+          label: "开始编译",
+          sc: "Ctrl+B",
+          enabled: hasMain && !running,
+          hint: running
+            ? "编译进行中"
+            : "未打开项目或未识别主文件（.ltex/config.json）",
+          onClick: () => void startCompile(),
+        },
+        {
+          label: "终止编译",
+          enabled: running,
+          hint: "当前没有编译任务",
+          onClick: () => void cancelCompile(),
+        },
         { sep: true, label: "" },
         { label: "清理辅助文件", enabled: false, hint: "M1" },
-        { label: "编译并查看 PDF", enabled: false, hint: "编译 M0-9 / 预览 M0-13 接通" },
+        { label: "编译并查看 PDF", enabled: false, hint: "PDF 预览 M0-13 接通" },
       ],
     },
     {
@@ -174,7 +191,10 @@ export function MenuBar() {
           onClick: () => useAppStore.getState().toggleSidebar(),
         },
         { label: "显示 / 隐藏 PDF 预览", enabled: false, hint: "PDF 预览 M0-13 接通" },
-        { label: "显示 / 隐藏日志面板", enabled: false, hint: "日志面板 M0-10 接通" },
+        {
+          label: `${logVisible ? "隐藏" : "显示"}日志面板`,
+          onClick: () => useAppStore.getState().toggleLog(),
+        },
         { sep: true, label: "" },
         { label: "放大", enabled: false, hint: "缩放 M1" },
         { label: "缩小", enabled: false, hint: "缩放 M1" },
@@ -237,12 +257,22 @@ export function MenuBar() {
 
     const onKey = (e: KeyboardEvent) => {
       if (chordB) {
+        const kb = e.key.toLowerCase();
+        // 二次 Ctrl+B 视为「直接编译」，不等 chord 超时
+        if ((e.ctrlKey || e.metaKey) && kb === "b") {
+          e.preventDefault();
+          clearChord();
+          void startCompile();
+          return;
+        }
         if (e.key === "0") {
           e.preventDefault();
+          clearChord();
           useAppStore.getState().toggleSidebar();
+          return;
         }
+        // 其它键：取消 chord，继续按普通快捷键处理
         clearChord();
-        return;
       }
       if (!(e.ctrlKey || e.metaKey)) return;
       const k = e.key.toLowerCase();
@@ -260,9 +290,14 @@ export function MenuBar() {
         return;
       }
       if (k === "b") {
-        // 单独 Ctrl+B 属编译（M0-9），此处只进入 chord 等待
+        // Ctrl+B 单键 → 编译；1.2s 内接 0 → 切资源树（VS Code 风格 chord）
+        e.preventDefault();
         chordB = true;
-        chordTimer = window.setTimeout(clearChord, 1200);
+        chordTimer = window.setTimeout(() => {
+          chordB = false;
+          chordTimer = undefined;
+          void startCompile();
+        }, 1200);
         return;
       }
       if (k === "w") {

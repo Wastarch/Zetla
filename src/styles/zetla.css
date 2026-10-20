@@ -1274,6 +1274,79 @@ body.col-resizing {
   pointer-events: none;
 }
 
+/* ── 编译日志面板（M0-9 · 来自设计稿 .logpanel） ── */
+.logpanel {
+  flex: none;
+  height: 0;
+  overflow: hidden;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+  display: flex;
+  flex-direction: column;
+  transition: height 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.logpanel.open {
+  height: var(--log-h);
+}
+
+.log-head {
+  height: 34px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.log-head .ic {
+  width: 14px;
+  height: 14px;
+  color: var(--txt-3);
+}
+
+.log-head h2 {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+  font-weight: 600;
+}
+
+.log-count {
+  font-size: 10px;
+  color: var(--txt-3);
+  opacity: 0.7;
+}
+
+.log-spacer {
+  flex: 1;
+}
+
+.log-body {
+  flex: 1;
+  overflow: auto;
+  padding: 7px 11px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--txt-2);
+}
+
+.log-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.log-empty {
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--txt-3);
+  opacity: 0.8;
+}
+
 /* ── 全局状态栏（M0-6 · 来自设计稿 statusbar） ── */
 .statusbar {
   height: 26px;
@@ -1310,6 +1383,11 @@ body.col-resizing {
 .sbtn:hover:not(:disabled) {
   background: var(--bg-4);
   color: var(--txt);
+}
+
+.sbtn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .sbtn:disabled {

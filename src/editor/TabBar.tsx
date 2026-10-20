@@ -1,7 +1,11 @@
 // M0-5 · 标签条（对齐 docs/UI/code.html .tabbar / .tab）
 // - 脏文件以 .tdot 圆点替代关闭按钮（点击触发原生确认关闭）
-// - 右侧 .tab-tools：打开文件 / 保存 / 查找替换 / 验收面板
+// - 右侧 .tab-tools：编译 / 打开文件 / 保存 / 查找替换 / 验收面板
+// - M0-9：编译按钮在运行中变为终止
 import { Icon } from "@/ui/Icon";
+import { useAppStore } from "@/core/store";
+import { useProjectStore } from "@/project/useProject";
+import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { useBuffersStore } from "./useBuffers";
 
 export interface TabBarProps {
@@ -16,6 +20,9 @@ export function TabBar({ onOpenFiles, onFind, onOpenLab }: TabBarProps) {
   const setActive = useBuffersStore((s) => s.setActive);
   const closeBuffer = useBuffersStore((s) => s.closeBuffer);
   const saveBuffer = useBuffersStore((s) => s.saveBuffer);
+
+  const running = useAppStore((s) => s.compileStatus === "running");
+  const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
 
   return (
     <div className="tabbar" role="tablist" aria-label="打开的文档">
@@ -64,6 +71,21 @@ export function TabBar({ onOpenFiles, onFind, onOpenLab }: TabBarProps) {
       })}
 
       <div className="tab-tools">
+        <button
+          type="button"
+          className={running ? "ibtn on" : "ibtn"}
+          title={
+            running
+              ? "终止编译"
+              : hasMain
+                ? "编译 (Ctrl+B)"
+                : "未打开项目或未识别主文件"
+          }
+          disabled={!running && !hasMain}
+          onClick={() => void (running ? cancelCompile() : startCompile())}
+        >
+          <Icon name={running ? "stop" : "play"} />
+        </button>
         <button
           type="button"
           className="ibtn"

@@ -12,6 +12,8 @@ import { TemplateWizard } from "@/template/TemplateWizard";
 import { Icon } from "@/ui/Icon";
 import { MenuBar } from "@/ui/MenuBar";
 import { StatusBar } from "@/ui/StatusBar";
+import { LogPanel } from "@/ui/LogPanel";
+import { useCompileBridge } from "@/compile/useCompile";
 import type { TexDistInfo } from "@/types";
 import "./styles/zetla.css";
 import "./App.css";
@@ -146,6 +148,9 @@ function App() {
   const [labOpen, setLabOpen] = useState(false);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
 
+  // M0-9：编译事件桥（全应用只注册一次）
+  useCompileBridge();
+
   // M0-6：侧栏 .resizer 拖拽（仅运行时，不持久化 —— M0-12 接 load/save_app_config）
   const [sideW, setSideW] = useState(258);
   const draggingRef = useRef(false);
@@ -203,6 +208,7 @@ function App() {
         )}
         <EditorWorkspace onOpenLab={() => setLabOpen(true)} />
       </div>
+      <LogPanel />
       <StatusBar />
       <CtxMenu />
       <EntryDialog />

@@ -23,7 +23,17 @@ interface AppState {
   setCompiling: (pct: number, current: string) => void;
   setCompileDone: (r: CompileResult) => void;
   resetCompile: () => void;
+
+  // ── 编译日志（M0-9：原始输出；M0-10 再加结构化解析） ──
+  logVisible: boolean;
+  toggleLog: () => void;
+  compileLog: string[];
+  appendLog: (lines: string[]) => void;
+  clearLog: () => void;
 }
+
+/** 日志保留上限（防止长时间编译吃内存） */
+const LOG_LIMIT = 800;
 
 export const useAppStore = create<AppState>((set) => ({
   sidebarVisible: true,
@@ -48,4 +58,15 @@ export const useAppStore = create<AppState>((set) => ({
       compileCurrent: "",
     }),
   resetCompile: () => set({ compileStatus: "idle", compilePct: 0, compileCurrent: "" }),
+
+  logVisible: false,
+  toggleLog: () => set((s) => ({ logVisible: !s.logVisible })),
+  compileLog: [],
+  appendLog: (lines) =>
+    set((s) => {
+      if (lines.length === 0) return s;
+      const next = s.compileLog.concat(lines);
+      return { compileLog: next.length > LOG_LIMIT ? next.slice(-LOG_LIMIT) : next };
+    }),
+  clearLog: () => set({ compileLog: [] }),
 }));

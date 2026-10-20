@@ -29,6 +29,8 @@ pub struct ProjectTree {
     pub root: String,
     /// 主文件绝对路径（无 .tex 时为空串）
     pub main_file: String,
+    /// 编译引擎（.ltex/config.json 的 engine，缺省 xelatex）—— M0-9 状态栏展示
+    pub engine: String,
     pub nodes: Vec<ProjectNode>,
 }
 
@@ -120,6 +122,7 @@ fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
     Ok(ProjectTree {
         root: to_str(root_path),
         main_file,
+        engine: config_engine(root_path),
         nodes,
     })
 }
@@ -136,6 +139,22 @@ fn config_main_file(root: &Path) -> Option<String> {
     }
     let p = root.join(mf);
     p.is_file().then(|| to_str(&p))
+}
+
+/// 读 .ltex/config.json 的 engine（M0-9）；缺省/非法 → xelatex
+fn config_engine(root: &Path) -> String {
+    let fallback = "xelatex".to_string();
+    let cfg = root.join(".ltex").join("config.json");
+    let Ok(text) = std::fs::read_to_string(cfg) else {
+        return fallback;
+    };
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return fallback;
+    };
+    match v.get("engine").and_then(|e| e.as_str()) {
+        Some(e) if matches!(e, "xelatex" | "pdflatex" | "lualatex" | "latexmk") => e.to_string(),
+        _ => fallback,
+    }
 }
 
 /// 主文件识别：根 main.tex → 按(深度, 名称)第一个含 \documentclass 的 .tex → 第一个 .tex
@@ -639,5 +658,35 @@ mod tests {
         .unwrap();
         let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
         assert!(tree.main_file.ends_with("realmain.tex"));
+    }
+
+    #[test]
+    fn scan_project_reports_engine_from_config() {
+        let root = tmp_root("cfg_engine");
+        std::fs::write(root.join("main.tex"), "\\documentclass{article}").unwrap();
+
+        // 无 config → 默认 xelatex
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert_eq!(tree.engine, "xelatex");
+
+        // config 指定 pdflatex → 读出真实引擎
+        let ltex = root.join(".ltex");
+        std::fs::create_dir_all(&ltex).unwrap();
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"engine":"pdflatex","mainFile":"main.tex"}"#,
+        )
+        .unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert_eq!(tree.engine, "pdflatex");
+
+        // 非法引擎 → 回退 xelatex
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"engine":"tectonic","mainFile":"main.tex"}"#,
+        )
+        .unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert_eq!(tree.engine, "xelatex");
     }
 }

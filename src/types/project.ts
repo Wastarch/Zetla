@@ -34,6 +34,8 @@ export interface ProjectTree {
   root: string;
   /** 主文件绝对路径（读 .ltex/config.json，回退启发式） */
   mainFile: string;
+  /** 编译引擎（.ltex/config.json 的 engine，缺省 xelatex） */
+  engine: string;
   nodes: ProjectNode[];
 }
 

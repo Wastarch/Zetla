@@ -8,6 +8,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         // M0-4：文件对话框（打开 .tex / 选项目文件夹）
         .plugin(tauri_plugin_dialog::init())
+        // M0-9：编译任务状态（单并发 + 取消句柄）
+        .manage(std::sync::Arc::new(commands::compile::CompileState::default()))
         .invoke_handler(tauri::generate_handler![
             // 基础设施（M0-1）
             commands::core::ping,
@@ -17,6 +19,9 @@ pub fn run() {
             commands::fsdoc::revert_file,
             // 编译引擎（M0-3a）
             commands::compile::detect_tex_distribution,
+            // 多遍编译（M0-9）
+            commands::compile::compile_project,
+            commands::compile::cancel_compile,
             // 模板引擎（M0-7）
             commands::template::list_templates,
             commands::template::get_template,
