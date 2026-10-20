@@ -1,4 +1,4 @@
-// 编译引擎管理（开发文档 §3.3 / docs/开发/M0-3编译引擎.md）
+// 编译引擎管理（开发文档 §3.3 / docs/开发计划.md M0-3/9/10/11）
 // M0-3a：发行版检测（PATH + 常见安装目录探测、版本解析）
 use serde::Serialize;
 use which::which;
