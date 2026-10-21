@@ -4,6 +4,7 @@
 // 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力，菜单不重复接）。
 import { useEffect, useRef, useState } from "react";
 import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { redo, toggleComment, undo } from "@codemirror/commands";
 import { getActiveView } from "@/editor/activeView";
@@ -76,6 +77,7 @@ export function MenuBar() {
   const logVisible = useAppStore((s) => s.logVisible);
   const previewVisible = useAppStore((s) => s.previewVisible);
   const running = useAppStore((s) => s.compileStatus === "running");
+  const logPath = useAppStore((s) => s.lastResult?.logPath);
   const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
 
   const canEdit = activePath !== null;
@@ -254,7 +256,15 @@ export function MenuBar() {
       label: "帮助",
       items: [
         { label: "编译快捷键速查", enabled: false, hint: "M1" },
-        { label: "查看日志文件", enabled: false, hint: "日志面板 M0-11 接通" },
+        {
+          label: "查看日志文件",
+          enabled: !!logPath,
+          hint: logPath ? "用默认程序打开本次编译的 .log" : "尚无编译日志（先编译一次）",
+          onClick: () => {
+            if (!logPath) return;
+            void openPath(logPath).catch((e) => notify(String(e), "err"));
+          },
+        },
         { sep: true, label: "" },
         { label: "关于 Zetla", onClick: () => setAboutOpen(true) },
       ],

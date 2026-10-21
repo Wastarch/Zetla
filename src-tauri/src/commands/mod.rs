@@ -2,6 +2,7 @@
 pub mod compile;
 pub mod core;
 pub mod fsdoc;
+pub mod logparse;
 pub mod project;
 pub mod template;
 pub mod watch;

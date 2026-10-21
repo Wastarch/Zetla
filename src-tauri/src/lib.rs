@@ -24,6 +24,8 @@ pub fn run() {
             // 多遍编译（M0-9）
             commands::compile::compile_project,
             commands::compile::cancel_compile,
+            // 日志解析（M0-11）
+            commands::logparse::parse_tex_log,
             // 模板引擎（M0-7）
             commands::template::list_templates,
             commands::template::get_template,
@@ -38,7 +40,6 @@ pub fn run() {
             commands::watch::watch_project,
             commands::watch::unwatch_project,
             // M0-2+ 逐步注册：
-            // detect_tex_distribution, compile_project, cancel_compile, parse_tex_log,
             // list_templates, get_template, create_project, import_template,
             // scan_project, read_file, write_file, revert_file, clean_aux
         ])

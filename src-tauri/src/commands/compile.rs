@@ -4,7 +4,7 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
@@ -12,6 +12,8 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Child;
 use tokio::sync::mpsc;
 use which::which;
+
+use crate::commands::logparse::{parse_log_text, parse_run_number};
 
 /// 发行版检测结果（与 src/types/compile.ts TexDistInfo 对齐）
 #[derive(Debug, Serialize)]
@@ -182,6 +184,9 @@ pub struct CompileResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pdf_path: Option<String>,
     pub errors: Vec<TexError>,
+    /// 本次编译日志路径（存在才返回；前端「查看日志文件」用）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub log_path: Option<String>,
     /// 实际调用编译器的次数
     pub passes: u32,
     pub duration_ms: u64,
@@ -212,6 +217,8 @@ pub struct CompileState {
     cancelled: AtomicBool,
     /// 当前子进程句柄（cancel 时取走并 kill）
     child: Mutex<Option<Child>>,
+    /// latexmk 输出的最大 `Run number N`（用于统计真实遍数）
+    rule_runs: AtomicU32,
 }
 
 /// 单条命令的执行结果
@@ -279,6 +286,7 @@ pub async fn compile_project(
         return Err("已有编译任务在进行中".to_string());
     }
     st.cancelled.store(false, Ordering::SeqCst);
+    st.rule_runs.store(0, Ordering::SeqCst);
 
     let job = Job {
         root: PathBuf::from(root),
@@ -343,6 +351,10 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
     let pdf = dir.join(format!("{stem}.pdf"));
+    let log = dir.join(format!("{stem}.log"));
+    // 编译前记录产物 / 日志 mtime：失败时目录里可能残留上一次的结果
+    let pdf_mtime_before = std::fs::metadata(&pdf).and_then(|m| m.modified()).ok();
+    let log_mtime_before = std::fs::metadata(&log).and_then(|m| m.modified()).ok();
 
     emit_progress(app, "prepare", 0, format!("准备编译 · {main_name}"));
 
@@ -439,7 +451,14 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
     }
 
     cancelled |= st.cancelled.load(Ordering::SeqCst);
-    let pdf_ok = pdf.is_file();
+    let pdf_mtime_after = std::fs::metadata(&pdf).and_then(|m| m.modified()).ok();
+    // 本轮是否真的重写了产物（mtime 变化 / 从无到有）；命令全成功时放宽，避免低精度文件系统误判
+    let pdf_written = match (pdf_mtime_before, pdf_mtime_after) {
+        (Some(b), Some(a)) => a != b,
+        (None, Some(_)) => true,
+        _ => false,
+    };
+    let pdf_ok = pdf.is_file() && (pdf_written || !failed);
     let status = if cancelled {
         "cancelled"
     } else if failed || !pdf_ok {
@@ -461,12 +480,42 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
         }
     }
 
+    // M0-11：解析 .log（取消时日志可能写了一半；引擎都没调起来才认为是旧日志）
+    // 注意 latexmk 可能因上一轮失败而「Nothing to do」不重写日志，此时日志仍是它报错的依据，照常解析
+    let log_mtime_after = std::fs::metadata(&log).and_then(|m| m.modified()).ok();
+    let log_written = match (log_mtime_before, log_mtime_after) {
+        (Some(b), Some(a)) => a != b,
+        (None, Some(_)) => true,
+        _ => false,
+    };
+    let errors = if cancelled || (passes == 0 && !log_written) {
+        Vec::new()
+    } else {
+        std::fs::read(&log)
+            .map(|b| parse_log_text(&String::from_utf8_lossy(&b), &dir, &job.main))
+            .unwrap_or_default()
+    };
+    let log_path = log.is_file().then(|| log.to_string_lossy().to_string());
+    // latexmk 实际跑了几遍：取输出里的最大 Run number（直跑引擎按调用次数）
+    let passes = passes.max(st.rule_runs.load(Ordering::SeqCst));
+
     CompileResult {
         status: status.to_string(),
-        pdf_path: pdf_ok.then(|| pdf.to_string_lossy().to_string()),
-        errors: Vec::new(),
+        pdf_path: (status == "ok" && pdf_ok).then(|| pdf.to_string_lossy().to_string()),
+        errors,
+        log_path,
         passes,
         duration_ms: started.elapsed().as_millis() as u64,
+    }
+}
+
+/// 转发一行编译输出；顺便记录 latexmk 的 `Run number N`（passes 统计）
+fn forward_line(app: &AppHandle, st: &Arc<CompileState>, line: &str) {
+    if let Some(n) = parse_run_number(line) {
+        st.rule_runs.fetch_max(n, Ordering::SeqCst);
+    }
+    if !line.trim().is_empty() {
+        emit_progress(app, "running", 0, line);
     }
 }
 
@@ -539,9 +588,7 @@ async fn run_cmd(
     loop {
         // 先排空已到达的输出
         while let Ok(line) = rx.try_recv() {
-            if !line.trim().is_empty() {
-                emit_progress(app, "running", 0, line);
-            }
+            forward_line(app, st, &line);
         }
 
         let mut finished: Option<bool> = None;
@@ -568,9 +615,7 @@ async fn run_cmd(
 
         if let Some(ok) = finished {
             while let Ok(line) = rx.try_recv() {
-                if !line.trim().is_empty() {
-                    emit_progress(app, "running", 0, line);
-                }
+                forward_line(app, st, &line);
             }
             return if ok { CmdOutcome::Ok } else { CmdOutcome::Failed };
         }
@@ -606,6 +651,13 @@ mod tests {
                 assert!(info.version.is_some(), "有 xelatex 时应解析出版本");
             }
         }
+    }
+
+    #[test]
+    fn parses_latexmk_run_number() {
+        assert_eq!(parse_run_number("Run number 2 of rule 'xelatex'"), Some(2));
+        assert_eq!(parse_run_number("Run number 10 of rule 'biber'"), Some(10));
+        assert_eq!(parse_run_number("Latexmk: Nothing to do"), None);
     }
 
     #[test]

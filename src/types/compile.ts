@@ -21,6 +21,8 @@ export interface TexError {
 export interface CompileResult {
   status: "ok" | "error" | "cancelled";
   pdfPath?: string;
+  /** 本次编译日志路径（M0-11；存在才返回，「帮助 → 查看日志文件」用） */
+  logPath?: string;
   errors: TexError[];
   /** 实际编译几遍 */
   passes: number;

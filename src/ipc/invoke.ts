@@ -9,6 +9,7 @@ import type {
   TemplateManifest,
   TemplateMeta,
   TexDistInfo,
+  TexError,
   WriteOptions,
 } from "@/types";
 
@@ -25,6 +26,8 @@ export const compileApi = {
     call<void>("compile_project", { root, mainFile, engine }),
   /** 取消当前编译（杀掉子进程） */
   cancelCompile: () => call<void>("cancel_compile"),
+  /** M0-11：解析 .log → 结构化错误（编译结果已内联 errors，此入口供 M0-12 复用） */
+  parseTexLog: (logPath: string) => call<TexError[]>("parse_tex_log", { logPath }),
 };
 
 // ── 模板 ──────────────────────────────────────────────────
