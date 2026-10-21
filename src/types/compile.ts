@@ -6,6 +6,8 @@ export interface TexError {
   file: string;
   /** 行号 */
   line: number;
+  /** "error" | "warning"（交叉引用未定义等算 warning） */
+  severity: "error" | "warning";
   col?: number;
   /** 原始报错（如 "Missing $ inserted"） */
   raw: string;

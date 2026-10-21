@@ -34,9 +34,12 @@ interface AppState {
   setCompileDone: (r: CompileResult) => void;
   resetCompile: () => void;
 
-  // ── 编译日志（M0-9：原始输出；M0-11 再加结构化解析） ──
+  // ── 编译日志（M0-9：原始输出；M0-12：错误/警告结构化页签） ──
   logVisible: boolean;
   toggleLog: () => void;
+  /** 底部日志面板当前页签 */
+  logTab: "errors" | "warnings" | "all";
+  setLogTab: (t: "errors" | "warnings" | "all") => void;
   compileLog: string[];
   appendLog: (lines: string[]) => void;
   clearLog: () => void;
@@ -103,6 +106,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   logVisible: false,
   toggleLog: () => set((s) => ({ logVisible: !s.logVisible })),
+  logTab: "errors",
+  setLogTab: (t) => set({ logTab: t }),
   compileLog: [],
   appendLog: (lines) =>
     set((s) => {

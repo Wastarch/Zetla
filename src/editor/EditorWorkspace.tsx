@@ -6,7 +6,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
 import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
-import { setActiveView } from "./activeView";
+import { setActiveView, setActiveEditorHandle } from "./activeView";
+import { takePendingJump } from "./jump";
 import { useBuffersStore } from "./useBuffers";
 
 export interface EditorWorkspaceProps {
@@ -37,9 +38,11 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
   /** 光标位置已上提至 useBuffers.cursor（全局状态栏消费） */
 
   // 激活切换：标记已挂载 + 隐藏→显示后重新测量 + 刷新行/列 + 登记菜单栏命令桥
+  // M0-12：登记句柄给 jump.ts；有待跳错误时在此落地（选中整行）
   useEffect(() => {
     if (!activePath) {
       setActiveView(null);
+      setActiveEditorHandle(null);
       setCursor({ line: 1, col: 1 });
       return;
     }
@@ -47,8 +50,11 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
     const h = handles.current[activePath];
     h?.refresh();
     setActiveView(h?.getView() ?? null);
+    setActiveEditorHandle(h ?? null);
     const pos = h?.getCursorPos();
     setCursor(pos ?? { line: 1, col: 1 });
+    const j = takePendingJump(activePath);
+    if (j) h?.gotoLine(j.line, j.col, true);
   }, [activePath, markMounted, setCursor]);
 
   // 打开文件（Ctrl+O / 文件菜单共用）

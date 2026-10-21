@@ -165,6 +165,8 @@ pub fn detect_tex_distribution() -> TexDistInfo {
 pub struct TexError {
     pub file: String,
     pub line: u32,
+    /// "error" | "warning"（交叉引用未定义等算 warning）
+    pub severity: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub col: Option<u32>,
     pub raw: String,

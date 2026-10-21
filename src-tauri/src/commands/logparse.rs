@@ -31,8 +31,8 @@ struct Rule {
 const RULES: &[Rule] = &[
     Rule {
         needles: &["missing $ inserted"],
-        readable: "数学模式符号缺失：正文里出现了 _、^ 或数学符号。",
-        fix: "用 $...$ 包住公式，或把 _ / ^ 转义为 \\_ / \\^。",
+        readable: "数学模式未闭合：$ 可能没有成对，或正文里出现了 _、^ 等数学符号。",
+        fix: "检查报错行及上一行的 $ 是否成对（TeX 常在空行/段落结束时才报，行号可能晚一行）；正文里的 _ / ^ 要转义为 \\_ / \\^。",
         hint: "数学模式",
     },
     Rule {
@@ -174,6 +174,12 @@ const RULES: &[Rule] = &[
         hint: "参数",
     },
     Rule {
+        needles: &["no legal \\end found"],
+        readable: "缺少 \\end{document}：文档没有合法的 \\end 结束（常见于漏写或注释掉 \\end{document}）。",
+        fix: "在文件末尾补上 \\end{document}。",
+        hint: "文档结束",
+    },
+    Rule {
         needles: &["emergency stop"],
         readable: "编译被紧急中止：通常是前面的错误导致 TeX 无法继续。",
         fix: "先修复日志中更靠前的错误。",
@@ -228,31 +234,47 @@ pub fn parse_log_text(text: &str, base_dir: &Path, default_file: &Path) -> Vec<T
             let raw = strip_bang(&msg);
             if !raw.is_empty() {
                 let file = resolve_file(&file, base_dir);
-                push_error(&mut errors, &mut seen, file, line_no, raw);
+                push_error(&mut errors, &mut seen, file, line_no, raw, "error");
             }
             i += 1;
             continue;
         }
 
-        // 2) 无位置前缀：`! LaTeX Error: ...`，向下找 `l.N`
+        // 2) 无位置前缀：`! LaTeX Error: ...`，向下找 `l.N` 取行号；
+        //    另顺带收后续诊断行（如 Emergency stop 后的 `*** (job aborted, no legal \end found)`）
         if let Some(rest) = line.trim_start().strip_prefix('!') {
             let raw = strip_bang(rest);
             if !raw.is_empty() {
                 let mut line_no = 0;
+                let mut note: Option<String> = None;
                 for next in lines.iter().skip(i + 1).take(10) {
-                    if let Some(n) = parse_l_line(next) {
-                        line_no = n;
+                    let t = next.trim();
+                    if t.starts_with("l.") && line_no == 0 {
+                        if let Some(n) = parse_l_line(t) {
+                            line_no = n;
+                        }
+                    }
+                    // Emergency stop 的真实原因多半在紧随其后的 `*** ...` 行
+                    if t.contains("no legal \\end found") {
+                        note = Some(t.trim_start_matches('*').trim().to_string());
+                    }
+                    // 诊断行出现在 `l.N` 之前，两者都可能存在，不提前 break
+                    if line_no > 0 && note.is_some() {
                         break;
                     }
                 }
+                let raw = match note {
+                    Some(n) => format!("{raw} ({n})"),
+                    None => raw,
+                };
                 let file = current_file.clone().unwrap_or_else(|| fallback_file.clone());
-                push_error(&mut errors, &mut seen, file, line_no, raw);
+                push_error(&mut errors, &mut seen, file, line_no, raw, "error");
             }
             i += 1;
             continue;
         }
 
-        // 3) 未解析的交叉引用（编译成功时也会出现，M0-12 可展示为提醒）
+        // 3) 未解析的交叉引用（编译成功时也会出现，错误面板在「警告」页展示）
         let trimmed = line.trim_start();
         if trimmed.starts_with("LaTeX Warning:") && trimmed.to_lowercase().contains("undefined") {
             let line_no = parse_input_line(trimmed).unwrap_or(0);
@@ -263,6 +285,7 @@ pub fn parse_log_text(text: &str, base_dir: &Path, default_file: &Path) -> Vec<T
                 file,
                 line_no,
                 trimmed.to_string(),
+                "warning",
             );
         }
 
@@ -280,6 +303,19 @@ pub fn parse_log_text(text: &str, base_dir: &Path, default_file: &Path) -> Vec<T
             && specific.contains(&(e.file.clone(), e.line)))
     });
 
+    // 已有带行号的引用/文献警告时，「There were undefined ...」汇总条是冗余且无行号的
+    let has_detail_warning = errors
+        .iter()
+        .any(|e| e.raw.contains("on input line") && e.raw.to_lowercase().contains("undefined"));
+    if has_detail_warning {
+        errors.retain(|e| {
+            let lower = e.raw.to_lowercase();
+            !(lower.contains("there were undefined")
+                && !lower.contains("on input line")
+                && e.severity == "warning")
+        });
+    }
+
     errors
 }
 
@@ -289,6 +325,7 @@ fn push_error(
     file: String,
     line: u32,
     raw: String,
+    severity: &str,
 ) {
     if errors.len() >= MAX_ERRORS {
         return;
@@ -303,6 +340,7 @@ fn push_error(
     errors.push(TexError {
         file,
         line,
+        severity: severity.to_string(),
         col: None,
         raw,
         readable,
@@ -398,6 +436,9 @@ mod tests {
             "missing-dollar" => include_str!("../../tests/fixtures/logs/missing-dollar.log"),
             "missing-end" => include_str!("../../tests/fixtures/logs/missing-end.log"),
             "missing-package" => include_str!("../../tests/fixtures/logs/missing-package.log"),
+            "missing-end-document" => {
+                include_str!("../../tests/fixtures/logs/missing-end-document.log")
+            }
             _ => panic!("unknown fixture"),
         };
         let base = Path::new(env!("CARGO_MANIFEST_DIR"));
@@ -449,6 +490,59 @@ mod tests {
         assert!(e.readable.contains("宏包"), "readable={}", e.readable);
         // 同一行还有一条 `Emergency stop.`，应被过滤
         assert_eq!(errs.len(), 1, "errors={:?}", errs);
+    }
+
+    #[test]
+    fn parses_warning_and_marks_severity() {
+        let text = concat!(
+            "(./warn.tex",
+            "\nLaTeX Warning: Reference `eq:1' on page 1 undefined on input line 5.\n",
+        );
+        let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let errs = parse_log_text(text, base, &base.join("main.tex"));
+        assert_eq!(errs.len(), 1);
+        assert_eq!(errs[0].severity, "warning");
+        assert_eq!(errs[0].line, 5);
+        assert!(errs[0].file.ends_with("warn.tex"));
+    }
+
+    #[test]
+    fn parses_missing_end_document() {
+        let errs = parse_fixture("missing-end-document");
+        // `! Emergency stop.` 的真实原因在接下来的 `*** (job aborted, no legal \end found)`，
+        // raw 应合并该诊断，可读文案命中「缺少 \end{document}」而不是笼统的「紧急中止」
+        let e = errs
+            .iter()
+            .find(|e| e.raw.contains("no legal \\end found"))
+            .expect("raw 应合并 no legal \\end found 诊断");
+        assert!(e.readable.contains("\\end{document}"), "{}", e.readable);
+        assert!(e.severity == "error");
+        // TeX 不报行号
+        assert_eq!(e.line, 0);
+        // 只应有一条：Emergency stop 不再单独成条
+        assert_eq!(errs.len(), 1, "errors={:?}", errs);
+    }
+
+    #[test]
+    fn drops_summary_warning_when_detail_exists() {
+        let text = concat!(
+            "(./refs.tex",
+            "\nLaTeX Warning: Reference `nope' on page 1 undefined on input line 3.",
+            "\nLaTeX Warning: There were undefined references.\n",
+        );
+        let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let errs = parse_log_text(text, base, &base.join("main.tex"));
+        // 汇总条已去重，只剩可跳的明细
+        assert_eq!(errs.len(), 1, "errors={:?}", errs);
+        assert_eq!(errs[0].severity, "warning");
+        assert_eq!(errs[0].line, 3);
+        assert!(errs[0].readable.contains("交叉引用"));
+    }
+
+    #[test]
+    fn errors_are_marked_error_severity() {
+        let errs = parse_fixture("missing-dollar");
+        assert!(errs.iter().all(|e| e.severity == "error"));
     }
 
     #[test]

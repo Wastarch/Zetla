@@ -176,6 +176,20 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   openProject: async (root) => {
     try {
       const tree = await projectApi.scanProject(root);
+      // M0-12：切换项目时关掉上一个项目打开的文件（非强制：脏文件弹关闭确认，取消则该文件保留）
+      const oldRoot = get().root;
+      if (oldRoot && oldRoot !== root) {
+        const toClose = useBuffersStore
+          .getState()
+          .buffers.filter(
+            (b) =>
+              b.path.startsWith(`${oldRoot}\\`) || b.path.startsWith(`${oldRoot}/`),
+          )
+          .map((b) => b.path);
+        for (const p of toClose) {
+          await useBuffersStore.getState().closeBuffer(p);
+        }
+      }
       set({
         root,
         tree,
@@ -190,8 +204,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }`,
         "ok",
       );
-      // M0-10：换项目后旧 PDF 不再有效，清空预览
-      useAppStore.setState({ previewPdf: null, previewRev: 0, lastResult: null });
+      // M0-10/M0-12：换项目后旧 PDF 与上次编译结果/状态都不再有效，一并清空
+      useAppStore.setState({
+        previewPdf: null,
+        previewRev: 0,
+        lastResult: null,
+        compileStatus: "idle",
+        compilePct: 0,
+        compileCurrent: "",
+      });
+      useAppStore.getState().clearLog();
       // M0-10b：主文件同目录已有编译产物时直接加载，不必先编译（不强制展开预览栏）
       if (tree.mainFile) {
         const existing = findFileByPath(tree.nodes, expectedPdfPath(tree.mainFile));

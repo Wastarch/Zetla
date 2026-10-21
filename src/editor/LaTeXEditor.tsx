@@ -18,8 +18,11 @@ export interface CursorPos {
 }
 
 export interface LaTeXEditorHandle {
-  /** 跳转到指定行（1-based），滚动居中并聚焦 —— M0-12 错误定位、M3 synctex 依赖此接口 */
-  gotoLine: (line: number, col?: number) => void;
+  /**
+   * 跳转到指定行（1-based），滚动居中并聚焦 —— M0-12 错误定位、M3 synctex 依赖此接口。
+   * selectLine=true 时把整行选区选中（错误定位的高亮口径，MVP 不做 decoration）
+   */
+  gotoLine: (line: number, col?: number, selectLine?: boolean) => void;
   /** 当前光标位置（1-based 行/列） */
   getCursorPos: () => CursorPos;
   /** 当前光标所在行（1-based） */
@@ -96,7 +99,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     }
 
     useImperativeHandle(ref, () => ({
-      gotoLine(line, col) {
+      gotoLine(line, col, selectLine) {
         const view = cmRef.current?.view;
         if (!view) return;
         const doc = view.state.doc;
@@ -104,8 +107,14 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
         const target = doc.line(no);
         const offset = Math.min(Math.max((col ?? 1) - 1, 0), target.length);
         const pos = target.from + offset;
+        const selection =
+          selectLine !== false ? { anchor: target.from, head: target.to } : { anchor: pos };
+        // 上限钳取的行号可能与请求行号不同（文件在编译后又被改过），以后缀提示
+        if (no !== line && selectLine) {
+          console.warn(`[gotoLine] 行号已钳取：请求 ${line}，实际 ${no}（文件在编译后可能被修改过）`);
+        }
         view.dispatch({
-          selection: { anchor: pos },
+          selection,
           effects: EditorView.scrollIntoView(pos, { y: "center" }),
         });
         view.focus();

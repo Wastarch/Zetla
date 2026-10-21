@@ -1924,6 +1924,147 @@ body.col-resizing {
   opacity: 0.8;
 }
 
+/* ── M0-12 · 日志面板页签 + 结构化错误/警告列表 ── */
+.log-tabs {
+  flex: none;
+  display: flex;
+  gap: 2px;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.log-tab {
+  height: 25px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: none;
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  color: var(--txt-3);
+  cursor: pointer;
+}
+
+.log-tab:hover {
+  color: var(--txt-2);
+}
+
+.log-tab.on {
+  color: var(--txt);
+  border-bottom-color: var(--accent-2);
+  font-weight: 600;
+}
+
+.log-tab-cnt {
+  margin-left: 5px;
+  font-size: 9.5px;
+  font-weight: 700;
+}
+
+.log-tab-cnt.err {
+  color: var(--err);
+}
+
+.log-tab-cnt.warn {
+  color: var(--warn);
+}
+
+.log-errlist {
+  flex: 1;
+  overflow: auto;
+  padding: 4px 11px 12px;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  color: var(--txt-2);
+}
+
+.log-err {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  padding: 7px 8px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line-soft);
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 7px;
+}
+
+.log-err:hover:not(:disabled) {
+  background: var(--bg-3);
+}
+
+.log-err:disabled {
+  cursor: default;
+  color: var(--txt-3);
+}
+
+.log-err-loc {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+  color: var(--txt-3);
+}
+
+.log-err:disabled .log-err-loc {
+  font-size: 10.5px;
+}
+
+.log-err-msg {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--txt);
+}
+
+.log-err:disabled .log-err-msg {
+  color: var(--txt-2);
+}
+
+.log-err-fix {
+  font-size: 11px;
+  color: var(--txt-3);
+}
+
+.log-err-raw {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--txt-3);
+  opacity: 0.8;
+}
+
+.err-badge {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: var(--font-ui);
+  color: #fff;
+  background: var(--err);
+}
+
+.err-badge.warn {
+  background: var(--warn);
+}
+
 /* ── 全局状态栏（M0-6 · 来自设计稿 statusbar） ── */
 .statusbar {
   height: 26px;

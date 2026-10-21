@@ -94,6 +94,8 @@ export function useCompileBridge(): void {
       if (!alive) return;
       const st = useAppStore.getState();
       st.setCompileDone(r);
+      // M0-12：编译失败自动展开面板并停在「错误」页（用户手动收起后下次失败仍会展开）
+      if (r.status === "error") useAppStore.setState({ logVisible: true, logTab: "errors" });
       const secs = (r.durationMs / 1000).toFixed(1);
       const summary =
         r.status === "ok"
