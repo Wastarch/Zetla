@@ -10,6 +10,7 @@ import CodeMirror, {
 import { Compartment } from "@codemirror/state";
 import { openSearchPanel } from "@codemirror/search";
 import { latex } from "codemirror-lang-latex";
+import { useSettingsStore } from "@/core/settings";
 
 export interface CursorPos {
   /** 1-based 行 */
@@ -72,6 +73,9 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const cmRef = useRef<ReactCodeMirrorRef>(null);
     // 自动换行经 Compartment 独立管理（偏好设置热切换）
     const wrapCompartment = useRef(new Compartment());
+    // Ctrl+滚轮缩放字号（M0-14a 用户追加）
+    const wrapRef = useRef<HTMLDivElement | null>(null);
+    const wheelAccRef = useRef(0);
 
     // 闭包里拿到最新回调：扩展只创建一次
     const onSaveRef = useRef(onSave);
@@ -115,6 +119,32 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
         ),
       });
     }, [lineWrapping]);
+
+    // Ctrl+滚轮缩放：React 的 wheel 是 passive，必须原生监听才能 preventDefault
+    // - 编辑区内按住 Ctrl 滚动一律拦截（避免 WebView 整页缩放），开关关闭只是不缩放字号
+    // - deltaY 累积阈值 100 ≈ 常规鼠标一格 1px 步进；触控板小位移也会平滑累积
+    useEffect(() => {
+      const el = wrapRef.current;
+      if (!el) return;
+      const onWheel = (e: WheelEvent) => {
+        if (!e.ctrlKey) {
+          wheelAccRef.current = 0; // 松开 Ctrl 后清掉残留累积
+          return;
+        }
+        e.preventDefault();
+        if (!useSettingsStore.getState().settings.editor.mouseWheelZoom) return;
+        wheelAccRef.current += e.deltaY;
+        const TH = 100;
+        while (Math.abs(wheelAccRef.current) >= TH) {
+          // deltaY<0（向上滚）= 放大；zoomEditorFont 里再 clamp 8–32
+          const step = wheelAccRef.current > 0 ? 100 : -100;
+          wheelAccRef.current -= Math.sign(wheelAccRef.current) * TH;
+          useSettingsStore.getState().zoomEditorFont(step);
+        }
+      };
+      el.addEventListener("wheel", onWheel, { passive: false });
+      return () => el.removeEventListener("wheel", onWheel);
+    }, []);
 
     function cursorPos(): CursorPos {
       const state = cmRef.current?.state;
@@ -165,7 +195,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     }));
 
     return (
-      <div className="latex-editor" style={{ height }}>
+      <div ref={wrapRef} className="latex-editor" style={{ height }}>
         <CodeMirror
           ref={cmRef}
           value={value}

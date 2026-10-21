@@ -11,8 +11,9 @@ pub const CONFIG_FILE_NAME: &str = "config.json";
 
 /// 编辑器字体族白名单（设置页三个选项；非法值归一化为默认）
 pub const FONT_FAMILIES: [&str; 3] = ["IBM Plex Mono", "Consolas", "Cascadia Mono"];
-/// 编辑器字号可选值
-pub const FONT_SIZES: [u32; 4] = [12, 13, 14, 16];
+/// 编辑器字号合法范围（M0-14a 用户追加：Ctrl+滚轮缩放字体后为连续区间，越界回退默认）
+pub const FONT_SIZE_MIN: u32 = 8;
+pub const FONT_SIZE_MAX: u32 = 32;
 /// 自动保存间隔可选值（秒）
 pub const AUTOSAVE_INTERVALS: [u32; 4] = [5, 15, 30, 60];
 /// PDF 默认缩放可选值
@@ -111,6 +112,8 @@ pub struct EditorConfig {
     pub font_family: String,
     pub font_size: u32,
     pub line_wrapping: bool,
+    /// M0-14a 用户追加：Ctrl+滚轮缩放编辑器字体（默认开）
+    pub mouse_wheel_zoom: bool,
 }
 
 impl Default for EditorConfig {
@@ -119,6 +122,7 @@ impl Default for EditorConfig {
             font_family: "IBM Plex Mono".to_string(),
             font_size: 13,
             line_wrapping: true,
+            mouse_wheel_zoom: true,
         }
     }
 }
@@ -174,7 +178,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     if !FONT_FAMILIES.contains(&cfg.editor.font_family.as_str()) {
         cfg.editor.font_family = "IBM Plex Mono".to_string();
     }
-    if !FONT_SIZES.contains(&cfg.editor.font_size) {
+    // M0-14a 用户追加：字号改为 8–32 连续范围（Ctrl+滚轮缩放），越界回退默认
+    if cfg.editor.font_size < FONT_SIZE_MIN || cfg.editor.font_size > FONT_SIZE_MAX {
         cfg.editor.font_size = 13;
     }
     if !AUTOSAVE_INTERVALS.contains(&cfg.autosave.interval_seconds) {
@@ -294,8 +299,10 @@ mod tests {
         let p = tmp_dir("roundtrip").join(CONFIG_FILE_NAME);
         let mut cfg = AppConfig::default();
         cfg.editor.font_size = 16;
+        cfg.editor.font_size = 15; // 滚轮产生的非预设值也应往返保留
         cfg.editor.font_family = "Cascadia Mono".to_string();
         cfg.editor.line_wrapping = false;
+        cfg.editor.mouse_wheel_zoom = false;
         cfg.autosave.enabled = false;
         cfg.autosave.interval_seconds = 60;
         cfg.build.save_before_compile = false;
@@ -328,6 +335,7 @@ mod tests {
         assert!(text.contains("fontFamily"));
         assert!(text.contains("fontSize"));
         assert!(text.contains("lineWrapping"));
+        assert!(text.contains("mouseWheelZoom"));
         assert!(text.contains("intervalSeconds"));
         assert!(text.contains("pauseWhileCompiling"));
         assert!(text.contains("saveBeforeCompile"));
@@ -343,6 +351,47 @@ mod tests {
         assert!(!text.contains("font_family"));
         assert!(!text.contains("interval_seconds"));
         assert!(!text.contains("last_project"));
+    }
+
+    #[test]
+    fn font_size_range() {
+        // M0-14a 用户追加：8–32 连续范围；边界保留，越界回退 13
+        for n in [8u32, 10, 15, 24, 32] {
+            let raw = json!({
+                "schemaVersion": 1,
+                "editor": { "fontFamily": "IBM Plex Mono", "fontSize": n, "lineWrapping": true, "mouseWheelZoom": true }
+            });
+            let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+            assert_eq!(normalize(parsed).editor.font_size, n);
+        }
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 7, "lineWrapping": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(normalize(parsed).editor.font_size, 13);
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 33, "lineWrapping": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(normalize(parsed).editor.font_size, 13);
+        // 旧配置缺 mouseWheelZoom → serde default = true
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert!(normalize(parsed).editor.mouse_wheel_zoom);
     }
 
     #[test]

@@ -25,7 +25,17 @@ interface SettingsState {
    * 以 persisted 为基底合并 patch 写文件，不动运行时预览值
    */
   persist: (patch: Partial<AppSettings>) => Promise<void>;
+  /**
+   * Ctrl+滚轮缩放字体（M0-14a 用户追加）：deltaY<0 放大 / >0 缩小，步进 1px，
+   * clamp 8–32；运行时立即生效，500ms 防抖以 persisted 为基底落盘（不串写设置页草稿）
+   */
+  zoomEditorFont: (deltaY: number) => void;
 }
+
+const FONT_SIZE_MIN = 8;
+const FONT_SIZE_MAX = 32;
+/** 滚轮缩放字号 → 落盘防抖计时器（模块级，跨 store 调用共享） */
+let fontPersistTimer: number | undefined;
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
@@ -57,6 +67,27 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       // 旁路保存失败不弹 toast（写盘在 500ms 防抖里频繁触发），只记录
       console.warn("[settings] 配置自动保存失败", e);
     }
+  },
+  zoomEditorFont: (deltaY) => {
+    const st = get();
+    if (!st.loaded || !st.settings.editor.mouseWheelZoom) return;
+    const cur = st.settings.editor.fontSize;
+    const next = Math.min(
+      FONT_SIZE_MAX,
+      Math.max(FONT_SIZE_MIN, cur + (deltaY < 0 ? 1 : -1)),
+    );
+    if (next === cur) return;
+    // 1) 运行时立即生效（useSettingsEffects 同步 CSS 变量）
+    set((s) => ({
+      settings: { ...s.settings, editor: { ...s.settings.editor, fontSize: next } },
+    }));
+    // 2) 防抖落盘：以 persisted 为基底只改 editor.fontSize（不动设置页可能存在的预览草稿）
+    if (fontPersistTimer !== undefined) window.clearTimeout(fontPersistTimer);
+    fontPersistTimer = window.setTimeout(() => {
+      fontPersistTimer = undefined;
+      const base = get().persisted.editor;
+      void get().persist({ editor: { ...base, fontSize: get().settings.editor.fontSize } });
+    }, 500);
   },
 }));
 

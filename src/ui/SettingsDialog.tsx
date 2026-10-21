@@ -21,7 +21,8 @@ const PANES: { id: SettingsPane; icon: string; label: string }[] = [
 ];
 
 const FONT_OPTIONS: EditorFontFamily[] = ["IBM Plex Mono", "Consolas", "Cascadia Mono"];
-const FONT_SIZE_OPTIONS = [12, 13, 14, 16];
+/** 字号可选值 8–32（M0-14a 用户追加：Ctrl+滚轮缩放后为连续范围） */
+const FONT_SIZE_OPTIONS = Array.from({ length: 25 }, (_, i) => i + 8);
 const INTERVAL_OPTIONS = [5, 15, 30, 60];
 const ZOOM_OPTIONS: { value: PdfDefaultZoom; label: string }[] = [
   { value: "fit-width", label: "适合宽度" },
@@ -291,6 +292,14 @@ export function SettingsDialog() {
                     checked={draft.editor.lineWrapping}
                     onChange={(v) =>
                       update((d) => ({ ...d, editor: { ...d.editor, lineWrapping: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld label="Ctrl + 滚轮缩放字体" hint="按住 Ctrl 并滚动鼠标滚轮时缩放编辑器字体">
+                  <Switch
+                    checked={draft.editor.mouseWheelZoom}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, editor: { ...d.editor, mouseWheelZoom: v } }))
                     }
                   />
                 </Fld>
