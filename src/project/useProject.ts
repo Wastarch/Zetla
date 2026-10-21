@@ -72,6 +72,25 @@ function joinPath(dir: string, name: string): string {
   return dir.endsWith(sep) || dir.endsWith("/") ? dir + name : dir + sep + name;
 }
 
+/** 主文件同目录的编译产物（与 compile.rs 当前输出位置一致） */
+export function expectedPdfPath(mainFile: string): string {
+  const stem = base(mainFile).replace(/\.tex$/i, "");
+  return joinPath(parentOf(mainFile), `${stem}.pdf`);
+}
+
+/** 在树中按路径查找文件（Windows 路径不区分大小写，用实际大小写返回） */
+function findFileByPath(nodes: ProjectNode[], path: string): ProjectNode | null {
+  const want = path.toLowerCase();
+  for (const n of nodes) {
+    if (n.type === "file" && n.path.toLowerCase() === want) return n;
+    if (n.children) {
+      const hit = findFileByPath(n.children, path);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
 /** Windows 文件名合法性（名称级校验，路径级由 Rust 兜底） */
 function validateName(name: string): string | null {
   if (name === "") return "名称不能为空";
@@ -173,6 +192,16 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       );
       // M0-10：换项目后旧 PDF 不再有效，清空预览
       useAppStore.setState({ previewPdf: null, previewRev: 0, lastResult: null });
+      // M0-10b：主文件同目录已有编译产物时直接加载，不必先编译（不强制展开预览栏）
+      if (tree.mainFile) {
+        const existing = findFileByPath(tree.nodes, expectedPdfPath(tree.mainFile));
+        if (existing) {
+          useAppStore.setState((s) => ({
+            previewPdf: existing.path,
+            previewRev: s.previewRev + 1,
+          }));
+        }
+      }
       // M0-9a：监听项目目录（失败不阻断打开项目，手动「刷新」仍可用）
       void projectApi.watchProject(root).catch((e) => {
         console.warn("[watch_project]", e);
@@ -215,8 +244,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   openFromTree: (path) => {
     set({ selected: path, ctx: null });
     const ext = extOf(path);
-    if (ext === "pdf" || EXT_IMG.has(ext)) {
-      notify(`${base(path)} 将由 PDF/图片查看器打开（MVP 未实现）`, "err");
+    if (ext === "pdf") {
+      // M0-10b：树里的 PDF 直接在右侧预览打开
+      useAppStore.getState().showPdf(path);
+      return;
+    }
+    if (EXT_IMG.has(ext)) {
+      notify(`${base(path)} 将由图片查看器打开（M1）`, "err");
       return;
     }
     void useBuffersStore.getState().openFiles([path]);

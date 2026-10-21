@@ -17,6 +17,8 @@ interface AppState {
   previewPdf: string | null;
   /** 成功编译计数：同路径重编译也能触发重新加载 */
   previewRev: number;
+  /** 直接展示指定 PDF（项目树 / 文件菜单打开已有 PDF） */
+  showPdf: (path: string) => void;
 
   // ── 项目 ──
   project: ProjectInfo | null;
@@ -51,6 +53,12 @@ export const useAppStore = create<AppState>((set) => ({
   togglePreview: () => set((s) => ({ previewVisible: !s.previewVisible })),
   previewPdf: null,
   previewRev: 0,
+  showPdf: (path) =>
+    set((s) => ({
+      previewPdf: path,
+      previewRev: s.previewRev + 1,
+      previewVisible: true,
+    })),
 
   project: null,
   openProject: (p) =>

@@ -325,7 +325,14 @@ body {
   border-bottom: 1px solid var(--line);
 }
 
+.pv-head .ibtn {
+  width: 24px;
+  height: 24px;
+}
+
 .pv-head h2 {
+  flex: 1;
+  min-width: 0;
   margin-right: auto;
   font-size: 10px;
   font-weight: 600;
@@ -348,11 +355,13 @@ body {
   flex: none;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   padding: 0 6px;
   border-bottom: 1px solid var(--line-soft);
   background: var(--bg-2);
-  overflow: hidden;
+  /* 下拉菜单要溢出，不能用 hidden */
+  position: relative;
+  overflow: visible;
 }
 
 /* 预览工具条按钮比全局 .ibtn 略小，给 432px 面板留出空间 */
@@ -365,16 +374,27 @@ body {
   width: 1px;
   height: 18px;
   flex: none;
-  margin: 0 4px;
+  margin: 0 3px;
   background: var(--line);
 }
 
 .zoom-val {
-  min-width: 38px;
+  min-width: 34px;
+  height: 24px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
   text-align: center;
   font-family: var(--font-mono);
   font-size: 10.5px;
   color: var(--txt-2);
+  cursor: pointer;
+}
+
+.zoom-val:hover {
+  background: var(--bg-4);
+  color: var(--txt);
 }
 
 .page-jump {
@@ -387,7 +407,7 @@ body {
 }
 
 .page-jump input {
-  width: 34px;
+  width: 30px;
   height: 24px;
   text-align: center;
   background: var(--editor-bg);
@@ -437,6 +457,8 @@ body {
   min-height: 0;
   overflow: auto;
   padding: 22px 20px 40px;
+  display: flex;
+  flex-direction: column;
   background:
     linear-gradient(
         135deg,
@@ -451,18 +473,375 @@ body {
     var(--bg-3);
 }
 
-.pdf-stage {
+/* 页列表：宽于视口时左对齐可横向滚动，窄于视口时居中 */
+.pdf-pages {
+  width: max-content;
+  min-width: 100%;
+  margin: 0 auto;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
 }
 
-.pdf-canvas {
-  display: block;
+.pdf-pages.double {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  justify-content: center;
+  align-items: start;
+}
+
+.pdf-pages.paged {
+  justify-content: center;
+  min-height: 100%;
+}
+
+.pdf-pages.double.paged {
+  align-content: center;
+}
+
+.pdf-page {
+  position: relative;
+  flex: none;
   background: #fff;
   border-radius: 2px;
   box-shadow:
     0 12px 34px rgba(0, 0, 0, 0.18),
     0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  /* 文本层宽高用 round(down, …) 计算，必须给出步进变量 */
+  --scale-round-x: 1px;
+  --scale-round-y: 1px;
+}
+
+.pdf-canvas {
+  display: block;
+}
+
+/* 链接热区（自绘，不用 AnnotationLayer） */
+.pv-link {
+  position: absolute;
+  z-index: 3;
+  padding: 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pv-link:hover {
+  background: rgba(43, 98, 207, 0.14);
+  box-shadow: 0 0 0 1px rgba(43, 98, 207, 0.35) inset;
+}
+
+/* ── pdf.js TextLayer 精简子集（复制/选中与查找高亮） ── */
+.textLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: clip;
+  text-align: initial;
+  line-height: 1;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-size-adjust: none;
+  forced-color-adjust: none;
+  transform-origin: 0 0;
+  caret-color: CanvasText;
+  --min-font-size: 1;
+  --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+  --min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.textLayer :is(span, br) {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  cursor: text;
+  transform-origin: 0% 0%;
+  user-select: text;
+}
+
+.textLayer > :not(.markedContent),
+.textLayer .markedContent span:not(.markedContent) {
+  z-index: 1;
+  --font-height: 0;
+  font-size: calc(var(--text-scale-factor) * var(--font-height));
+  --scale-x: 1;
+  --rotate: 0deg;
+  transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.textLayer .markedContent {
+  display: contents;
+}
+
+.textLayer ::selection {
+  background: var(--sel);
+}
+
+.textLayer mark.pv-hit {
+  background: rgba(255, 196, 0, 0.45);
+  color: transparent;
+  border-radius: 2px;
+}
+
+.textLayer mark.pv-hit.cur {
+  background: rgba(255, 120, 0, 0.72);
+}
+
+/* ── 查找条 ── */
+.pv-find {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-3);
+}
+
+.pv-find .ic {
+  flex: none;
+}
+
+.pv-find input {
+  flex: 1;
+  min-width: 0;
+  height: 24px;
+  padding: 0 7px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  outline: none;
+}
+
+.pv-find input:focus {
+  border-color: var(--accent);
+}
+
+.pv-find .count {
+  flex: none;
+  min-width: 34px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--txt-3);
+  white-space: nowrap;
+}
+
+.pv-find .ibtn {
+  width: 22px;
+  height: 22px;
+}
+
+/* ── 预览主体 / 侧栏 ── */
+.pv-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.pv-side {
+  width: 132px;
+  flex: none;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border-right: 1px solid var(--line);
+}
+
+.pv-side-tabs {
+  flex: none;
+  display: flex;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.pv-side-tabs button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: var(--txt-3);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.pv-side-tabs button:hover {
+  color: var(--txt);
+  background: var(--bg-4);
+}
+
+.pv-side-tabs button.on {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pv-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+}
+
+.pv-thumbs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pv-thumb {
+  display: block;
+  width: 100%;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pv-thumb canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 20px;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.pv-thumb .num {
+  display: block;
+  padding-top: 2px;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  color: var(--txt-3);
+  text-align: center;
+}
+
+.pv-thumb:hover {
+  background: var(--bg-4);
+}
+
+.pv-thumb.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pv-thumb.on .num {
+  color: var(--accent);
+}
+
+.pv-outline {
+  display: flex;
+  flex-direction: column;
+}
+
+.pv-outline-item {
+  display: block;
+  width: 100%;
+  padding: 4px 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--txt-2);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.pv-outline-item:hover {
+  color: var(--txt);
+  background: var(--bg-4);
+}
+
+.pv-side-empty {
+  padding: 14px 6px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+/* ── 工具条下拉菜单 ── */
+.pv-menu-wrap {
+  position: relative;
+  display: flex;
+  flex: none;
+}
+
+.pv-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 148px;
+  padding: 5px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 22px 48px rgba(0, 0, 0, 0.32);
+  z-index: 80;
+  animation: menu-pop 0.14s ease;
+}
+
+/* 菜单定位：`.pv-menu` 相对按钮左对齐；视图菜单在面板过窄时由 JS 左移钳制 */
+.pv-menu .mi {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.pv-menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--line-soft);
+}
+
+.pv-zoom-custom {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 1px;
+}
+
+.pv-zoom-custom input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  outline: none;
+}
+
+.pv-zoom-custom input:focus {
+  border-color: var(--accent);
+}
+
+.pv-zoom-custom span {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.pv-zoom-custom .ibtn {
+  width: 22px;
+  height: 22px;
 }
 
 .pdf-loading {

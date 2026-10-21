@@ -3,13 +3,13 @@
 // 日志解析 M0-11、PDF M0-10、设置 M1、明暗主题 M3）。撤销/重做/注释经命令桥 src/editor/activeView.ts
 // 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力，菜单不重复接）。
 import { useEffect, useRef, useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { redo, toggleComment, undo } from "@codemirror/commands";
 import { getActiveView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useAppStore } from "@/core/store";
-import { useProjectStore } from "@/project/useProject";
+import { useProjectStore, notify } from "@/project/useProject";
 import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { Icon } from "@/ui/Icon";
 
@@ -49,6 +49,22 @@ async function quitApp() {
   await getCurrentWindow().close();
 }
 
+/** 打开已有 PDF 到右侧预览（文件菜单入口） */
+async function openPdfDialog(): Promise<void> {
+  try {
+    const picked = await openFileDialog({
+      multiple: false,
+      directory: false,
+      title: "打开 PDF",
+      filters: [{ name: "PDF", extensions: ["pdf"] }],
+    });
+    if (typeof picked !== "string") return;
+    useAppStore.getState().showPdf(picked);
+  } catch (e) {
+    notify(String(e), "err");
+  }
+}
+
 export function MenuBar() {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -77,6 +93,10 @@ export function MenuBar() {
           label: "打开项目…",
           sc: "Ctrl+Shift+O",
           onClick: () => void useProjectStore.getState().openProjectDialog(),
+        },
+        {
+          label: "打开 PDF…",
+          onClick: () => void openPdfDialog(),
         },
         { sep: true, label: "" },
         {
