@@ -31,6 +31,7 @@ chardetng = "0.1"
 which = "7"
 # M0-9：异步 spawn 编译子进程、逐行读 stdout/stderr、取消
 tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros", "rt"] }
+notify = "8.2.0"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

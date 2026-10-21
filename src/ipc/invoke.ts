@@ -53,6 +53,9 @@ export const projectApi = {
     call<void>("write_file", { path, content, options }),
   revertFile: (path: string) => call<FileDoc>("revert_file", { path }),
   cleanAux: (path: string) => call<void>("clean_aux", { path }),
+  /** M0-9a：监听项目根的文件增减（重复调用即换根） */
+  watchProject: (root: string) => call<void>("watch_project", { root }),
+  unwatchProject: () => call<void>("unwatch_project"),
 };
 
 // ── 基础设施（M0-1 验收用） ───────────────────────────────

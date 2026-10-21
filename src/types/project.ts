@@ -28,6 +28,12 @@ export interface ProjectNode {
   isMain?: boolean;
 }
 
+/** 项目目录变更事件负载（M0-9a，Rust 防抖后推送） */
+export interface ProjectChanged {
+  /** 发生变更的项目根 */
+  root: string;
+}
+
 /** 项目扫描结果 */
 export interface ProjectTree {
   /** 项目根目录 */

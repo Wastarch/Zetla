@@ -97,7 +97,8 @@ interface ProjectState {
 
   openProjectDialog: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
-  refresh: () => Promise<void>;
+  /** silent=true 时失败不弹 toast（M0-9a 监听触发的刷新用） */
+  refresh: (silent?: boolean) => Promise<void>;
   toggleDir: (path: string) => void;
   /** 全部折叠（资源管理器头部「全部折叠」按钮） */
   collapseAll: () => void;
@@ -169,19 +170,24 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }`,
         "ok",
       );
+      // M0-9a：监听项目目录（失败不阻断打开项目，手动「刷新」仍可用）
+      void projectApi.watchProject(root).catch((e) => {
+        console.warn("[watch_project]", e);
+      });
     } catch (e) {
       notify(String(e), "err");
     }
   },
 
-  refresh: async () => {
+  refresh: async (silent = false) => {
     const root = get().root;
     if (!root) return;
     try {
       const tree = await projectApi.scanProject(root);
       set({ tree }); // 保留 selected / openDirs
     } catch (e) {
-      notify(String(e), "err");
+      if (silent) console.warn("[refresh]", e);
+      else notify(String(e), "err");
     }
   },
 

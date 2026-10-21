@@ -4,3 +4,4 @@ pub mod core;
 pub mod fsdoc;
 pub mod project;
 pub mod template;
+pub mod watch;

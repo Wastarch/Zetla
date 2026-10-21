@@ -14,6 +14,7 @@ import { MenuBar } from "@/ui/MenuBar";
 import { StatusBar } from "@/ui/StatusBar";
 import { LogPanel } from "@/ui/LogPanel";
 import { useCompileBridge } from "@/compile/useCompile";
+import { useProjectWatch } from "@/project/useProjectWatch";
 import type { TexDistInfo } from "@/types";
 import "./styles/zetla.css";
 import "./App.css";
@@ -150,6 +151,8 @@ function App() {
 
   // M0-9：编译事件桥（全应用只注册一次）
   useCompileBridge();
+  // M0-9a：项目目录变更 → 资源树自动刷新
+  useProjectWatch();
 
   // M0-6：侧栏 .resizer 拖拽（仅运行时，不持久化 —— M0-12 接 load/save_app_config）
   const [sideW, setSideW] = useState(258);

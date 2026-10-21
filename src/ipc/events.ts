@@ -7,6 +7,8 @@ export const RustEvents = {
   compileProgress: "compile_progress",
   /** 编译完成 */
   compileFinished: "compile_finished",
+  /** 项目目录文件增减（M0-9a，防抖后推送） */
+  projectChanged: "project_changed",
   /** 文件被外部改动（notify） */
   fileChanged: "file_changed",
   /** 文档结构索引变更 */

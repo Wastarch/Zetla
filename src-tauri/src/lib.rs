@@ -10,6 +10,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         // M0-9：编译任务状态（单并发 + 取消句柄）
         .manage(std::sync::Arc::new(commands::compile::CompileState::default()))
+        // M0-9a：项目目录监听（资源树自动刷新）
+        .manage(std::sync::Arc::new(commands::watch::WatchState::default()))
         .invoke_handler(tauri::generate_handler![
             // 基础设施（M0-1）
             commands::core::ping,
@@ -32,6 +34,9 @@ pub fn run() {
             commands::project::remove_entry,
             commands::project::rename_entry,
             commands::project::copy_entry,
+            // 项目目录监听（M0-9a）
+            commands::watch::watch_project,
+            commands::watch::unwatch_project,
             // M0-2+ 逐步注册：
             // detect_tex_distribution, compile_project, cancel_compile, parse_tex_log,
             // list_templates, get_template, create_project, import_template,

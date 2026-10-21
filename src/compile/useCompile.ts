@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { RustEvents, onKernelEvent } from "@/ipc/events";
 import { compileApi } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
+import { useBuffersStore } from "@/editor/useBuffers";
 import { base, notify, useProjectStore } from "@/project/useProject";
 import type { CompileProgress, CompileResult } from "@/types";
 
@@ -34,6 +35,17 @@ export async function startCompile(): Promise<void> {
   if (!tree.mainFile) {
     notify("未识别主文件，请在 .ltex/config.json 指定 mainFile", "err");
     return;
+  }
+
+  // M0-9b：编译前先把脏缓冲落盘，避免编译磁盘上的旧内容
+  const buffers = useBuffersStore.getState();
+  if (buffers.dirtyCount() > 0) {
+    await buffers.saveAllBuffers();
+    // saveBuffer 内部吞异常只弹 toast，用「保存后是否仍脏」判定失败
+    if (useBuffersStore.getState().dirtyCount() > 0) {
+      notify("有文件保存失败，已中止编译", "err");
+      return;
+    }
   }
 
   st.clearLog();
@@ -90,6 +102,9 @@ export function useCompileBridge(): void {
             ? "— 已取消 —"
             : `— 编译失败 · ${secs}s —`;
       st.appendLog([summary]);
+      // M0-9a：编译产物入树（编译期间监听事件被攒下，这里统一刷一次；
+      // 同时兜住目录监听不可用时的情况）
+      void useProjectStore.getState().refresh(true);
       if (r.status === "error") {
         // M0-11 之前：至少把失败这件事说清楚
         notify("编译失败，详情见下方日志", "err");
