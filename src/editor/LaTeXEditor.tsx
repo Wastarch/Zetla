@@ -1,12 +1,13 @@
 // M0-4/M0-5 · CM6 编辑器核心封装（见 docs/开发计划.md M0-4、M0-5）
 // 职责：LaTeX 语法高亮 / 行号 / 括号配对 / 查找替换 / Ctrl+S 保存 / gotoLine 跳行 / 光标上报
 // 「单文档受控组件」：多标签脏状态与实例驻留策略（方案 A）由 EditorWorkspace 上层接管。
-import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
+import { forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from "react";
 import CodeMirror, {
   EditorView,
   keymap,
   type ReactCodeMirrorRef,
 } from "@uiw/react-codemirror";
+import { Compartment } from "@codemirror/state";
 import { openSearchPanel } from "@codemirror/search";
 import { latex } from "codemirror-lang-latex";
 
@@ -50,14 +51,27 @@ export interface LaTeXEditorProps {
   placeholder?: string;
   /** 编辑区高度，默认 60vh */
   height?: string;
+  /** M0-14a · 自动换行（偏好设置）；默认开。切换经 Compartment 热生效 */
+  lineWrapping?: boolean;
 }
 
 export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
   function LaTeXEditor(
-    { value, onChange, onSave, onCursorChange, readOnly, placeholder, height = "60vh" },
+    {
+      value,
+      onChange,
+      onSave,
+      onCursorChange,
+      readOnly,
+      placeholder,
+      height = "60vh",
+      lineWrapping = true,
+    },
     ref,
   ) {
     const cmRef = useRef<ReactCodeMirrorRef>(null);
+    // 自动换行经 Compartment 独立管理（偏好设置热切换）
+    const wrapCompartment = useRef(new Compartment());
 
     // 闭包里拿到最新回调：扩展只创建一次
     const onSaveRef = useRef(onSave);
@@ -68,7 +82,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const extensions = useMemo(
       () => [
         latex({ autoCloseBrackets: true, autoCloseTags: true }),
-        EditorView.lineWrapping,
+        // 初始占位空扩展；实际开关由下方 useEffect reconfigure（偏好设置驱动）
+        wrapCompartment.current.of([]),
         keymap.of([
           {
             key: "Mod-s",
@@ -89,6 +104,17 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
       ],
       [],
     );
+
+    // 偏好设置的自动换行开关（含首挂载同步）
+    useEffect(() => {
+      const view = cmRef.current?.view;
+      if (!view) return;
+      view.dispatch({
+        effects: wrapCompartment.current.reconfigure(
+          lineWrapping ? EditorView.lineWrapping : [],
+        ),
+      });
+    }, [lineWrapping]);
 
     function cursorPos(): CursorPos {
       const state = cmRef.current?.state;

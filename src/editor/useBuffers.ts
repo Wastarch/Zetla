@@ -7,6 +7,9 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "@/ipc/invoke";
 import type { FileDoc } from "@/types";
 
+/** 正在写盘的缓冲路径（防止手动保存与自动保存并发互踩） */
+const savingPaths = new Set<string>();
+
 /** 一个打开的文档（标签页） */
 export interface EditorBuffer {
   /** 绝对路径（唯一键） */
@@ -57,10 +60,12 @@ interface BuffersState {
   closeBuffer: (path: string, force?: boolean) => Promise<boolean>;
   /** 编辑器内容变更 */
   updateContent: (path: string, content: string) => void;
-  /** 保存指定缓冲：write_file → 回读校验 → markSaved */
-  saveBuffer: (path: string) => Promise<void>;
+  /** 保存指定缓冲：write_file → 回读校验 → markSaved；silent 不弹「已保存」toast（自动保存用），失败仍弹 */
+  saveBuffer: (path: string, options?: { silent?: boolean }) => Promise<boolean>;
   /** 保存全部脏缓冲（侧栏/菜单栏共用）；返回保存个数 */
   saveAllBuffers: () => Promise<number>;
+  /** M0-14a · 自动保存全部脏缓冲（静默成功；失败汇总一条 toast），返回是否全部成功 */
+  autosaveDirty: () => Promise<boolean>;
   /** 脏缓冲数量（退出确认等用） */
   dirtyCount: () => number;
   /** 首次激活后标记已挂载 */
@@ -155,9 +160,13 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
     }));
   },
 
-  saveBuffer: async (path) => {
+  saveBuffer: async (path, options) => {
+    const silent = !!options?.silent;
+    // 自动保存与手动保存并发时直接跳过（写的是同一快照，残余脏状态由两者之一收尾）
+    if (savingPaths.has(path)) return false;
     const buf = get().buffers.find((b) => b.path === path);
-    if (!buf) return;
+    if (!buf) return false;
+    savingPaths.add(path);
     const written = buf.content;
     try {
       await projectApi.writeFile(path, written);
@@ -169,15 +178,22 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
             ? { ...b, savedContent: written, encoding: d.encoding, eol: d.eol }
             : b,
         ),
-        notice: {
-          text: `已保存 ${buf.name} · encoding=${d.encoding} · eol=${d.eol} · 往返${
-            intact ? "无损" : "内容有差异"
-          }`,
-          kind: intact ? "ok" : "err",
-        },
+        // 静默模式（自动保存）成功不弹 toast；往返有差异仅在手动保存时提示
+        notice: silent
+          ? s.notice
+          : {
+              text: `已保存 ${buf.name} · encoding=${d.encoding} · eol=${d.eol} · 往返${
+                intact ? "无损" : "内容有差异"
+              }`,
+              kind: intact ? "ok" : "err",
+            },
       }));
+      return true;
     } catch (e) {
       set({ notice: { text: `保存失败 ${buf.name}：${String(e)}`, kind: "err" } });
+      return false;
+    } finally {
+      savingPaths.delete(path);
     }
   },
 
@@ -190,6 +206,23 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
       set({ notice: { text: `已保存全部 ${dirty.length} 个文件`, kind: "ok" } });
     }
     return dirty.length;
+  },
+
+  // M0-14a · 自动保存：静默写全部脏缓冲；「保存未成功且仍脏且无其他保存接手」才算失败，汇总一条 toast
+  autosaveDirty: async () => {
+    const dirty = get().buffers.filter((b) => b.content !== b.savedContent);
+    const failed: string[] = [];
+    for (const b of dirty) {
+      const ok = await get().saveBuffer(b.path, { silent: true });
+      const buf = get().buffers.find((x) => x.path === b.path);
+      if (!ok && buf && buf.content !== buf.savedContent && !savingPaths.has(b.path)) {
+        failed.push(buf.name);
+      }
+    }
+    if (dirty.length > 0 && failed.length > 0) {
+      set({ notice: { text: `自动保存失败：${failed.join("、")}`, kind: "err" } });
+    }
+    return failed.length === 0;
   },
 
   markMounted: (path) => {

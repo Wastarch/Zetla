@@ -2,6 +2,7 @@
 // 每新增一个 Tauri command，先在此补签名，再实现 Rust 端（类型即协议）
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
+  AppSettings,
   EntryKind,
   FileDoc,
   ProjectInfo,
@@ -59,6 +60,12 @@ export const projectApi = {
   /** M0-9a：监听项目根的文件增减（重复调用即换根） */
   watchProject: (root: string) => call<void>("watch_project", { root }),
   unwatchProject: () => call<void>("unwatch_project"),
+};
+
+// ── 应用配置 / 偏好设置（M0-14a）──────────────────────────
+export const configApi = {
+  loadAppConfig: () => call<AppSettings>("load_app_config"),
+  saveAppConfig: (config: AppSettings) => call<void>("save_app_config", { config }),
 };
 
 // ── 基础设施（M0-1 验收用） ───────────────────────────────

@@ -15,6 +15,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             // 基础设施（M0-1）
             commands::core::ping,
+            // 应用配置/偏好设置（M0-14a）
+            commands::config::load_app_config,
+            commands::config::save_app_config,
             // 持久层（M0-2）
             commands::fsdoc::read_file,
             commands::fsdoc::write_file,

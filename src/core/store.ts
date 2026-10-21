@@ -4,11 +4,20 @@ import type { CompileResult, ProjectInfo } from "@/types";
 
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
+/** 偏好设置页当前打开的页签（null = 关闭） */
+export type SettingsPane = "build" | "editor" | "pdf" | "look" | "about";
+
 interface AppState {
   // ── 布局 ──
   /** M0-13 前移：资源树可见性（视图菜单/快捷键切换） */
   sidebarVisible: boolean;
   toggleSidebar: () => void;
+
+  // ── 偏好设置（M0-14a）──
+  /** 设置页状态：null 关闭；否则为打开时停留的页签 */
+  settingsDialog: SettingsPane | null;
+  openSettings: (pane?: SettingsPane) => void;
+  closeSettings: () => void;
 
   // ── PDF 预览（M0-10）──
   previewVisible: boolean;
@@ -51,6 +60,11 @@ const LOG_LIMIT = 800;
 export const useAppStore = create<AppState>((set) => ({
   sidebarVisible: true,
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
+
+  // ── 偏好设置（M0-14a）──
+  settingsDialog: null,
+  openSettings: (pane = "build") => set({ settingsDialog: pane }),
+  closeSettings: () => set({ settingsDialog: null }),
 
   previewVisible: true,
   togglePreview: () => set((s) => ({ previewVisible: !s.previewVisible })),

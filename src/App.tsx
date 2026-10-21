@@ -13,9 +13,12 @@ import { Icon } from "@/ui/Icon";
 import { MenuBar } from "@/ui/MenuBar";
 import { StatusBar } from "@/ui/StatusBar";
 import { LogPanel } from "@/ui/LogPanel";
+import { SettingsDialog } from "@/ui/SettingsDialog";
 import { PdfPreview } from "@/preview/PdfPreview";
 import { useCompileBridge } from "@/compile/useCompile";
 import { useProjectWatch } from "@/project/useProjectWatch";
+import { useSettingsEffects, useSettingsStore } from "@/core/settings";
+import { useAutosave } from "@/editor/useAutosave";
 import type { TexDistInfo } from "@/types";
 import "./styles/zetla.css";
 import "./App.css";
@@ -160,6 +163,13 @@ function App() {
   useCompileBridge();
   // M0-9a：项目目录变更 → 资源树自动刷新
   useProjectWatch();
+  // M0-14a：偏好设置启动加载 + 编辑器 CSS 生效 + 定时自动保存
+  useEffect(() => {
+    void useSettingsStore.getState().load();
+  }, []);
+  useSettingsEffects();
+  useAutosave();
+  const settingsPane = useAppStore((s) => s.settingsDialog);
 
   // M0-6：侧栏 .resizer 拖拽（仅运行时，不持久化 —— M0-13 接 load/save_app_config）
   const [sideW, setSideW] = useState(258);
@@ -268,6 +278,7 @@ function App() {
       <CtxMenu />
       <EntryDialog />
       <TemplateWizard />
+      {settingsPane !== null && <SettingsDialog />}
       {labOpen && (
         <LabDrawer
           onClose={() => setLabOpen(false)}

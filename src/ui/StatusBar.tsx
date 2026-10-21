@@ -114,6 +114,16 @@ export function StatusBar() {
           </button>
         </>
       )}
+      {/* M0-14a：偏好设置入口（mockup 状态栏右端「设置」按钮） */}
+      <button
+        type="button"
+        className="sbtn"
+        title="偏好设置 (Ctrl+,)"
+        onClick={() => useAppStore.getState().openSettings()}
+      >
+        <Icon name="sliders" />
+        设置
+      </button>
     </footer>
   );
 }

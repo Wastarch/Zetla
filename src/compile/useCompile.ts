@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { RustEvents, onKernelEvent } from "@/ipc/events";
 import { compileApi } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
+import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { base, notify, useProjectStore } from "@/project/useProject";
 import type { CompileProgress, CompileResult } from "@/types";
@@ -38,14 +39,18 @@ export async function startCompile(): Promise<void> {
   }
 
   // M0-9b：编译前先把脏缓冲落盘，避免编译磁盘上的旧内容
+  // M0-14a：受偏好设置「编译前自动保存」控制；关闭时仍可编译，但提示使用的是磁盘旧内容
   const buffers = useBuffersStore.getState();
-  if (buffers.dirtyCount() > 0) {
+  const dirtyBefore = buffers.dirtyCount();
+  if (dirtyBefore > 0 && useSettingsStore.getState().settings.build.saveBeforeCompile) {
     await buffers.saveAllBuffers();
     // saveBuffer 内部吞异常只弹 toast，用「保存后是否仍脏」判定失败
     if (useBuffersStore.getState().dirtyCount() > 0) {
       notify("有文件保存失败，已中止编译", "err");
       return;
     }
+  } else if (dirtyBefore > 0) {
+    notify("编译前自动保存已关闭，本次编译使用磁盘上的内容", "err");
   }
 
   st.clearLog();

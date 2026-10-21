@@ -1,7 +1,7 @@
 // 顶部菜单栏（M0-13 前移）—— 对齐 docs/UI/code.html .menubar/.drop/.mi
 // 只接通已有能力；未到切片的功能置灰并在 tooltip 标注接通切片（编译 M0-9 已接、
-// 日志解析 M0-11、PDF M0-10、设置 M1、明暗主题 M3）。撤销/重做/注释经命令桥 src/editor/activeView.ts
-// 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力，菜单不重复接）。
+// 日志解析 M0-11、PDF M0-10、设置/偏好 M0-14a 已接、明暗主题 M3）。撤销/重做/注释经
+// 命令桥 src/editor/activeView.ts 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力）。
 import { useEffect, useRef, useState } from "react";
 import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
@@ -12,7 +12,6 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { useAppStore } from "@/core/store";
 import { useProjectStore, notify } from "@/project/useProject";
 import { cancelCompile, startCompile } from "@/compile/useCompile";
-import { Icon } from "@/ui/Icon";
 
 /** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
 interface MenuItemDef {
@@ -68,7 +67,6 @@ async function openPdfDialog(): Promise<void> {
 
 export function MenuBar() {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
-  const [aboutOpen, setAboutOpen] = useState(false);
   const barRef = useRef<HTMLDivElement>(null);
 
   // 状态驱动菜单可用性（re-render 由 zustand 订阅触发）
@@ -250,7 +248,13 @@ export function MenuBar() {
     },
     {
       label: "设置",
-      items: [{ label: "偏好设置", sc: "Ctrl+,", enabled: false, hint: "全局设置 M1" }],
+      items: [
+        {
+          label: "偏好设置",
+          sc: "Ctrl+,",
+          onClick: () => useAppStore.getState().openSettings("build"),
+        },
+      ],
     },
     {
       label: "帮助",
@@ -266,7 +270,7 @@ export function MenuBar() {
           },
         },
         { sep: true, label: "" },
-        { label: "关于 Zetla", onClick: () => setAboutOpen(true) },
+        { label: "关于 Zetla", onClick: () => useAppStore.getState().openSettings("about") },
       ],
     },
   ];
@@ -348,6 +352,11 @@ export function MenuBar() {
         const p = useBuffersStore.getState().activePath;
         if (p) void useBuffersStore.getState().closeBuffer(p);
       }
+      if (k === ",") {
+        // M0-14a：偏好设置（mockup 快捷键 Ctrl+,）
+        e.preventDefault();
+        useAppStore.getState().openSettings("build");
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -403,64 +412,7 @@ export function MenuBar() {
           </div>
         ))}
       </div>
-
-      {aboutOpen && <AboutDialog onClose={() => setAboutOpen(false)} />}
     </>
-  );
-}
-
-/** 关于 Zetla（.modal.sm 复用 M0-6 输入框样式骨架） */
-function AboutDialog({ onClose }: { onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  return (
-    <div className="modal-layer" onMouseDown={onClose}>
-      <div
-        className="modal sm about"
-        onMouseDown={(e) => e.stopPropagation()}
-        role="dialog"
-        aria-label="关于 Zetla"
-      >
-        <div className="modal-head">
-          <h2>关于 Zetla</h2>
-          <button type="button" className="ibtn x" title="关闭" onClick={onClose}>
-            <Icon name="x" />
-          </button>
-        </div>
-        <div className="modal-body">
-          <div className="about-mark">
-            <div
-              className="mark"
-              style={{ width: 36, height: 36, fontSize: 19, borderRadius: 10 }}
-            >
-              Z
-            </div>
-            <div>
-              <div className="about-name">
-                Ze<span>tla</span>
-              </div>
-              <div className="about-ver">v0.1.0 · M0-13 前移 · 本地离线</div>
-            </div>
-          </div>
-          <p className="about-desc">
-            桌面 LaTeX 工作台：项目树 · 多标签编辑 · 一键 XeLaTeX 编译 · PDF 预览。
-            当前处于 M0（MVP）迭代期，构建/预览等能力将随后续切片接通。
-          </p>
-          <p className="about-tech">Tauri 2 · React 19 · CodeMirror 6 · TeX Live / MiKTeX</p>
-        </div>
-        <div className="modal-foot">
-          <button type="button" className="btn primary" onClick={onClose}>
-            确定
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }
 

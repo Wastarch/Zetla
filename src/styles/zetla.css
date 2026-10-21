@@ -1134,7 +1134,8 @@ body {
 
 .latex-editor .cm-editor {
   height: 100%;
-  font-family: var(--font-mono);
+  /* M0-14a：字体族/字号来自偏好设置（--editor-ff 由 settings store 写入；--font-mono 为兜底） */
+  font-family: var(--editor-ff, var(--font-mono));
   font-size: var(--editor-fs);
   background: var(--editor-bg);
   color: var(--txt);
@@ -2212,4 +2213,219 @@ body.col-resizing {
   color: var(--txt-2);
   font-size: 10.5px;
   padding: 0 8px;
+}
+
+/* ============================================================
+   偏好设置模态（M0-14a · 移植自 docs/UI/code.html settings 段）
+   ============================================================ */
+/* 设置模态 body 左右布局：全局 .modal-body 是 padding 流式布局，
+   此处对齐 mockup（无 padding flex，导航左 194px 固定，右 pane 独立滚动） */
+.modal.settings .modal-body {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+}
+
+.set-nav {
+  width: 194px;
+  flex: none;
+  border-right: 1px solid var(--line);
+  padding: 11px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.set-nav button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 31px;
+  padding: 0 11px;
+  border: 0;
+  background: transparent;
+  color: var(--txt-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  text-align: left;
+}
+
+.set-nav button:hover {
+  background: var(--bg-3);
+  color: var(--txt);
+}
+
+.set-nav button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.set-panes {
+  flex: 1;
+  overflow: auto;
+  padding: 20px 23px 26px;
+}
+
+.set-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 19px;
+}
+
+.set-pane h4 {
+  font-family: var(--font-serif);
+  font-size: 14.5px;
+  font-weight: 600;
+  margin-bottom: -6px;
+}
+
+/* 通栏设置行：左 label+说明，右侧控件 */
+.fld {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+
+.fld .lbl {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fld .lbl b {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--txt);
+}
+
+.fld .lbl span {
+  font-size: 10.5px;
+  color: var(--txt-3);
+  line-height: 1.5;
+}
+
+.fld select,
+.fld .txt-in {
+  height: 30px;
+  min-width: 168px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  color: var(--txt);
+  border-radius: var(--r-sm);
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  outline: none;
+}
+
+.fld select:focus,
+.fld .txt-in:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.fld select:disabled,
+.fld .txt-in:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 拨杆开关 */
+.switch {
+  width: 38px;
+  height: 21px;
+  border-radius: 99px;
+  background: var(--bg-4);
+  border: 1px solid var(--line);
+  position: relative;
+  cursor: pointer;
+  flex: none;
+  padding: 0;
+  transition: background 0.18s;
+}
+
+.switch i {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 99px;
+  background: var(--txt-3);
+  font-style: normal;
+  transition: transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), background 0.18s;
+}
+
+.switch.on {
+  background: var(--accent);
+  border-color: transparent;
+}
+
+.switch.on i {
+  transform: translateX(17px);
+  background: #fff;
+}
+
+.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 关于页 */
+.about-hero {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.about-hero .mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 25px;
+}
+
+.about-hero h3 {
+  font-family: var(--font-serif);
+  font-size: 21px;
+  font-weight: 600;
+}
+
+.about-hero p {
+  font-size: 11px;
+  color: var(--txt-3);
+  margin-top: 3px;
+  letter-spacing: 0.03em;
+}
+
+.about-desc {
+  font-size: 11.5px;
+  line-height: 1.85;
+  color: var(--txt-2);
+  margin: 0;
+}
+
+.spec {
+  display: grid;
+  grid-template-columns: 104px 1fr;
+  gap: 8px 14px;
+  font-size: 11.5px;
+  border-top: 1px solid var(--line-soft);
+  padding-top: 15px;
+  margin: 0;
+}
+
+.spec dt {
+  color: var(--txt-3);
+}
+
+.spec dd {
+  color: var(--txt-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  margin: 0;
 }

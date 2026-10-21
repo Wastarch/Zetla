@@ -11,6 +11,7 @@ import {
   type CSSProperties,
 } from "react";
 import { useAppStore } from "@/core/store";
+import { useSettingsStore } from "@/core/settings";
 import { base as fileBase } from "@/project/useProject";
 import { Icon } from "@/ui/Icon";
 import { usePdfDoc } from "./usePdfDoc";
@@ -41,13 +42,20 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   const { doc, err, loading, reload } = usePdfDoc(pdfPath, rev);
   const find = usePdfFind(doc);
 
-  const [zoom, setZoom] = useState<Zoom>({ kind: "fit-width" });
+  // M0-14a：默认缩放来自偏好设置（仅在打开/重载 PDF 时应用）
+  const [zoom, setZoom] = useState<Zoom>(() => {
+    const d = useSettingsStore.getState().settings.pdf.defaultZoom;
+    return d === "fit-width" ? { kind: "fit-width" } : { kind: "custom", scale: Number(d) / 100 };
+  });
   const [layout, setLayout] = useState<Layout>("single");
   const [paged, setPaged] = useState(false);
   const [page, setPage] = useState(1);
   const [side, setSide] = useState<SideTab | "none">("none");
   const [menu, setMenu] = useState<null | "fit" | "view">(null);
-  const [zoomInput, setZoomInput] = useState("100");
+  const [zoomInput, setZoomInput] = useState<string>(() => {
+    const d = useSettingsStore.getState().settings.pdf.defaultZoom;
+    return d === "fit-width" ? "100" : d;
+  });
   const [pageInput, setPageInput] = useState("1");
   const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
   const [viewSize, setViewSize] = useState({ w: 432, h: 640 });

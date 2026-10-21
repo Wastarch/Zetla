@@ -9,6 +9,7 @@ import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
 import { setActiveView, setActiveEditorHandle } from "./activeView";
 import { takePendingJump } from "./jump";
 import { useBuffersStore } from "./useBuffers";
+import { useSettingsStore } from "@/core/settings";
 
 export interface EditorWorkspaceProps {
   /** 打开验收抽屉（M0-13 布局壳落地后移除） */
@@ -25,6 +26,8 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
   const markMounted = useBuffersStore((s) => s.markMounted);
   const clearNotice = useBuffersStore((s) => s.clearNotice);
   const setCursor = useBuffersStore((s) => s.setCursor);
+  // M0-14a：自动换行来自偏好设置（LaTeXEditor Compartment 热生效）
+  const settings = useSettingsStore((s) => s.settings);
 
   /** 每个已挂载缓冲的编辑器句柄 */
   const handles = useRef<Record<string, LaTeXEditorHandle | null>>({});
@@ -126,6 +129,7 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
                   ref={setHandle(b.path)}
                   value={b.content}
                   height="100%"
+                  lineWrapping={settings.editor.lineWrapping}
                   onChange={(v) => updateContent(b.path, v)}
                   onSave={() => saveBuffer(b.path)}
                   onCursorChange={(line, col) => {
