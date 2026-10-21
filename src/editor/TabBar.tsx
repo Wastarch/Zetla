@@ -1,8 +1,8 @@
 // M0-5 · 标签条（对齐 docs/UI/code.html .tabbar / .tab）
 // - 脏文件以 .tdot 圆点替代关闭按钮（点击触发原生确认关闭）
-// - 右侧 .tab-tools：编译 / PDF 预览显隐 / 查找替换 / 验收面板
+// - 右侧 .tab-tools：编译 / 查找替换 / PDF 预览显隐
 //   （打开文件、保存入口已按需求精简：仍可 Ctrl+O / Ctrl+S，菜单亦保留）
-// - M0-9：编译按钮在运行中变为终止
+// - M0-9：编译按钮在运行中变为终止；M0-13：验收面板按钮已移除
 import { Icon } from "@/ui/Icon";
 import { useAppStore } from "@/core/store";
 import { useProjectStore } from "@/project/useProject";
@@ -11,10 +11,9 @@ import { useBuffersStore } from "./useBuffers";
 
 export interface TabBarProps {
   onFind: () => void;
-  onOpenLab: () => void;
 }
 
-export function TabBar({ onFind, onOpenLab }: TabBarProps) {
+export function TabBar({ onFind }: TabBarProps) {
   const buffers = useBuffersStore((s) => s.buffers);
   const activePath = useBuffersStore((s) => s.activePath);
   const setActive = useBuffersStore((s) => s.setActive);
@@ -95,14 +94,6 @@ export function TabBar({ onFind, onOpenLab }: TabBarProps) {
           onClick={onFind}
         >
           <Icon name="search" />
-        </button>
-        <button
-          type="button"
-          className="ibtn"
-          title="验收面板（M0-13 后移除）"
-          onClick={onOpenLab}
-        >
-          <Icon name="sliders" />
         </button>
         <button
           type="button"

@@ -11,12 +11,7 @@ import { takePendingJump } from "./jump";
 import { useBuffersStore } from "./useBuffers";
 import { useSettingsStore } from "@/core/settings";
 
-export interface EditorWorkspaceProps {
-  /** 打开验收抽屉（M0-13 布局壳落地后移除） */
-  onOpenLab: () => void;
-}
-
-export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
+export function EditorWorkspace() {
   const buffers = useBuffersStore((s) => s.buffers);
   const activePath = useBuffersStore((s) => s.activePath);
   const notice = useBuffersStore((s) => s.notice);
@@ -106,7 +101,7 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
 
   return (
     <section className="center">
-      <TabBar onFind={doFind} onOpenLab={onOpenLab} />
+      <TabBar onFind={doFind} />
 
       <div className="code-wrap">
         {buffers.length === 0 ? (

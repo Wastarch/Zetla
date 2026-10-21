@@ -18,6 +18,12 @@ pub const AUTOSAVE_INTERVALS: [u32; 4] = [5, 15, 30, 60];
 /// PDF 默认缩放可选值
 pub const PDF_ZOOMS: [&str; 4] = ["fit-width", "100", "125", "150"];
 
+/// 侧栏宽度合法范围（与 App 拖拽范围一致）；预览比例合法范围
+pub const SIDEBAR_MIN: u32 = 170;
+pub const SIDEBAR_MAX: u32 = 560;
+pub const PREVIEW_RATIO_MIN: f64 = 0.2;
+pub const PREVIEW_RATIO_MAX: f64 = 0.75;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct AppConfig {
@@ -26,6 +32,14 @@ pub struct AppConfig {
     pub autosave: AutosaveConfig,
     pub build: BuildConfig,
     pub pdf: PdfConfig,
+    /// 窗口尺寸/位置（M0-13）；None=未记录过，用 tauri.conf 默认
+    pub window: WindowConfig,
+    /// 会话记忆（M0-13）：上次打开项目根路径
+    pub session: SessionConfig,
+    /// 布局（M0-13）：侧栏/预览宽度与显隐
+    pub layout: LayoutConfig,
+    /// 通用开关（M0-13 设置页「通用」页签）
+    pub general: GeneralConfig,
 }
 
 impl Default for AppConfig {
@@ -36,8 +50,59 @@ impl Default for AppConfig {
             autosave: AutosaveConfig::default(),
             build: BuildConfig::default(),
             pdf: PdfConfig::default(),
+            window: WindowConfig::default(),
+            session: SessionConfig::default(),
+            layout: LayoutConfig::default(),
+            general: GeneralConfig::default(),
         }
     }
+}
+
+/// 窗口几何：None 表示未记录（沿用 tauri.conf.json 的初始窗口配置）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WindowConfig {
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub x: Option<i32>,
+    pub y: Option<i32>,
+    pub maximized: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct SessionConfig {
+    /// 上次打开的项目根路径（绝对路径）；打开项目时写回
+    pub last_project: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LayoutConfig {
+    pub sidebar_visible: bool,
+    pub sidebar_width: u32,
+    pub preview_visible: bool,
+    /// 编辑区/预览比例（0.2–0.75）
+    pub preview_ratio: f64,
+}
+
+impl Default for LayoutConfig {
+    fn default() -> Self {
+        LayoutConfig {
+            sidebar_visible: true,
+            sidebar_width: 258,
+            preview_visible: true,
+            preview_ratio: 0.5,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct GeneralConfig {
+    pub restore_last_project: bool,
+    pub remember_window: bool,
+    pub restore_layout: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -117,6 +182,16 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     }
     if !PDF_ZOOMS.contains(&cfg.pdf.default_zoom.as_str()) {
         cfg.pdf.default_zoom = "fit-width".to_string();
+    }
+    // M0-13：布局钳制（与前端拖拽范围一致）
+    if cfg.layout.sidebar_width < SIDEBAR_MIN {
+        cfg.layout.sidebar_width = SIDEBAR_MIN;
+    }
+    if cfg.layout.sidebar_width > SIDEBAR_MAX {
+        cfg.layout.sidebar_width = SIDEBAR_MAX;
+    }
+    if !(PREVIEW_RATIO_MIN..=PREVIEW_RATIO_MAX).contains(&cfg.layout.preview_ratio) {
+        cfg.layout.preview_ratio = 0.5;
     }
     cfg.schema_version = 1;
     cfg
@@ -225,6 +300,21 @@ mod tests {
         cfg.autosave.interval_seconds = 60;
         cfg.build.save_before_compile = false;
         cfg.pdf.default_zoom = "125".to_string();
+        cfg.window = WindowConfig {
+            width: Some(1440),
+            height: Some(1080),
+            x: Some(-1920),
+            y: Some(24),
+            maximized: true,
+        };
+        cfg.session.last_project = Some("E:\\Project\\ZetlaDocs".to_string());
+        cfg.layout.sidebar_visible = false;
+        cfg.layout.sidebar_width = 320;
+        cfg.layout.preview_visible = false;
+        cfg.layout.preview_ratio = 0.42;
+        cfg.general.restore_last_project = false;
+        cfg.general.remember_window = false;
+        cfg.general.restore_layout = false;
         write_config(&p, &cfg).unwrap();
         assert_eq!(read_config(&p), cfg);
         // 不留临时文件
@@ -242,9 +332,17 @@ mod tests {
         assert!(text.contains("pauseWhileCompiling"));
         assert!(text.contains("saveBeforeCompile"));
         assert!(text.contains("defaultZoom"));
+        // M0-13 字段
+        assert!(text.contains("lastProject"));
+        assert!(text.contains("sidebarWidth"));
+        assert!(text.contains("previewRatio"));
+        assert!(text.contains("restoreLastProject"));
+        assert!(text.contains("rememberWindow"));
+        assert!(text.contains("restoreLayout"));
         // snake_case 不应出现
         assert!(!text.contains("font_family"));
         assert!(!text.contains("interval_seconds"));
+        assert!(!text.contains("last_project"));
     }
 
     #[test]

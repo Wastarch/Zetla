@@ -5,13 +5,18 @@ import type { CompileResult, ProjectInfo } from "@/types";
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
 /** 偏好设置页当前打开的页签（null = 关闭） */
-export type SettingsPane = "build" | "editor" | "pdf" | "look" | "about";
+export type SettingsPane = "general" | "build" | "editor" | "pdf" | "look" | "about";
 
-interface AppState {
+/** 全局状态接口（M0-13：useWindowMemory 订阅布局字段需要类型） */
+export interface AppState {
   // ── 布局 ──
   /** M0-13 前移：资源树可见性（视图菜单/快捷键切换） */
   sidebarVisible: boolean;
   toggleSidebar: () => void;
+  /** M0-13：侧栏宽度（170–560，拖拽写入，偏好设置持久化） */
+  sidebarWidth: number;
+  /** M0-13：编辑区/预览比例（0.2–0.75，拖拽写入，偏好设置持久化） */
+  previewRatio: number;
 
   // ── 偏好设置（M0-14a）──
   /** 设置页状态：null 关闭；否则为打开时停留的页签 */
@@ -60,6 +65,8 @@ const LOG_LIMIT = 800;
 export const useAppStore = create<AppState>((set) => ({
   sidebarVisible: true,
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
+  sidebarWidth: 258,
+  previewRatio: 0.5,
 
   // ── 偏好设置（M0-14a）──
   settingsDialog: null,

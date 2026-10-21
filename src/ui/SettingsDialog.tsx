@@ -12,6 +12,7 @@ import { Icon } from "@/ui/Icon";
 import type { AppSettings, EditorFontFamily, PdfDefaultZoom } from "@/types/settings";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
+  { id: "general", icon: "layout", label: "通用" },
   { id: "build", icon: "play", label: "编译设置" },
   { id: "editor", icon: "edit", label: "编辑器" },
   { id: "pdf", icon: "pdf", label: "PDF 预览" },
@@ -167,6 +168,39 @@ export function SettingsDialog() {
             ))}
           </div>
           <div className="set-panes">
+            {pane === "general" && (
+              <div className="set-pane" role="tabpanel">
+                <h4>启动与布局</h4>
+                <Fld label="启动时恢复上次项目" hint="打开软件自动载入上一次的项目">
+                  <Switch
+                    checked={draft.general.restoreLastProject}
+                    onChange={(v) =>
+                      update((d) => ({
+                        ...d,
+                        general: { ...d.general, restoreLastProject: v },
+                      }))
+                    }
+                  />
+                </Fld>
+                <Fld label="记住窗口大小与位置" hint="重启后还原窗口几何与最大化状态">
+                  <Switch
+                    checked={draft.general.rememberWindow}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, general: { ...d.general, rememberWindow: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld label="恢复布局" hint="侧栏/预览的宽度与显隐">
+                  <Switch
+                    checked={draft.general.restoreLayout}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, general: { ...d.general, restoreLayout: v } }))
+                    }
+                  />
+                </Fld>
+              </div>
+            )}
+
             {pane === "build" && (
               <div className="set-pane" role="tabpanel">
                 <h4>编译流水线</h4>
