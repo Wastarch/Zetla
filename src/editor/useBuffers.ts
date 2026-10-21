@@ -1,7 +1,7 @@
 // M0-5 · 缓冲区管理（多文件标签页）—— 见 docs/开发计划.md M0-5
 // 职责：打开/关闭/切换缓冲、脏状态、保存（写盘+回读校验）
 // 说明：编辑器实例状态（撤销栈/光标/滚动）由 EditorWorkspace 的多实例方案（A）持有，
-//       本 store 只存「文档数据」；M0-11 错误定位通过 openFiles + setActive 复用。
+//       本 store 只存「文档数据」；M0-12 错误定位通过 openFiles + setActive 复用。
 import { create } from "zustand";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "@/ipc/invoke";

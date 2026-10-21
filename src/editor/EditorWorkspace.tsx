@@ -1,7 +1,7 @@
 // M0-5 · 编辑工作区（TabBar + 多实例编辑区）
 // 方案 A：每个缓冲区一个 LaTeXEditor 实例，首次激活后常驻、切走仅 hidden 隐藏 ——
 // 撤销栈 / 光标 / 滚动由 CM 原生状态天然隔离，切回无状态搬运。
-// M0-12 前移：移除编辑器内部状态行，光标位置经 useBuffers.cursor 上提到全局状态栏。
+// M0-13 前移：移除编辑器内部状态行，光标位置经 useBuffers.cursor 上提到全局状态栏。
 import { useCallback, useEffect, useRef } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
@@ -10,7 +10,7 @@ import { setActiveView } from "./activeView";
 import { useBuffersStore } from "./useBuffers";
 
 export interface EditorWorkspaceProps {
-  /** 打开验收抽屉（M0-12 布局壳落地后移除） */
+  /** 打开验收抽屉（M0-13 布局壳落地后移除） */
   onOpenLab: () => void;
 }
 

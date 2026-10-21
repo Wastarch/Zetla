@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { ProjectTree } from "./ProjectTree";
 
 export interface SidebarProps {
-  /** 拖拽得到的宽度（M0-6 不持久化，M0-12 接配置） */
+  /** 拖拽得到的宽度（M0-6 不持久化，M0-13 接配置） */
   style?: CSSProperties;
 }
 

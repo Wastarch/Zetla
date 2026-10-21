@@ -1,5 +1,5 @@
 // M0-9 · 底部编译日志面板（对齐 mockup .logpanel）
-// 当前只做原始输出滚动；M0-10 再在同一面板内加「错误 / 警告 / 全部」筛选与结构化列表。
+// 当前只做原始输出滚动；M0-11 再在同一面板内加「错误 / 警告 / 全部」筛选与结构化列表。
 import { useEffect, useRef } from "react";
 import { useAppStore } from "@/core/store";
 import { Icon } from "@/ui/Icon";

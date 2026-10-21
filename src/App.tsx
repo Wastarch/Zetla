@@ -1,6 +1,6 @@
 // LaTeX 工作台 · 应用入口
-// M0-5：mockup 全屏结构 .app > .workspace > .center（M0-6 加 sidebar、M0-12 加 titlebar/menubar/preview）
-// 原 M0-1~M0-3 验收卡片收进「验收面板」抽屉，M0-12 布局壳落地后移除。
+// M0-5：mockup 全屏结构 .app > .workspace > .center（M0-6 加 sidebar、M0-13 加 titlebar/menubar/preview）
+// 原 M0-1~M0-3 验收卡片收进「验收面板」抽屉，M0-13 布局壳落地后移除。
 import { useCallback, useEffect, useRef, useState } from "react";
 import { compileApi, coreApi, type PingReply } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
@@ -77,7 +77,7 @@ function EnvCard() {
 
 /**
  * 验收面板抽屉 —— 承载 M0-1/M0-2/M0-3a 的临时验收卡片。
- * M0-12 布局壳（状态栏环境提示 + titlebar 菜单）落地后整块移除。
+ * M0-13 布局壳（状态栏环境提示 + titlebar 菜单）落地后整块移除。
  */
 function LabDrawer({
   onClose,
@@ -105,7 +105,7 @@ function LabDrawer({
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
           <h2>验收面板</h2>
-          <span className="sub">M0-1 ~ M0-5 · M0-12 后移除</span>
+          <span className="sub">M0-1 ~ M0-5 · M0-13 后移除</span>
           <button type="button" className="ibtn x" title="关闭" onClick={onClose}>
             <Icon name="x" />
           </button>
@@ -154,7 +154,7 @@ function App() {
   // M0-9a：项目目录变更 → 资源树自动刷新
   useProjectWatch();
 
-  // M0-6：侧栏 .resizer 拖拽（仅运行时，不持久化 —— M0-12 接 load/save_app_config）
+  // M0-6：侧栏 .resizer 拖拽（仅运行时，不持久化 —— M0-13 接 load/save_app_config）
   const [sideW, setSideW] = useState(258);
   const draggingRef = useRef(false);
   const startResize = useCallback(() => {

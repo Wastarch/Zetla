@@ -6,7 +6,7 @@ export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
 interface AppState {
   // ── 布局 ──
-  /** M0-12 前移：资源树可见性（视图菜单/快捷键切换） */
+  /** M0-13 前移：资源树可见性（视图菜单/快捷键切换） */
   sidebarVisible: boolean;
   toggleSidebar: () => void;
 
@@ -24,7 +24,7 @@ interface AppState {
   setCompileDone: (r: CompileResult) => void;
   resetCompile: () => void;
 
-  // ── 编译日志（M0-9：原始输出；M0-10 再加结构化解析） ──
+  // ── 编译日志（M0-9：原始输出；M0-11 再加结构化解析） ──
   logVisible: boolean;
   toggleLog: () => void;
   compileLog: string[];

@@ -157,7 +157,7 @@ pub fn detect_tex_distribution() -> TexDistInfo {
 // M0-9 多遍编译
 // ─────────────────────────────────────────────────────────────
 
-/// 结构化编译错误（与 src/types/compile.ts TexError 对齐；M0-10 开始填充）
+/// 结构化编译错误（与 src/types/compile.ts TexError 对齐；M0-11 开始填充）
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TexError {

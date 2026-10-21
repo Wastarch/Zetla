@@ -1,7 +1,7 @@
 // M0-6 · 项目树（对齐 docs/UI/UI.html renderTree）
 // 目录展开/文件选中/主文件 badge/缓冲脏点/右键菜单入口
 // 补充：Ctrl+C/X/V 复制剪切粘贴、剪切项置灰
-// M0-12 前移：树首行改为「根目录行」（资源管理器头部的图标组移入该行，hover 才显）
+// M0-13 前移：树首行改为「根目录行」（资源管理器头部的图标组移入该行，hover 才显）
 import { useMemo, useRef, type ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
 import { useBuffersStore } from "@/editor/useBuffers";

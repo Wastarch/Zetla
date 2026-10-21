@@ -115,7 +115,7 @@ export function TabBar({ onOpenFiles, onFind, onOpenLab }: TabBarProps) {
         <button
           type="button"
           className="ibtn"
-          title="验收面板（M0-12 后移除）"
+          title="验收面板（M0-13 后移除）"
           onClick={onOpenLab}
         >
           <Icon name="sliders" />

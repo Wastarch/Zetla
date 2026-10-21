@@ -120,7 +120,7 @@ body {
   stroke: none;
 }
 
-/* ── app 外壳（M0-12 补 titlebar/menubar） ── */
+/* ── app 外壳（M0-13 补 titlebar/menubar） ── */
 .app {
   position: relative;
   width: 100vw;
@@ -132,7 +132,7 @@ body {
   overflow: hidden;
 }
 
-/* ── 顶部菜单栏（M0-12 前移，对齐 mockup .menubar/.drop/.mi） ── */
+/* ── 顶部菜单栏（M0-13 前移，对齐 mockup .menubar/.drop/.mi） ── */
 .menubar {
   height: 32px;
   flex: none;
@@ -747,7 +747,7 @@ body {
   }
 }
 
-/* ── 验收抽屉（M0-1~M0-5 临时，M0-12 后移除） ── */
+/* ── 验收抽屉（M0-1~M0-5 临时，M0-13 后移除） ── */
 .modal-layer {
   position: fixed;
   inset: 0;

@@ -1,6 +1,6 @@
-// 顶部菜单栏（M0-12 前移）—— 对齐 docs/UI/code.html .menubar/.drop/.mi
+// 顶部菜单栏（M0-13 前移）—— 对齐 docs/UI/code.html .menubar/.drop/.mi
 // 只接通已有能力；未到切片的功能置灰并在 tooltip 标注接通切片（编译 M0-9 已接、
-// 日志解析 M0-10、PDF M0-13、设置 M1、明暗主题 M3）。撤销/重做/注释经命令桥 src/editor/activeView.ts
+// 日志解析 M0-11、PDF M0-10、设置 M1、明暗主题 M3）。撤销/重做/注释经命令桥 src/editor/activeView.ts
 // 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力，菜单不重复接）。
 import { useEffect, useRef, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
@@ -179,7 +179,7 @@ export function MenuBar() {
         },
         { sep: true, label: "" },
         { label: "清理辅助文件", enabled: false, hint: "M1" },
-        { label: "编译并查看 PDF", enabled: false, hint: "PDF 预览 M0-13 接通" },
+        { label: "编译并查看 PDF", enabled: false, hint: "PDF 预览 M0-10 接通" },
       ],
     },
     {
@@ -190,7 +190,7 @@ export function MenuBar() {
           sc: "Ctrl+B 0",
           onClick: () => useAppStore.getState().toggleSidebar(),
         },
-        { label: "显示 / 隐藏 PDF 预览", enabled: false, hint: "PDF 预览 M0-13 接通" },
+        { label: "显示 / 隐藏 PDF 预览", enabled: false, hint: "PDF 预览 M0-10 接通" },
         {
           label: `${logVisible ? "隐藏" : "显示"}日志面板`,
           onClick: () => useAppStore.getState().toggleLog(),
@@ -221,7 +221,7 @@ export function MenuBar() {
       label: "帮助",
       items: [
         { label: "编译快捷键速查", enabled: false, hint: "M1" },
-        { label: "查看日志文件", enabled: false, hint: "日志面板 M0-10 接通" },
+        { label: "查看日志文件", enabled: false, hint: "日志面板 M0-11 接通" },
         { sep: true, label: "" },
         { label: "关于 Zetla", onClick: () => setAboutOpen(true) },
       ],
@@ -402,7 +402,7 @@ function AboutDialog({ onClose }: { onClose: () => void }) {
               <div className="about-name">
                 Ze<span>tla</span>
               </div>
-              <div className="about-ver">v0.1.0 · M0-12 前移 · 本地离线</div>
+              <div className="about-ver">v0.1.0 · M0-13 前移 · 本地离线</div>
             </div>
           </div>
           <p className="about-desc">

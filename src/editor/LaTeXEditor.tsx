@@ -18,7 +18,7 @@ export interface CursorPos {
 }
 
 export interface LaTeXEditorHandle {
-  /** 跳转到指定行（1-based），滚动居中并聚焦 —— M0-11 错误定位、M3 synctex 依赖此接口 */
+  /** 跳转到指定行（1-based），滚动居中并聚焦 —— M0-12 错误定位、M3 synctex 依赖此接口 */
   gotoLine: (line: number, col?: number) => void;
   /** 当前光标位置（1-based 行/列） */
   getCursorPos: () => CursorPos;

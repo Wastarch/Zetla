@@ -106,7 +106,7 @@ export function useCompileBridge(): void {
       // 同时兜住目录监听不可用时的情况）
       void useProjectStore.getState().refresh(true);
       if (r.status === "error") {
-        // M0-11 之前：至少把失败这件事说清楚
+        // M0-12 之前：至少把失败这件事说清楚
         notify("编译失败，详情见下方日志", "err");
       }
     }).then((un) => {
