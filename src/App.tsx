@@ -151,7 +151,10 @@ function App() {
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   // M0-10：右侧 PDF 预览（宽度仅运行时，持久化留给 M0-13）
   const previewVisible = useAppStore((s) => s.previewVisible);
-  const [prevW, setPrevW] = useState(432);
+  // 编辑区 / 预览区默认 1:1：存比例而非像素，窗口缩放时保持分配
+  const [previewRatio, setPreviewRatio] = useState(0.5);
+  const wsRef = useRef<HTMLDivElement | null>(null);
+  const [wsW, setWsW] = useState(() => window.innerWidth);
 
   // M0-9：编译事件桥（全应用只注册一次）
   useCompileBridge();
@@ -161,6 +164,26 @@ function App() {
   // M0-6：侧栏 .resizer 拖拽（仅运行时，不持久化 —— M0-13 接 load/save_app_config）
   const [sideW, setSideW] = useState(258);
   const draggingRef = useRef(false);
+
+  // 三栏可分配宽度 = 工作区 - 侧栏 - 两个 resizer
+  const RESIZER_W = 5;
+  const avail = Math.max(0, wsW - (sidebarVisible ? sideW + RESIZER_W : 0) - RESIZER_W);
+  /** 预览宽度：比例换算，预览≥300、编辑区≥360 兜底 */
+  const previewW = Math.round(
+    Math.min(Math.max(previewRatio * avail, 300), Math.max(300, avail - 360)),
+  );
+  const availRef = useRef(avail);
+  availRef.current = avail;
+
+  useEffect(() => {
+    const el = wsRef.current;
+    if (!el) return;
+    setWsW(el.clientWidth);
+    const ro = new ResizeObserver(() => setWsW(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   const startResize = useCallback(() => {
     draggingRef.current = true;
     document.body.classList.add("col-resizing");
@@ -175,7 +198,11 @@ function App() {
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (draggingRef.current) setSideW(Math.min(Math.max(e.clientX, 170), 560));
-      if (prevDragRef.current) setPrevW(Math.min(Math.max(window.innerWidth - e.clientX, 300), 900));
+      if (prevDragRef.current) {
+        // 从窗口右缘量，换算成比例（拖拽后窗口缩放仍按比例分配）
+        const a = Math.max(availRef.current, 1);
+        setPreviewRatio(Math.min(0.75, Math.max(0.2, (window.innerWidth - e.clientX) / a)));
+      }
     };
     const onUp = () => {
       if (!draggingRef.current && !prevDragRef.current) return;
@@ -207,7 +234,7 @@ function App() {
   return (
     <div className="app">
       <MenuBar />
-      <div className="workspace">
+      <div className="workspace" ref={wsRef}>
         {sidebarVisible && (
           <>
             <Sidebar style={{ width: sideW }} />
@@ -232,7 +259,7 @@ function App() {
                 startPrevResize();
               }}
             />
-            <PdfPreview style={{ width: prevW }} />
+            <PdfPreview style={{ width: previewW }} />
           </>
         )}
       </div>

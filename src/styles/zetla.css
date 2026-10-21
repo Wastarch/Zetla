@@ -13,7 +13,6 @@
   --font-serif: 'Source Serif 4', Georgia, serif;
   --editor-fs: 13px;
   --side-w: 258px;
-  --prev-w: 432px;
   --log-h: 212px;
   --r-sm: 5px;
   --r-md: 8px;
@@ -307,9 +306,9 @@ body {
 
 /* ── PDF 预览（M0-10 · 对齐 mockup .preview/.pv-*） ── */
 .preview {
-  width: var(--prev-w);
+  /* 宽度由 App.tsx 按比例（默认 1:1）内联给出，不写死 */
   flex: none;
-  min-width: 0;
+  min-width: 300px;
   display: flex;
   flex-direction: column;
   background: var(--bg-2);
