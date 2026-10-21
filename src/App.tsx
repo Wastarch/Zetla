@@ -13,6 +13,7 @@ import { Icon } from "@/ui/Icon";
 import { MenuBar } from "@/ui/MenuBar";
 import { StatusBar } from "@/ui/StatusBar";
 import { LogPanel } from "@/ui/LogPanel";
+import { PdfPreview } from "@/preview/PdfPreview";
 import { useCompileBridge } from "@/compile/useCompile";
 import { useProjectWatch } from "@/project/useProjectWatch";
 import type { TexDistInfo } from "@/types";
@@ -148,6 +149,9 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [labOpen, setLabOpen] = useState(false);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+  // M0-10：右侧 PDF 预览（宽度仅运行时，持久化留给 M0-13）
+  const previewVisible = useAppStore((s) => s.previewVisible);
+  const [prevW, setPrevW] = useState(432);
 
   // M0-9：编译事件桥（全应用只注册一次）
   useCompileBridge();
@@ -161,14 +165,22 @@ function App() {
     draggingRef.current = true;
     document.body.classList.add("col-resizing");
   }, []);
+  // 右侧预览拖拽：从窗口右缘往左量宽度
+  const prevDragRef = useRef(false);
+  const startPrevResize = useCallback(() => {
+    prevDragRef.current = true;
+    document.body.classList.add("col-resizing");
+  }, []);
+
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      if (!draggingRef.current) return;
-      setSideW(Math.min(Math.max(e.clientX, 170), 560));
+      if (draggingRef.current) setSideW(Math.min(Math.max(e.clientX, 170), 560));
+      if (prevDragRef.current) setPrevW(Math.min(Math.max(window.innerWidth - e.clientX, 300), 900));
     };
     const onUp = () => {
-      if (!draggingRef.current) return;
+      if (!draggingRef.current && !prevDragRef.current) return;
       draggingRef.current = false;
+      prevDragRef.current = false;
       document.body.classList.remove("col-resizing");
     };
     window.addEventListener("mousemove", onMove);
@@ -210,6 +222,19 @@ function App() {
           </>
         )}
         <EditorWorkspace onOpenLab={() => setLabOpen(true)} />
+        {previewVisible && (
+          <>
+            <div
+              className="resizer"
+              title="拖拽调整预览宽度"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                startPrevResize();
+              }}
+            />
+            <PdfPreview style={{ width: prevW }} />
+          </>
+        )}
       </div>
       <LogPanel />
       <StatusBar />

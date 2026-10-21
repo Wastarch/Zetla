@@ -58,6 +58,7 @@ export function MenuBar() {
   const activePath = useBuffersStore((s) => s.activePath);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   const logVisible = useAppStore((s) => s.logVisible);
+  const previewVisible = useAppStore((s) => s.previewVisible);
   const running = useAppStore((s) => s.compileStatus === "running");
   const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
 
@@ -179,7 +180,16 @@ export function MenuBar() {
         },
         { sep: true, label: "" },
         { label: "清理辅助文件", enabled: false, hint: "M1" },
-        { label: "编译并查看 PDF", enabled: false, hint: "PDF 预览 M0-10 接通" },
+        {
+          label: "编译并查看 PDF",
+          enabled: hasMain && !running,
+          hint: running ? "编译进行中" : "未打开项目或未识别主文件",
+          onClick: () => {
+            // 与「开始编译」的区别：先展开预览，编译成功后自动加载
+            useAppStore.setState({ previewVisible: true });
+            void startCompile();
+          },
+        },
       ],
     },
     {
@@ -190,7 +200,10 @@ export function MenuBar() {
           sc: "Ctrl+B 0",
           onClick: () => useAppStore.getState().toggleSidebar(),
         },
-        { label: "显示 / 隐藏 PDF 预览", enabled: false, hint: "PDF 预览 M0-10 接通" },
+        {
+          label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
+          onClick: () => useAppStore.getState().togglePreview(),
+        },
         {
           label: `${logVisible ? "隐藏" : "显示"}日志面板`,
           onClick: () => useAppStore.getState().toggleLog(),

@@ -305,6 +305,205 @@ body {
   background: var(--editor-bg);
 }
 
+/* ── PDF 预览（M0-10 · 对齐 mockup .preview/.pv-*） ── */
+.preview {
+  width: var(--prev-w);
+  flex: none;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border-left: 1px solid var(--line);
+}
+
+.pv-head {
+  height: 36px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  border-bottom: 1px solid var(--line);
+}
+
+.pv-head h2 {
+  margin-right: auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pv-stale {
+  flex: none;
+  font-size: 10px;
+  color: var(--err);
+}
+
+.pv-tools {
+  height: 38px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg-2);
+  overflow: hidden;
+}
+
+/* 预览工具条按钮比全局 .ibtn 略小，给 432px 面板留出空间 */
+.pv-tools .ibtn {
+  width: 24px;
+  height: 24px;
+}
+
+.pv-tools .sep {
+  width: 1px;
+  height: 18px;
+  flex: none;
+  margin: 0 4px;
+  background: var(--line);
+}
+
+.zoom-val {
+  min-width: 38px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--txt-2);
+}
+
+.page-jump {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.page-jump input {
+  width: 34px;
+  height: 24px;
+  text-align: center;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  outline: none;
+}
+
+.page-jump input:focus {
+  border-color: var(--accent);
+}
+
+/* Synctex 同步 chip（M3 置灰） */
+.sync-chip {
+  margin-left: auto;
+  display: flex;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+
+.sync-chip button {
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  background: transparent;
+  color: var(--txt-3);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  cursor: default;
+  opacity: 0.55;
+}
+
+.sync-chip button.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.pdf-scroll {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 22px 20px 40px;
+  background:
+    linear-gradient(
+        135deg,
+        rgba(128, 140, 160, 0.055) 25%,
+        transparent 25%,
+        transparent 50%,
+        rgba(128, 140, 160, 0.055) 50%,
+        rgba(128, 140, 160, 0.055) 75%,
+        transparent 75%
+      )
+      0 0 / 16px 16px,
+    var(--bg-3);
+}
+
+.pdf-stage {
+  display: flex;
+  justify-content: center;
+}
+
+.pdf-canvas {
+  display: block;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow:
+    0 12px 34px rgba(0, 0, 0, 0.18),
+    0 1px 0 rgba(255, 255, 255, 0.6) inset;
+}
+
+.pdf-loading {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  color: var(--txt-3);
+}
+
+.pdf-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 24px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--txt-3);
+}
+
+.pdf-empty p {
+  margin: 0;
+}
+
+.pdf-empty .hint {
+  max-width: 260px;
+  font-size: 11px;
+  opacity: 0.8;
+  word-break: break-word;
+}
+
+.pdf-empty .btn {
+  margin-top: 8px;
+}
+
 .tabbar {
   height: 36px;
   flex: none;

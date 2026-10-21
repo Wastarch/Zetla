@@ -5,6 +5,7 @@ import { create } from "zustand";
 import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { projectApi } from "@/ipc/invoke";
+import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
 import type { EntryKind, ProjectNode, ProjectTree } from "@/types";
 
@@ -170,6 +171,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         }`,
         "ok",
       );
+      // M0-10：换项目后旧 PDF 不再有效，清空预览
+      useAppStore.setState({ previewPdf: null, previewRev: 0, lastResult: null });
       // M0-9a：监听项目目录（失败不阻断打开项目，手动「刷新」仍可用）
       void projectApi.watchProject(root).catch((e) => {
         console.warn("[watch_project]", e);

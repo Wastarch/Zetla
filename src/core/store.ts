@@ -10,6 +10,14 @@ interface AppState {
   sidebarVisible: boolean;
   toggleSidebar: () => void;
 
+  // ── PDF 预览（M0-10）──
+  previewVisible: boolean;
+  togglePreview: () => void;
+  /** 最近一次「成功」编译的 PDF 路径（失败时保留旧值，不清屏） */
+  previewPdf: string | null;
+  /** 成功编译计数：同路径重编译也能触发重新加载 */
+  previewRev: number;
+
   // ── 项目 ──
   project: ProjectInfo | null;
   openProject: (p: ProjectInfo) => void;
@@ -39,10 +47,29 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarVisible: true,
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
 
+  previewVisible: true,
+  togglePreview: () => set((s) => ({ previewVisible: !s.previewVisible })),
+  previewPdf: null,
+  previewRev: 0,
+
   project: null,
-  openProject: (p) => set({ project: p, lastResult: null, compileStatus: "idle" }),
+  openProject: (p) =>
+    set({
+      project: p,
+      lastResult: null,
+      compileStatus: "idle",
+      previewPdf: null,
+      previewRev: 0,
+    }),
   closeProject: () =>
-    set({ project: null, lastResult: null, compileStatus: "idle", compilePct: 0 }),
+    set({
+      project: null,
+      lastResult: null,
+      compileStatus: "idle",
+      compilePct: 0,
+      previewPdf: null,
+      previewRev: 0,
+    }),
 
   compileStatus: "idle",
   compilePct: 0,
@@ -51,11 +78,18 @@ export const useAppStore = create<AppState>((set) => ({
   setCompiling: (pct, current) =>
     set({ compileStatus: "running", compilePct: pct, compileCurrent: current }),
   setCompileDone: (r) =>
-    set({
-      compileStatus: r.status === "ok" ? "ok" : r.status === "cancelled" ? "cancelled" : "error",
-      lastResult: r,
-      compilePct: 100,
-      compileCurrent: "",
+    set((s) => {
+      // 只有成功且拿到产物才更新预览；失败保留上一次成功的 PDF
+      const fresh = r.status === "ok" && !!r.pdfPath;
+      return {
+        compileStatus:
+          r.status === "ok" ? "ok" : r.status === "cancelled" ? "cancelled" : "error",
+        lastResult: r,
+        compilePct: 100,
+        compileCurrent: "",
+        previewPdf: fresh ? r.pdfPath! : s.previewPdf,
+        previewRev: fresh ? s.previewRev + 1 : s.previewRev,
+      };
     }),
   resetCompile: () => set({ compileStatus: "idle", compilePct: 0, compileCurrent: "" }),
 
