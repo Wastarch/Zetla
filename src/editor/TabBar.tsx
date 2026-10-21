@@ -1,6 +1,7 @@
 // M0-5 · 标签条（对齐 docs/UI/code.html .tabbar / .tab）
 // - 脏文件以 .tdot 圆点替代关闭按钮（点击触发原生确认关闭）
-// - 右侧 .tab-tools：编译 / 打开文件 / 保存 / 查找替换 / 验收面板
+// - 右侧 .tab-tools：编译 / PDF 预览显隐 / 查找替换 / 验收面板
+//   （打开文件、保存入口已按需求精简：仍可 Ctrl+O / Ctrl+S，菜单亦保留）
 // - M0-9：编译按钮在运行中变为终止
 import { Icon } from "@/ui/Icon";
 import { useAppStore } from "@/core/store";
@@ -9,20 +10,20 @@ import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { useBuffersStore } from "./useBuffers";
 
 export interface TabBarProps {
-  onOpenFiles: () => void;
   onFind: () => void;
   onOpenLab: () => void;
 }
 
-export function TabBar({ onOpenFiles, onFind, onOpenLab }: TabBarProps) {
+export function TabBar({ onFind, onOpenLab }: TabBarProps) {
   const buffers = useBuffersStore((s) => s.buffers);
   const activePath = useBuffersStore((s) => s.activePath);
   const setActive = useBuffersStore((s) => s.setActive);
   const closeBuffer = useBuffersStore((s) => s.closeBuffer);
-  const saveBuffer = useBuffersStore((s) => s.saveBuffer);
 
   const running = useAppStore((s) => s.compileStatus === "running");
   const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
+  const previewVisible = useAppStore((s) => s.previewVisible);
+  const togglePreview = useAppStore((s) => s.togglePreview);
 
   return (
     <div className="tabbar" role="tablist" aria-label="打开的文档">
@@ -89,23 +90,6 @@ export function TabBar({ onOpenFiles, onFind, onOpenLab }: TabBarProps) {
         <button
           type="button"
           className="ibtn"
-          title="打开文件…（Ctrl+O）"
-          onClick={onOpenFiles}
-        >
-          <Icon name="file-plus" />
-        </button>
-        <button
-          type="button"
-          className="ibtn"
-          title="保存 (Ctrl+S)"
-          disabled={!activePath}
-          onClick={() => activePath && saveBuffer(activePath)}
-        >
-          <Icon name="save" />
-        </button>
-        <button
-          type="button"
-          className="ibtn"
           title="查找替换 (Ctrl+F)"
           disabled={!activePath}
           onClick={onFind}
@@ -119,6 +103,14 @@ export function TabBar({ onOpenFiles, onFind, onOpenLab }: TabBarProps) {
           onClick={onOpenLab}
         >
           <Icon name="sliders" />
+        </button>
+        <button
+          type="button"
+          className={previewVisible ? "ibtn on" : "ibtn"}
+          title={previewVisible ? "收起 PDF 预览" : "展开 PDF 预览"}
+          onClick={togglePreview}
+        >
+          <Icon name="panel-right" />
         </button>
       </div>
     </div>

@@ -51,7 +51,7 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
     setCursor(pos ?? { line: 1, col: 1 });
   }, [activePath, markMounted, setCursor]);
 
-  // 打开文件（工具条 / Ctrl+O 共用）
+  // 打开文件（Ctrl+O / 文件菜单共用）
   const openDialog = useCallback(async () => {
     try {
       const picked = await openFileDialog({
@@ -97,7 +97,7 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
 
   return (
     <section className="center">
-      <TabBar onOpenFiles={openDialog} onFind={doFind} onOpenLab={onOpenLab} />
+      <TabBar onFind={doFind} onOpenLab={onOpenLab} />
 
       <div className="code-wrap">
         {buffers.length === 0 ? (
@@ -106,7 +106,7 @@ export function EditorWorkspace({ onOpenLab }: EditorWorkspaceProps) {
               Z
             </div>
             <div className="big">未打开任何文档</div>
-            <p>点击标签栏右侧「打开文件…」选择 .tex 文档开始编辑（Ctrl+O）</p>
+            <p>按 Ctrl+O 或「文件 → 打开文件…」选择 .tex 文档开始编辑</p>
           </div>
         ) : (
           buffers.map((b) => (
