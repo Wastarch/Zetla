@@ -8,6 +8,7 @@ import { useAppStore, type SettingsPane } from "@/core/store";
 import { cloneSettings, useSettingsStore } from "@/core/settings";
 import { notify, useProjectStore } from "@/project/useProject";
 import { engineLabel } from "@/compile/useCompile";
+import { openEnvGuide } from "@/env/useEnvCheck";
 import { Icon } from "@/ui/Icon";
 import type { AppSettings, EditorFontFamily, PdfDefaultZoom } from "@/types/settings";
 
@@ -84,6 +85,7 @@ export function SettingsDialog() {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const tree = useProjectStore((s) => s.tree);
   const draft = useSettingsStore((s) => s.settings);
+  const env = useAppStore((s) => s.env);
 
   // 打开时快照（条件渲染保证每次打开重建；「取消」回滚到此时）
   const snapshotRef = useRef<AppSettings>(cloneSettings(useSettingsStore.getState().settings));
@@ -119,11 +121,11 @@ export function SettingsDialog() {
     }
   }, [closeSettings]);
 
-  // Esc / 点遮罩 = 取消
+  // Esc / 点遮罩 = 取消（环境引导面板打开时只由它自己接管 Esc）
   useEffect(() => {
     if (pane === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") cancel();
+      if (e.key === "Escape" && !useAppStore.getState().envGuideOpen) cancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -204,7 +206,34 @@ export function SettingsDialog() {
 
             {pane === "build" && (
               <div className="set-pane" role="tabpanel">
-                <h4>编译流水线</h4>
+                <h4>TeX 环境</h4>
+                <Fld
+                  label="TeX 发行版"
+                  hint={
+                    env === null
+                      ? "尚未检测"
+                      : env.found
+                        ? `${env.distribution ?? "TeX"}${env.version ? ` · ${env.version}` : ""}`
+                        : "未检测到 TeX，无法编译"
+                  }
+                  tip="检测结果：Zetla 独立目录 → 系统 PATH → 常见安装位置；自动安装 M0-15b 接通"
+                >
+                  <span style={{ display: "flex", gap: 9, alignItems: "center" }}>
+                    <select disabled value={env?.found ? "ok" : "none"} onChange={() => {}}>
+                      <option value="none">
+                        {env === null ? "未检测" : "未检测到 TeX"}
+                      </option>
+                      <option value="ok">
+                        {env?.distribution ?? "TeX"}
+                        {env?.version ? ` · ${env.version}` : ""}
+                      </option>
+                    </select>
+                    <button type="button" className="btn" onClick={() => void openEnvGuide()}>
+                      检测 / 引导…
+                    </button>
+                  </span>
+                </Fld>
+                <h4 style={{ marginTop: 18 }}>编译流水线</h4>
                 <Fld
                   label="默认编译引擎"
                   hint="由项目 .ltex/config.json 决定"

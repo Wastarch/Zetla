@@ -21,7 +21,7 @@ use crate::commands::logparse::{parse_log_text, parse_run_number};
 pub struct TexDistInfo {
     /// 是否检测到可用发行版（任一引擎存在即 true）
     pub found: bool,
-    /// 发行版名称："MiKTeX" / "TeX Live" / "Unknown"
+    /// 发行版名称："MiKTeX" / "TeX Live" / "None" / "Unknown"
     pub distribution: String,
     /// 版本号（取主引擎 --version 首行解析）
     pub version: Option<String>,
@@ -43,23 +43,134 @@ const MIKTEX_DIRS: [&str; 4] = [
     r"C:\Program Files\MiKTeX\miktex\bin\x64",
 ];
 
-/// 在 PATH 中查找引擎；找不到时（Windows）回退扫描 MiKTeX 常见安装目录
-fn find_engine(name: &str) -> Option<std::path::PathBuf> {
+/// 引擎可执行文件名（Windows 带 .exe）
+fn engine_exe_name(name: &str) -> String {
+    if cfg!(windows) {
+        format!("{name}.exe")
+    } else {
+        name.to_string()
+    }
+}
+
+/// 在给定目录列表中找引擎；全部落空才回退进程 PATH（which）
+///
+/// 目录优先级由调用方保证：受管目录（config.tex）→ 注册表 PATH → MiKTeX 兜底目录 → 进程 PATH。
+/// 这样「Zetla 代装完成 / 用户手动装而进程 PATH 未刷新」时，无需重启就能检测到。
+fn find_engine(name: &str, search_dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+    let exe = engine_exe_name(name);
+    for dir in search_dirs {
+        let candidate = dir.join(&exe);
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
     if let Ok(p) = which(name) {
         return Some(p);
-    }
-    #[cfg(windows)]
-    {
-        for dir in MIKTEX_DIRS {
-            let candidate = std::path::Path::new(dir).join(format!("{name}.exe"));
-            if candidate.exists() {
-                return Some(candidate);
-            }
-        }
     }
     None
 }
 
+/// 分隔 PATH 文本（Windows `;`）为目录列表（去引号/空白/重复）
+pub(crate) fn split_path_list(s: &str) -> Vec<std::path::PathBuf> {
+    let sep = if cfg!(windows) { ';' } else { ':' };
+    let mut out: Vec<std::path::PathBuf> = Vec::new();
+    for raw in s.split(sep) {
+        let trimmed = raw.trim().trim_matches('"').trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let p = std::path::PathBuf::from(trimmed);
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    out
+}
+
+/// Windows：读注册表里的用户 / 系统 PATH（只读不改；进程 PATH 未刷新时用）
+#[cfg(windows)]
+fn registry_path_dirs() -> Vec<std::path::PathBuf> {
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    use winreg::RegKey;
+    let mut out = Vec::new();
+    let read = |root: &RegKey, sub: &str| -> Option<String> {
+        root.open_subkey(sub)
+            .ok()?
+            .get_value::<String, _>("Path")
+            .ok()
+    };
+    if let Some(v) = read(&RegKey::predef(HKEY_CURRENT_USER), "Environment") {
+        out.extend(split_path_list(&v));
+    }
+    if let Some(v) = read(
+        &RegKey::predef(HKEY_LOCAL_MACHINE),
+        r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment",
+    ) {
+        out.extend(split_path_list(&v));
+    }
+    out
+}
+
+#[cfg(not(windows))]
+fn registry_path_dirs() -> Vec<std::path::PathBuf> {
+    Vec::new()
+}
+
+/// 引擎搜索目录（优先级序）：受管目录（config.tex）→ 注册表 PATH → MiKTeX 兜底目录
+fn engine_search_dirs(app: Option<&tauri::AppHandle>) -> Vec<std::path::PathBuf> {
+    let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(app) = app {
+        let path = crate::commands::config::config_path(app).unwrap_or_default();
+        let cfg = crate::commands::config::read_config(&path);
+        if let Some(bin) = &cfg.tex.engine_bin_dir {
+            dirs.push(std::path::PathBuf::from(bin));
+        }
+        if let Some(install) = &cfg.tex.install_dir {
+            // engineBinDir 缺省时扫 install_dir 的常见 bin 布局
+            for sub in [
+                r"miktex\bin\x64",
+                r"miktex\bin",
+                r"bin\windows",
+                r"bin\x64",
+                r"bin",
+                "",
+            ] {
+                let candidate = std::path::PathBuf::from(install).join(sub);
+                dirs.push(candidate);
+            }
+        }
+    }
+    dirs.extend(registry_path_dirs());
+    #[cfg(windows)]
+    for d in MIKTEX_DIRS {
+        dirs.push(std::path::PathBuf::from(d));
+    }
+    dirs.dedup();
+    dirs.into_iter()
+        .filter(|d| d.is_dir())
+        .collect()
+}
+
+/// 探测 TeX 发行版与引擎（Tauri command）
+#[tauri::command]
+pub fn detect_tex_distribution(app: tauri::AppHandle) -> TexDistInfo {
+    // 冒烟逃生口（仅 debug 构建生效）：ZETLA_FORCE_NO_TEX=1 模拟未安装
+    if cfg!(debug_assertions)
+        && std::env::var("ZETLA_FORCE_NO_TEX").ok().as_deref() == Some("1")
+    {
+        return TexDistInfo {
+            found: false,
+            distribution: "None".to_string(),
+            version: None,
+            engines: Vec::new(),
+            recommended: "xelatex".to_string(),
+        };
+    }
+    let search_dirs = engine_search_dirs(Some(&app));
+    detect_tex_distribution_in(&search_dirs)
+}
+
+/// 检测核心（纯函数；app 相关的搜索目录由调用方传入）
 /// 执行 `<exe> --version` 并取首行（超时 5s 兜底为 None）
 fn probe_version(exe: &std::path::Path) -> Option<String> {
     let output = std::process::Command::new(exe)
@@ -70,6 +181,29 @@ fn probe_version(exe: &std::path::Path) -> Option<String> {
         .ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
     text.lines().next().map(|s| s.trim().to_string())
+}
+
+/// 从 `--version` 首行解析用户可读的版本串（M0-15a 冒烟反馈：
+/// 此前展示引擎版本号 `3.141592653-…`，改为优先取括号里的发行版标记；
+/// 只留版本号本身（发行版名由 UI 拼接，避免「TeX Live · TeX Live 2025」重复））
+/// `XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025)` → "2025"
+/// `XeTeX 3.141592653-2.6-0.999996 (MiKTeX 25.1)` → "25.1"
+fn parse_version_line(line: &str) -> Option<String> {
+    for (mark, prefix) in [("(TeX Live ", "TeX Live "), ("(MiKTeX ", "MiKTeX ")] {
+        if let Some(i) = line.find(mark) {
+            let t = &line[i + 1..];
+            let end = t.find(')').unwrap_or(t.len());
+            let v = t[..end].trim().strip_prefix(prefix).unwrap_or(t[..end].trim());
+            if !v.is_empty() {
+                return Some(v.to_string());
+            }
+        }
+    }
+    // 兜底：取首个连续数字段到第一个括号前（旧逻辑，"MiKTeX-mt 25.1" 等）
+    let start = line.find(char::is_numeric)?;
+    let tail = &line[start..];
+    let end = tail.find("(TeX").or_else(|| tail.find('(')).unwrap_or(tail.len());
+    Some(tail[..end].trim().to_string())
 }
 
 /// Windows：子进程不弹控制台窗口；其他平台恒等返回
@@ -100,14 +234,12 @@ impl HideConsole for std::process::Command {
     }
 }
 
-/// 探测 TeX 发行版与引擎（Tauri command）
-#[tauri::command]
-pub fn detect_tex_distribution() -> TexDistInfo {
+fn detect_tex_distribution_in(search_dirs: &[std::path::PathBuf]) -> TexDistInfo {
     let mut engines: Vec<String> = Vec::new();
     let mut found_paths: Vec<(&str, std::path::PathBuf)> = Vec::new();
 
     for name in ENGINE_CANDIDATES {
-        if let Some(p) = find_engine(name) {
+        if let Some(p) = find_engine(name, search_dirs) {
             engines.push(name.to_string());
             found_paths.push((name, p));
         }
@@ -120,14 +252,7 @@ pub fn detect_tex_distribution() -> TexDistInfo {
         .iter()
         .find_map(|want| found_paths.iter().find(|(n, _)| n == want).map(|(_, p)| p))
         .and_then(|p| probe_version(p))
-        .and_then(|line| {
-            // 首行形如 "XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025)"
-            // 或 "MiKTeX 25.1 (64-bit)"
-            let start = line.find(char::is_numeric)?;
-            let tail = &line[start..];
-            let end = tail.find("(TeX").or_else(|| tail.find('(')).unwrap_or(tail.len());
-            Some(tail[..end].trim().to_string())
-        });
+        .and_then(|line| parse_version_line(&line));
 
     // 发行版判定：安装目录含 MiKTeX → MiKTeX；含 texlive → TeX Live；有引擎但无法判定 → Unknown
     let distribution = if !found {
@@ -235,6 +360,8 @@ struct Job {
     root: PathBuf,
     main: PathBuf,
     engine: String,
+    /// 引擎搜索目录（受管/注册表/MiKTeX 兜底），find_engine 与子进程 PATH 注入共用
+    search_dirs: Vec<PathBuf>,
 }
 
 /// 杀掉子进程树：latexmk 会再拉起 xelatex/perl，只 kill 父进程会留下孤儿进程
@@ -294,6 +421,7 @@ pub async fn compile_project(
         root: PathBuf::from(root),
         main: PathBuf::from(main_file),
         engine: engine.unwrap_or_else(|| "xelatex".to_string()),
+        search_dirs: engine_search_dirs(Some(&app)),
     };
 
     if !job.main.is_file() {
@@ -364,7 +492,7 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
     let mut failed = false;
     let mut cancelled = false;
 
-    if let Some(lmk) = find_engine("latexmk") {
+    if let Some(lmk) = find_engine("latexmk", &job.search_dirs) {
         // 首选 latexmk：交叉引用 / 参考文献 / 多遍由它自己调度
         passes += 1;
         let args = vec![
@@ -375,7 +503,7 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
             main_name.clone(),
         ];
         emit_progress(app, "running", 0, format!("latexmk {}", latexmk_flag(&job.engine)));
-        match run_cmd(app, st, &lmk, &args, &dir).await {
+        match run_cmd(app, st, &lmk, &args, &dir, &job.search_dirs).await {
             CmdOutcome::Ok => {}
             CmdOutcome::Failed => failed = true,
             CmdOutcome::Cancelled => cancelled = true,
@@ -384,7 +512,7 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
                 emit_progress(app, "running", 0, msg);
             }
         }
-    } else if let Some(exe) = find_engine(&job.engine) {
+    } else if let Some(exe) = find_engine(&job.engine, &job.search_dirs) {
         // 兜底：引擎自带管线（第 1 遍 → biber（有 .bcf）→ 再两遍收敛）
         let tex_args = |name: &str| vec![
             "-synctex=1".to_string(),
@@ -395,7 +523,7 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
 
         passes += 1;
         emit_progress(app, "running", 0, format!("{} · 第 1 遍", job.engine));
-        match run_cmd(app, st, &exe, &tex_args(&main_name), &dir).await {
+        match run_cmd(app, st, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
             CmdOutcome::Ok => {}
             CmdOutcome::Failed => failed = true,
             CmdOutcome::Cancelled => cancelled = true,
@@ -407,9 +535,9 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
 
         // 参考文献：biblatex 会写 .bcf
         if !cancelled && dir.join(format!("{stem}.bcf")).is_file() {
-            if let Some(biber) = find_engine("biber") {
+            if let Some(biber) = find_engine("biber", &job.search_dirs) {
                 emit_progress(app, "running", 0, "biber · 处理参考文献");
-                match run_cmd(app, st, &biber, &[stem.clone()], &dir).await {
+                match run_cmd(app, st, &biber, &[stem.clone()], &dir, &job.search_dirs).await {
                     CmdOutcome::Ok => {}
                     CmdOutcome::Failed => failed = true,
                     CmdOutcome::Cancelled => cancelled = true,
@@ -429,7 +557,7 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
             }
             passes += 1;
             emit_progress(app, "running", 0, format!("{} · 第 {} 遍", job.engine, i + 2));
-            match run_cmd(app, st, &exe, &tex_args(&main_name), &dir).await {
+            match run_cmd(app, st, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
                 CmdOutcome::Ok => {}
                 CmdOutcome::Failed => failed = true,
                 CmdOutcome::Cancelled => {
@@ -522,12 +650,14 @@ fn forward_line(app: &AppHandle, st: &Arc<CompileState>, line: &str) {
 }
 
 /// 跑一条外部命令：逐行转发输出，返回退出状态
+/// `path_dirs` 非空时前置进子进程 PATH（受管 TeX 目录 / 注册表 PATH 目录）
 async fn run_cmd(
     app: &AppHandle,
     st: &Arc<CompileState>,
     exe: &Path,
     args: &[String],
     cwd: &Path,
+    path_dirs: &[PathBuf],
 ) -> CmdOutcome {
     // 取消可能发生在两条命令之间（尚未 spawn）
     if st.cancelled.load(Ordering::SeqCst) {
@@ -540,6 +670,13 @@ async fn run_cmd(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    if !path_dirs.is_empty() {
+        let mut joined: Vec<PathBuf> = path_dirs.to_vec();
+        joined.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
+        if let Ok(paths) = std::env::join_paths(&joined) {
+            cmd.env("PATH", paths);
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -641,7 +778,8 @@ mod tests {
 
     #[test]
     fn detect_returns_consistent_result() {
-        let info = detect_tex_distribution();
+        // 纯核心：不注入受管目录（which 仍可能命中本机 TeX，因此只验自洽性）
+        let info = detect_tex_distribution_in(&[]);
         // 结果自洽：found 与 engines 一致
         assert_eq!(info.found, !info.engines.is_empty());
         if info.found {
@@ -664,7 +802,34 @@ mod tests {
 
     #[test]
     fn missing_engine_not_reported() {
-        // 不存在的可执行文件不应被 find_engine 找到
-        assert!(find_engine("definitely_not_a_tex_engine_xyz").is_none());
+        // 不存在的可执行文件不应被 find_engine 找到（含空目录列表与进程 PATH 回退）
+        assert!(find_engine("definitely_not_a_tex_engine_xyz", &[]).is_none());
+    }
+
+    #[test]
+    fn splits_path_list_and_dedups() {
+        // M0-15a：注册表 PATH 合并用的解析（Windows 分号，去引号/空白/重复）
+        let dirs = split_path_list(r#"C:\TeX\bin;"C:\Program Files\MiKTeX\bin";C:\TeX\bin"#);
+        assert_eq!(dirs.len(), 2);
+        assert_eq!(dirs[0], std::path::PathBuf::from(r"C:\TeX\bin"));
+        assert!(split_path_list("   ;\t;a").len() == 1);
+    }
+
+    #[test]
+    fn parse_version_line_favors_distro_mark() {
+        // M0-15a 冒烟反馈：优先括号里的发行版标记，而不是引擎版本号（只留版本号本身）
+        assert_eq!(
+            parse_version_line("XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025)"),
+            Some("2025".to_string())
+        );
+        assert_eq!(
+            parse_version_line("XeTeX 3.141592653-2.6-0.999996 (MiKTeX 25.1)"),
+            Some("25.1".to_string())
+        );
+        // 无标记时回退旧逻辑
+        assert_eq!(
+            parse_version_line("MiKTeX-mt 25.1"),
+            Some("25.1".to_string())
+        );
     }
 }

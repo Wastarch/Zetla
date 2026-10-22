@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/core/store";
 import { useSettingsEffects, useSettingsStore } from "@/core/settings";
+import { runEnvCheck } from "@/env/useEnvCheck";
 import { EditorWorkspace } from "@/editor/EditorWorkspace";
 import { Sidebar } from "@/project/Sidebar";
 import { CtxMenu } from "@/project/CtxMenu";
@@ -13,6 +14,7 @@ import { MenuBar } from "@/ui/MenuBar";
 import { StatusBar } from "@/ui/StatusBar";
 import { LogPanel } from "@/ui/LogPanel";
 import { SettingsDialog } from "@/ui/SettingsDialog";
+import { EnvGuideDialog } from "@/ui/EnvGuideDialog";
 import { PdfPreview } from "@/preview/PdfPreview";
 import { useCompileBridge } from "@/compile/useCompile";
 import { useProjectWatch } from "@/project/useProjectWatch";
@@ -40,6 +42,10 @@ function App() {
   // M0-14a：偏好设置启动加载 + 编辑器 CSS 生效 + 定时自动保存
   useEffect(() => {
     void useSettingsStore.getState().load();
+  }, []);
+  // M0-15a：启动后台检测一次 TeX 环境（结果进 store，失败不弹窗）
+  useEffect(() => {
+    void runEnvCheck();
   }, []);
   useSettingsEffects();
   useAutosave();
@@ -144,6 +150,8 @@ function App() {
       <EntryDialog />
       <TemplateWizard />
       {settingsPane !== null && <SettingsDialog />}
+      {/* M0-15a：TeX 环境引导（放在设置页之后，同开时叠在其上层） */}
+      <EnvGuideDialog />
     </div>
   );
 }

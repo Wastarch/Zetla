@@ -41,6 +41,8 @@ pub struct AppConfig {
     pub layout: LayoutConfig,
     /// 通用开关（M0-13 设置页「通用」页签）
     pub general: GeneralConfig,
+    /// TeX 代装记录（M0-15a）
+    pub tex: TexConfig,
 }
 
 impl Default for AppConfig {
@@ -55,6 +57,7 @@ impl Default for AppConfig {
             session: SessionConfig::default(),
             layout: LayoutConfig::default(),
             general: GeneralConfig::default(),
+            tex: TexConfig::default(),
         }
     }
 }
@@ -105,6 +108,21 @@ pub struct GeneralConfig {
     pub remember_window: bool,
     pub restore_layout: bool,
 }
+
+/// M0-15a：Zetla 代装的 TeX（检测优先用、编译时注入子进程 PATH）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TexConfig {
+    /// 发行版：miktex / texlive；None=没有 Zetla 代装记录
+    pub distro: Option<String>,
+    /// TeX 安装根目录（台账/卸载器也读这个）
+    pub install_dir: Option<String>,
+    /// 引擎可执行目录（xelatex.exe 所在；优先级最高的搜索位置）
+    pub engine_bin_dir: Option<String>,
+}
+
+/// M0-15a：tex.distro 白名单
+pub const TEX_DISTROS: [&str; 2] = ["miktex", "texlive"];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -198,8 +216,23 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     if !(PREVIEW_RATIO_MIN..=PREVIEW_RATIO_MAX).contains(&cfg.layout.preview_ratio) {
         cfg.layout.preview_ratio = 0.5;
     }
+    // M0-15a：tex 代装记录归一化（先去空白再校验 distro 白名单）
+    // distro 非法 → 清空；distro 为 null 允许保留目录（「手动指定引擎目录」场景）
+    cfg.tex.distro = clean_opt_str(cfg.tex.distro);
+    cfg.tex.install_dir = clean_opt_str(cfg.tex.install_dir);
+    cfg.tex.engine_bin_dir = clean_opt_str(cfg.tex.engine_bin_dir);
+    if cfg.tex.distro.as_deref().map_or(false, |d| !TEX_DISTROS.contains(&d)) {
+        cfg.tex.distro = None;
+        cfg.tex.install_dir = None;
+        cfg.tex.engine_bin_dir = None;
+    }
     cfg.schema_version = 1;
     cfg
+}
+
+/// Option<String> 去空白：空/全空白 → None
+fn clean_opt_str(s: Option<String>) -> Option<String> {
+    s.filter(|v| !v.trim().is_empty()).map(|v| v.trim().to_string())
 }
 
 /// 配置文件绝对路径（config_dir/Zetla/config.json）
@@ -322,6 +355,10 @@ mod tests {
         cfg.general.restore_last_project = false;
         cfg.general.remember_window = false;
         cfg.general.restore_layout = false;
+        cfg.tex.distro = Some("miktex".to_string());
+        cfg.tex.install_dir = Some("C:\\Users\\u\\AppData\\Local\\Zetla\\tex\\miktex".to_string());
+        cfg.tex.engine_bin_dir =
+            Some("C:\\Users\\u\\AppData\\Local\\Zetla\\tex\\miktex\\miktex\\bin\\x64".to_string());
         write_config(&p, &cfg).unwrap();
         assert_eq!(read_config(&p), cfg);
         // 不留临时文件
@@ -347,6 +384,9 @@ mod tests {
         assert!(text.contains("restoreLastProject"));
         assert!(text.contains("rememberWindow"));
         assert!(text.contains("restoreLayout"));
+        // M0-15a 字段
+        assert!(text.contains("installDir"));
+        assert!(text.contains("engineBinDir"));
         // snake_case 不应出现
         assert!(!text.contains("font_family"));
         assert!(!text.contains("interval_seconds"));
@@ -392,6 +432,62 @@ mod tests {
         });
         let parsed: AppConfig = serde_json::from_value(raw).unwrap();
         assert!(normalize(parsed).editor.mouse_wheel_zoom);
+    }
+
+    #[test]
+    fn tex_config_normalize() {
+        // M0-15a：distro 白名单外 → 整条清空；空白 → None
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "tex": {
+                "distro": "tinytex",
+                "installDir": "C:\\tex\\mi",
+                "engineBinDir": "C:\\tex\\mi\\bin"
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        let got = normalize(parsed);
+        assert_eq!(got.tex, crate::commands::config::TexConfig::default());
+
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "tex": {
+                "distro": "  miktex  ",
+                "installDir": "  ",
+                "engineBinDir": "C:\\tex\\mi\\bin"
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        let got = normalize(parsed);
+        assert_eq!(got.tex.distro.as_deref(), Some("miktex"));
+        assert_eq!(got.tex.install_dir, None);
+        assert_eq!(got.tex.engine_bin_dir.as_deref(), Some("C:\\tex\\mi\\bin"));
+
+        // distro=null 但手动指定了引擎目录 → 目录保留（引导面板「手动指定引擎目录」）
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "tex": { "engineBinDir": "C:\\tex\\mi\\bin" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        let got = normalize(parsed);
+        assert_eq!(got.tex.distro, None);
+        assert_eq!(got.tex.install_dir, None);
+        assert_eq!(
+            got.tex.engine_bin_dir.as_deref(),
+            Some("C:\\tex\\mi\\bin")
+        );
     }
 
     #[test]

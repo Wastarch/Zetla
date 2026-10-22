@@ -1,6 +1,6 @@
 // 全局状态（zustand）—— 项目、编译、编辑器的共享状态
 import { create } from "zustand";
-import type { CompileResult, ProjectInfo } from "@/types";
+import type { CompileResult, ProjectInfo, TexDistInfo } from "@/types";
 
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
@@ -57,6 +57,17 @@ export interface AppState {
   compileLog: string[];
   appendLog: (lines: string[]) => void;
   clearLog: () => void;
+
+  // ── TeX 环境（M0-15a）──
+  /** 最近一次发行版检测结果（null=尚未检测） */
+  env: TexDistInfo | null;
+  /** 环境引导面板开关 */
+  envGuideOpen: boolean;
+  /** dev-only：模拟「未检测到 TeX」（仅引导面板调试按钮使用，不落盘，重启重置） */
+  envDebugMock: boolean;
+  setEnv: (info: TexDistInfo | null) => void;
+  setEnvGuideOpen: (open: boolean) => void;
+  setEnvDebugMock: (on: boolean) => void;
 }
 
 /** 日志保留上限（防止长时间编译吃内存） */
@@ -137,4 +148,12 @@ export const useAppStore = create<AppState>((set) => ({
       return { compileLog: next.length > LOG_LIMIT ? next.slice(-LOG_LIMIT) : next };
     }),
   clearLog: () => set({ compileLog: [] }),
+
+  // ── TeX 环境（M0-15a）──
+  env: null,
+  envGuideOpen: false,
+  envDebugMock: false,
+  setEnv: (info) => set({ env: info }),
+  setEnvGuideOpen: (open) => set({ envGuideOpen: open }),
+  setEnvDebugMock: (on) => set({ envDebugMock: on }),
 }));

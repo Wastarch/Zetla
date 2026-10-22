@@ -1,6 +1,6 @@
 {
     "$schema": "https://schema.tauri.app/config/2",
-    "productName": "zetla",
+    "productName": "Zetla",
     "version": "0.1.0",
     "identifier": "com.burce.zetla",
     "build": {
@@ -12,7 +12,7 @@
     "app": {
         "windows": [
             {
-                "title": "zetla",
+                "title": "Zetla",
                 "width": 1280,
                 "height": 960
             }
@@ -27,7 +27,7 @@
     },
     "bundle": {
         "active": true,
-        "targets": "all",
+        "targets": ["nsis"],
         "resources": ["templates"],
         "icon": [
             "icons/32x32.png",
@@ -35,6 +35,13 @@
             "icons/128x128@2x.png",
             "icons/icon.icns",
             "icons/icon.ico"
-        ]
+        ],
+        "windows": {
+            "nsis": {
+                "installMode": "currentUser",
+                "languages": ["SimpChinese", "English"],
+                "installerHooks": "windows/nsis-hooks.nsh"
+            }
+        }
     }
 }

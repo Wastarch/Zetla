@@ -8,6 +8,7 @@ import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { base, useProjectStore } from "@/project/useProject";
 import { cancelCompile, engineLabel, startCompile } from "@/compile/useCompile";
+import { openEnvGuide } from "@/env/useEnvCheck";
 
 const DOT_CLASS: Record<string, string> = {
   running: "run",
@@ -25,6 +26,7 @@ export function StatusBar() {
   const toggleLog = useAppStore((s) => s.toggleLog);
   const tree = useProjectStore((s) => s.tree);
   const hasMain = !!tree?.mainFile;
+  const env = useAppStore((s) => s.env);
 
   const running = compileStatus === "running";
   const statusText =
@@ -84,6 +86,24 @@ export function StatusBar() {
       >
         引擎{" "}
         <span className="engine-chip">{tree ? engineLabel(tree.engine) : "—"}</span>
+      </button>
+
+      {/* M0-15a：TeX 环境 chip（点击打开环境引导） */}
+      <span className="divider" />
+      <button
+        type="button"
+        className="sbtn"
+        title={
+          env === null
+            ? "尚未检测 TeX 环境 · 点击检测"
+            : env.found
+              ? `${env.distribution ?? "TeX"}${env.version ? ` · ${env.version}` : ""} · 点击查看详情`
+              : "未检测到 TeX 发行版 · 点击打开环境引导"
+        }
+        onClick={() => void openEnvGuide()}
+      >
+        <Icon name="tex" />
+        {env === null ? "TeX 未检测" : env.found ? env.distribution ?? "TeX" : "无 TeX"}
       </button>
 
       {/* 右侧：光标 / 语言 / 文件 / 编码 / 换行 */}

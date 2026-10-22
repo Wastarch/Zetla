@@ -45,9 +45,9 @@ export interface CompileProgress {
 export interface TexDistInfo {
   /** 是否检测到可用发行版 */
   found: boolean;
-  /** 发行版名称：MiKTeX / TeX Live / ... */
-  distribution?: string;
-  version?: string;
+  /** 发行版名称：MiKTeX / TeX Live / None / Unknown（未找到时为 null） */
+  distribution?: string | null;
+  version?: string | null;
   /** 可用引擎列表：xelatex / pdflatex / latexmk ... */
   engines: string[];
   /** 推荐引擎（默认 xelatex） */

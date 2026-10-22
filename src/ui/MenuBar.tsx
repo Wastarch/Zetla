@@ -12,6 +12,7 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { useAppStore } from "@/core/store";
 import { useProjectStore, notify } from "@/project/useProject";
 import { cancelCompile, startCompile } from "@/compile/useCompile";
+import { openEnvGuide } from "@/env/useEnvCheck";
 
 /** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
 interface MenuItemDef {
@@ -259,6 +260,11 @@ export function MenuBar() {
     {
       label: "帮助",
       items: [
+        {
+          label: "TeX 环境检测…",
+          hint: "检测 TeX 发行版 / 打开环境引导",
+          onClick: () => void openEnvGuide(),
+        },
         { label: "编译快捷键速查", enabled: false, hint: "M1" },
         {
           label: "查看日志文件",

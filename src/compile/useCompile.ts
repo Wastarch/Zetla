@@ -8,6 +8,7 @@ import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { base, notify, useProjectStore } from "@/project/useProject";
+import { ensureEnv } from "@/env/useEnvCheck";
 import type { CompileProgress, CompileResult } from "@/types";
 
 /** 引擎显示名（状态栏 chip 用真实引擎） */
@@ -37,6 +38,9 @@ export async function startCompile(): Promise<void> {
     notify("未识别主文件，请在 .ltex/config.json 指定 mainFile", "err");
     return;
   }
+
+  // M0-15a：编译前 TeX 环境预检（未检测到 → 弹引导并拦截；检测失败不拦截）
+  if (!(await ensureEnv())) return;
 
   // M0-9b：编译前先把脏缓冲落盘，避免编译磁盘上的旧内容
   // M0-14a：受偏好设置「编译前自动保存」控制；关闭时仍可编译，但提示使用的是磁盘旧内容

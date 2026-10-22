@@ -2429,3 +2429,350 @@ body.col-resizing {
   font-size: 11px;
   margin: 0;
 }
+
+/* ============================================================
+   TeX 环境引导面板（M0-15a）
+   独立于 .modal.settings 的左右分栏：此处是单列流式布局
+   ============================================================ */
+.modal.env-guide {
+  width: min(700px, 92vw);
+}
+
+.modal.env-guide .modal-body {
+  padding: 16px 18px 18px;
+}
+
+/* 检测状态卡：左强调边 + 轻量底色（warn / ok / checking） */
+.env-status {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  background: color-mix(in srgb, var(--warn) 8%, var(--bg-3));
+}
+
+.env-status.ok {
+  border-left-color: var(--ok);
+  background: var(--bg-3);
+  background: color-mix(in srgb, var(--ok) 8%, var(--bg-3));
+}
+
+.env-status.checking {
+  border-left-color: var(--accent);
+  background: var(--bg-3);
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg-3));
+}
+
+.env-status-icon {
+  margin-top: 1px;
+  color: var(--warn);
+}
+
+.env-status.ok .env-status-icon {
+  color: var(--ok);
+}
+
+.env-status.checking .env-status-icon {
+  color: var(--accent);
+}
+
+.env-status-icon.spin {
+  animation: env-spin 1s linear infinite;
+}
+
+@keyframes env-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.env-status-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.env-status-body b {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--txt);
+}
+
+.env-status-body > span {
+  font-size: 11.5px;
+  line-height: 1.65;
+  color: var(--txt-2);
+}
+
+/* 已找到时列出引擎 */
+.env-engines {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
+}
+
+.env-engines-label {
+  margin-right: 2px;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--txt-3);
+}
+
+.env-chip {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+/* dev 调试：模拟未检测标记 */
+.env-debug-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border: 1px dashed var(--warn);
+  border-radius: 3px;
+  color: var(--warn);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  vertical-align: 1px;
+}
+
+/* 分区 */
+.env-section {
+  margin-top: 18px;
+}
+
+.env-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.env-section-head h4 {
+  font-family: var(--font-serif);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--txt);
+}
+
+.env-section-note {
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.env-badge {
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* 自动安装（M0-15b 接通前：整块置灰按钮 + tooltip） */
+.env-auto {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+}
+
+.env-auto-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.env-auto-text b {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--txt);
+}
+
+.env-auto-text span {
+  font-size: 10.8px;
+  line-height: 1.55;
+  color: var(--txt-3);
+}
+
+.env-auto-btn {
+  flex: none;
+  min-width: 84px;
+}
+
+/* 手动安装：双列卡片 */
+.env-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.env-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 13px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  transition: border-color 0.16s;
+}
+
+.env-card:hover {
+  border-color: var(--txt-3);
+}
+
+.env-card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.env-card-text b {
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--txt);
+}
+
+.env-card-text span {
+  font-size: 10.8px;
+  line-height: 1.6;
+  color: var(--txt-3);
+}
+
+.env-card-btn {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font-size: 11px;
+}
+
+/* 已装好但未被识别 */
+.env-hint-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding: 11px 14px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+}
+
+.env-hint-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.env-hint-text b {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--txt);
+}
+
+.env-hint-text span {
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--txt-3);
+}
+
+/* footer */
+.env-foot-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--txt-3);
+}
+
+.env-foot-actions {
+  display: flex;
+  flex: none;
+  gap: 9px;
+  margin-left: auto;
+}
+
+.env-foot-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+/* dev 调试按钮：虚线弱化，激活时高亮（release 构建不渲染） */
+.env-debug-btn {
+  padding: 0 11px;
+  border-style: dashed;
+  color: var(--txt-3);
+  font-size: 11px;
+}
+
+.env-debug-btn:hover {
+  border-style: solid;
+}
+
+.env-debug-btn.on {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* 窄窗口：卡片降单列，footer 上下堆叠 */
+@media (max-width: 620px) {
+  .env-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .env-auto,
+  .env-hint-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .env-auto-btn {
+    align-self: flex-start;
+  }
+
+  .modal.env-guide .modal-foot {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .env-foot-hint {
+    flex-basis: 100%;
+  }
+
+  .env-foot-actions {
+    margin-left: 0;
+  }
+}
