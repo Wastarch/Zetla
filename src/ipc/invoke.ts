@@ -11,6 +11,7 @@ import type {
   TemplateMeta,
   TexDistInfo,
   TexError,
+  TexInstallResult,
   WriteOptions,
 } from "@/types";
 
@@ -29,6 +30,13 @@ export const compileApi = {
   cancelCompile: () => call<void>("cancel_compile"),
   /** M0-11：解析 .log → 结构化错误（编译结果已内联 errors，此入口供 M0-12 复用） */
   parseTexLog: (logPath: string) => call<TexError[]>("parse_tex_log", { logPath }),
+  /** M0-15b/c：开始自动安装 TeX Live（立即返回；进度/结果走 tex_install_* 事件） */
+  installTex: (distro: string, installDir: string | null, scheme: string | null) =>
+    call<void>("install_tex", { distro, installDir, scheme }),
+  /** M0-15b/c：取消自动安装（杀安装器进程树 / 中断下载） */
+  cancelTexInstall: () => call<void>("cancel_tex_install"),
+  /** M0-15b/c：接管已有 TeX Live（校验引擎并写 config/台账/标记） */
+  adoptTexInstall: (root: string) => call<TexInstallResult>("adopt_tex_install", { root }),
 };
 
 // ── 模板 ──────────────────────────────────────────────────

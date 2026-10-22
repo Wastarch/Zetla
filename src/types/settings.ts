@@ -53,11 +53,15 @@ export interface AppSettings {
   };
   /** M0-15a：TeX 代装记录（Zetla 自动安装时写入；distro=null 时目录为手动指定） */
   tex: {
-    /** miktex / texlive；null=没有代装记录 */
-    distro: "miktex" | "texlive" | null;
+    /** texlive；null=没有代装记录 */
+    distro: "texlive" | null;
     installDir: string | null;
     /** 引擎可执行目录（编译时优先注入 PATH；null=未指定） */
     engineBinDir: string | null;
+  };
+  /** @deprecated M0-15b/c：TeX Live 自带 Perl，此字段保留仅为兼容旧配置 */
+  perl: {
+    installDir: string | null;
   };
 }
 
@@ -73,6 +77,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   layout: { sidebarVisible: true, sidebarWidth: 258, previewVisible: true, previewRatio: 0.5 },
   general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true },
   tex: { distro: null, installDir: null, engineBinDir: null },
+  perl: { installDir: null },
 };
 
 /** 字体族 → CSS font-family 栈（应用到 --editor-ff，仅影响编辑器代码区） */

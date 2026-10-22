@@ -3,7 +3,7 @@
 ; Non-commercial use only
 
 #define MyAppName "Zetla"
-#define MyAppVersion "0.0.1"
+#define MyAppVersion "0.1.1"
 #define MyAppPublisher "Max"
 #define MyAppExeName "zetla.exe"
 
@@ -31,7 +31,7 @@ AllowNoIcons=yes
 ;PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=E:\Project\Zetla\build\compiler output folder
-OutputBaseFilename=Zetla_0.1.0_x64-setup
+OutputBaseFilename=Zetla_0.1.1_x64-setup
 SetupIconFile=E:\Project\Zetla\src-tauri\icons\icon.ico
 SolidCompression=yes
 WizardStyle=modern

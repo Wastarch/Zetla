@@ -2776,3 +2776,448 @@ body.col-resizing {
     margin-left: 0;
   }
 }
+
+/* ============================================================
+   TeX 自动安装向导（M0-15b）
+   检测 → 选择发行版/目录 → 进度 → 完成
+   ============================================================ */
+.modal.env-setup {
+  width: min(660px, 92vw);
+}
+
+.modal.env-setup .modal-body {
+  padding: 16px 18px 18px;
+}
+
+/* 四步指示 */
+.setup-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.setup-step {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: var(--txt-3);
+  font-size: 11px;
+  transition: color 0.16s;
+}
+
+.setup-step-dot {
+  flex: none;
+  width: 19px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--txt-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+}
+
+.setup-step.on {
+  color: var(--txt);
+}
+
+.setup-step.on .setup-step-dot {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.setup-step.done {
+  color: var(--txt-2);
+}
+
+.setup-step.done .setup-step-dot {
+  border-color: var(--ok);
+  background: var(--ok);
+  color: #fff;
+}
+
+.setup-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.setup-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  color: var(--txt-3);
+  font-size: 10.8px;
+  line-height: 1.65;
+}
+
+.setup-note .ic {
+  flex: none;
+  margin-top: 1px;
+}
+
+.setup-section-label {
+  margin: 2px 0 -4px;
+  color: var(--txt-3);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* 发行版卡片 */
+.setup-distros {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.setup-distro {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.setup-distro:hover:not(:disabled) {
+  border-color: var(--txt-3);
+}
+
+.setup-distro.on {
+  border-color: var(--accent);
+  background: var(--bg-3);
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg-3));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.setup-distro.off {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.setup-distro-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.setup-distro-head b {
+  color: var(--txt);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.setup-distro-desc {
+  color: var(--txt-2);
+  font-size: 10.8px;
+  line-height: 1.6;
+}
+
+.setup-distro-meta {
+  color: var(--txt-3);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+}
+
+.env-badge.muted {
+  background: var(--bg-4);
+  color: var(--txt-3);
+}
+
+/* 安装目录 */
+.setup-dir {
+  display: flex;
+  gap: 8px;
+}
+
+.setup-dir .entry-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+}
+
+.setup-dir .btn {
+  flex: none;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.setup-help {
+  margin-top: -6px;
+  color: var(--txt-3);
+  font-size: 10.5px;
+  line-height: 1.65;
+}
+
+.setup-help code {
+  color: var(--txt-2);
+  font-family: var(--font-mono);
+}
+
+.setup-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-color: color-mix(in srgb, var(--err) 35%, var(--line));
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--err) 8%, transparent);
+  color: var(--err);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.setup-error .ic {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* 非致命警告：MiKTeX 成功但 Perl 未安装 */
+.setup-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--line));
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  color: var(--warn);
+  font-size: 11px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.setup-warning .ic {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* 安装进度 */
+.setup-progress-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.setup-progress-text {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.setup-progress-text b {
+  color: var(--txt);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.setup-progress-text span {
+  color: var(--txt-3);
+  font-size: 10.8px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.setup-pct {
+  flex: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 26px;
+  line-height: 1;
+}
+
+.setup-pct small {
+  margin-left: 2px;
+  color: var(--txt-3);
+  font-size: 11px;
+}
+
+.setup-track {
+  height: 6px;
+  border-radius: 99px;
+  background: var(--bg-4);
+  overflow: hidden;
+}
+
+.setup-track i {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.setup-track.indet i {
+  width: 30%;
+  animation: setup-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes setup-slide {
+  0% {
+    margin-left: -32%;
+  }
+  100% {
+    margin-left: 102%;
+  }
+}
+
+.setup-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--txt-3);
+  font-size: 10px;
+}
+
+/* 完成 / 失败 / 取消 */
+.setup-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 22px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-3);
+  text-align: center;
+}
+
+.setup-result.ok {
+  border-color: color-mix(in srgb, var(--ok) 35%, var(--line));
+  background: color-mix(in srgb, var(--ok) 6%, var(--bg-3));
+}
+
+.setup-result.err {
+  border-color: color-mix(in srgb, var(--err) 35%, var(--line));
+  background: color-mix(in srgb, var(--err) 6%, var(--bg-3));
+}
+
+.setup-result.warn {
+  border-color: color-mix(in srgb, var(--warn) 35%, var(--line));
+  background: color-mix(in srgb, var(--warn) 6%, var(--bg-3));
+}
+
+.setup-result-icon {
+  color: var(--txt-3);
+}
+
+.setup-result.ok .setup-result-icon {
+  color: var(--ok);
+}
+
+.setup-result.err .setup-result-icon {
+  color: var(--err);
+}
+
+.setup-result.warn .setup-result-icon {
+  color: var(--warn);
+}
+
+.setup-result > b {
+  color: var(--txt);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.setup-result > span {
+  max-width: 480px;
+  color: var(--txt-2);
+  font-size: 11px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.setup-kv {
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  text-align: left;
+}
+
+.setup-kv > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.setup-kv em {
+  flex: none;
+  width: 60px;
+  color: var(--txt-3);
+  font-style: normal;
+  font-size: 10px;
+}
+
+.setup-kv code {
+  color: var(--txt-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  overflow-wrap: anywhere;
+}
+
+.setup-foot-hint {
+  flex: 1;
+  min-width: 0;
+  color: var(--txt-3);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+@media (max-width: 620px) {
+  .setup-distros {
+    grid-template-columns: 1fr;
+  }
+
+  .setup-dir {
+    flex-direction: column;
+  }
+
+  .setup-dir .btn {
+    align-self: flex-start;
+  }
+
+  .modal.env-setup .modal-foot {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .setup-foot-hint {
+    flex-basis: 100%;
+  }
+
+  .setup-result {
+    padding: 18px 14px;
+  }
+}

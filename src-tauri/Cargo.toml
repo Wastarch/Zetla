@@ -1,6 +1,6 @@
 [package]
 name = "zetla"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2024"
@@ -30,8 +30,12 @@ encoding_rs = "0.8"
 chardetng = "0.1"
 which = "7"
 # M0-9：异步 spawn 编译子进程、逐行读 stdout/stderr、取消
-tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros", "rt"] }
+tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macros", "rt", "fs"] }
 notify = "8.2.0"
+# M0-15b：下载 TeX Live 安装器（流式写盘 + 进度）；Windows 走系统 TLS / 系统代理
+reqwest = { version = "0.13", default-features = false, features = ["native-tls", "system-proxy"] }
+# M0-15b：解压 install-tl.zip（内含 TeX Live 专用 Perl）
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 # M0-15a：读注册表里的用户/系统 PATH（检测合并用，只读不改）
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"

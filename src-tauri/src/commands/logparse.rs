@@ -267,7 +267,9 @@ pub fn parse_log_text(text: &str, base_dir: &Path, default_file: &Path) -> Vec<T
                     Some(n) => format!("{raw} ({n})"),
                     None => raw,
                 };
-                let file = current_file.clone().unwrap_or_else(|| fallback_file.clone());
+                let file = current_file
+                    .clone()
+                    .unwrap_or_else(|| fallback_file.clone());
                 push_error(&mut errors, &mut seen, file, line_no, raw, "error");
             }
             i += 1;
@@ -278,7 +280,9 @@ pub fn parse_log_text(text: &str, base_dir: &Path, default_file: &Path) -> Vec<T
         let trimmed = line.trim_start();
         if trimmed.starts_with("LaTeX Warning:") && trimmed.to_lowercase().contains("undefined") {
             let line_no = parse_input_line(trimmed).unwrap_or(0);
-            let file = current_file.clone().unwrap_or_else(|| fallback_file.clone());
+            let file = current_file
+                .clone()
+                .unwrap_or_else(|| fallback_file.clone());
             push_error(
                 &mut errors,
                 &mut seen,
@@ -334,7 +338,11 @@ fn push_error(
         return;
     }
     let (readable, fix, hint) = match match_rule(&raw) {
-        Some(r) => (r.readable.to_string(), Some(r.fix.to_string()), Some(r.hint.to_string())),
+        Some(r) => (
+            r.readable.to_string(),
+            Some(r.fix.to_string()),
+            Some(r.hint.to_string()),
+        ),
         None => (raw.clone(), None, None),
     };
     errors.push(TexError {

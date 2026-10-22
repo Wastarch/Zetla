@@ -1,20 +1,14 @@
-// M0-15a · TeX 环境引导面板（初次使用未检测到 TeX 时自动弹出；帮助菜单 / 状态栏可手动打开）
-// 本切片提供：检测结果展示 + 手动下载引导（打开官网）+ 手动指定引擎目录；
-// 「自动安装」M0-15b 接通（先按硬约定置灰 + tooltip 标注接通切片）
+// M0-15a · TeX 环境引导面板（启动未检测到 TeX 时自动弹出；帮助菜单 / 状态栏可手动打开）
+// 本切片提供：检测结果展示 + 自动安装入口（M0-15b/c 向导）+ 手动下载引导 + 手动指定引擎目录
 import { useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Icon } from "@/ui/Icon";
 import { useAppStore } from "@/core/store";
-import { pickEngineDir, runEnvCheck } from "@/env/useEnvCheck";
+import { markEnvGuideDismissed, pickEngineDir, runEnvCheck } from "@/env/useEnvCheck";
 import { notify } from "@/project/useProject";
 
-/** 手动下载入口（M0-15b 起由「自动安装」替代，但保留作为兜底） */
+/** 手动下载入口（M0-15b/c 起由「自动安装」替代，但保留作为兜底） */
 const MANUAL_LINKS: { label: string; url: string; desc: string }[] = [
-  {
-    label: "MiKTeX",
-    url: "https://miktex.org/download",
-    desc: "轻量（~250MB），缺宏包时自动下载，推荐新手",
-  },
   {
     label: "TeX Live",
     url: "https://tug.org/texlive/",
@@ -24,7 +18,10 @@ const MANUAL_LINKS: { label: string; url: string; desc: string }[] = [
 
 export function EnvGuideDialog() {
   const open = useAppStore((s) => s.envGuideOpen);
-  const close = () => useAppStore.getState().setEnvGuideOpen(false);
+  const close = () => {
+    markEnvGuideDismissed();
+    useAppStore.getState().setEnvGuideOpen(false);
+  };
   const env = useAppStore((s) => s.env);
   const debugMock = useAppStore((s) => s.envDebugMock);
   const [checking, setChecking] = useState(false);
@@ -41,6 +38,13 @@ export function EnvGuideDialog() {
   const toggleDebugMock = async () => {
     useAppStore.getState().setEnvDebugMock(!debugMock);
     await recheck();
+  };
+
+  /** 打开自动安装向导（引导面板退到后面，避免两层弹窗叠加；本次会话不再自动弹引导） */
+  const openSetup = () => {
+    markEnvGuideDismissed();
+    useAppStore.getState().setEnvGuideOpen(false);
+    useAppStore.getState().setEnvSetupOpen(true);
   };
 
   const found = env?.found === true;
@@ -104,7 +108,7 @@ export function EnvGuideDialog() {
                     {debugMock && <span className="env-debug-tag">DEBUG 模拟</span>}
                   </b>
                   <span>
-                    Zetla 需要 TeX（xelatex / latexmk）才能编译 PDF。可自动安装，
+                    Zetla 需要 TeX（xelatex / latexmk）才能编译 PDF。可自动安装 TeX Live，
                     或按下方指引手动安装后重新检测。
                   </span>
                 </>
@@ -114,24 +118,27 @@ export function EnvGuideDialog() {
 
           {!found && !checking && (
             <>
-              {/* 自动安装：M0-15b 接通，当前按约定置灰 */}
+              {/* 自动安装：M0-15b/c 向导（下载 + 安装 + 校验） */}
               <section className="env-section">
                 <div className="env-section-head">
                   <h4>自动安装</h4>
-                  <span className="env-badge">M0-15b 接通</span>
+                  <span className="env-badge">推荐</span>
                 </div>
-                <div className="env-auto" title="自动安装 M0-15b 接通">
+                <div className="env-auto">
                   <div className="env-auto-text">
-                    <b>Zetla 自动安装 MiKTeX</b>
-                    <span>下载并安装到 Zetla 独立目录，不污染系统 PATH。</span>
+                    <b>Zetla 自动安装 TeX Live</b>
+                    <span>
+                      下载并安装到 Zetla 独立目录，不污染系统 PATH；装完自动校验 xelatex。
+                      TeX Live 自带 Perl，无需额外安装。
+                    </span>
                   </div>
-                  <button type="button" className="btn primary env-auto-btn" disabled>
-                    安装…
+                  <button type="button" className="btn primary env-auto-btn" onClick={openSetup}>
+                    开始安装…
                   </button>
                 </div>
               </section>
 
-              {/* 手动安装：两个发行版并排 */}
+              {/* 手动安装 */}
               <section className="env-section">
                 <div className="env-section-head">
                   <h4>手动安装</h4>
@@ -163,10 +170,10 @@ export function EnvGuideDialog() {
               <div className="env-hint-row">
                 <div className="env-hint-text">
                   <b>已装好但未被识别？</b>
-                  <span>手动指定 xelatex.exe 所在目录（写入 Zetla 配置，不改系统 PATH）。</span>
+                  <span>手动指定引擎目录或 TeX 安装根目录（写入 Zetla 配置，不改系统 PATH）。</span>
                 </div>
                 <button type="button" className="btn" onClick={() => void pickEngineDir()}>
-                  指定引擎目录…
+                  指定/接管已有安装…
                 </button>
               </div>
             </>
@@ -189,6 +196,12 @@ export function EnvGuideDialog() {
               >
                 <Icon name="alert" size={13} />
                 {debugMock ? "恢复检测" : "模拟未检测"}
+              </button>
+            )}
+            {found && (
+              <button type="button" className="btn" onClick={() => void pickEngineDir()}>
+                <Icon name="folder" size={13} />
+                接管已有安装…
               </button>
             )}
             <button type="button" className="btn" disabled={checking} onClick={() => void recheck()}>

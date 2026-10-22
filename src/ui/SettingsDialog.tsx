@@ -478,7 +478,7 @@ export function SettingsDialog() {
                   <dt>运行环境</dt>
                   <dd>Windows 10 / 11 · WebView2 Runtime</dd>
                   <dt>编译依赖</dt>
-                  <dd>TeX Live / MiKTeX · latexmk · xelatex</dd>
+                  <dd>TeX Live（自带 Perl）· latexmk · xelatex</dd>
                   <dt>渲染引擎</dt>
                   <dd>pdf.js · CodeMirror 6 (stex)</dd>
                   <dt>配置文件</dt>

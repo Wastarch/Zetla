@@ -4,7 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/core/store";
 import { useSettingsEffects, useSettingsStore } from "@/core/settings";
-import { runEnvCheck } from "@/env/useEnvCheck";
+import { checkEnvOnStartup } from "@/env/useEnvCheck";
 import { EditorWorkspace } from "@/editor/EditorWorkspace";
 import { Sidebar } from "@/project/Sidebar";
 import { CtxMenu } from "@/project/CtxMenu";
@@ -15,6 +15,7 @@ import { StatusBar } from "@/ui/StatusBar";
 import { LogPanel } from "@/ui/LogPanel";
 import { SettingsDialog } from "@/ui/SettingsDialog";
 import { EnvGuideDialog } from "@/ui/EnvGuideDialog";
+import { EnvSetupWizard } from "@/env/EnvSetupWizard";
 import { PdfPreview } from "@/preview/PdfPreview";
 import { useCompileBridge } from "@/compile/useCompile";
 import { useProjectWatch } from "@/project/useProjectWatch";
@@ -43,9 +44,9 @@ function App() {
   useEffect(() => {
     void useSettingsStore.getState().load();
   }, []);
-  // M0-15a：启动后台检测一次 TeX 环境（结果进 store，失败不弹窗）
+  // M0-15a/15b：启动检测 TeX 环境；未找到时自动打开引导（每次启动一次，检测失败不弹窗）
   useEffect(() => {
-    void runEnvCheck();
+    void checkEnvOnStartup();
   }, []);
   useSettingsEffects();
   useAutosave();
@@ -152,6 +153,8 @@ function App() {
       {settingsPane !== null && <SettingsDialog />}
       {/* M0-15a：TeX 环境引导（放在设置页之后，同开时叠在其上层） */}
       <EnvGuideDialog />
+      {/* M0-15b：TeX 自动安装向导 */}
+      <EnvSetupWizard />
     </div>
   );
 }

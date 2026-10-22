@@ -9,7 +9,13 @@ pub fn run() {
         // M0-4：文件对话框（打开 .tex / 选项目文件夹）
         .plugin(tauri_plugin_dialog::init())
         // M0-9：编译任务状态（单并发 + 取消句柄）
-        .manage(std::sync::Arc::new(commands::compile::CompileState::default()))
+        .manage(std::sync::Arc::new(
+            commands::compile::CompileState::default(),
+        ))
+        // M0-15b：TeX 自动安装状态（单并发 + 取消句柄）
+        .manage(std::sync::Arc::new(
+            commands::envsetup::TexInstallState::default(),
+        ))
         // M0-9a：项目目录监听（资源树自动刷新）
         .manage(std::sync::Arc::new(commands::watch::WatchState::default()))
         .invoke_handler(tauri::generate_handler![
@@ -24,6 +30,10 @@ pub fn run() {
             commands::fsdoc::revert_file,
             // 编译引擎（M0-3a）
             commands::compile::detect_tex_distribution,
+            // TeX 自动安装（M0-15b/c）
+            commands::envsetup::install_tex,
+            commands::envsetup::cancel_tex_install,
+            commands::envsetup::adopt_tex_install,
             // 多遍编译（M0-9）
             commands::compile::compile_project,
             commands::compile::cancel_compile,

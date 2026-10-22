@@ -29,19 +29,12 @@ pub struct TexDistInfo {
     pub engines: Vec<String>,
     /// 推荐引擎（默认 xelatex）
     pub recommended: String,
+    /// M0-15b/c：Perl 运行时（TeX Live 自带）
+    pub perl: crate::commands::perl::PerlInfo,
 }
 
 /// 需探测的引擎（按优先级）
 const ENGINE_CANDIDATES: [&str; 4] = ["xelatex", "pdflatex", "lualatex", "latexmk"];
-
-/// Windows 下额外检查的 MiKTeX 安装目录（PATH 之外的兜底）
-#[cfg(windows)]
-const MIKTEX_DIRS: [&str; 4] = [
-    r"C:\Program Files\MiKTeX 25.1\miktex\bin\x64",
-    r"C:\Program Files\MiKTeX 25\miktex\bin\x64",
-    r"C:\Program Files\MiKTeX 24.4\miktex\bin\x64",
-    r"C:\Program Files\MiKTeX\miktex\bin\x64",
-];
 
 /// 引擎可执行文件名（Windows 带 .exe）
 fn engine_exe_name(name: &str) -> String {
@@ -54,7 +47,7 @@ fn engine_exe_name(name: &str) -> String {
 
 /// 在给定目录列表中找引擎；全部落空才回退进程 PATH（which）
 ///
-/// 目录优先级由调用方保证：受管目录（config.tex）→ 注册表 PATH → MiKTeX 兜底目录 → 进程 PATH。
+/// 目录优先级由调用方保证：受管目录（config.tex）→ 注册表 PATH → 进程 PATH。
 /// 这样「Zetla 代装完成 / 用户手动装而进程 PATH 未刷新」时，无需重启就能检测到。
 fn find_engine(name: &str, search_dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
     let exe = engine_exe_name(name);
@@ -89,9 +82,9 @@ pub(crate) fn split_path_list(s: &str) -> Vec<std::path::PathBuf> {
 
 /// Windows：读注册表里的用户 / 系统 PATH（只读不改；进程 PATH 未刷新时用）
 #[cfg(windows)]
-fn registry_path_dirs() -> Vec<std::path::PathBuf> {
-    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+pub(crate) fn registry_path_dirs() -> Vec<std::path::PathBuf> {
     use winreg::RegKey;
+    use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
     let mut out = Vec::new();
     let read = |root: &RegKey, sub: &str| -> Option<String> {
         root.open_subkey(sub)
@@ -112,62 +105,62 @@ fn registry_path_dirs() -> Vec<std::path::PathBuf> {
 }
 
 #[cfg(not(windows))]
-fn registry_path_dirs() -> Vec<std::path::PathBuf> {
+pub(crate) fn registry_path_dirs() -> Vec<std::path::PathBuf> {
     Vec::new()
 }
 
-/// 引擎搜索目录（优先级序）：受管目录（config.tex）→ 注册表 PATH → MiKTeX 兜底目录
+/// 引擎搜索目录（优先级序）：受管目录（config.tex）→ 注册表 PATH → 进程 PATH
 fn engine_search_dirs(app: Option<&tauri::AppHandle>) -> Vec<std::path::PathBuf> {
     let mut dirs: Vec<std::path::PathBuf> = Vec::new();
     if let Some(app) = app {
         let path = crate::commands::config::config_path(app).unwrap_or_default();
         let cfg = crate::commands::config::read_config(&path);
         if let Some(bin) = &cfg.tex.engine_bin_dir {
-            dirs.push(std::path::PathBuf::from(bin));
+            let base = std::path::PathBuf::from(bin);
+            dirs.push(base.clone());
+            // 兼容用户手动选择 TeX 安装根目录（而不是 bin\windows）的情况
+            for sub in [r"bin\windows", r"bin\x64", r"bin"] {
+                dirs.push(base.join(sub));
+            }
         }
         if let Some(install) = &cfg.tex.install_dir {
-            // engineBinDir 缺省时扫 install_dir 的常见 bin 布局
-            for sub in [
-                r"miktex\bin\x64",
-                r"miktex\bin",
-                r"bin\windows",
-                r"bin\x64",
-                r"bin",
-                "",
-            ] {
+            // engineBinDir 缺省时扫 install_dir 的常见 bin 布局（TeX Live 优先）
+            for sub in [r"bin\windows", r"bin\x64", r"bin", ""] {
                 let candidate = std::path::PathBuf::from(install).join(sub);
                 dirs.push(candidate);
             }
+            // TeX Live 自带 Perl（latexmk 需要，同时注入子进程 PATH）
+            dirs.push(
+                std::path::PathBuf::from(install)
+                    .join("tlpkg")
+                    .join("tlperl")
+                    .join("bin"),
+            );
         }
     }
     dirs.extend(registry_path_dirs());
-    #[cfg(windows)]
-    for d in MIKTEX_DIRS {
-        dirs.push(std::path::PathBuf::from(d));
-    }
     dirs.dedup();
-    dirs.into_iter()
-        .filter(|d| d.is_dir())
-        .collect()
+    dirs.into_iter().filter(|d| d.is_dir()).collect()
 }
 
 /// 探测 TeX 发行版与引擎（Tauri command）
 #[tauri::command]
 pub fn detect_tex_distribution(app: tauri::AppHandle) -> TexDistInfo {
     // 冒烟逃生口（仅 debug 构建生效）：ZETLA_FORCE_NO_TEX=1 模拟未安装
-    if cfg!(debug_assertions)
-        && std::env::var("ZETLA_FORCE_NO_TEX").ok().as_deref() == Some("1")
-    {
+    if cfg!(debug_assertions) && std::env::var("ZETLA_FORCE_NO_TEX").ok().as_deref() == Some("1") {
         return TexDistInfo {
             found: false,
             distribution: "None".to_string(),
             version: None,
             engines: Vec::new(),
             recommended: "xelatex".to_string(),
+            perl: crate::commands::perl::PerlInfo::missing(),
         };
     }
     let search_dirs = engine_search_dirs(Some(&app));
-    detect_tex_distribution_in(&search_dirs)
+    let mut info = detect_tex_distribution_in(&search_dirs);
+    info.perl = crate::commands::perl::detect_perl(Some(&app));
+    info
 }
 
 /// 检测核心（纯函数；app 相关的搜索目录由调用方传入）
@@ -188,12 +181,15 @@ fn probe_version(exe: &std::path::Path) -> Option<String> {
 /// 只留版本号本身（发行版名由 UI 拼接，避免「TeX Live · TeX Live 2025」重复））
 /// `XeTeX 3.141592653-2.6-0.999996 (TeX Live 2025)` → "2025"
 /// `XeTeX 3.141592653-2.6-0.999996 (MiKTeX 25.1)` → "25.1"
-fn parse_version_line(line: &str) -> Option<String> {
+pub(crate) fn parse_version_line(line: &str) -> Option<String> {
     for (mark, prefix) in [("(TeX Live ", "TeX Live "), ("(MiKTeX ", "MiKTeX ")] {
         if let Some(i) = line.find(mark) {
             let t = &line[i + 1..];
             let end = t.find(')').unwrap_or(t.len());
-            let v = t[..end].trim().strip_prefix(prefix).unwrap_or(t[..end].trim());
+            let v = t[..end]
+                .trim()
+                .strip_prefix(prefix)
+                .unwrap_or(t[..end].trim());
             if !v.is_empty() {
                 return Some(v.to_string());
             }
@@ -202,13 +198,16 @@ fn parse_version_line(line: &str) -> Option<String> {
     // 兜底：取首个连续数字段到第一个括号前（旧逻辑，"MiKTeX-mt 25.1" 等）
     let start = line.find(char::is_numeric)?;
     let tail = &line[start..];
-    let end = tail.find("(TeX").or_else(|| tail.find('(')).unwrap_or(tail.len());
+    let end = tail
+        .find("(TeX")
+        .or_else(|| tail.find('('))
+        .unwrap_or(tail.len());
     Some(tail[..end].trim().to_string())
 }
 
 /// Windows：子进程不弹控制台窗口；其他平台恒等返回
 #[cfg(windows)]
-trait HideConsole {
+pub(crate) trait HideConsole {
     fn hide_console(&mut self) -> &mut Self;
 }
 
@@ -223,7 +222,7 @@ impl HideConsole for std::process::Command {
 }
 
 #[cfg(not(windows))]
-trait HideConsole {
+pub(crate) trait HideConsole {
     fn hide_console(&mut self) -> &mut Self;
 }
 
@@ -277,6 +276,7 @@ fn detect_tex_distribution_in(search_dirs: &[std::path::PathBuf]) -> TexDistInfo
         version,
         engines,
         recommended: "xelatex".to_string(),
+        perl: crate::commands::perl::PerlInfo::missing(),
     }
 }
 
@@ -360,12 +360,12 @@ struct Job {
     root: PathBuf,
     main: PathBuf,
     engine: String,
-    /// 引擎搜索目录（受管/注册表/MiKTeX 兜底），find_engine 与子进程 PATH 注入共用
+    /// 引擎搜索目录（受管/注册表），find_engine 与子进程 PATH 注入共用
     search_dirs: Vec<PathBuf>,
 }
 
 /// 杀掉子进程树：latexmk 会再拉起 xelatex/perl，只 kill 父进程会留下孤儿进程
-fn kill_tree(child: &mut Child) {
+pub(crate) fn kill_tree(child: &mut Child) {
     #[cfg(windows)]
     {
         if let Some(pid) = child.id() {
@@ -463,7 +463,12 @@ pub fn cancel_compile(state: State<'_, Arc<CompileState>>) -> Result<(), String>
 }
 
 /// 执行完整编译流程，返回最终结果
-async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: Instant) -> CompileResult {
+async fn run_job(
+    app: &AppHandle,
+    st: &Arc<CompileState>,
+    job: &Job,
+    started: Instant,
+) -> CompileResult {
     // 产物与 main.tex 同目录（用户定稿：不设 -output-directory）
     let dir = job
         .main
@@ -492,7 +497,14 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
     let mut failed = false;
     let mut cancelled = false;
 
-    if let Some(lmk) = find_engine("latexmk", &job.search_dirs) {
+    // latexmk 是 Perl 脚本：没有可用 Perl 时不要硬跑，直接走引擎自带管线
+    let latexmk = find_engine("latexmk", &job.search_dirs);
+    // 没有 latexmk 就不必探测 Perl；只有准备走 latexmk 时才做 smoke
+    let perl_ok = latexmk.is_none()
+        || crate::commands::perl::find_working_perl_in(&job.search_dirs).is_some();
+    let use_latexmk = latexmk.is_some() && perl_ok;
+    if use_latexmk {
+        let lmk = latexmk.as_ref().expect("latexmk checked above");
         // 首选 latexmk：交叉引用 / 参考文献 / 多遍由它自己调度
         passes += 1;
         let args = vec![
@@ -502,8 +514,13 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
             "-file-line-error".to_string(),
             main_name.clone(),
         ];
-        emit_progress(app, "running", 0, format!("latexmk {}", latexmk_flag(&job.engine)));
-        match run_cmd(app, st, &lmk, &args, &dir, &job.search_dirs).await {
+        emit_progress(
+            app,
+            "running",
+            0,
+            format!("latexmk {}", latexmk_flag(&job.engine)),
+        );
+        match run_cmd(app, st, lmk, &args, &dir, &job.search_dirs).await {
             CmdOutcome::Ok => {}
             CmdOutcome::Failed => failed = true,
             CmdOutcome::Cancelled => cancelled = true,
@@ -513,13 +530,23 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
             }
         }
     } else if let Some(exe) = find_engine(&job.engine, &job.search_dirs) {
+        if latexmk.is_some() && !perl_ok {
+            emit_progress(
+                app,
+                "running",
+                0,
+                "未检测到可用 Perl，跳过 latexmk，改用直接引擎管线",
+            );
+        }
         // 兜底：引擎自带管线（第 1 遍 → biber（有 .bcf）→ 再两遍收敛）
-        let tex_args = |name: &str| vec![
-            "-synctex=1".to_string(),
-            "-interaction=nonstopmode".to_string(),
-            "-file-line-error".to_string(),
-            name.to_string(),
-        ];
+        let tex_args = |name: &str| {
+            vec![
+                "-synctex=1".to_string(),
+                "-interaction=nonstopmode".to_string(),
+                "-file-line-error".to_string(),
+                name.to_string(),
+            ]
+        };
 
         passes += 1;
         emit_progress(app, "running", 0, format!("{} · 第 1 遍", job.engine));
@@ -556,7 +583,12 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
                 break;
             }
             passes += 1;
-            emit_progress(app, "running", 0, format!("{} · 第 {} 遍", job.engine, i + 2));
+            emit_progress(
+                app,
+                "running",
+                0,
+                format!("{} · 第 {} 遍", job.engine, i + 2),
+            );
             match run_cmd(app, st, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
                 CmdOutcome::Ok => {}
                 CmdOutcome::Failed => failed = true,
@@ -603,7 +635,10 @@ async fn run_job(app: &AppHandle, st: &Arc<CompileState>, job: &Job, started: In
                 app,
                 "done",
                 100,
-                format!("产出 {}", pdf.file_name().unwrap_or_default().to_string_lossy()),
+                format!(
+                    "产出 {}",
+                    pdf.file_name().unwrap_or_default().to_string_lossy()
+                ),
             );
         } else {
             emit_progress(app, "done", 100, "未生成 PDF，请查看日志");
@@ -672,7 +707,9 @@ async fn run_cmd(
         .stderr(Stdio::piped());
     if !path_dirs.is_empty() {
         let mut joined: Vec<PathBuf> = path_dirs.to_vec();
-        joined.extend(std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()));
+        joined.extend(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        ));
         if let Ok(paths) = std::env::join_paths(&joined) {
             cmd.env("PATH", paths);
         }
@@ -756,7 +793,11 @@ async fn run_cmd(
             while let Ok(line) = rx.try_recv() {
                 forward_line(app, st, &line);
             }
-            return if ok { CmdOutcome::Ok } else { CmdOutcome::Failed };
+            return if ok {
+                CmdOutcome::Ok
+            } else {
+                CmdOutcome::Failed
+            };
         }
 
         tokio::time::sleep(Duration::from_millis(30)).await;

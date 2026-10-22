@@ -122,3 +122,7 @@ Setup password：设置密码，没见过安装软件需要密码的
 ## 打包文件
 
 打包文件在 `build` 文件夹下，打包文件名为 `Zetla.exe`
+
+
+
+http://localhost:51121/oauth-callback?state=eyJ2ZXJpZmllciI6InFwMGZVQlhBUm9YOVhXbndiQXgxSzRHQVUzWWxwZXRMM3VxbEJKaExUMU5uVGlMMTJTTVoxNzlGc21yRURTV2xtRWhkckJ1Mk5FamtQbVRReFFkb2dRIiwicHJvamVjdElkIjoiIn0&iss=https://accounts.google.com&code=4/0AXlqoi4wLnv9hSHJCDxtRLpVGMV3KXLNX7uvHCiMWDE4IS1WmLsHataGIHku7OW57ngTnA&scope=email%20profile%20https://www.googleapis.com/auth/cloud-platform%20https://www.googleapis.com/auth/userinfo.email%20https://www.googleapis.com/auth/userinfo.profile%20https://www.googleapis.com/auth/cclog%20https://www.googleapis.com/auth/experimentsandconfigs%20openid&authuser=1&prompt=consent

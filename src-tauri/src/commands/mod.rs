@@ -2,8 +2,10 @@
 pub mod compile;
 pub mod config;
 pub mod core;
+pub mod envsetup;
 pub mod fsdoc;
 pub mod logparse;
+pub mod perl;
 pub mod project;
 pub mod template;
 pub mod watch;

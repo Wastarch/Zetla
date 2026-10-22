@@ -43,6 +43,8 @@ pub struct AppConfig {
     pub general: GeneralConfig,
     /// TeX 代装记录（M0-15a）
     pub tex: TexConfig,
+    /// @deprecated Perl 代装记录（M0-15b/c：TeX Live 自带 Perl，保留为兼容旧配置）
+    pub perl: PerlConfig,
 }
 
 impl Default for AppConfig {
@@ -58,6 +60,7 @@ impl Default for AppConfig {
             layout: LayoutConfig::default(),
             general: GeneralConfig::default(),
             tex: TexConfig::default(),
+            perl: PerlConfig::default(),
         }
     }
 }
@@ -113,7 +116,7 @@ pub struct GeneralConfig {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct TexConfig {
-    /// 发行版：miktex / texlive；None=没有 Zetla 代装记录
+    /// 发行版：texlive；None=没有 Zetla 代装记录
     pub distro: Option<String>,
     /// TeX 安装根目录（台账/卸载器也读这个）
     pub install_dir: Option<String>,
@@ -122,7 +125,14 @@ pub struct TexConfig {
 }
 
 /// M0-15a：tex.distro 白名单
-pub const TEX_DISTROS: [&str; 2] = ["miktex", "texlive"];
+pub const TEX_DISTROS: [&str; 1] = ["texlive"];
+
+/// @deprecated M0-15b/c：TeX Live 自带 Perl，此结构体保留仅为兼容旧配置
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct PerlConfig {
+    pub install_dir: Option<String>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -221,7 +231,13 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     cfg.tex.distro = clean_opt_str(cfg.tex.distro);
     cfg.tex.install_dir = clean_opt_str(cfg.tex.install_dir);
     cfg.tex.engine_bin_dir = clean_opt_str(cfg.tex.engine_bin_dir);
-    if cfg.tex.distro.as_deref().map_or(false, |d| !TEX_DISTROS.contains(&d)) {
+    cfg.perl.install_dir = clean_opt_str(cfg.perl.install_dir);
+    if cfg
+        .tex
+        .distro
+        .as_deref()
+        .map_or(false, |d| !TEX_DISTROS.contains(&d))
+    {
         cfg.tex.distro = None;
         cfg.tex.install_dir = None;
         cfg.tex.engine_bin_dir = None;
@@ -232,7 +248,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
 
 /// Option<String> 去空白：空/全空白 → None
 fn clean_opt_str(s: Option<String>) -> Option<String> {
-    s.filter(|v| !v.trim().is_empty()).map(|v| v.trim().to_string())
+    s.filter(|v| !v.trim().is_empty())
+        .map(|v| v.trim().to_string())
 }
 
 /// 配置文件绝对路径（config_dir/Zetla/config.json）
@@ -306,10 +323,14 @@ mod tests {
         use std::sync::atomic::{AtomicU32, Ordering};
         static N: AtomicU32 = AtomicU32::new(0);
         let n = N.fetch_add(1, Ordering::SeqCst);
-        format!("{}-{}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis(), n)
+        format!(
+            "{}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+            n
+        )
     }
 
     #[test]
@@ -355,10 +376,11 @@ mod tests {
         cfg.general.restore_last_project = false;
         cfg.general.remember_window = false;
         cfg.general.restore_layout = false;
-        cfg.tex.distro = Some("miktex".to_string());
-        cfg.tex.install_dir = Some("C:\\Users\\u\\AppData\\Local\\Zetla\\tex\\miktex".to_string());
+        cfg.tex.distro = Some("texlive".to_string());
+        cfg.tex.install_dir = Some("C:\\Users\\u\\AppData\\Local\\Zetla\\tex\\texlive".to_string());
         cfg.tex.engine_bin_dir =
-            Some("C:\\Users\\u\\AppData\\Local\\Zetla\\tex\\miktex\\miktex\\bin\\x64".to_string());
+            Some("C:\\Users\\u\\AppData\\Local\\Zetla\\tex\\texlive\\bin\\windows".to_string());
+        cfg.perl.install_dir = Some("D:\\Zetla\\perl\\strawberry".to_string());
         write_config(&p, &cfg).unwrap();
         assert_eq!(read_config(&p), cfg);
         // 不留临时文件
@@ -387,6 +409,8 @@ mod tests {
         // M0-15a 字段
         assert!(text.contains("installDir"));
         assert!(text.contains("engineBinDir"));
+        // M0-15b 字段
+        assert!(text.contains("perl"));
         // snake_case 不应出现
         assert!(!text.contains("font_family"));
         assert!(!text.contains("interval_seconds"));
@@ -460,16 +484,19 @@ mod tests {
             "build": { "saveBeforeCompile": true },
             "pdf": { "defaultZoom": "fit-width" },
             "tex": {
-                "distro": "  miktex  ",
+                "distro": "  texlive  ",
                 "installDir": "  ",
-                "engineBinDir": "C:\\tex\\mi\\bin"
+                "engineBinDir": "C:\\tex\\tl\\bin\\windows"
             }
         });
         let parsed: AppConfig = serde_json::from_value(raw).unwrap();
         let got = normalize(parsed);
-        assert_eq!(got.tex.distro.as_deref(), Some("miktex"));
+        assert_eq!(got.tex.distro.as_deref(), Some("texlive"));
         assert_eq!(got.tex.install_dir, None);
-        assert_eq!(got.tex.engine_bin_dir.as_deref(), Some("C:\\tex\\mi\\bin"));
+        assert_eq!(
+            got.tex.engine_bin_dir.as_deref(),
+            Some("C:\\tex\\tl\\bin\\windows")
+        );
 
         // distro=null 但手动指定了引擎目录 → 目录保留（引导面板「手动指定引擎目录」）
         let raw = json!({
@@ -478,7 +505,7 @@ mod tests {
             "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
             "build": { "saveBeforeCompile": true },
             "pdf": { "defaultZoom": "fit-width" },
-            "tex": { "engineBinDir": "C:\\tex\\mi\\bin" }
+            "tex": { "engineBinDir": "C:\\tex\\tl\\bin\\windows" }
         });
         let parsed: AppConfig = serde_json::from_value(raw).unwrap();
         let got = normalize(parsed);
@@ -486,8 +513,36 @@ mod tests {
         assert_eq!(got.tex.install_dir, None);
         assert_eq!(
             got.tex.engine_bin_dir.as_deref(),
-            Some("C:\\tex\\mi\\bin")
+            Some("C:\\tex\\tl\\bin\\windows")
         );
+    }
+
+    #[test]
+    fn perl_config_normalize() {
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "perl": { "installDir": "  D:\\Zetla\\perl  " }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(
+            normalize(parsed).perl.install_dir.as_deref(),
+            Some("D:\\Zetla\\perl")
+        );
+
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "perl": { "installDir": "  " }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(normalize(parsed).perl.install_dir, None);
     }
 
     #[test]

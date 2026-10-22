@@ -13,6 +13,10 @@ export const RustEvents = {
   fileChanged: "file_changed",
   /** 文档结构索引变更 */
   symbolsUpdated: "symbols_updated",
+  /** TeX 自动安装进度（M0-15b） */
+  texInstallProgress: "tex_install_progress",
+  /** TeX 自动安装最终结果（M0-15b） */
+  texInstallFinished: "tex_install_finished",
 } as const;
 
 /** 前端内部总线事件名（bus.emit/on，见 core/bus.ts） */

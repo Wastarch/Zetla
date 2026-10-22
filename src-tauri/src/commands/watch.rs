@@ -138,12 +138,18 @@ mod tests {
     #[test]
     fn ignores_ltex_hidden_and_tmp_paths() {
         let root = Path::new("E:/proj");
-        assert!(is_ignored_path(root, Path::new("E:/proj/.ltex/config.json")));
+        assert!(is_ignored_path(
+            root,
+            Path::new("E:/proj/.ltex/config.json")
+        ));
         assert!(is_ignored_path(root, Path::new("E:/proj/main.tex.tmp")));
         assert!(is_ignored_path(root, Path::new("E:/proj/.git/HEAD")));
         // 编译产物要刷新（不隐藏）
         assert!(!is_ignored_path(root, Path::new("E:/proj/main.pdf")));
-        assert!(!is_ignored_path(root, Path::new("E:/proj/chapters/ch1.tex")));
+        assert!(!is_ignored_path(
+            root,
+            Path::new("E:/proj/chapters/ch1.tex")
+        ));
         // 项目自己位于隐藏目录时，内部正常文件不应被忽略
         assert!(!is_ignored_path(
             Path::new("E:/proj/.projects/demo"),

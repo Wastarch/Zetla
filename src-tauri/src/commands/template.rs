@@ -180,14 +180,20 @@ pub struct ProjectInfo {
 /// 内置模板目录：打包资源（bundle.resources templates/**）→ dev 兜底（CWD/src-tauri）
 fn resolve_templates_dir(app: &tauri::AppHandle) -> PathBuf {
     if let Ok(res) = app.path().resource_dir() {
-        for cand in [res.join("templates"), res.join("resources").join("templates")] {
+        for cand in [
+            res.join("templates"),
+            res.join("resources").join("templates"),
+        ] {
             if cand.is_dir() {
                 return cand;
             }
         }
     }
     let cwd = std::env::current_dir().unwrap_or_default();
-    for cand in [cwd.join("templates"), cwd.join("src-tauri").join("templates")] {
+    for cand in [
+        cwd.join("templates"),
+        cwd.join("src-tauri").join("templates"),
+    ] {
         if cand.is_dir() {
             return cand;
         }
@@ -199,7 +205,11 @@ fn resolve_templates_dir(app: &tauri::AppHandle) -> PathBuf {
 
 /// 模板 id 白名单校验（防路径穿越）
 fn guard_id(id: &str) -> Result<(), String> {
-    if id.is_empty() || !id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') {
+    if id.is_empty()
+        || !id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
         return Err(format!("非法模板 id: {}", id));
     }
     Ok(())
@@ -252,7 +262,10 @@ fn load_manifest(tpl_root: &Path, id: &str) -> Result<TemplateManifest, String> 
     let manifest: TemplateManifest =
         serde_json::from_str(&text).map_err(|e| format!("清单解析失败 {}: {}", id, e))?;
     if manifest.id != id {
-        return Err(format!("清单 id 与目录不一致: 目录 {} ≠ id {}", id, manifest.id));
+        return Err(format!(
+            "清单 id 与目录不一致: 目录 {} ≠ id {}",
+            id, manifest.id
+        ));
     }
     Ok(manifest)
 }
@@ -357,8 +370,7 @@ fn create_project_in(
             let out = render_template(&text, vars, &defaults);
             std::fs::write(&dst_p, out).map_err(|e| format!("写入失败 {}: {}", f.target, e))?;
         } else {
-            std::fs::copy(&src_p, &dst_p)
-                .map_err(|e| format!("复制失败 {}: {}", f.source, e))?;
+            std::fs::copy(&src_p, &dst_p).map_err(|e| format!("复制失败 {}: {}", f.source, e))?;
         }
     }
 
@@ -369,8 +381,7 @@ fn create_project_in(
         if let Some(parent) = dst_p.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
         }
-        std::fs::copy(&src_p, &dst_p)
-            .map_err(|e| format!("复制资源失败 {}: {}", a, e))?;
+        std::fs::copy(&src_p, &dst_p).map_err(|e| format!("复制资源失败 {}: {}", a, e))?;
     }
 
     // 写 .ltex/config.json（项目权威入口；scan_project 优先读它）
@@ -540,13 +551,13 @@ mod tests {
         let target = tmp_dir("proj").join("mydoc");
 
         // 缺必填变量 → 报错
-        assert!(create_project_in(&tpl, "testpkg", &HashMap::new(), target.to_str().unwrap())
-            .is_err());
+        assert!(
+            create_project_in(&tpl, "testpkg", &HashMap::new(), target.to_str().unwrap()).is_err()
+        );
 
         let mut vars = HashMap::new();
         vars.insert("title".to_string(), Value::String("论文题目".into()));
-        let info =
-            create_project_in(&tpl, "testpkg", &vars, target.to_str().unwrap()).unwrap();
+        let info = create_project_in(&tpl, "testpkg", &vars, target.to_str().unwrap()).unwrap();
 
         // 返回值
         assert_eq!(info.template_id, "testpkg");
@@ -556,7 +567,10 @@ mod tests {
         // 渲染内容
         let main = std::fs::read_to_string(target.join("main.tex")).unwrap();
         assert!(main.contains("\\title{论文题目}"));
-        assert!(main.contains("\\author{Anon}"), "author 应取 manifest 默认值");
+        assert!(
+            main.contains("\\author{Anon}"),
+            "author 应取 manifest 默认值"
+        );
         // 非渲染文件原样复制；目录已创建
         assert_eq!(
             std::fs::read_to_string(target.join("raw.txt")).unwrap(),
@@ -595,10 +609,12 @@ mod tests {
             "x",
         );
         let target = tmp_dir("proj_trav");
-        assert!(create_project_in(&tpl, "evil1", &HashMap::new(), target.to_str().unwrap())
-            .is_err());
-        assert!(create_project_in(&tpl, "evil2", &HashMap::new(), target.to_str().unwrap())
-            .is_err());
+        assert!(
+            create_project_in(&tpl, "evil1", &HashMap::new(), target.to_str().unwrap()).is_err()
+        );
+        assert!(
+            create_project_in(&tpl, "evil2", &HashMap::new(), target.to_str().unwrap()).is_err()
+        );
         assert!(!target.join("evil.tex").exists());
         assert!(!target.join("a.tex").exists());
     }

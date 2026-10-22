@@ -133,7 +133,9 @@ fn config_main_file(root: &Path) -> Option<String> {
     let text = std::fs::read_to_string(cfg).ok()?;
     let v: serde_json::Value = serde_json::from_str(&text).ok()?;
     let mf = v.get("mainFile")?.as_str()?;
-    if mf.trim().is_empty() || Path::new(mf).is_absolute() || mf.split(['/', '\\']).any(|s| s == "..")
+    if mf.trim().is_empty()
+        || Path::new(mf).is_absolute()
+        || mf.split(['/', '\\']).any(|s| s == "..")
     {
         return None;
     }
@@ -171,8 +173,16 @@ fn pick_main(root: &Path, entries: &[(PathBuf, bool)]) -> String {
         depth_from(root, &a.0)
             .cmp(&depth_from(root, &b.0))
             .then_with(|| {
-                let na = a.0.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
-                let nb = b.0.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                let na =
+                    a.0.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_lowercase();
+                let nb =
+                    b.0.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_lowercase();
                 na.cmp(&nb)
             })
     });
@@ -189,8 +199,16 @@ fn sort_entries(v: &mut Vec<(PathBuf, bool)>) {
     v.sort_by(|a, b| {
         b.1.cmp(&a.1) // 目录在前
             .then_with(|| {
-                let na = a.0.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
-                let nb = b.0.file_name().unwrap_or_default().to_string_lossy().to_lowercase();
+                let na =
+                    a.0.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_lowercase();
+                let nb =
+                    b.0.file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_lowercase();
                 na.cmp(&nb)
             })
     });
@@ -377,8 +395,8 @@ fn copy_dir(src: &Path, dst: &Path, depth: u32, count: &mut usize) -> Result<(),
         return Err("目录层级过深，已中止".into());
     }
     std::fs::create_dir_all(dst).map_err(|e| format!("创建目录失败 {}: {}", dst.display(), e))?;
-    let read = std::fs::read_dir(src)
-        .map_err(|e| format!("读取目录失败 {}: {}", src.display(), e))?;
+    let read =
+        std::fs::read_dir(src).map_err(|e| format!("读取目录失败 {}: {}", src.display(), e))?;
     for item in read {
         if *count >= COPY_MAX_ENTRIES {
             return Err("复制条目数超限，已中止".into());
@@ -471,19 +489,18 @@ mod tests {
     fn create_entry_kinds_and_no_overwrite() {
         let root = tmp_root("create");
         let tex = root.join("chapter1").join("sec");
-        let created = create_entry(
-            tex.to_str().unwrap().to_string(),
-            "tex".into(),
-        )
-        .unwrap();
+        let created = create_entry(tex.to_str().unwrap().to_string(), "tex".into()).unwrap();
         assert!(created.ends_with("sec.tex"));
         assert!(Path::new(&created).is_file());
 
         // 已存在 → 报错
         assert!(create_entry(created.clone(), "tex".into()).is_err());
 
-        let dir = create_entry(root.join("figures").to_str().unwrap().to_string(), "dir".into())
-            .unwrap();
+        let dir = create_entry(
+            root.join("figures").to_str().unwrap().to_string(),
+            "dir".into(),
+        )
+        .unwrap();
         assert!(Path::new(&dir).is_dir());
 
         // 非法 kind / 空路径
@@ -510,11 +527,13 @@ mod tests {
         // 目标已存在 → 报错
         let other = root.join("other.tex");
         std::fs::write(&other, "x").unwrap();
-        assert!(rename_entry(
-            to.to_str().unwrap().to_string(),
-            other.to_str().unwrap().to_string(),
-        )
-        .is_err());
+        assert!(
+            rename_entry(
+                to.to_str().unwrap().to_string(),
+                other.to_str().unwrap().to_string(),
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -532,7 +551,11 @@ mod tests {
         assert!(!d.exists());
 
         // 危险路径（盘符根/无文件名）与不存在路径
-        let danger = if cfg!(windows) { "C:\\".to_string() } else { "/".to_string() };
+        let danger = if cfg!(windows) {
+            "C:\\".to_string()
+        } else {
+            "/".to_string()
+        };
         assert!(remove_entry(danger).is_err());
         assert!(remove_entry(root.join("nope.tex").to_str().unwrap().to_string()).is_err());
     }
@@ -550,8 +573,11 @@ mod tests {
         let src = root.join("a.tex");
         std::fs::write(&src, "hello copy").unwrap();
         let dst = root.join("sub").join("b.tex");
-        let got = copy_entry(src.to_str().unwrap().to_string(), dst.to_str().unwrap().to_string())
-            .unwrap();
+        let got = copy_entry(
+            src.to_str().unwrap().to_string(),
+            dst.to_str().unwrap().to_string(),
+        )
+        .unwrap();
         assert!(got.ends_with("b.tex"));
         assert_eq!(std::fs::read_to_string(&dst).unwrap(), "hello copy");
         // 源保留
@@ -567,7 +593,11 @@ mod tests {
         std::fs::write(src.join("inner/chap.tex"), "chap").unwrap();
 
         let dst = root.join("pkg_copy");
-        copy_entry(src.to_str().unwrap().to_string(), dst.to_str().unwrap().to_string()).unwrap();
+        copy_entry(
+            src.to_str().unwrap().to_string(),
+            dst.to_str().unwrap().to_string(),
+        )
+        .unwrap();
         assert!(dst.join("main.tex").is_file());
         assert!(dst.join("inner/chap.tex").is_file());
         assert_eq!(
@@ -585,23 +615,35 @@ mod tests {
         std::fs::write(&src, "x").unwrap();
         let dst = root.join("b.tex");
         std::fs::write(&dst, "old").unwrap();
-        assert!(copy_entry(src.to_str().unwrap().to_string(), dst.to_str().unwrap().to_string())
-            .is_err());
+        assert!(
+            copy_entry(
+                src.to_str().unwrap().to_string(),
+                dst.to_str().unwrap().to_string()
+            )
+            .is_err()
+        );
         // 冲突不覆盖
         assert_eq!(std::fs::read_to_string(&dst).unwrap(), "old");
         // 同源同目标
-        assert!(copy_entry(src.to_str().unwrap().to_string(), src.to_str().unwrap().to_string())
-            .is_err());
+        assert!(
+            copy_entry(
+                src.to_str().unwrap().to_string(),
+                src.to_str().unwrap().to_string()
+            )
+            .is_err()
+        );
     }
 
     #[test]
     fn copy_entry_errors_on_missing_source() {
         let root = tmp_root("copy_missing");
-        assert!(copy_entry(
-            root.join("nope.tex").to_str().unwrap().to_string(),
-            root.join("out.tex").to_str().unwrap().to_string(),
-        )
-        .is_err());
+        assert!(
+            copy_entry(
+                root.join("nope.tex").to_str().unwrap().to_string(),
+                root.join("out.tex").to_str().unwrap().to_string(),
+            )
+            .is_err()
+        );
         assert!(!root.join("out.tex").exists());
     }
 
@@ -628,34 +670,24 @@ mod tests {
         let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
         assert!(tree.main_file.ends_with("aaa.tex"), "config 应优先于启发式");
         assert!(
-            tree.nodes.iter().any(|n| n.path == tree.main_file && n.is_main),
+            tree.nodes
+                .iter()
+                .any(|n| n.path == tree.main_file && n.is_main),
             "is_main 应标记 config 指定的主文件"
         );
 
         // 非法 config（目标不存在）→ 回退启发式（含 documentclass 的 realmain.tex）
-        std::fs::write(
-            ltex.join("config.json"),
-            r#"{"mainFile":"missing.tex"}"#,
-        )
-        .unwrap();
+        std::fs::write(ltex.join("config.json"), r#"{"mainFile":"missing.tex"}"#).unwrap();
         let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
         assert!(tree.main_file.ends_with("realmain.tex"));
 
         // 路径穿越 → 拒绝并回退
-        std::fs::write(
-            ltex.join("config.json"),
-            r#"{"mainFile":"../evil.tex"}"#,
-        )
-        .unwrap();
+        std::fs::write(ltex.join("config.json"), r#"{"mainFile":"../evil.tex"}"#).unwrap();
         let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
         assert!(tree.main_file.ends_with("realmain.tex"), "路径穿越应被拒绝");
 
         // 绝对路径 → 拒绝并回退
-        std::fs::write(
-            ltex.join("config.json"),
-            r#"{"mainFile":"C:/evil.tex"}"#,
-        )
-        .unwrap();
+        std::fs::write(ltex.join("config.json"), r#"{"mainFile":"C:/evil.tex"}"#).unwrap();
         let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
         assert!(tree.main_file.ends_with("realmain.tex"));
     }

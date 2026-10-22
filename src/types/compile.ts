@@ -41,23 +41,65 @@ export interface CompileProgress {
   current: string;
 }
 
+/** Perl 运行时检测结果（M0-15b/c） */
+export interface PerlInfo {
+  found: boolean;
+  version?: string | null;
+  binDir?: string | null;
+  /** texlive / path / none */
+  source: string;
+}
+
 /** TeX 发行版检测结果 */
 export interface TexDistInfo {
   /** 是否检测到可用发行版 */
   found: boolean;
-  /** 发行版名称：MiKTeX / TeX Live / None / Unknown（未找到时为 null） */
+  /** 发行版名称：TeX Live / None / Unknown（未找到时为 null） */
   distribution?: string | null;
   version?: string | null;
   /** 可用引擎列表：xelatex / pdflatex / latexmk ... */
   engines: string[];
   /** 推荐引擎（默认 xelatex） */
   recommended?: string;
+  /** M0-15b/c：TeX Live 自带的 Perl */
+  perl: PerlInfo;
 }
 
-/** 环境引导/安装触发结果 */
+/** 环境引导/安装触发结果（预留：手动安装入口） */
 export interface InstallResult {
   ok: boolean;
   message: string;
   /** 可打开的下载/安装器路径或 URL */
   openable?: string;
+}
+
+/** TeX 自动安装阶段（M0-15b/c） */
+export type TexInstallStage =
+  | "prepare"
+  | "download"
+  | "install"
+  | "verify"
+  | "done";
+
+/** 自动安装进度事件负载（Rust → 前端） */
+export interface TexInstallProgress {
+  stage: TexInstallStage;
+  /** 0–100；0 表示当前阶段无法估算（进度条走不确定动画） */
+  percent: number;
+  /** 下载速度（字节/秒；安装阶段为 0） */
+  speedBps: number;
+  message: string;
+}
+
+/** 自动安装最终结果（Rust → 前端 tex_install_finished） */
+export interface TexInstallResult {
+  ok: boolean;
+  cancelled: boolean;
+  distro: string;
+  installDir: string | null;
+  engineBinDir: string | null;
+  version: string | null;
+  message: string;
+  /** 非致命警告 */
+  warning?: string | null;
 }

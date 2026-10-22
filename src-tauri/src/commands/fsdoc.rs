@@ -100,10 +100,13 @@ fn apply_eol(text: &str, eol: &str) -> String {
 /// 读取文件：自动探测编码（含 GBK），返回内容 + 元数据
 fn read_file_inner(path: &str) -> Result<FileDoc, String> {
     let p = Path::new(path);
-    let bytes =
-        std::fs::read(p).map_err(|e| format!("读取失败 {}: {}", p.display(), e))?;
+    let bytes = std::fs::read(p).map_err(|e| format!("读取失败 {}: {}", p.display(), e))?;
     let (enc, bom_len) = detect(&bytes);
-    let body = if bytes.len() >= bom_len { &bytes[bom_len..] } else { &bytes[..] };
+    let body = if bytes.len() >= bom_len {
+        &bytes[bom_len..]
+    } else {
+        &bytes[..]
+    };
     let (text, _had_errors) = enc.decode_without_bom_handling(body);
     let eol = detect_eol(&text);
     Ok(FileDoc {
@@ -171,7 +174,7 @@ pub fn write_file(
         "{}.tmp",
         p.file_name()
             .ok_or_else(|| format!("非法路径 {}", p.display()))?
-        .to_string_lossy()
+            .to_string_lossy()
     );
     let tmp = p.parent().unwrap_or(Path::new(".")).join(tmp_name);
 

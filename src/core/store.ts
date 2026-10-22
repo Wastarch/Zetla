@@ -63,10 +63,13 @@ export interface AppState {
   env: TexDistInfo | null;
   /** 环境引导面板开关 */
   envGuideOpen: boolean;
+  /** 自动安装向导开关（M0-15b/c） */
+  envSetupOpen: boolean;
   /** dev-only：模拟「未检测到 TeX」（仅引导面板调试按钮使用，不落盘，重启重置） */
   envDebugMock: boolean;
   setEnv: (info: TexDistInfo | null) => void;
   setEnvGuideOpen: (open: boolean) => void;
+  setEnvSetupOpen: (open: boolean) => void;
   setEnvDebugMock: (on: boolean) => void;
 }
 
@@ -152,8 +155,10 @@ export const useAppStore = create<AppState>((set) => ({
   // ── TeX 环境（M0-15a）──
   env: null,
   envGuideOpen: false,
+  envSetupOpen: false,
   envDebugMock: false,
   setEnv: (info) => set({ env: info }),
   setEnvGuideOpen: (open) => set({ envGuideOpen: open }),
+  setEnvSetupOpen: (open) => set({ envSetupOpen: open }),
   setEnvDebugMock: (on) => set({ envDebugMock: on }),
 }));
