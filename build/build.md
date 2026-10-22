@@ -9,7 +9,7 @@
 使用 `--no-bundle` 参数，Tauri 只编译 Rust 并生成 exe，跳过所有安装包制作步骤，也就不会触发 NSIS 下载：
 
 ```shell
- npm run tauri build  -- --no-bundle
+npm run tauri build  -- --no-bundle
 ```
 
 ### 使用`Inno Setup` 制作安装包
