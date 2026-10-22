@@ -6,5 +6,3 @@
 # will have schema files for capabilities auto-completion
 /gen/schemas
 
-# 本地打包产物
-build/compiler output folder/
