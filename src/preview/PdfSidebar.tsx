@@ -1,5 +1,5 @@
 // M0-10b · 预览侧栏：缩略图 / 目录（大纲）
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
 import { openExternal, resolveDestPage } from "./pdfNav";
 import type { PDFDocumentProxy } from "./pdfjs";
@@ -12,11 +12,13 @@ export interface PdfSidebarProps {
   onTab: (t: SideTab) => void;
   page: number;
   onJump: (page: number) => void;
+  /** 侧栏宽度（由 PdfPreview 拖拽给出） */
+  style?: CSSProperties;
 }
 
-export function PdfSidebar({ doc, tab, onTab, page, onJump }: PdfSidebarProps) {
+export function PdfSidebar({ doc, tab, onTab, page, onJump, style }: PdfSidebarProps) {
   return (
-    <aside className="pv-side" aria-label="PDF 导航">
+    <aside className="pv-side" style={style} aria-label="PDF 导航">
       <div className="pv-side-tabs">
         <button
           type="button"

@@ -17,6 +17,8 @@ export interface AppState {
   sidebarWidth: number;
   /** M0-13：编辑区/预览比例（0.2–0.75，拖拽写入，偏好设置持久化） */
   previewRatio: number;
+  /** PDF 预览内「缩略图/目录」侧栏宽度（110–380，拖拽写入，偏好设置持久化） */
+  pvSideWidth: number;
 
   // ── 偏好设置（M0-14a）──
   /** 设置页状态：null 关闭；否则为打开时停留的页签 */
@@ -81,6 +83,7 @@ export const useAppStore = create<AppState>((set) => ({
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
   sidebarWidth: 258,
   previewRatio: 0.5,
+  pvSideWidth: 132,
 
   // ── 偏好设置（M0-14a）──
   settingsDialog: null,

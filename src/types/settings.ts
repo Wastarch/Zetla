@@ -44,6 +44,8 @@ export interface AppSettings {
     sidebarWidth: number; // 170–560
     previewVisible: boolean;
     previewRatio: number; // 0.2–0.75
+    /** PDF 预览内缩略图/目录侧栏宽度（110–380） */
+    pvSideWidth: number;
   };
   /** M0-13：通用开关 */
   general: {
@@ -74,7 +76,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
   pdf: { defaultZoom: "fit-width" },
   window: { width: null, height: null, x: null, y: null, maximized: false },
   session: { lastProject: null },
-  layout: { sidebarVisible: true, sidebarWidth: 258, previewVisible: true, previewRatio: 0.5 },
+  layout: {
+    sidebarVisible: true,
+    sidebarWidth: 258,
+    previewVisible: true,
+    previewRatio: 0.5,
+    pvSideWidth: 132,
+  },
   general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true },
   tex: { distro: null, installDir: null, engineBinDir: null },
   perl: { installDir: null },

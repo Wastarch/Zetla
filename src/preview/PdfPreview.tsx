@@ -29,6 +29,11 @@ const SCROLL_PAD_X = 40;
 /** .pdf-scroll 上下 padding 合计（22 + 40） */
 const SCROLL_PAD_Y = 62;
 const ZOOM_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3];
+/** PDF 侧栏（缩略图/目录）宽度范围，与 Rust config 的钳制一致 */
+const SIDE_MIN = 110;
+const SIDE_MAX = 380;
+/** 侧栏展开时给右侧 PDF 区留的最小宽度 */
+const SIDE_PDF_MIN = 160;
 
 type Zoom = { kind: "fit-width" } | { kind: "fit-page" } | { kind: "custom"; scale: number };
 type Layout = "single" | "double";
@@ -38,6 +43,7 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   const rev = useAppStore((s) => s.previewRev);
   const compileStatus = useAppStore((s) => s.compileStatus);
   const togglePreview = useAppStore((s) => s.togglePreview);
+  const pvSideWidth = useAppStore((s) => s.pvSideWidth);
 
   const { doc, err, loading, reload } = usePdfDoc(pdfPath, rev);
   const find = usePdfFind(doc);
@@ -61,11 +67,15 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   const [viewSize, setViewSize] = useState({ w: 432, h: 640 });
   const [baseSize, setBaseSize] = useState<{ w: number; h: number } | null>(null);
   const [renderTick, setRenderTick] = useState(0);
+  const [sideDragging, setSideDragging] = useState(false);
 
   const rootRef = useRef<HTMLElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const sideDragRef = useRef(false);
   const viewMenuRef = useRef<HTMLDivElement | null>(null);
   const wantScrollRef = useRef(false);
   const hoverRef = useRef(false);
+  const lastSideRef = useRef<SideTab>("thumbs");
   const scaleRef = useRef(1);
   const anchorRef = useRef<{ rx: number; ry: number; cx: number; cy: number } | null>(null);
   const scrollRafRef = useRef(false);
@@ -260,6 +270,37 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
     if (paged && layout === "double" && page > 1 && page % 2 === 0) setPage(page - 1);
   }, [paged, layout, page]);
 
+  // 侧栏宽度拖拽：与 App 的 .resizer 一致（window 监听，body 加 col-resizing）
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!sideDragRef.current) return;
+      const el = bodyRef.current;
+      if (!el) return;
+      // 面板过窄时先保 PDF 区最小宽度
+      const max = Math.max(SIDE_MIN, Math.min(SIDE_MAX, el.clientWidth - SIDE_PDF_MIN));
+      const w = Math.round(e.clientX - el.getBoundingClientRect().left);
+      useAppStore.setState({ pvSideWidth: Math.min(max, Math.max(SIDE_MIN, w)) });
+    };
+    const onUp = () => {
+      if (!sideDragRef.current) return;
+      sideDragRef.current = false;
+      setSideDragging(false);
+      document.body.classList.remove("col-resizing");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, []);
+
+  const startSideResize = useCallback(() => {
+    sideDragRef.current = true;
+    setSideDragging(true);
+    document.body.classList.add("col-resizing");
+  }, []);
+
   // 菜单点外部关闭
   useEffect(() => {
     if (!menu) return;
@@ -287,6 +328,16 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   function zoomBy(dir: 1 | -1) {
     const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number((scale + dir * 0.1).toFixed(2))));
     setZoom({ kind: "custom", scale: next });
+  }
+
+  // 侧栏：单个开合按钮，记住上次停留的 tab
+  function pickSide(t: SideTab) {
+    lastSideRef.current = t;
+    setSide(t);
+  }
+
+  function toggleSide() {
+    setSide((s) => (s === "none" ? lastSideRef.current : "none"));
   }
 
   function openZoomMenu() {
@@ -332,6 +383,7 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   );
 
   const step = paged && layout === "double" ? 2 : 1;
+  const sideW = Math.min(SIDE_MAX, Math.max(SIDE_MIN, pvSideWidth));
   const title = pdfPath ? `PDF 预览 · ${fileBase(pdfPath)}` : "PDF 预览";
   const stale = compileStatus === "error" && !!doc;
 
@@ -356,30 +408,23 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
             未更新
           </span>
         )}
-        <button
-          type="button"
-          className={side === "thumbs" ? "ibtn on" : "ibtn"}
-          title="缩略图"
-          disabled={!doc}
-          onClick={() => setSide((s) => (s === "thumbs" ? "none" : "thumbs"))}
-        >
-          <Icon name="image" />
-        </button>
-        <button
-          type="button"
-          className={side === "outline" ? "ibtn on" : "ibtn"}
-          title="目录"
-          disabled={!doc}
-          onClick={() => setSide((s) => (s === "outline" ? "none" : "outline"))}
-        >
-          <Icon name="book" />
-        </button>
         <button type="button" className="ibtn" title="收起预览面板" onClick={togglePreview}>
           <Icon name="panel-right" />
         </button>
       </div>
 
       <div className="pv-tools">
+        <button
+          type="button"
+          className={`ibtn${side !== "none" ? " on" : ""}`}
+          title={side === "none" ? "展开侧栏（缩略图 / 目录）" : "收起侧栏"}
+          aria-expanded={side !== "none"}
+          disabled={!doc}
+          onClick={toggleSide}
+        >
+          <Icon name="menu" />
+        </button>
+        <div className="sep" />
         <button
           type="button"
           className="ibtn"
@@ -556,15 +601,26 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
         />
       )}
 
-      <div className="pv-body">
+      <div className="pv-body" ref={bodyRef}>
         {side !== "none" && doc && (
-          <PdfSidebar
-            doc={doc}
-            tab={side}
-            onTab={setSide}
-            page={page}
-            onJump={(p) => jumpTo(p)}
-          />
+          <>
+            <PdfSidebar
+              doc={doc}
+              tab={side}
+              onTab={pickSide}
+              page={page}
+              onJump={(p) => jumpTo(p)}
+              style={{ width: sideW }}
+            />
+            <div
+              className={`resizer pv-side-resizer${sideDragging ? " dragging" : ""}`}
+              title="拖拽调整侧栏宽度"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                startSideResize();
+              }}
+            />
+          </>
         )}
 
         <div className="pdf-scroll" ref={setScrollEl} onScroll={onScroll}>

@@ -647,6 +647,9 @@ body {
 
 .pv-side {
   width: 132px;
+  /* 拖拽宽度由 PdfPreview 内联给出；这里只兜底范围 */
+  min-width: 110px;
+  max-width: calc(100% - 165px); /* 5px resizer + 右侧 PDF 区 ≥160px */
   flex: none;
   min-height: 0;
   display: flex;

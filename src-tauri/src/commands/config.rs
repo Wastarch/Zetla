@@ -24,6 +24,10 @@ pub const SIDEBAR_MIN: u32 = 170;
 pub const SIDEBAR_MAX: u32 = 560;
 pub const PREVIEW_RATIO_MIN: f64 = 0.2;
 pub const PREVIEW_RATIO_MAX: f64 = 0.75;
+/// PDF 预览内缩略图/目录侧栏宽度范围（与 PdfPreview 拖拽范围一致）
+pub const PV_SIDE_MIN: u32 = 110;
+pub const PV_SIDE_MAX: u32 = 380;
+pub const PV_SIDE_DEFAULT: u32 = 132;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -91,6 +95,8 @@ pub struct LayoutConfig {
     pub preview_visible: bool,
     /// 编辑区/预览比例（0.2–0.75）
     pub preview_ratio: f64,
+    /// PDF 预览内缩略图/目录侧栏宽度（110–380，拖拽调整）
+    pub pv_side_width: u32,
 }
 
 impl Default for LayoutConfig {
@@ -100,6 +106,7 @@ impl Default for LayoutConfig {
             sidebar_width: 258,
             preview_visible: true,
             preview_ratio: 0.5,
+            pv_side_width: PV_SIDE_DEFAULT,
         }
     }
 }
@@ -225,6 +232,9 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     }
     if !(PREVIEW_RATIO_MIN..=PREVIEW_RATIO_MAX).contains(&cfg.layout.preview_ratio) {
         cfg.layout.preview_ratio = 0.5;
+    }
+    if cfg.layout.pv_side_width < PV_SIDE_MIN || cfg.layout.pv_side_width > PV_SIDE_MAX {
+        cfg.layout.pv_side_width = PV_SIDE_DEFAULT;
     }
     // M0-15a：tex 代装记录归一化（先去空白再校验 distro 白名单）
     // distro 非法 → 清空；distro 为 null 允许保留目录（「手动指定引擎目录」场景）
@@ -373,6 +383,7 @@ mod tests {
         cfg.layout.sidebar_width = 320;
         cfg.layout.preview_visible = false;
         cfg.layout.preview_ratio = 0.42;
+        cfg.layout.pv_side_width = 200;
         cfg.general.restore_last_project = false;
         cfg.general.remember_window = false;
         cfg.general.restore_layout = false;
@@ -403,6 +414,7 @@ mod tests {
         assert!(text.contains("lastProject"));
         assert!(text.contains("sidebarWidth"));
         assert!(text.contains("previewRatio"));
+        assert!(text.contains("pvSideWidth"));
         assert!(text.contains("restoreLastProject"));
         assert!(text.contains("rememberWindow"));
         assert!(text.contains("restoreLayout"));
@@ -562,5 +574,33 @@ mod tests {
         assert_eq!(got.autosave.interval_seconds, 30);
         assert_eq!(got.pdf.default_zoom, "fit-width");
         assert_eq!(got.schema_version, 1);
+    }
+
+    #[test]
+    fn pv_side_width_default_and_clamp() {
+        // 旧配置缺字段 → 用 Default（132），不报错
+        let raw = json!({
+            "layout": {
+                "sidebarVisible": true,
+                "sidebarWidth": 258,
+                "previewVisible": true,
+                "previewRatio": 0.5
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(parsed.layout.pv_side_width, PV_SIDE_DEFAULT);
+
+        // 越界 → 回退默认；合法值保留
+        for (input, expect) in [
+            (PV_SIDE_MIN - 1, PV_SIDE_DEFAULT),
+            (PV_SIDE_MIN, PV_SIDE_MIN),
+            (200, 200),
+            (PV_SIDE_MAX, PV_SIDE_MAX),
+            (PV_SIDE_MAX + 1, PV_SIDE_DEFAULT),
+        ] {
+            let mut cfg = AppConfig::default();
+            cfg.layout.pv_side_width = input;
+            assert_eq!(normalize(cfg).layout.pv_side_width, expect, "input={input}");
+        }
     }
 }
