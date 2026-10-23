@@ -42,11 +42,12 @@
 1. 到 [Releases](https://github.com/Wastarch/Zetla/releases/latest) 下载 `Zetla_0.1.1_x64-setup.exe`。
 2. 运行安装包。当前版本**未签名**，Windows SmartScreen 提示时选择「更多信息 → 仍要运行」。
 3. 安装模式可以为「仅当前用户」，无需管理员权限。也可以为所有用户安装。
+4. 卸载时若检测到 **Zetla 代装的 TeX Live**，会询问是否一并删除；默认保留，TeX 可继续被其他软件使用。
 
 系统要求：
 
 - **Windows 10/11**（当前主要开发与验收平台）
-- **WebView2 Runtime**（Windows 10/11 通常已内置；缺失时安装包会引导下载）
+- **WebView2 Runtime**（Windows 10/11 通常已内置；安装包不随附，缺失时需先安装 Runtime）
 - **TeX Live**：可选。不装也能启动，首次进入时可在应用内安装（见下一节）
 
 > 国内网络下应用会自动尝试清华 TUNA、阿里云等镜像下载 TeX Live 安装器。
@@ -189,18 +190,31 @@ npm run tauri dev
 
 ### 构建安装包
 
+正式包使用 **Inno Setup 6**（需本机安装 Inno Setup；编译器 `ISCC.exe` 会自动从注册表/常见目录查找，也可用 `INNO_SETUP_ISCC` 指定）：
+
 ```powershell
-npm run build
-npm run tauri build
+# 1) 只编 release exe（不触发 NSIS 下载）
+npm run tauri build -- --no-bundle
+
+# 2) 调 ISCC 生成安装包
+npm run package:inno
 ```
 
-NSIS 安装包默认输出到：
+也可以一步完成：
+
+```powershell
+npm run package:win
+```
+
+安装包输出到：
 
 ```text
-src-tauri/target/release/bundle/nsis/
+build/installer/Zetla_<version>_x64-setup.exe
 ```
 
-> 此项目使用**Inno Setup**进行打包，打包脚本与图文步骤另见 `build/doc/build.md`。
+版本号由 `src-tauri/tauri.conf.json` 自动读取，安装脚本在 `src-tauri/windows/inno/zetla.iss`。卸载时会读取 `%LOCALAPPDATA%\Zetla\tex-install.txt` 与 `<texdir>\.zetla-tex`，询问是否同时删除 Zetla 代装的 TeX Live（默认保留，静默卸载一律保留）。
+
+> NSIS 配置仍保留在 `tauri.conf.json` / `windows/nsis-hooks.nsh` 作为备用，但正式发布不再使用。
 
 ### 测试与检查
 
@@ -223,7 +237,9 @@ Zetla/
 ├─ src/                 # React 前端：编辑器、预览、项目树、环境引导等
 ├─ src-tauri/           # Rust/Tauri 后端：编译、文件、配置、安装器等
 │  ├─ src/commands/     # Tauri commands
-│  └─ templates/        # 内置 LaTeX 模板
+│  ├─ templates/        # 内置 LaTeX 模板
+│  └─ windows/inno/     # Inno Setup 正式包脚本
+├─ scripts/             # 打包脚本（package-inno.mjs）
 ├─ docs/                # 开发文档与开发计划
 ├─ public/              # 静态资源
 └─ build/               # 打包脚本与打包文档

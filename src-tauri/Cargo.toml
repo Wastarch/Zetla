@@ -2,7 +2,7 @@
 name = "zetla"
 version = "0.1.1"
 description = "A Tauri App"
-authors = ["you"]
+authors = ["Max"]
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
