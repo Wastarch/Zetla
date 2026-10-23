@@ -1132,7 +1132,14 @@ body {
   background: var(--editor-bg);
 }
 
+.latex-editor > .cm-theme,
+.latex-editor > .cm-theme-light {
+  flex: 1;
+  min-width: 0;
+}
+
 .latex-editor .cm-editor {
+  width: 100%;
   height: 100%;
   /* M0-14a：字体族/字号来自偏好设置（--editor-ff 由 settings store 写入；--font-mono 为兜底） */
   font-family: var(--editor-ff, var(--font-mono));
