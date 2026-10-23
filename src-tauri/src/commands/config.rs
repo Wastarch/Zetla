@@ -3,6 +3,7 @@
 // schema v1：schemaVersion / editor / autosave / build / pdf；M0-13 追加 window/session/layout
 // 读写口径：缺文件或 JSON 损坏 → 回退默认值；越界/非法值 → 归一化；写盘 → 建目录 + 临时文件替换
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use tauri::Manager;
 
@@ -49,6 +50,8 @@ pub struct AppConfig {
     pub tex: TexConfig,
     /// @deprecated Perl 代装记录（M0-15b/c：TeX Live 自带 Perl，保留为兼容旧配置）
     pub perl: PerlConfig,
+    /// M1-1：功能模块开关（模块 id → 是否启用；空 = 各模块走前端 defaultEnabled）
+    pub modules: BTreeMap<String, bool>,
 }
 
 impl Default for AppConfig {
@@ -65,6 +68,7 @@ impl Default for AppConfig {
             general: GeneralConfig::default(),
             tex: TexConfig::default(),
             perl: PerlConfig::default(),
+            modules: BTreeMap::new(),
         }
     }
 }
@@ -392,6 +396,9 @@ mod tests {
         cfg.tex.engine_bin_dir =
             Some("C:\\Users\\u\\AppData\\Local\\Zetla\\tex\\texlive\\bin\\windows".to_string());
         cfg.perl.install_dir = Some("D:\\Zetla\\perl\\strawberry".to_string());
+        // M1-1：模块开关往返保留（含 false 显式停用）
+        cfg.modules.insert("symbol".to_string(), true);
+        cfg.modules.insert("demo".to_string(), false);
         write_config(&p, &cfg).unwrap();
         assert_eq!(read_config(&p), cfg);
         // 不留临时文件
@@ -423,10 +430,32 @@ mod tests {
         assert!(text.contains("engineBinDir"));
         // M0-15b 字段
         assert!(text.contains("perl"));
+        // M1-1 字段
+        assert!(text.contains("modules"));
         // snake_case 不应出现
         assert!(!text.contains("font_family"));
         assert!(!text.contains("interval_seconds"));
         assert!(!text.contains("last_project"));
+    }
+
+    #[test]
+    fn modules_default_empty_and_partial_ok() {
+        // M1-1：旧配置缺 modules → serde default 空 map，不报错
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert!(parsed.modules.is_empty());
+
+        // 部分覆盖只影响写入的键；归一化不清洗未知模块 id（前端注册表是权威）
+        let raw = json!({ "modules": { "symbol": true } });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(parsed.modules.get("symbol"), Some(&true));
+        assert_eq!(normalize(parsed).modules.get("symbol"), Some(&true));
     }
 
     #[test]

@@ -5,7 +5,14 @@ import type { CompileResult, ProjectInfo, TexDistInfo } from "@/types";
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
 /** 偏好设置页当前打开的页签（null = 关闭） */
-export type SettingsPane = "general" | "build" | "editor" | "pdf" | "look" | "about";
+export type SettingsPane =
+  | "general"
+  | "build"
+  | "editor"
+  | "pdf"
+  | "look"
+  | "about"
+  | "modules";
 
 /** 全局状态接口（M0-13：useWindowMemory 订阅布局字段需要类型） */
 export interface AppState {

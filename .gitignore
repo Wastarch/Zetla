@@ -29,8 +29,10 @@ dist-ssr
 # 本地打包产物
 build/compiler output folder/
 build/installer/
+
 # dev
 
 docs/dev
 
 AGENTS.md
+.workbuddy

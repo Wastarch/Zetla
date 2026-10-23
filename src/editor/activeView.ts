@@ -13,14 +13,20 @@ export function setActiveView(v: EditorView | null): void {
   view = v;
 }
 
-/** 激活标签对应的编辑器句柄（jump.ts 跳行用） */
+/** 激活标签对应的编辑器句柄（jump.ts 跳行 / 模块插入用） */
 export function setActiveEditorHandle(h: LaTeXEditorHandle | null): void {
   editorHandle = h;
 }
 
-/** 菜单/快捷键取用；调用前自行判空 */
+/**
+ * 取当前活动编辑器视图。
+ * M1-1 修正：CM6 的 EditorView 由 @uiw/react-codemirror 在容器 ref → setContainer →
+ * 再渲染后的 layout effect 中创建，切换标签那一刻句柄已就绪但 getView() 可能仍为 null。
+ * 早期实现把 getView() 的返回值快照进 view，一旦快照到 null 就会永久失准
+ * （菜单撤销/重做、模块 insertSnippet 静默失效）。改为经句柄**实时**解析。
+ */
 export function getActiveView(): EditorView | null {
-  return view;
+  return editorHandle ? editorHandle.getView() : view;
 }
 
 export function getActiveEditorHandle(): LaTeXEditorHandle | null {

@@ -3242,3 +3242,71 @@ body.col-resizing {
     padding: 18px 14px;
   }
 }
+
+/* ── M1-1 模块面板停靠区（侧栏底部） ─────────────────────── */
+.mod-dock {
+  flex: none;
+  border-top: 1px solid var(--line);
+  background: var(--bg-2);
+  max-height: 46%;
+  overflow: auto;
+  padding: 8px 10px 10px;
+}
+
+.mod-dock-item + .mod-dock-item {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.mod-dock-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.mod-dock-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt-2);
+}
+
+.mod-dock-ver {
+  font-size: 9.5px;
+  color: var(--txt-3);
+  font-family: var(--font-mono, monospace);
+}
+
+.mod-dock-loading {
+  font-size: 10.5px;
+  color: var(--txt-3);
+  padding: 4px 0;
+}
+
+.mod-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  padding: 3px 0;
+}
+
+.mod-panel-k {
+  color: var(--txt-3);
+}
+
+.mod-panel-v {
+  color: var(--txt-2);
+  font-family: var(--font-mono, monospace);
+}
+
+/* 设置页说明行（模块页签空态/脚注） */
+.set-pane .set-note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--txt-3);
+  margin: 10px 2px 0;
+}

@@ -65,6 +65,11 @@ export interface AppSettings {
   perl: {
     installDir: string | null;
   };
+  /**
+   * M1-1：功能模块开关（模块 id → 是否启用；缺省/空 = 各模块走 defaultEnabled）。
+   * 与 Rust AppConfig.modules（BTreeMap<String, bool>）一一对应，camelCase。
+   */
+  modules: Record<string, boolean>;
 }
 
 /** 前端兜底默认值（与 Rust Default 一致；正常路径以 load_app_config 返回为准） */
@@ -86,6 +91,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true },
   tex: { distro: null, installDir: null, engineBinDir: null },
   perl: { installDir: null },
+  modules: {},
 };
 
 /** 字体族 → CSS font-family 栈（应用到 --editor-ff，仅影响编辑器代码区） */

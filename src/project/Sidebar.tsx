@@ -1,7 +1,9 @@
 // M0-6 · 侧栏（VSCode 资源管理器风格，mockup UI.html .sidebar）
 // 顶部只保留「资源管理器」标签；根目录行与图标组由 ProjectTree 渲染（树的第一层）
+// M1-1：底部挂 ModuleDock（已启用模块的懒加载面板）
 import type { CSSProperties } from "react";
 import { ProjectTree } from "./ProjectTree";
+import { ModuleDock } from "@/modules/ModuleDock";
 
 export interface SidebarProps {
   /** 拖拽得到的宽度（M0-6 不持久化，M0-13 接配置） */
@@ -16,6 +18,7 @@ export function Sidebar({ style }: SidebarProps) {
       </div>
 
       <ProjectTree />
+      <ModuleDock />
     </aside>
   );
 }

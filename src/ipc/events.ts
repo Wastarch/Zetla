@@ -27,6 +27,7 @@ export const BusEvents = {
   symbolsUpdated: "symbols:updated",
   projectCreated: "project:created",
   moduleEnabled: "module:enabled",
+  moduleDisabled: "module:disabled",
   editorGotoLine: "editor:goto-line",
 } as const;
 

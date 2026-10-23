@@ -18,6 +18,7 @@ import { EnvGuideDialog } from "@/ui/EnvGuideDialog";
 import { EnvSetupWizard } from "@/env/EnvSetupWizard";
 import { PdfPreview } from "@/preview/PdfPreview";
 import { useCompileBridge } from "@/compile/useCompile";
+import { useModuleRuntime } from "@/core/useModuleRuntime";
 import { useProjectWatch } from "@/project/useProjectWatch";
 import { useAutosave } from "@/editor/useAutosave";
 import { useWindowMemory } from "@/window/useWindowMemory";
@@ -38,6 +39,8 @@ function App() {
 
   // M0-9：编译事件桥（全应用只注册一次）
   useCompileBridge();
+  // M1-1：模块接口层运行时（能力登记 / DEV 演示模块 / 设置→注册表 / 总线钩子）
+  useModuleRuntime();
   // M0-9a：项目目录变更 → 资源树自动刷新
   useProjectWatch();
   // M0-14a：偏好设置启动加载 + 编辑器 CSS 生效 + 定时自动保存
