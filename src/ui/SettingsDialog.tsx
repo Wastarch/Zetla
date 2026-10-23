@@ -4,9 +4,11 @@
 // 未接通项按硬约定置灰 + tooltip 标注接通切片（多引擎 M1、小地图/折叠 M1、Synctex/暗色 M3）
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
+import { APP_VERSION } from "@/version";
 import { useAppStore, type SettingsPane } from "@/core/store";
 import { cloneSettings, useSettingsStore } from "@/core/settings";
 import { notify, useProjectStore } from "@/project/useProject";
+import { useModuleList } from "@/modules/useModuleList";
 import { engineLabel } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
 import { Icon } from "@/ui/Icon";
@@ -18,6 +20,7 @@ const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "editor", icon: "edit", label: "编辑器" },
   { id: "pdf", icon: "pdf", label: "PDF 预览" },
   { id: "look", icon: "sun", label: "外观与保存" },
+  { id: "modules", icon: "wand", label: "模块" },
   { id: "about", icon: "book", label: "关于 Zetla" },
 ];
 
@@ -79,6 +82,17 @@ function Switch({
   );
 }
 
+/** M1-1：blockedReason → 人类可读的置灰原因（dep:<id> / cap:<名>） */
+function blockedTip(reason: string | null, names: Record<string, string>): string | undefined {
+  if (!reason) return undefined;
+  if (reason.startsWith("dep:")) {
+    const dep = reason.slice(4);
+    return `依赖模块「${names[dep] ?? dep}」未启用`;
+  }
+  if (reason.startsWith("cap:")) return `内核能力「${reason.slice(4)}」不可用`;
+  return reason;
+}
+
 export function SettingsDialog() {
   const pane = useAppStore((s) => s.settingsDialog);
   const closeSettings = useAppStore((s) => s.closeSettings);
@@ -89,7 +103,9 @@ export function SettingsDialog() {
 
   // 打开时快照（条件渲染保证每次打开重建；「取消」回滚到此时）
   const snapshotRef = useRef<AppSettings>(cloneSettings(useSettingsStore.getState().settings));
-  const [version, setVersion] = useState("0.1.0");
+  // 回退值取构建期生成的 APP_VERSION（与 package.json 唯一版本源联动）；
+  // 正常情况下 getVersion() 会拿到 tauri.conf.json 的真实版本覆盖它。
+  const [version, setVersion] = useState(APP_VERSION);
 
   useEffect(() => {
     void getVersion()
@@ -111,6 +127,17 @@ export function SettingsDialog() {
     setSettings(cloneSettings(snapshotRef.current));
     closeSettings();
   }, [setSettings, closeSettings]);
+
+  // M1-1：模块开关（写设置页草稿；经 useModuleRuntime 订阅即时启停，保存后落盘）
+  const modules = useModuleList();
+  const moduleNames: Record<string, string> = {};
+  for (const m of modules) moduleNames[m.id] = m.name;
+  const toggleModule = useCallback(
+    (id: string, on: boolean) => {
+      update((d) => ({ ...d, modules: { ...d.modules, [id]: on } }));
+    },
+    [update],
+  );
 
   const save = useCallback(async () => {
     try {
@@ -456,6 +483,33 @@ export function SettingsDialog() {
                     <option value="">紧凑</option>
                   </select>
                 </Fld>
+              </div>
+            )}
+
+            {pane === "modules" && (
+              <div className="set-pane" role="tabpanel">
+                <h4>功能模块</h4>
+                {modules.length === 0 ? (
+                  <p className="set-note">暂无已注册模块。</p>
+                ) : (
+                  modules.map((m) => (
+                    <Fld
+                      key={m.id}
+                      label={m.name}
+                      hint={m.description ?? `版本 ${m.version}`}
+                      tip={blockedTip(m.blockedReason, moduleNames)}
+                    >
+                      <Switch
+                        checked={m.enabled}
+                        disabled={!m.enabled && !!m.blockedReason}
+                        onChange={(v) => toggleModule(m.id, v)}
+                      />
+                    </Fld>
+                  ))
+                )}
+                <p className="set-note">
+                  开关即时启停（保存后写入配置文件）；被其他模块依赖的模块无法停用。
+                </p>
               </div>
             )}
 

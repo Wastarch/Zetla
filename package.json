@@ -1,13 +1,14 @@
 {
   "name": "zetla",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "node scripts/sync-version.mjs && vite",
+    "build": "node scripts/sync-version.mjs && tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri",
+    "tauri": "node scripts/sync-version.mjs && tauri",
+    "version:sync": "node scripts/sync-version.mjs",
     "package:win": "npm run tauri build -- --no-bundle && npm run package:inno",
     "package:inno": "node scripts/package-inno.mjs"
   },

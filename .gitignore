@@ -32,3 +32,5 @@ build/installer/
 # dev
 
 docs/dev
+
+AGENTS.md

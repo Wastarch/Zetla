@@ -2,7 +2,7 @@
 
 面向 Windows 的桌面 LaTeX 工作台，把项目管理、代码编辑、编译日志和 PDF 预览放进同一个应用里。
 
-> 当前最新版本 `0.1.1`，处于 **开发阶段**。核心链路已经打通：打开项目 → 编辑 `.tex` → 一键 XeLaTeX 编译 → 查看 PDF。
+> 当前最新版本 `0.1.2`，处于 **开发阶段**。核心链路已经打通：打开项目 → 编辑 `.tex` → 一键 XeLaTeX 编译 → 查看 PDF。
 
 <!-- 截图占位：主界面（资源树 + 编辑器 + PDF 预览）
      把图放到 docs/UI/ 后，将下面一行替换为 ![主界面](docs/UI/main.png) -->
@@ -24,6 +24,7 @@
   - [常见问题](#常见问题)
   - [从源码运行](#从源码运行)
     - [构建安装包](#构建安装包)
+    - [版本号管理](#版本号管理)
     - [测试与检查](#测试与检查)
   - [目录结构](#目录结构)
   - [贡献](#贡献)
@@ -39,7 +40,7 @@
 
 ## 安装
 
-1. 到 [Releases](https://github.com/Wastarch/Zetla/releases/latest) 下载 `Zetla_0.1.1_x64-setup.exe`。
+1. 到 [Releases](https://github.com/Wastarch/Zetla/releases/latest) 下载 `Zetla_0.1.2_x64-setup.exe`。
 2. 运行安装包。当前版本**未签名**，Windows SmartScreen 提示时选择「更多信息 → 仍要运行」。
 3. 安装模式可以为「仅当前用户」，无需管理员权限。也可以为所有用户安装。
 4. 卸载时若检测到 **Zetla 代装的 TeX Live**，会询问是否一并删除；默认保留，TeX 可继续被其他软件使用。
@@ -212,9 +213,30 @@ npm run package:win
 build/installer/Zetla_<version>_x64-setup.exe
 ```
 
-版本号由 `src-tauri/tauri.conf.json` 自动读取，安装脚本在 `src-tauri/windows/inno/zetla.iss`。卸载时会读取 `%LOCALAPPDATA%\Zetla\tex-install.txt` 与 `<texdir>\.zetla-tex`，询问是否同时删除 Zetla 代装的 TeX Live（默认保留，静默卸载一律保留）。
+版本号唯一源是 `package.json` 的 `version` 字段：`scripts/sync-version.mjs` 会在每次 `dev`/`build`/`tauri` 前自动把它同步到 `tauri.conf.json`、`Cargo.toml` 与前端 `src/version.ts`，安装包名随之切换（详见[版本号管理](#版本号管理)）。安装脚本在 `src-tauri/windows/inno/zetla.iss`。卸载时会读取 `%LOCALAPPDATA%\Zetla\tex-install.txt` 与 `<texdir>\.zetla-tex`，询问是否同时删除 Zetla 代装的 TeX Live（默认保留，静默卸载一律保留）。
 
 > NSIS 配置仍保留在 `tauri.conf.json` / `windows/nsis-hooks.nsh` 作为备用，但正式发布不再使用。
+
+### 版本号管理
+
+版本号只需维护一处：**`package.json` 的 `version` 字段**。
+
+```powershell
+# 方式一：一条命令改版本并全量同步（推荐）
+node scripts/sync-version.mjs 0.2.0
+
+# 方式二：先手改 package.json 的 version，再同步
+npm run version:sync
+```
+
+`npm run dev` / `build` / `tauri` 每次都会自动前置同步，日常开发无感知。同步落点如下，**请勿手改**：
+
+| 落点 | 用途 |
+| --- | --- |
+| `src-tauri/tauri.conf.json` | Tauri 应用版本：关于页显示、安装包文件名 |
+| `src-tauri/Cargo.toml`、`src-tauri/Cargo.lock` | Rust crate 版本 |
+| `package-lock.json` | npm 锁文件根版本 |
+| `src/version.ts` | 前端常量 `APP_VERSION`（生成文件） |
 
 ### 测试与检查
 
@@ -239,7 +261,7 @@ Zetla/
 │  ├─ src/commands/     # Tauri commands
 │  ├─ templates/        # 内置 LaTeX 模板
 │  └─ windows/inno/     # Inno Setup 正式包脚本
-├─ scripts/             # 打包脚本（package-inno.mjs）
+├─ scripts/             # 打包与版本同步脚本（package-inno.mjs / sync-version.mjs）
 ├─ docs/                # 开发文档与开发计划
 ├─ public/              # 静态资源
 └─ build/               # 打包脚本与打包文档

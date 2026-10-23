@@ -15,6 +15,7 @@ Zetla —— 桌面 LaTeX 工作台（Tauri 2 + React 19 + Vite 8 + CodeMirror 6
 - UI 唯一依据 `docs/UI/code.html`（mockup）；MVP 仅亮色主题（`data-theme="light"`），dark token 保留。
 - `src/types/` 与 Rust struct 一一对应，manifest/协议 JSON 均 camelCase（Rust 侧 `#[serde(rename_all = "camelCase")]`），改一边必同步另一边。
 - 新命令 = `src-tauri/src/commands/<域>.rs` + `lib.rs` 注册 + `src/ipc/invoke.ts` 补签名，三处齐全。
+- 版本号唯一源 = `package.json` 的 `version`；改版本只改这一处，`scripts/sync-version.mjs` 自动同步 `tauri.conf.json` / `Cargo.toml` / `Cargo.lock` / `package-lock.json` / `src/version.ts`（`npm run dev|build|tauri` 已前置），这些落点勿手改。
 - 打包：**正式 Windows 包 = Inno Setup**（`src-tauri/windows/inno/zetla.iss` + `scripts/package-inno.mjs`）。`bundle.active=false`，构建命令固定为 `npm run tauri build -- --no-bundle` → `npm run package:inno`（或 `npm run package:win`）。`build/` 为本地产物目录（gitignore），不要在 `build/` 内改安装脚本。
 - 非核心功能后置清单见开发文档 §0.1；MVP 不做的能力在 UI 上**置灰 + tooltip 标注接通切片**，不做假入口。
 
