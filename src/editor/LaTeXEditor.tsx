@@ -7,7 +7,6 @@ import CodeMirror, {
   keymap,
   type ReactCodeMirrorRef,
 } from "@uiw/react-codemirror";
-import { Compartment } from "@codemirror/state";
 import { openSearchPanel } from "@codemirror/search";
 import { latex } from "codemirror-lang-latex";
 import { useSettingsStore } from "@/core/settings";
@@ -52,7 +51,7 @@ export interface LaTeXEditorProps {
   placeholder?: string;
   /** 编辑区高度，默认 60vh */
   height?: string;
-  /** M0-14a · 自动换行（偏好设置）；默认开。切换经 Compartment 热生效 */
+  /** M0-14a · 自动换行（偏好设置）；默认开。作为 CM6 扩展随编辑器直接创建 */
   lineWrapping?: boolean;
 }
 
@@ -71,13 +70,13 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     ref,
   ) {
     const cmRef = useRef<ReactCodeMirrorRef>(null);
-    // 自动换行经 Compartment 独立管理（偏好设置热切换）
-    const wrapCompartment = useRef(new Compartment());
+    // 字号/字体/换行变化后触发 CM6 重新测量（换行位置、行高、滚动范围）
+    const editor = useSettingsStore((s) => s.settings.editor);
     // Ctrl+滚轮缩放字号（M0-14a 用户追加）
     const wrapRef = useRef<HTMLDivElement | null>(null);
     const wheelAccRef = useRef(0);
 
-    // 闭包里拿到最新回调：扩展只创建一次
+    // 闭包里拿到最新回调；扩展仅在换行开关变化时重建
     const onSaveRef = useRef(onSave);
     onSaveRef.current = onSave;
     const onCursorRef = useRef(onCursorChange);
@@ -86,8 +85,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const extensions = useMemo(
       () => [
         latex({ autoCloseBrackets: true, autoCloseTags: true }),
-        // 初始占位空扩展；实际开关由下方 useEffect reconfigure（偏好设置驱动）
-        wrapCompartment.current.of([]),
+        // 软换行：只影响显示，不向文档写入换行符
+        lineWrapping ? EditorView.lineWrapping : [],
         keymap.of([
           {
             key: "Mod-s",
@@ -106,19 +105,16 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           }
         }),
       ],
-      [],
+      [lineWrapping],
     );
 
-    // 偏好设置的自动换行开关（含首挂载同步）
+    // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置
     useEffect(() => {
-      const view = cmRef.current?.view;
-      if (!view) return;
-      view.dispatch({
-        effects: wrapCompartment.current.reconfigure(
-          lineWrapping ? EditorView.lineWrapping : [],
-        ),
+      const id = requestAnimationFrame(() => {
+        cmRef.current?.view?.requestMeasure();
       });
-    }, [lineWrapping]);
+      return () => cancelAnimationFrame(id);
+    }, [editor.fontSize, editor.fontFamily, lineWrapping]);
 
     // Ctrl+滚轮缩放：React 的 wheel 是 passive，必须原生监听才能 preventDefault
     // - 编辑区内按住 Ctrl 滚动一律拦截（避免 WebView 整页缩放），开关关闭只是不缩放字号
