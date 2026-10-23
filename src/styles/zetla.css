@@ -2218,6 +2218,14 @@ body.col-resizing {
 /* ============================================================
    偏好设置模态（M0-14a · 移植自 docs/UI/code.html settings 段）
    ============================================================ */
+/* 设置模态固定统一高度：切换 tab 时外框不跳动；
+   右侧内容超长时只在 .set-panes 内滚动，底部按钮保持可见。
+   高度上限 86vh，避免小窗口下超出屏幕。 */
+.modal.settings {
+  height: min(560px, 86vh);
+  max-height: 86vh;
+}
+
 /* 设置模态 body 左右布局：全局 .modal-body 是 padding 流式布局，
    此处对齐 mockup（无 padding flex，导航左 194px 固定，右 pane 独立滚动） */
 .modal.settings .modal-body {
@@ -2229,6 +2237,7 @@ body.col-resizing {
 .set-nav {
   width: 194px;
   flex: none;
+  overflow-y: auto;
   border-right: 1px solid var(--line);
   padding: 11px 9px;
   display: flex;
@@ -2265,6 +2274,8 @@ body.col-resizing {
 
 .set-panes {
   flex: 1;
+  min-width: 0;
+  min-height: 0;
   overflow: auto;
   padding: 20px 23px 26px;
 }
