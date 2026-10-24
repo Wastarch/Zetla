@@ -4,6 +4,9 @@ import type { CompileResult, ProjectInfo, TexDistInfo } from "@/types";
 
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
+/** 侧栏视图（M1-5a · 活动栏切换）：资源管理器 / 大纲 / 模块 */
+export type SidebarView = "explorer" | "outline" | "modules";
+
 /** 偏好设置页当前打开的页签（null = 关闭） */
 export type SettingsPane =
   | "general"
@@ -20,6 +23,12 @@ export interface AppState {
   /** M0-13 前移：资源树可见性（视图菜单/快捷键切换） */
   sidebarVisible: boolean;
   toggleSidebar: () => void;
+  /** M1-5a：侧栏当前视图（活动栏竖排图标切换；仅会话内记忆，不落盘） */
+  sidebarView: SidebarView;
+  /** M1-5a：活动栏点击 —— 同视图再点=折叠，异视图=切换并展开 */
+  selectSidebarView: (v: SidebarView) => void;
+  /** M1-5a：菜单/快捷键直接指定视图（总是展开，不折叠） */
+  setSidebarView: (v: SidebarView) => void;
   /** M0-13：侧栏宽度（170–560，拖拽写入，偏好设置持久化） */
   sidebarWidth: number;
   /** M0-13：编辑区/预览比例（0.2–0.75，拖拽写入，偏好设置持久化） */
@@ -94,6 +103,14 @@ const LOG_LIMIT = 800;
 export const useAppStore = create<AppState>((set) => ({
   sidebarVisible: true,
   toggleSidebar: () => set((s) => ({ sidebarVisible: !s.sidebarVisible })),
+  sidebarView: "explorer",
+  selectSidebarView: (v) =>
+    set((s) =>
+      s.sidebarView === v
+        ? { sidebarVisible: !s.sidebarVisible }
+        : { sidebarView: v, sidebarVisible: true },
+    ),
+  setSidebarView: (v) => set({ sidebarView: v, sidebarVisible: true }),
   sidebarWidth: 258,
   previewRatio: 0.5,
   pvSideWidth: 132,

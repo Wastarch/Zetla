@@ -1576,6 +1576,67 @@ body {
   flex: none;
 }
 
+/* ── 活动栏（M1-5a · 类 VSCode：左侧竖排图标，切换侧栏视图） ── */
+.activity {
+  flex: none;
+  width: 44px; /* 与 App.tsx 的 ACTIVITY_W 保持一致 */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 0 8px;
+  background: var(--bg);
+  border-right: 1px solid var(--line);
+}
+
+.activity-btn {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--txt-3);
+  cursor: pointer;
+  transition: color 0.14s, background 0.14s;
+}
+
+/* .ic 基准 15px，活动栏图标放大一档 */
+.activity-btn .ic {
+  width: 17px;
+  height: 17px;
+}
+
+.activity-btn:hover {
+  color: var(--txt);
+  background: var(--bg-3);
+}
+
+.activity-btn.active {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* 选中态：贴活动栏左缘的竖条 */
+.activity-btn.active::before {
+  content: '';
+  position: absolute;
+  left: -6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 2px;
+  height: 16px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+
+.activity-gap {
+  flex: 1 1 auto;
+}
+
 /* ── 侧栏（M0-6 · 来自设计稿 sidebar） ──── */
 .sidebar {
   width: var(--side-w);
@@ -1632,9 +1693,22 @@ body.col-resizing {
   color: var(--txt-3);
 }
 
+/* M1-5a：活动栏视图容器（outline 视图独占侧栏，面板自带标题行） */
+.side-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.side-view .outline {
+  border-top: none;
+}
+
 /* ── 项目树 ─────────────────────────────── */
 .tree {
-  flex: 1;
+  flex: 1 1 0;
+  min-height: 0;
   overflow: auto;
   padding: 7px 6px 12px;
 }
@@ -1656,6 +1730,112 @@ body.col-resizing {
   border-radius: 99px;
   border: 2px solid transparent;
   background-clip: padding-box;
+}
+
+/* ── M1-5 大纲导航 ────────────────────── */
+.outline {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--line-soft);
+}
+
+.outline-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px 0 12px;
+  flex: none;
+}
+
+.outline-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+}
+
+.outline-count {
+  font-size: 11px;
+  color: var(--txt-4);
+}
+
+.outline-refresh {
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--txt-3);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+}
+.outline-refresh:hover {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+
+.outline-list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 6px 12px;
+}
+
+.outline-empty {
+  padding: 18px 14px;
+  font-size: 12px;
+  color: var(--txt-4);
+  line-height: 1.6;
+}
+.outline-err {
+  color: var(--err, #d9534f);
+}
+
+.outline-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--txt-1);
+  white-space: nowrap;
+}
+.outline-item:hover {
+  background: var(--bg-3);
+}
+.outline-item:hover .outline-text {
+  color: var(--accent);
+}
+
+.outline-mark {
+  flex: none;
+  width: 12px;
+  text-align: center;
+  color: var(--txt-4);
+  font-size: 10px;
+}
+
+.outline-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.outline-file {
+  flex: none;
+  margin-left: auto;
+  padding-left: 8px;
+  font-size: 10.5px;
+  color: var(--txt-5, #8a8f98);
 }
 
 .tree::-webkit-scrollbar-thumb:hover,
@@ -3328,6 +3508,35 @@ body.col-resizing {
   margin-top: 10px;
   padding-top: 10px;
   border-top: 1px solid var(--line-soft);
+}
+
+/* M1-5a：独占侧栏视图（模块视图）—— 撑满高度、去顶边框、自己滚动 */
+.mod-dock.fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  border-top: none;
+  overflow: auto;
+}
+
+/* 空态（仅 fill 模式渲染） */
+.mod-dock-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 12px;
+  font-size: 11.5px;
+  color: var(--txt-3);
+}
+
+.mod-dock-empty .btn {
+  height: 26px;
+  padding: 0 12px;
+  font-size: 11px;
 }
 
 .mod-dock-head {

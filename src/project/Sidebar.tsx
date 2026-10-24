@@ -1,9 +1,12 @@
 // M0-6 · 侧栏（VSCode 资源管理器风格，mockup UI.html .sidebar）
-// 顶部只保留「资源管理器」标签；根目录行与图标组由 ProjectTree 渲染（树的第一层）
-// M1-1：底部挂 ModuleDock（已启用模块的懒加载面板）
+// M1-5a：改为「活动栏视图」容器 ——
+//   explorer = 资源管理器标签 + 项目树；outline = 大纲面板独占；
+//   modules = 模块坞独占（fill 模式，原先是资源管理器底部固定区）
 import type { CSSProperties } from "react";
+import { useAppStore } from "@/core/store";
 import { ProjectTree } from "./ProjectTree";
 import { ModuleDock } from "@/modules/ModuleDock";
+import { OutlinePanel } from "@/outline/OutlinePanel";
 
 export interface SidebarProps {
   /** 拖拽得到的宽度（M0-6 不持久化，M0-13 接配置） */
@@ -11,14 +14,30 @@ export interface SidebarProps {
 }
 
 export function Sidebar({ style }: SidebarProps) {
+  const view = useAppStore((s) => s.sidebarView);
+
   return (
     <aside className="sidebar" style={style}>
-      <div className="side-head">
-        <div className="side-title">资源管理器</div>
-      </div>
+      {view === "explorer" ? (
+        <>
+          <div className="side-head">
+            <div className="side-title">资源管理器</div>
+          </div>
 
-      <ProjectTree />
-      <ModuleDock />
+          <ProjectTree />
+        </>
+      ) : view === "outline" ? (
+        <div className="side-view">
+          <OutlinePanel />
+        </div>
+      ) : (
+        <div className="side-view">
+          <div className="side-head">
+            <div className="side-title">模块</div>
+          </div>
+          <ModuleDock fill />
+        </div>
+      )}
     </aside>
   );
 }

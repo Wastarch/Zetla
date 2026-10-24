@@ -7,6 +7,7 @@ import { useSettingsEffects, useSettingsStore } from "@/core/settings";
 import { checkEnvOnStartup } from "@/env/useEnvCheck";
 import { EditorWorkspace } from "@/editor/EditorWorkspace";
 import { Sidebar } from "@/project/Sidebar";
+import { ActivityBar } from "@/project/ActivityBar";
 import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
 import { TemplateWizard } from "@/template/TemplateWizard";
@@ -24,6 +25,9 @@ import { useAutosave } from "@/editor/useAutosave";
 import { useWindowMemory } from "@/window/useWindowMemory";
 import "./styles/zetla.css";
 import "./App.css";
+
+/** M1-5a：活动栏固定宽度（常驻左侧；须与 zetla.css 中 .activity 的 width 一致） */
+const ACTIVITY_W = 44;
 
 function App() {
   // M0-13：侧栏/预览宽度与显隐进全局 store（useWindowMemory 启动恢复 + 防抖持久化）
@@ -60,7 +64,7 @@ function App() {
   const RESIZER_W = 5;
   const avail = Math.max(
     0,
-    wsW - (sidebarVisible ? sidebarWidth + RESIZER_W : 0) - RESIZER_W,
+    wsW - ACTIVITY_W - (sidebarVisible ? sidebarWidth + RESIZER_W : 0) - RESIZER_W,
   );
   /** 预览宽度：比例换算，预览≥300、编辑区≥360 兜底 */
   const previewW = Math.round(
@@ -92,7 +96,10 @@ function App() {
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (draggingRef.current) {
-        useAppStore.setState({ sidebarWidth: Math.min(Math.max(e.clientX, 170), 560) });
+        // 侧栏左边界在活动栏右侧 → 宽度 = 指针 x − 活动栏宽
+        useAppStore.setState({
+          sidebarWidth: Math.min(Math.max(e.clientX - ACTIVITY_W, 170), 560),
+        });
       }
       if (prevDragRef.current) {
         // 从窗口右缘量，换算成比例（拖拽后窗口缩放仍按比例分配）
@@ -120,6 +127,8 @@ function App() {
     <div className="app">
       <MenuBar />
       <div className="workspace" ref={wsRef}>
+        {/* M1-5a：活动栏常驻（侧栏折叠时仍在，用于切回/展开） */}
+        <ActivityBar />
         {sidebarVisible && (
           <>
             <Sidebar style={{ width: sidebarWidth }} />

@@ -76,6 +76,8 @@ export function MenuBar() {
   // 状态驱动菜单可用性（re-render 由 zustand 订阅触发）
   const activePath = useBuffersStore((s) => s.activePath);
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
+  // M1-5a：侧栏视图（驱动菜单勾选与切换项）
+  const sidebarView = useAppStore((s) => s.sidebarView);
   const logVisible = useAppStore((s) => s.logVisible);
   const previewVisible = useAppStore((s) => s.previewVisible);
   const running = useAppStore((s) => s.compileStatus === "running");
@@ -222,9 +224,25 @@ export function MenuBar() {
       label: "视图",
       items: [
         {
-          label: `${sidebarVisible ? "隐藏" : "显示"}资源树`,
+          label: `${sidebarVisible ? "隐藏" : "显示"}侧栏`,
           sc: "Ctrl+B 0",
           onClick: () => useAppStore.getState().toggleSidebar(),
+        },
+        {
+          // M1-5a：活动栏视图切换（等同点击左侧图标，但不会折叠）
+          label: `${sidebarVisible && sidebarView === "explorer" ? "✓ " : ""}资源管理器`,
+          sc: "Ctrl+B 1",
+          onClick: () => useAppStore.getState().setSidebarView("explorer"),
+        },
+        {
+          label: `${sidebarVisible && sidebarView === "outline" ? "✓ " : ""}大纲`,
+          sc: "Ctrl+B 2",
+          onClick: () => useAppStore.getState().setSidebarView("outline"),
+        },
+        {
+          label: `${sidebarVisible && sidebarView === "modules" ? "✓ " : ""}模块`,
+          sc: "Ctrl+B 3",
+          onClick: () => useAppStore.getState().setSidebarView("modules"),
         },
         {
           label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
@@ -343,6 +361,14 @@ export function MenuBar() {
           e.preventDefault();
           clearChord();
           useAppStore.getState().toggleSidebar();
+          return;
+        }
+        // M1-5a：Ctrl+B 1/2/3 直达活动栏视图（资源管理器 / 大纲 / 模块）
+        if (e.key === "1" || e.key === "2" || e.key === "3") {
+          e.preventDefault();
+          clearChord();
+          const v = e.key === "1" ? "explorer" : e.key === "2" ? "outline" : "modules";
+          useAppStore.getState().setSidebarView(v);
           return;
         }
         // 其它键：取消 chord，继续按普通快捷键处理
