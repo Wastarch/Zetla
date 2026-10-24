@@ -13,7 +13,7 @@ import { tags as t } from "@lezer/highlight";
 import { openSearchPanel } from "@codemirror/search";
 import { latex } from "codemirror-lang-latex";
 import { useSettingsStore } from "@/core/settings";
-import type { AppTheme } from "@/types/settings";
+import type { EffectiveTheme } from "@/types/settings";
 
 /**
  * M1-2：LaTeX 语法高亮配色。
@@ -24,8 +24,9 @@ import type { AppTheme } from "@/types/settings";
  * className=环境名、heading=章节命令、labelName=\label/\ref、quote=\cite、
  * bracket=各类括号、string=字面参数、meta=verbatim 内容、strong/emphasis/monospace=文本样式命令。
  * 注意：TagStyle 列表中越靠后的规则优先级越高（meta 等宽泛 tag 放前面）。
+ * M1-2b：键为生效主题（light/dark；"auto" 设置值已在 store 层解析，见 resolveTheme）。
  */
-const LATEX_HIGHLIGHT: Record<AppTheme, HighlightStyle> = {
+const LATEX_HIGHLIGHT: Record<EffectiveTheme, HighlightStyle> = {
   light: HighlightStyle.define([
     { tag: [t.meta, t.content], color: "#7a828c" },
     { tag: t.comment, color: "#8d959e" },
@@ -120,8 +121,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const cmRef = useRef<ReactCodeMirrorRef>(null);
     // 字号/字体/换行变化后触发 CM6 重新测量（换行位置、行高、滚动范围）
     const editor = useSettingsStore((s) => s.settings.editor);
-    // M1-2：主题（驱动 CM6 基础主题与语法高亮配色）
-    const theme = useSettingsStore((s) => s.settings.general.theme);
+    // M1-2b：生效主题（驱动 CM6 基础主题与语法高亮配色；"auto" 跟随系统，见 store resolveTheme）
+    const theme = useSettingsStore((s) => s.effectiveTheme);
     // Ctrl+滚轮缩放字号（M0-14a 用户追加）
     const wrapRef = useRef<HTMLDivElement | null>(null);
     const wheelAccRef = useRef(0);

@@ -5,8 +5,13 @@
 export type EditorFontFamily = "IBM Plex Mono" | "Consolas" | "Cascadia Mono";
 /** PDF 默认缩放：适合宽度 / 100% / 125% / 150% */
 export type PdfDefaultZoom = "fit-width" | "100" | "125" | "150";
-/** M1-2：主题（暗色主题交付；token 见 zetla.css [data-theme] 两块） */
-export type AppTheme = "light" | "dark";
+/**
+ * M1-2：主题设置值。light=亮色 / dark=暗色 / auto=跟随系统（prefers-color-scheme）；
+ * 非法值按 light 处理（token 见 zetla.css [data-theme] 两块）
+ */
+export type AppTheme = "light" | "dark" | "auto";
+/** M1-2b：生效主题（auto 经系统偏好解析后的实际值；data-theme / CM6 / 菜单消费） */
+export type EffectiveTheme = "light" | "dark";
 /**
  * M1-3：编译引擎。"auto"=跟随项目 .ltex/config.json（缺省 xelatex）；
  * 显式指定时全局覆盖项目配置（设置 → 编译设置 → 默认编译引擎）
@@ -70,7 +75,7 @@ export interface AppSettings {
     restoreLastProject: boolean;
     rememberWindow: boolean;
     restoreLayout: boolean;
-    /** M1-2：主题（light=亮色 / dark=暗色；非法值按 light 处理） */
+    /** M1-2：主题（light=亮色 / dark=暗色 / auto=跟随系统；非法值按 light 处理） */
     theme: AppTheme;
   };
   /** M0-15a：TeX 代装记录（Zetla 自动安装时写入；distro=null 时目录为手动指定） */

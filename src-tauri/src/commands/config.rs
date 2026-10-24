@@ -121,7 +121,7 @@ pub struct GeneralConfig {
     pub restore_last_project: bool,
     pub remember_window: bool,
     pub restore_layout: bool,
-    /// M1-2：主题（"light" / "dark"；缺省与非法值均按 light）
+    /// M1-2b：主题（"light" / "dark" / "auto"=跟随系统；缺省与非法值均按 light）
     #[serde(default = "default_theme")]
     pub theme: String,
 }
@@ -219,6 +219,8 @@ impl Default for BuildConfig {
 pub const BUILD_ENGINES: [&str; 4] = ["auto", "xelatex", "pdflatex", "lualatex"];
 /// M1-3：编译流程步骤白名单（与 src/types/settings.ts CompileStep 一致）
 pub const BUILD_STEPS: [&str; 3] = ["latex", "bibtex", "biber"];
+/// M1-2b：主题白名单（与 src/types/settings.ts AppTheme 一致；"auto"=跟随系统明暗）
+pub const THEMES: [&str; 3] = ["light", "dark", "auto"];
 /// M1-3：固定流程步骤数上限（防呆；空序列 = 自动）
 pub const MAX_STEPS: usize = 8;
 
@@ -269,6 +271,10 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     }
     if !PDF_ZOOMS.contains(&cfg.pdf.default_zoom.as_str()) {
         cfg.pdf.default_zoom = "fit-width".to_string();
+    }
+    // M1-2b：主题白名单（"auto"=跟随系统；非法值回退 light，避免前端 data-theme 落空）
+    if !THEMES.contains(&cfg.general.theme.as_str()) {
+        cfg.general.theme = "light".to_string();
     }
     // M1-3：编译引擎白名单 + 流程步骤归一化（非法引擎回退 auto，保持「跟随项目」行为）
     if !BUILD_ENGINES.contains(&cfg.build.engine.as_str()) {
@@ -572,6 +578,23 @@ mod tests {
             serde_json::from_str::<AppConfig>(&text).unwrap().general.theme,
             "dark"
         );
+    }
+
+    #[test]
+    fn theme_auto_roundtrip_and_invalid_falls_back_light() {
+        // M1-2b："auto"（跟随系统）往返保留；非法值归一化为 light
+        let mut cfg = AppConfig::default();
+        cfg.general.theme = "auto".to_string();
+        let text = serde_json::to_string(&cfg).unwrap();
+        assert!(text.contains("\"theme\":\"auto\""));
+        assert_eq!(
+            serde_json::from_str::<AppConfig>(&text).unwrap().general.theme,
+            "auto"
+        );
+
+        let mut bad = AppConfig::default();
+        bad.general.theme = "blue".to_string();
+        assert_eq!(normalize(bad).general.theme, "light");
     }
 
     #[test]

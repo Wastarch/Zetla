@@ -12,7 +12,22 @@ import {
   cloneSettings,
   type AppSettings,
   type AppTheme,
+  type EffectiveTheme,
 } from "@/types/settings";
+
+const FONT_SIZE_MIN = 8;
+const FONT_SIZE_MAX = 32;
+/** 滚轮缩放字号 → 落盘防抖计时器（模块级，跨 store 调用共享） */
+let fontPersistTimer: number | undefined;
+
+/**
+ * M1-2b：主题设置值 → 生效主题。"auto" 取系统偏好（prefers-color-scheme: dark）；
+ * <html data-theme> 与 CM6 只认 light/dark，故解析集中在此一处。
+ */
+export function resolveTheme(theme: AppTheme): EffectiveTheme {
+  if (theme !== "auto") return theme;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
 
 interface SettingsState {
   /** 运行时设置（设置页即时预览直接写这里） */
@@ -41,17 +56,19 @@ interface SettingsState {
    * <html data-theme>），并即时落盘（低频操作，无需防抖；以 persisted 为基底不串写草稿）
    */
   setTheme: (theme: AppTheme) => void;
+  /**
+   * M1-2b：生效主题（"auto" 时为系统偏好解析值；运行时态不落盘，
+   * 由 useSettingsEffects 在设置/系统偏好变化时写入，LaTeXEditor/MenuBar 订阅）
+   */
+  effectiveTheme: EffectiveTheme;
+  setEffectiveTheme: (t: EffectiveTheme) => void;
 }
-
-const FONT_SIZE_MIN = 8;
-const FONT_SIZE_MAX = 32;
-/** 滚轮缩放字号 → 落盘防抖计时器（模块级，跨 store 调用共享） */
-let fontPersistTimer: number | undefined;
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   persisted: DEFAULT_SETTINGS,
   loaded: false,
+  effectiveTheme: resolveTheme(DEFAULT_SETTINGS.general.theme),
   load: async () => {
     try {
       const cfg = await configApi.loadAppConfig();
@@ -108,22 +125,35 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       void get().persist({ general: { ...st.persisted.general, theme } });
     }
   },
+  // 生效主题由 useSettingsEffects 统一写入（值不变时不触发订阅者重渲染）
+  setEffectiveTheme: (t) => set((s) => (s.effectiveTheme === t ? s : { effectiveTheme: t })),
 }));
 
 /** 编辑器行列 CSS 变量同步（字号/字体族）+ 明暗主题同步，App 根部调用 */
 export function useSettingsEffects(): void {
   const editor = useSettingsStore((s) => s.settings.editor);
   const theme = useSettingsStore((s) => s.settings.general.theme);
+  const setEffectiveTheme = useSettingsStore((s) => s.setEffectiveTheme);
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--editor-fs", `${editor.fontSize}px`);
     root.style.setProperty("--editor-ff", FONT_STACKS[editor.fontFamily]);
   }, [editor.fontFamily, editor.fontSize]);
   // 主题：<html data-theme> 驱动 zetla.css 双 token 块 + color-scheme（原生滚动条/表单控件）
-  // CM6 编辑器主题由 LaTeXEditor 订阅同一字段经 theme prop 切换（非 CSS 层）
+  // CM6 编辑器主题由 LaTeXEditor 订阅 effectiveTheme 经 theme prop 切换（非 CSS 层）
+  // M1-2b："auto" = 跟随系统 —— 监听 prefers-color-scheme，系统切换时实时重算生效主题
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-  }, [theme]);
+    const apply = () => {
+      const eff = resolveTheme(theme);
+      document.documentElement.dataset.theme = eff;
+      setEffectiveTheme(eff);
+    };
+    apply();
+    if (theme !== "auto") return;
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [theme, setEffectiveTheme]);
 }
 
 /** 深拷贝（设置页快照/草稿用；类型定义处实现，此处转发） */

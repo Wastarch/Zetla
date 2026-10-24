@@ -83,8 +83,9 @@ export function MenuBar() {
   const running = useAppStore((s) => s.compileStatus === "running");
   const logPath = useAppStore((s) => s.lastResult?.logPath);
   const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
-  // M1-2：当前主题（驱动菜单标签：切换到暗色 / 切换到亮色）
-  const appTheme = useSettingsStore((s) => s.settings.general.theme);
+  // M1-2b：主题设置值（是否 auto）与生效主题（驱动菜单标签/勾选）
+  const themeSetting = useSettingsStore((s) => s.settings.general.theme);
+  const effectiveTheme = useSettingsStore((s) => s.effectiveTheme);
 
   const canEdit = activePath !== null;
 
@@ -271,8 +272,20 @@ export function MenuBar() {
         { label: "缩小", enabled: false, hint: "缩放 M1" },
         { sep: true, label: "" },
         {
-          label: appTheme === "dark" ? "切换到亮色主题" : "切换到暗色主题",
-          onClick: () => useSettingsStore.getState().setTheme(appTheme === "dark" ? "light" : "dark"),
+          // M1-2b：跟随系统（✓ 标记当前是否为 auto；点击从固定亮/暗切回跟随）
+          label: `${themeSetting === "auto" ? "✓ " : ""}主题跟随系统`,
+          hint:
+            themeSetting === "auto"
+              ? "当前跟随系统明暗，点击无变化"
+              : "点击后跟随系统明暗（prefers-color-scheme）",
+          onClick: () => useSettingsStore.getState().setTheme("auto"),
+        },
+        {
+          // 切换项按生效主题取反：auto 时点击 = 固定为当前外观（退出跟随）
+          label: effectiveTheme === "dark" ? "切换到亮色主题" : "切换到暗色主题",
+          hint: themeSetting === "auto" ? "当前跟随系统，点击后固定外观" : undefined,
+          onClick: () =>
+            useSettingsStore.getState().setTheme(effectiveTheme === "dark" ? "light" : "dark"),
         },
       ],
     },

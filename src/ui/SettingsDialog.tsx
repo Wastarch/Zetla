@@ -559,7 +559,7 @@ export function SettingsDialog() {
             {pane === "look" && (
               <div className="set-pane" role="tabpanel">
                 <h4>外观与自动保存</h4>
-                <Fld label="主题" hint="亮色 / 暗色，即时预览，保存后生效">
+                <Fld label="主题" hint="亮色 / 暗色 / 跟随系统，即时预览，保存后生效">
                   <select
                     value={draft.general.theme}
                     onChange={(e) =>
@@ -571,6 +571,7 @@ export function SettingsDialog() {
                   >
                     <option value="light">亮色</option>
                     <option value="dark">暗色</option>
+                    <option value="auto">跟随系统</option>
                   </select>
                 </Fld>
                 <Fld label="自动保存" hint="定时把未保存的修改写回磁盘">
