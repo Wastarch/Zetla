@@ -74,7 +74,9 @@ export async function startCompile(): Promise<void> {
   }
 
   st.clearLog();
-  useAppStore.setState({ logVisible: true });
+  // 用户指令 2026-10-24：开始编译即展开面板并切「全部」页看实时输出；
+  // 失败时 compile_finished 桥接切「错误」页，成功/取消不动作、留在「全部」
+  useAppStore.setState({ logVisible: true, logTab: "all" });
   // M1-3：生效引擎 = 设置页显式值 ?? 项目 config（缺省 xelatex）；
   // steps 空=自动（latexmk），非空=按序直跑的固定流程（如 LaTeX → BibTeX → LaTeX → LaTeX）
   const { build } = useSettingsStore.getState().settings;
@@ -126,7 +128,8 @@ export function useCompileBridge(): void {
       if (!alive) return;
       const st = useAppStore.getState();
       st.setCompileDone(r);
-      // M0-12：编译失败自动展开面板并停在「错误」页（用户手动收起后下次失败仍会展开）
+      // M0-12：编译失败自动展开面板并切到「错误」页（开始编译时已切「全部」；
+      // 成功/取消留在「全部」不动作——用户指令 2026-10-24；用户手动收起后下次失败仍会展开）
       if (r.status === "error") useAppStore.setState({ logVisible: true, logTab: "errors" });
       const secs = (r.durationMs / 1000).toFixed(1);
       const summary =
