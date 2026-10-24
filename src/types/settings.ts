@@ -5,6 +5,8 @@
 export type EditorFontFamily = "IBM Plex Mono" | "Consolas" | "Cascadia Mono";
 /** PDF 默认缩放：适合宽度 / 100% / 125% / 150% */
 export type PdfDefaultZoom = "fit-width" | "100" | "125" | "150";
+/** M1-2：主题（暗色主题交付；token 见 zetla.css [data-theme] 两块） */
+export type AppTheme = "light" | "dark";
 
 export interface AppSettings {
   schemaVersion: number;
@@ -52,6 +54,8 @@ export interface AppSettings {
     restoreLastProject: boolean;
     rememberWindow: boolean;
     restoreLayout: boolean;
+    /** M1-2：主题（light=亮色 / dark=暗色；非法值按 light 处理） */
+    theme: AppTheme;
   };
   /** M0-15a：TeX 代装记录（Zetla 自动安装时写入；distro=null 时目录为手动指定） */
   tex: {
@@ -88,7 +92,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     previewRatio: 0.5,
     pvSideWidth: 132,
   },
-  general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true },
+  general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true, theme: "light" },
   tex: { distro: null, installDir: null, engineBinDir: null },
   perl: { installDir: null },
   modules: {},

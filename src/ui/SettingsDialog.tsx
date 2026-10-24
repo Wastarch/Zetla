@@ -1,7 +1,8 @@
 // M0-14a · 偏好设置页（对齐 docs/UI/code.html 679–769 偏好设置模态）
 // 页签：编译设置 / 编辑器 / PDF 预览 / 外观与保存 / 关于 Zetla
 // 交互：改动即时预览（setSettings → 运行时立即生效），「保存设置」落盘并关闭，「取消」回滚快照
-// 未接通项按硬约定置灰 + tooltip 标注接通切片（多引擎 M1、小地图/折叠 M1、Synctex/暗色 M3）
+// 未接通项按硬约定置灰 + tooltip 标注接通切片（多引擎 M1、小地图/折叠 M1、Synctex M3；
+// 暗色主题 M1-2 已接：外观页「主题」下拉 + 菜单「切换明暗主题」）
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { APP_VERSION } from "@/version";
@@ -12,7 +13,7 @@ import { useModuleList } from "@/modules/useModuleList";
 import { engineLabel } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
 import { Icon } from "@/ui/Icon";
-import type { AppSettings, EditorFontFamily, PdfDefaultZoom } from "@/types/settings";
+import type { AppSettings, AppTheme, EditorFontFamily, PdfDefaultZoom } from "@/types/settings";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "general", icon: "layout", label: "通用" },
@@ -417,16 +418,18 @@ export function SettingsDialog() {
             {pane === "look" && (
               <div className="set-pane" role="tabpanel">
                 <h4>外观与自动保存</h4>
-                <Fld
-                  label="主题"
-                  hint="MVP 仅亮色"
-                  tip="暗色主题 M3 接通"
-                >
-                  <select disabled value="light" onChange={() => {}}>
+                <Fld label="主题" hint="亮色 / 暗色，即时预览，保存后生效">
+                  <select
+                    value={draft.general.theme}
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        general: { ...d.general, theme: e.target.value as AppTheme },
+                      }))
+                    }
+                  >
                     <option value="light">亮色</option>
-                    <option value="dark" hidden>
-                      暗色
-                    </option>
+                    <option value="dark">暗色</option>
                   </select>
                 </Fld>
                 <Fld label="自动保存" hint="定时把未保存的修改写回磁盘">

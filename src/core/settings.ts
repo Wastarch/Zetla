@@ -6,7 +6,13 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import { configApi } from "@/ipc/invoke";
-import { DEFAULT_SETTINGS, FONT_STACKS, cloneSettings, type AppSettings } from "@/types/settings";
+import {
+  DEFAULT_SETTINGS,
+  FONT_STACKS,
+  cloneSettings,
+  type AppSettings,
+  type AppTheme,
+} from "@/types/settings";
 
 interface SettingsState {
   /** 运行时设置（设置页即时预览直接写这里） */
@@ -30,6 +36,11 @@ interface SettingsState {
    * clamp 8–32；运行时立即生效，500ms 防抖以 persisted 为基底落盘（不串写设置页草稿）
    */
   zoomEditorFont: (deltaY: number) => void;
+  /**
+   * M1-2：切换明暗主题（菜单栏快捷入口）。运行时立即生效（useSettingsEffects 同步
+   * <html data-theme>），并即时落盘（低频操作，无需防抖；以 persisted 为基底不串写草稿）
+   */
+  setTheme: (theme: AppTheme) => void;
 }
 
 const FONT_SIZE_MIN = 8;
@@ -89,16 +100,30 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       void get().persist({ editor: { ...base, fontSize: get().settings.editor.fontSize } });
     }, 500);
   },
+  setTheme: (theme) => {
+    const st = get();
+    set((s) => ({ settings: { ...s.settings, general: { ...s.settings.general, theme } } }));
+    // 即时落盘：低频操作直接写（与设置页保存走同一通道，但不动设置页草稿）
+    if (st.loaded) {
+      void get().persist({ general: { ...st.persisted.general, theme } });
+    }
+  },
 }));
 
-/** 编辑器行列 CSS 变量同步（字号/字体族），App 根部调用 */
+/** 编辑器行列 CSS 变量同步（字号/字体族）+ 明暗主题同步，App 根部调用 */
 export function useSettingsEffects(): void {
   const editor = useSettingsStore((s) => s.settings.editor);
+  const theme = useSettingsStore((s) => s.settings.general.theme);
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--editor-fs", `${editor.fontSize}px`);
     root.style.setProperty("--editor-ff", FONT_STACKS[editor.fontFamily]);
   }, [editor.fontFamily, editor.fontSize]);
+  // 主题：<html data-theme> 驱动 zetla.css 双 token 块 + color-scheme（原生滚动条/表单控件）
+  // CM6 编辑器主题由 LaTeXEditor 订阅同一字段经 theme prop 切换（非 CSS 层）
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
 }
 
 /** 深拷贝（设置页快照/草稿用；类型定义处实现，此处转发） */

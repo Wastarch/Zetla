@@ -3,7 +3,8 @@
    来源：docs/UI/code.html（设计稿）
    M0-5 落地范围：tokens / 图标 .ic / 按钮控件 / TabBar /
    编辑区 / 面板状态条 / 空态 / toast / 验收抽屉 / CM6 配色
-   主题：MVP 仅亮色（data-theme="light"）；dark 块保留待 M3
+   主题：M1-2 起亮/暗双主题（<html data-theme> 切换，两块 token 对称；
+   color-scheme 同步声明，让原生滚动条/表单控件跟随）
    ============================================================ */
 
 /* ── tokens ─────────────────────────────── */
@@ -20,6 +21,7 @@
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
   --bg: #14161a;
   --bg-2: #191c21;
   --bg-3: #202429;
@@ -42,14 +44,11 @@
   --paper: #f7f5f0;
   --paper-ink: #22242a;
   --shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
-  --t-com: #6b7480;
-  --t-cmd: #7fb0ff;
-  --t-math: #e0b169;
-  --t-env: #6fd3c4;
-  --t-brace: #7e8794;
+  /* CM6 语法色见 LaTeXEditor.tsx 的 LATEX_HIGHLIGHT（TS 单一来源，随主题切换） */
 }
 
 [data-theme='light'] {
+  color-scheme: light;
   --bg: #e9ecf0;
   --bg-2: #f4f6f8;
   --bg-3: #ffffff;
@@ -72,11 +71,6 @@
   --paper: #fbfaf7;
   --paper-ink: #22242a;
   --shadow: 0 18px 50px rgba(20, 28, 40, 0.18);
-  --t-com: #8d959e;
-  --t-cmd: #2b62cf;
-  --t-math: #9a5b0d;
-  --t-env: #0d7a6e;
-  --t-brace: #7a828c;
 }
 
 /* ── base（桌面应用：铺满窗口，禁滚动） ── */
@@ -1136,7 +1130,8 @@ body {
 }
 
 .latex-editor > .cm-theme,
-.latex-editor > .cm-theme-light {
+.latex-editor > .cm-theme-light,
+.latex-editor > .cm-theme-dark {
   flex: 1;
   min-width: 0;
 }

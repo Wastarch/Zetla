@@ -121,6 +121,14 @@ pub struct GeneralConfig {
     pub restore_last_project: bool,
     pub remember_window: bool,
     pub restore_layout: bool,
+    /// M1-2：主题（"light" / "dark"；缺省与非法值均按 light）
+    #[serde(default = "default_theme")]
+    pub theme: String,
+}
+
+/// 主题缺省值（旧配置无 theme 字段时走亮色）
+fn default_theme() -> String {
+    "light".to_string()
 }
 
 /// M0-15a：Zetla 代装的 TeX（检测优先用、编译时注入子进程 PATH）
@@ -391,6 +399,7 @@ mod tests {
         cfg.general.restore_last_project = false;
         cfg.general.remember_window = false;
         cfg.general.restore_layout = false;
+        cfg.general.theme = "dark".to_string();
         cfg.tex.distro = Some("texlive".to_string());
         cfg.tex.install_dir = Some("C:\\Users\\u\\AppData\\Local\\Zetla\\tex\\texlive".to_string());
         cfg.tex.engine_bin_dir =
@@ -432,10 +441,36 @@ mod tests {
         assert!(text.contains("perl"));
         // M1-1 字段
         assert!(text.contains("modules"));
+        // M1-2 字段
+        assert!(text.contains("theme"));
         // snake_case 不应出现
         assert!(!text.contains("font_family"));
         assert!(!text.contains("interval_seconds"));
         assert!(!text.contains("last_project"));
+    }
+
+    #[test]
+    fn theme_default_light_and_roundtrip() {
+        // M1-2：缺 theme 字段 → light；显式 dark 往返保留
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "general": { "restoreLastProject": true }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(parsed.general.theme, "light");
+
+        let mut cfg = AppConfig::default();
+        cfg.general.theme = "dark".to_string();
+        let text = serde_json::to_string(&cfg).unwrap();
+        assert!(text.contains("\"theme\":\"dark\""));
+        assert_eq!(
+            serde_json::from_str::<AppConfig>(&text).unwrap().general.theme,
+            "dark"
+        );
     }
 
     #[test]

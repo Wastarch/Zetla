@@ -1,5 +1,6 @@
 // M0-4/M0-5 · CM6 编辑器核心封装（见 docs/开发计划.md M0-4、M0-5）
 // 职责：LaTeX 语法高亮 / 行号 / 括号配对 / 查找替换 / Ctrl+S 保存 / gotoLine 跳行 / 光标上报
+// M1-2：语法高亮配色与主题联动（亮/暗双份，随 data-theme 切换）
 // 「单文档受控组件」：多标签脏状态与实例驻留策略（方案 A）由 EditorWorkspace 上层接管。
 import { forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from "react";
 import CodeMirror, {
@@ -7,9 +8,53 @@ import CodeMirror, {
   keymap,
   type ReactCodeMirrorRef,
 } from "@uiw/react-codemirror";
+import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { tags as t } from "@lezer/highlight";
 import { openSearchPanel } from "@codemirror/search";
 import { latex } from "codemirror-lang-latex";
 import { useSettingsStore } from "@/core/settings";
+import type { AppTheme } from "@/types/settings";
+
+/**
+ * M1-2：LaTeX 语法高亮配色。
+ * CM6 不内置语法色（@uiw 也不挂 defaultHighlightStyle），此前编辑器处于无配色状态；
+ * 配色与 zetla.css 主题 token 同源，亮/暗双份（TS 单一来源，避免读 CSS 变量的时序竞争）。
+ * tag 映射依据 codemirror-lang-latex 的 styleTags：keyword=控制序列/\begin/\end、
+ * operator=控制符号与 & ~、variableName/processingInstruction=数学字符与 $、
+ * className=环境名、heading=章节命令、labelName=\label/\ref、quote=\cite、
+ * bracket=各类括号、string=字面参数、meta=verbatim 内容、strong/emphasis/monospace=文本样式命令。
+ * 注意：TagStyle 列表中越靠后的规则优先级越高（meta 等宽泛 tag 放前面）。
+ */
+const LATEX_HIGHLIGHT: Record<AppTheme, HighlightStyle> = {
+  light: HighlightStyle.define([
+    { tag: [t.meta, t.content], color: "#7a828c" },
+    { tag: t.comment, color: "#8d959e" },
+    { tag: [t.string, t.number], color: "#9a5b0d" },
+    { tag: [t.keyword, t.definitionKeyword], color: "#2b62cf" },
+    { tag: t.heading, color: "#1e4fae", fontWeight: "600" },
+    { tag: [t.operator, t.variableName, t.processingInstruction], color: "#9a5b0d" },
+    { tag: t.bracket, color: "#7a828c" },
+    { tag: [t.className, t.labelName, t.quote], color: "#0d7a6e" },
+    { tag: t.strong, fontWeight: "600" },
+    { tag: t.emphasis, fontStyle: "italic" },
+    { tag: t.monospace, fontFamily: "var(--font-mono, monospace)" },
+    { tag: t.invalid, color: "#c2382f" },
+  ]),
+  dark: HighlightStyle.define([
+    { tag: [t.meta, t.content], color: "#7e8794" },
+    { tag: t.comment, color: "#6b7480" },
+    { tag: [t.string, t.number], color: "#e0b169" },
+    { tag: [t.keyword, t.definitionKeyword], color: "#7fb0ff" },
+    { tag: t.heading, color: "#7fb0ff", fontWeight: "600" },
+    { tag: [t.operator, t.variableName, t.processingInstruction], color: "#e0b169" },
+    { tag: t.bracket, color: "#7e8794" },
+    { tag: [t.className, t.labelName, t.quote], color: "#6fd3c4" },
+    { tag: t.strong, fontWeight: "600" },
+    { tag: t.emphasis, fontStyle: "italic" },
+    { tag: t.monospace, fontFamily: "var(--font-mono, monospace)" },
+    { tag: t.invalid, color: "#f26a60" },
+  ]),
+};
 
 export interface CursorPos {
   /** 1-based 行 */
@@ -72,6 +117,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const cmRef = useRef<ReactCodeMirrorRef>(null);
     // 字号/字体/换行变化后触发 CM6 重新测量（换行位置、行高、滚动范围）
     const editor = useSettingsStore((s) => s.settings.editor);
+    // M1-2：主题（驱动 CM6 基础主题与语法高亮配色）
+    const theme = useSettingsStore((s) => s.settings.general.theme);
     // Ctrl+滚轮缩放字号（M0-14a 用户追加）
     const wrapRef = useRef<HTMLDivElement | null>(null);
     const wheelAccRef = useRef(0);
@@ -104,8 +151,10 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
             onCursorRef.current?.(line.number, head - line.from + 1);
           }
         }),
+        // 语法高亮配色（亮/暗双份，随主题切换；CM6 基础主题由 theme prop 接管）
+        syntaxHighlighting(LATEX_HIGHLIGHT[theme]),
       ],
-      [lineWrapping],
+      [lineWrapping, theme],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置
@@ -196,7 +245,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           ref={cmRef}
           value={value}
           height="100%"
-          theme="light"
+          theme={theme}
           readOnly={readOnly}
           placeholder={placeholder}
           extensions={extensions}

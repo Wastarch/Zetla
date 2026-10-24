@@ -1,6 +1,6 @@
 // 顶部菜单栏（M0-13 前移）—— 对齐 docs/UI/code.html .menubar/.drop/.mi
 // 只接通已有能力；未到切片的功能置灰并在 tooltip 标注接通切片（编译 M0-9 已接、
-// 日志解析 M0-11、PDF M0-10、设置/偏好 M0-14a 已接、明暗主题 M3）。撤销/重做/注释经
+// 日志解析 M0-11、PDF M0-10、设置/偏好 M0-14a 已接、明暗主题 M1-2 已接）。撤销/重做/注释经
 // 命令桥 src/editor/activeView.ts 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力）。
 import { useEffect, useRef, useState } from "react";
 import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
@@ -10,6 +10,7 @@ import { redo, toggleComment, undo } from "@codemirror/commands";
 import { getActiveView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useAppStore } from "@/core/store";
+import { useSettingsStore } from "@/core/settings";
 import { useProjectStore, notify } from "@/project/useProject";
 import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
@@ -78,6 +79,8 @@ export function MenuBar() {
   const running = useAppStore((s) => s.compileStatus === "running");
   const logPath = useAppStore((s) => s.lastResult?.logPath);
   const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
+  // M1-2：当前主题（驱动菜单标签：切换到暗色 / 切换到亮色）
+  const appTheme = useSettingsStore((s) => s.settings.general.theme);
 
   const canEdit = activePath !== null;
 
@@ -233,7 +236,10 @@ export function MenuBar() {
         { label: "放大", enabled: false, hint: "缩放 M1" },
         { label: "缩小", enabled: false, hint: "缩放 M1" },
         { sep: true, label: "" },
-        { label: "切换明暗主题", enabled: false, hint: "暗色主题 M3" },
+        {
+          label: appTheme === "dark" ? "切换到亮色主题" : "切换到暗色主题",
+          onClick: () => useSettingsStore.getState().setTheme(appTheme === "dark" ? "light" : "dark"),
+        },
       ],
     },
     {
