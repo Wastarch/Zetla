@@ -1,5 +1,6 @@
 // M0-10 / M0-10b · 右侧 PDF 预览
 // 连续滚动 / 翻页、单列 / 双列、Ctrl+滚轮缩放、文本层（复制）、查找、缩略图、目录、链接
+// M1-4：synctex 正向高亮（store.pdfSync → 滚动定位 + 闪现）与 Ctrl+点击反向跳转
 // 加载链路：compile_finished(ok) → store.previewPdf/rev → usePdfDoc（asset 协议 + no-store）
 import {
   useCallback,
@@ -17,6 +18,7 @@ import { Icon } from "@/ui/Icon";
 import { usePdfDoc } from "./usePdfDoc";
 import { usePdfFind } from "./pdfFind";
 import { openExternal, resolveDestPage, type PageLink } from "./pdfNav";
+import { jumpToSourceFromPdf } from "./syncTex";
 import { PdfPageView } from "./PdfPageView";
 import { PdfFindBar } from "./PdfFindBar";
 import { PdfSidebar, type SideTab } from "./PdfSidebar";
@@ -44,6 +46,8 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   const compileStatus = useAppStore((s) => s.compileStatus);
   const togglePreview = useAppStore((s) => s.togglePreview);
   const pvSideWidth = useAppStore((s) => s.pvSideWidth);
+  // M1-4：synctex 正向跳转目标（源码 Ctrl+点击写入）
+  const pdfSync = useAppStore((s) => s.pdfSync);
 
   const { doc, err, loading, reload } = usePdfDoc(pdfPath, rev);
   const find = usePdfFind(doc);
@@ -68,6 +72,13 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   const [baseSize, setBaseSize] = useState<{ w: number; h: number } | null>(null);
   const [renderTick, setRenderTick] = useState(0);
   const [sideDragging, setSideDragging] = useState(false);
+  // M1-4：正向高亮（pt 坐标）+ 翻页模式下等待目标页渲染落地的挂起目标
+  const [syncMark, setSyncMark] = useState<
+    { page: number; x: number; y: number; w: number; h: number } | null
+  >(null);
+  const pendingSyncRef = useRef<{ page: number; x: number; y: number; w: number; h: number } | null>(
+    null,
+  );
 
   const rootRef = useRef<HTMLElement | null>(null);
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -257,6 +268,55 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   useEffect(() => {
     setPageInput(String(page));
   }, [page]);
+
+  // M1-4：synctex 正向跳转目标到达 —— 文档未就绪先挂起（预览刚展开/PDF 加载中）；
+  // 目标页已挂载（连续模式/同页）直接落地；翻页模式目标页未挂载时先跳页，
+  // 由下方 effect 等页面挂载后消费
+  useEffect(() => {
+    if (!pdfSync) return;
+    const t = {
+      page: pdfSync.page,
+      x: pdfSync.x,
+      y: pdfSync.y,
+      w: pdfSync.w,
+      h: pdfSync.h,
+    };
+    if (!doc) {
+      pendingSyncRef.current = t;
+      return;
+    }
+    const mounted = !!scrollEl?.querySelector(`[data-page="${t.page}"]`);
+    if (mounted || !paged) {
+      setSyncMark(t);
+    } else {
+      pendingSyncRef.current = t;
+      jumpTo(t.page);
+    }
+  }, [pdfSync, doc, paged, jumpTo, scrollEl]);
+
+  // 翻页模式/文档延迟就绪：目标页挂载即落地高亮
+  useEffect(() => {
+    const t = pendingSyncRef.current;
+    if (!t || !doc) return;
+    if (!scrollEl?.querySelector(`[data-page="${t.page}"]`)) return;
+    pendingSyncRef.current = null;
+    setSyncMark(t);
+  }, [doc, page, renderTick, scrollEl]);
+
+  // 高亮滚动到视口中央，1.6s 后清除（与 CSS 淡出动画同步）
+  useEffect(() => {
+    if (!syncMark || !scrollEl) return;
+    const raf = requestAnimationFrame(() => {
+      scrollEl
+        .querySelector<HTMLElement>(`[data-page="${syncMark.page}"] .pv-sync-mark`)
+        ?.scrollIntoView({ block: "center" });
+    });
+    const timer = window.setTimeout(() => setSyncMark(null), 1600);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(timer);
+    };
+  }, [syncMark, scrollEl]);
 
   // 从翻页切回连续滚动时，滚到当前页（否则画面回到第一页而页码还停在原处）
   useEffect(() => {
@@ -658,6 +718,8 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
                   findCurOcc={currentMatch && currentMatch.page === n ? currentMatch.occ : null}
                   onLink={handleLink}
                   onTextRendered={onTextRendered}
+                  highlight={syncMark && syncMark.page === n ? syncMark : null}
+                  onSyncClick={(p, x, y) => void jumpToSourceFromPdf(p, x, y)}
                 />
               ))}
             </div>

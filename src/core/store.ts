@@ -43,6 +43,12 @@ export interface AppState {
   /** 直接展示指定 PDF（项目树 / 文件菜单打开已有 PDF） */
   showPdf: (path: string) => void;
 
+  // ── SyncTeX 正向跳转目标（M1-4）──
+  /** 源码 Ctrl+点击 → PDF 高亮 + 滚动定位；seq 保证重复跳同一位置仍触发。
+   *  x/y/w/h 为 pt（scale=1 基准，y 自页顶向下） */
+  pdfSync: { page: number; x: number; y: number; w: number; h: number; seq: number } | null;
+  setPdfSync: (t: { page: number; x: number; y: number; w: number; h: number }) => void;
+
   // ── 项目 ──
   project: ProjectInfo | null;
   openProject: (p: ProjectInfo) => void;
@@ -106,6 +112,12 @@ export const useAppStore = create<AppState>((set) => ({
       previewPdf: path,
       previewRev: s.previewRev + 1,
       previewVisible: true,
+    })),
+
+  pdfSync: null,
+  setPdfSync: (t) =>
+    set((s) => ({
+      pdfSync: { ...t, seq: (s.pdfSync?.seq ?? 0) + 1 },
     })),
 
   project: null,

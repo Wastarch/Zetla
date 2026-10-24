@@ -65,7 +65,7 @@ export interface CursorPos {
 
 export interface LaTeXEditorHandle {
   /**
-   * 跳转到指定行（1-based），滚动居中并聚焦 —— M0-12 错误定位、M3 synctex 依赖此接口。
+   * 跳转到指定行（1-based），滚动居中并聚焦 —— M0-12 错误定位、M1-4 synctex 依赖此接口。
    * selectLine=true 时把整行选区选中（错误定位的高亮口径，MVP 不做 decoration）
    */
   gotoLine: (line: number, col?: number, selectLine?: boolean) => void;
@@ -98,6 +98,8 @@ export interface LaTeXEditorProps {
   height?: string;
   /** M0-14a · 自动换行（偏好设置）；默认开。作为 CM6 扩展随编辑器直接创建 */
   lineWrapping?: boolean;
+  /** M1-4：Ctrl/⌘+点击源码行 → 正向跳转到 PDF 对应位置（synctex） */
+  onJumpToPdf?: (line: number, col: number) => void;
 }
 
 export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
@@ -111,6 +113,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
       placeholder,
       height = "60vh",
       lineWrapping = true,
+      onJumpToPdf,
     },
     ref,
   ) {
@@ -128,6 +131,9 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     onSaveRef.current = onSave;
     const onCursorRef = useRef(onCursorChange);
     onCursorRef.current = onCursorChange;
+    // M1-4：Ctrl/⌘+点击 → 正向 synctex 跳转（闭包经 ref 取最新回调，不触发扩展重建）
+    const onJumpRef = useRef(onJumpToPdf);
+    onJumpRef.current = onJumpToPdf;
 
     const extensions = useMemo(
       () => [
@@ -153,6 +159,18 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
         }),
         // 语法高亮配色（亮/暗双份，随主题切换；CM6 基础主题由 theme prop 接管）
         syntaxHighlighting(LATEX_HIGHLIGHT[theme]),
+        // M1-4：Ctrl/⌘+点击源码行 → synctex 正向跳转（posAtCoords 取点击处行/列）
+        EditorView.domEventHandlers({
+          mousedown: (e, view) => {
+            if (e.button !== 0 || !(e.ctrlKey || e.metaKey)) return false;
+            const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+            if (pos == null) return false;
+            const line = view.state.doc.lineAt(pos);
+            onJumpRef.current?.(line.number, pos - line.from + 1);
+            e.preventDefault();
+            return true;
+          },
+        }),
       ],
       [lineWrapping, theme],
     );

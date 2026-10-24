@@ -8,6 +8,7 @@ import { TabBar } from "./TabBar";
 import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
 import { setActiveView, setActiveEditorHandle } from "./activeView";
 import { takePendingJump } from "./jump";
+import { jumpToPdfFromSource } from "@/preview/syncTex";
 import { useBuffersStore } from "./useBuffers";
 import { useSettingsStore } from "@/core/settings";
 
@@ -131,6 +132,7 @@ export function EditorWorkspace() {
                     // 只接收活动编辑器的光标事件
                     if (useBuffersStore.getState().activePath === b.path) setCursor({ line, col });
                   }}
+                  onJumpToPdf={(line, col) => void jumpToPdfFromSource(b.path, line, col)}
                   placeholder="开始输入 LaTeX…"
                 />
               ) : null}

@@ -1,6 +1,7 @@
 // M0-10b · 单页渲染：canvas + 文本层（可选中复制）+ 链接热区
 // 仅当页面进入滚动视口 ±400px 才真正渲染；缩放/换页自动重绘并取消旧任务。
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+// M1-4：synctex 正向高亮（highlight）+ Ctrl/⌘+点击反向跳转（onSyncClick）。
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent } from "react";
 import {
   TextLayer,
   type PDFDocumentProxy,
@@ -28,6 +29,10 @@ export interface PdfPageViewProps {
   findCurOcc: number | null;
   onLink: (link: PageLink) => void;
   onTextRendered: (page: number) => void;
+  /** M1-4：synctex 正向跳转高亮（pt 坐标，scale=1 基准；仅目标页传入） */
+  highlight?: { x: number; y: number; w: number; h: number } | null;
+  /** M1-4：Ctrl/⌘+点击页面 → 反向跳转（x/y 为 pt，距页顶向下） */
+  onSyncClick?: (page: number, xPt: number, yPt: number) => void;
 }
 
 interface LinkBox {
@@ -50,6 +55,8 @@ export function PdfPageView({
   findCurOcc,
   onLink,
   onTextRendered,
+  highlight,
+  onSyncClick,
 }: PdfPageViewProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -187,6 +194,20 @@ export function PdfPageView({
     "--total-scale-factor": scale,
   } as CSSProperties;
 
+  // M1-4：Ctrl/⌘+点击 → 反向 synctex 跳转（CSS 像素 ÷ scale = pt；y 自页顶向下）
+  // 落在链接热区上时让位给链接点击（热区是 button，会冒泡到这里）
+  const onPageMouseDown = (e: MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !(e.ctrlKey || e.metaKey) || !onSyncClick) return;
+    if ((e.target as HTMLElement | null)?.closest(".pv-link")) return;
+    const el = hostRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const xPt = (e.clientX - rect.left) / scale;
+    const yPt = (e.clientY - rect.top) / scale;
+    onSyncClick(pageNo, xPt, yPt);
+    e.preventDefault();
+  };
+
   return (
     <div
       ref={hostRef}
@@ -194,9 +215,23 @@ export function PdfPageView({
       data-page={pageNo}
       style={hostStyle}
       aria-label={`第 ${pageNo} 页`}
+      title={onSyncClick ? "Ctrl+点击：跳转到源码对应位置" : undefined}
+      onMouseDown={onPageMouseDown}
     >
       <canvas ref={canvasRef} className="pdf-canvas" />
       <div ref={textRef} className="textLayer" />
+      {highlight && (
+        <div
+          className="pv-sync-mark"
+          style={{
+            left: highlight.x * scale,
+            top: highlight.y * scale,
+            width: Math.max(highlight.w, 2) * scale,
+            // 零高盒子（字符级标记）给一个可见的行高
+            height: Math.max(highlight.h, 10) * scale,
+          }}
+        />
+      )}
       {links.map((b) => (
         <button
           key={b.key}

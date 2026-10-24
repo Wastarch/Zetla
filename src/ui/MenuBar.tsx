@@ -1,6 +1,7 @@
 // 顶部菜单栏（M0-13 前移）—— 对齐 docs/UI/code.html .menubar/.drop/.mi
 // 只接通已有能力；未到切片的功能置灰并在 tooltip 标注接通切片（编译 M0-9 已接、
-// 日志解析 M0-11、PDF M0-10、设置/偏好 M0-14a 已接、明暗主题 M1-2 已接）。撤销/重做/注释经
+// 日志解析 M0-11、PDF M0-10、设置/偏好 M0-14a 已接、明暗主题 M1-2 已接、
+// Synctex 双向跳转 M1-4 已接）。撤销/重做/注释经
 // 命令桥 src/editor/activeView.ts 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力）。
 import { useEffect, useRef, useState } from "react";
 import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
@@ -14,6 +15,7 @@ import { useSettingsStore } from "@/core/settings";
 import { useProjectStore, notify } from "@/project/useProject";
 import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
+import { jumpToPdfFromSource } from "@/preview/syncTex";
 
 /** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
 interface MenuItemDef {
@@ -231,6 +233,19 @@ export function MenuBar() {
         {
           label: `${logVisible ? "隐藏" : "显示"}日志面板`,
           onClick: () => useAppStore.getState().toggleLog(),
+        },
+        { sep: true, label: "" },
+        {
+          // M1-4：synctex 正向跳转（也可在编辑器里 Ctrl/⌘+点击源码行）
+          label: "跳到 PDF 中的位置",
+          sc: "Ctrl+点击源码",
+          enabled: hasMain,
+          hint: "未打开项目或未识别主文件",
+          onClick: () => {
+            const bs = useBuffersStore.getState();
+            if (!bs.activePath) return;
+            void jumpToPdfFromSource(bs.activePath, bs.cursor.line, bs.cursor.col);
+          },
         },
         { sep: true, label: "" },
         { label: "放大", enabled: false, hint: "缩放 M1" },

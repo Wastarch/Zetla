@@ -527,6 +527,29 @@ body {
   box-shadow: 0 0 0 1px rgba(43, 98, 207, 0.35) inset;
 }
 
+/* M1-4：synctex 正向跳转高亮（源码 Ctrl+点击后闪现，1.6s 淡出） */
+.pv-sync-mark {
+  position: absolute;
+  z-index: 2;
+  border: 1.5px solid var(--accent);
+  background: var(--accent-soft);
+  border-radius: 2px;
+  pointer-events: none;
+  animation: pv-sync-fade 1.6s ease-out forwards;
+}
+
+@keyframes pv-sync-fade {
+  0% {
+    opacity: 1;
+  }
+  70% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 /* ── pdf.js TextLayer 精简子集（复制/选中与查找高亮） ── */
 .textLayer {
   position: absolute;

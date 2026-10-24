@@ -7,6 +7,7 @@ import type {
   FileDoc,
   ProjectInfo,
   ProjectTree,
+  SyncTexHit,
   TemplateManifest,
   TemplateMeta,
   TexDistInfo,
@@ -39,6 +40,18 @@ export const compileApi = {
   cancelTexInstall: () => call<void>("cancel_tex_install"),
   /** M0-15b/c：接管已有 TeX Live（校验引擎并写 config/台账/标记） */
   adoptTexInstall: (root: string) => call<TexInstallResult>("adopt_tex_install", { root }),
+};
+
+// ── SyncTeX 双向跳转（M1-4）───────────────────────────────
+export const synctexApi = {
+  /** 正向：源码位置 → PDF 位置（编辑器 Ctrl+点击 / 视图菜单）。
+   *  pdf 仅用于定位同目录同主名的 .synctex(.gz)；未编译时返回错误 */
+  view: (inputFile: string, line: number, column: number, pdf: string) =>
+    call<SyncTexHit | null>("synctex_view", { inputFile, line, column, pdf }),
+  /** 反向：PDF 点击点（pt，距页顶向下）→ 源码位置。
+   *  root 为项目根：命中路径在磁盘上不存在时（项目搬迁）由后端重锚 */
+  edit: (pdf: string, page: number, x: number, y: number, root: string | null) =>
+    call<SyncTexHit | null>("synctex_edit", { pdf, page, x, y, root }),
 };
 
 // ── 模板 ──────────────────────────────────────────────────

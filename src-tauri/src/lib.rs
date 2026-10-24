@@ -18,6 +18,10 @@ pub fn run() {
         ))
         // M0-9a：项目目录监听（资源树自动刷新）
         .manage(std::sync::Arc::new(commands::watch::WatchState::default()))
+        // M1-4：SyncTeX 索引缓存（正/反向跳转查询）
+        .manage(std::sync::Arc::new(
+            commands::synctex::SyncTexState::default(),
+        ))
         .invoke_handler(tauri::generate_handler![
             // 基础设施（M0-1）
             commands::core::ping,
@@ -39,6 +43,9 @@ pub fn run() {
             commands::compile::cancel_compile,
             // 日志解析（M0-11）
             commands::logparse::parse_tex_log,
+            // SyncTeX 双向跳转（M1-4）
+            commands::synctex::synctex_view,
+            commands::synctex::synctex_edit,
             // 模板引擎（M0-7）
             commands::template::list_templates,
             commands::template::get_template,
