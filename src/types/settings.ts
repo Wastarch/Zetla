@@ -7,6 +7,18 @@ export type EditorFontFamily = "IBM Plex Mono" | "Consolas" | "Cascadia Mono";
 export type PdfDefaultZoom = "fit-width" | "100" | "125" | "150";
 /** M1-2：主题（暗色主题交付；token 见 zetla.css [data-theme] 两块） */
 export type AppTheme = "light" | "dark";
+/**
+ * M1-3：编译引擎。"auto"=跟随项目 .ltex/config.json（缺省 xelatex）；
+ * 显式指定时全局覆盖项目配置（设置 → 编译设置 → 默认编译引擎）
+ */
+export type CompileEngine = "auto" | "xelatex" | "pdflatex" | "lualatex";
+/**
+ * M1-3：编译流程步骤。"latex"=跑一次引擎；"bibtex"=传统参考文献工具；
+ * "biber"=biblatex 参考文献工具。
+ * steps 为空数组 = 自动（latexmk 自行调度）；非空 = 按序直跑的固定流程，
+ * 如 ["latex","bibtex","latex","latex"] 即 LaTeX → BibTeX → LaTeX → LaTeX
+ */
+export type CompileStep = "latex" | "bibtex" | "biber";
 
 export interface AppSettings {
   schemaVersion: number;
@@ -24,6 +36,10 @@ export interface AppSettings {
   };
   build: {
     saveBeforeCompile: boolean;
+    /** M1-3：默认编译引擎（"auto"=跟随项目 .ltex/config.json；显式值全局覆盖） */
+    engine: CompileEngine;
+    /** M1-3：编译流程步骤序列（空=自动 latexmk；非空=按序直跑，见 CompileStep） */
+    steps: CompileStep[];
   };
   pdf: {
     defaultZoom: PdfDefaultZoom;
@@ -81,7 +97,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
   editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true },
   autosave: { enabled: true, intervalSeconds: 30, pauseWhileCompiling: true },
-  build: { saveBeforeCompile: true },
+  build: { saveBeforeCompile: true, engine: "auto", steps: [] },
   pdf: { defaultZoom: "fit-width" },
   window: { width: null, height: null, x: null, y: null, maximized: false },
   session: { lastProject: null },
@@ -104,6 +120,47 @@ export const FONT_STACKS: Record<EditorFontFamily, string> = {
   Consolas: "Consolas, 'Cascadia Mono', monospace",
   "Cascadia Mono": "'Cascadia Mono', Consolas, monospace",
 };
+
+/** M1-3：步骤显示名（设置页步骤编辑器 / 编译日志共用） */
+export const STEP_LABELS: Record<CompileStep, string> = {
+  latex: "LaTeX",
+  bibtex: "BibTeX",
+  biber: "Biber",
+};
+
+/** M1-3：编译流程预设（设置页「编译流程」下拉；custom 不在列，由编辑器匹配得出） */
+export const PIPELINE_PRESETS: ReadonlyArray<{
+  id: string;
+  label: string;
+  steps: CompileStep[];
+}> = [
+  { id: "auto", label: "自动（latexmk 调度）", steps: [] },
+  { id: "single", label: "单遍 LaTeX", steps: ["latex"] },
+  {
+    id: "bibtex",
+    label: "LaTeX → BibTeX → LaTeX → LaTeX（传统参考文献）",
+    steps: ["latex", "bibtex", "latex", "latex"],
+  },
+  {
+    id: "biber",
+    label: "LaTeX → Biber → LaTeX → LaTeX（biblatex）",
+    steps: ["latex", "biber", "latex", "latex"],
+  },
+];
+
+/** M1-3：步骤序列 → 可读串（编译日志 / 预览用；空序列 = 自动） */
+export function stepsLabel(steps: readonly CompileStep[]): string {
+  if (steps.length === 0) return "自动（latexmk）";
+  return steps.map((s) => STEP_LABELS[s]).join(" → ");
+}
+
+/** M1-3：当前 steps 是否恰好等于某预设（相等则下拉显示该预设，否则显示「自定义」） */
+export function matchPipelinePreset(steps: readonly CompileStep[]): string {
+  const hit = PIPELINE_PRESETS.find(
+    (p) => p.steps.length === steps.length && p.steps.every((s, i) => s === steps[i]),
+  );
+  return hit ? hit.id : "custom";
+}
 
 /** 深拷贝（设置页快照/草稿与 persisted 用；结构固定无循环引用） */
 export function cloneSettings(s: AppSettings): AppSettings {

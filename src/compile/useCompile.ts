@@ -9,6 +9,8 @@ import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { base, notify, useProjectStore } from "@/project/useProject";
 import { ensureEnv } from "@/env/useEnvCheck";
+import { stepsLabel } from "@/types";
+import type { CompileEngine } from "@/types";
 import type { CompileProgress, CompileResult } from "@/types";
 
 /** 引擎显示名（状态栏 chip 用真实引擎） */
@@ -24,7 +26,21 @@ export function engineLabel(engine?: string | null): string {
   return ENGINE_LABELS[engine.toLowerCase()] ?? engine;
 }
 
-/** 开始编译（项目 + 主文件 + 引擎都来自 .ltex/config.json 的权威结果） */
+/**
+ * M1-3：生效编译引擎。设置页显式指定（xelatex/pdflatex/lualatex）时全局覆盖
+ * 项目 `.ltex/config.json`；"auto"（默认）跟随项目配置（缺省 xelatex）。
+ */
+export function effectiveEngine(
+  setting: CompileEngine,
+  projectEngine?: string | null,
+): string {
+  return setting === "auto" ? projectEngine || "xelatex" : setting;
+}
+
+/**
+ * 开始编译（项目 + 主文件来自 useProjectStore；引擎 = 设置页显式值 ?? 项目 config；
+ * 流程步骤来自设置页，空=自动 —— M1-3）
+ */
 export async function startCompile(): Promise<void> {
   const st = useAppStore.getState();
   if (st.compileStatus === "running") return;
@@ -59,11 +75,18 @@ export async function startCompile(): Promise<void> {
 
   st.clearLog();
   useAppStore.setState({ logVisible: true });
-  st.appendLog([`$ ${engineLabel(tree.engine)} · ${base(tree.mainFile)}`]);
+  // M1-3：生效引擎 = 设置页显式值 ?? 项目 config（缺省 xelatex）；
+  // steps 空=自动（latexmk），非空=按序直跑的固定流程（如 LaTeX → BibTeX → LaTeX → LaTeX）
+  const { build } = useSettingsStore.getState().settings;
+  const engine = effectiveEngine(build.engine, tree.engine);
+  const steps = build.steps;
+  st.appendLog([
+    `$ ${engineLabel(engine)} · ${base(tree.mainFile)}${steps.length > 0 ? ` · ${stepsLabel(steps)}` : ""}`,
+  ]);
   st.setCompiling(0, "准备编译…");
 
   try {
-    await compileApi.compileProject(root, tree.mainFile, tree.engine);
+    await compileApi.compileProject(root, tree.mainFile, engine, steps);
   } catch (e) {
     // 命令本身失败（已有任务在跑 / 主文件不存在 / 引擎缺失）
     const s = useAppStore.getState();

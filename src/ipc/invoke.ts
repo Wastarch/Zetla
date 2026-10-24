@@ -23,9 +23,11 @@ export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T>
 // ── 环境/编译 ──────────────────────────────────────────────
 export const compileApi = {
   detectTexDistribution: () => call<TexDistInfo>("detect_tex_distribution"),
-  /** 开始编译（立即返回；进度/结果走 compile_progress / compile_finished 事件） */
-  compileProject: (root: string, mainFile: string, engine: string) =>
-    call<void>("compile_project", { root, mainFile, engine }),
+  /** 开始编译（立即返回；进度/结果走 compile_progress / compile_finished 事件）
+   *  M1-3：steps=空数组=自动（latexmk 判定）；非空=按序直跑的固定流程，
+   *  如 ["latex","bibtex","latex","latex"] = LaTeX → BibTeX → LaTeX → LaTeX */
+  compileProject: (root: string, mainFile: string, engine: string, steps: string[]) =>
+    call<void>("compile_project", { root, mainFile, engine, steps }),
   /** 取消当前编译（杀掉子进程） */
   cancelCompile: () => call<void>("cancel_compile"),
   /** M0-11：解析 .log → 结构化错误（编译结果已内联 errors，此入口供 M0-12 复用） */

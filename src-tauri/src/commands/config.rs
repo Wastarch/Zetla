@@ -196,14 +196,49 @@ impl Default for AutosaveConfig {
 #[serde(rename_all = "camelCase", default)]
 pub struct BuildConfig {
     pub save_before_compile: bool,
+    /// M1-3：默认编译引擎（"auto"=跟随项目 .ltex/config.json；显式值全局覆盖）
+    #[serde(default = "default_build_engine")]
+    pub engine: String,
+    /// M1-3：编译流程步骤序列（空=自动 latexmk；非空=按序直跑，
+    /// 如 ["latex","bibtex","latex","latex"] = LaTeX → BibTeX → LaTeX → LaTeX）
+    #[serde(default = "default_build_steps")]
+    pub steps: Vec<String>,
 }
 
 impl Default for BuildConfig {
     fn default() -> Self {
         BuildConfig {
             save_before_compile: true,
+            engine: "auto".to_string(),
+            steps: Vec::new(),
         }
     }
+}
+
+/// M1-3：编译引擎白名单（与 src/types/settings.ts CompileEngine 一致）
+pub const BUILD_ENGINES: [&str; 4] = ["auto", "xelatex", "pdflatex", "lualatex"];
+/// M1-3：编译流程步骤白名单（与 src/types/settings.ts CompileStep 一致）
+pub const BUILD_STEPS: [&str; 3] = ["latex", "bibtex", "biber"];
+/// M1-3：固定流程步骤数上限（防呆；空序列 = 自动）
+pub const MAX_STEPS: usize = 8;
+
+fn default_build_engine() -> String {
+    "auto".to_string()
+}
+
+fn default_build_steps() -> Vec<String> {
+    Vec::new()
+}
+
+/// M1-3：流程归一化——只保留白名单步骤、超上限截断；空序列 = 自动（latexmk）
+pub fn normalize_build_steps(steps: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in steps {
+        if BUILD_STEPS.contains(&s.as_str()) && out.len() < MAX_STEPS {
+            out.push(s);
+        }
+    }
+    out
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -235,6 +270,11 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     if !PDF_ZOOMS.contains(&cfg.pdf.default_zoom.as_str()) {
         cfg.pdf.default_zoom = "fit-width".to_string();
     }
+    // M1-3：编译引擎白名单 + 流程步骤归一化（非法引擎回退 auto，保持「跟随项目」行为）
+    if !BUILD_ENGINES.contains(&cfg.build.engine.as_str()) {
+        cfg.build.engine = "auto".to_string();
+    }
+    cfg.build.steps = normalize_build_steps(cfg.build.steps);
     // M0-13：布局钳制（与前端拖拽范围一致）
     if cfg.layout.sidebar_width < SIDEBAR_MIN {
         cfg.layout.sidebar_width = SIDEBAR_MIN;
@@ -443,10 +483,71 @@ mod tests {
         assert!(text.contains("modules"));
         // M1-2 字段
         assert!(text.contains("theme"));
+        // M1-3 字段（精确到值，避免与 tex.engineBinDir 混淆）
+        assert!(text.contains("\"engine\":\"auto\""));
+        assert!(text.contains("\"steps\":[]"));
         // snake_case 不应出现
         assert!(!text.contains("font_family"));
         assert!(!text.contains("interval_seconds"));
         assert!(!text.contains("last_project"));
+    }
+
+    #[test]
+    fn build_engine_steps_default_and_roundtrip() {
+        // M1-3：旧配置缺 engine/steps → auto/[]（保持「跟随项目 + latexmk 自动」行为）
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "general": { "restoreLastProject": true }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(parsed.build.engine, "auto");
+        assert!(parsed.build.steps.is_empty());
+
+        // 显式值往返保留（传统参考文献四步流程）
+        let mut cfg = AppConfig::default();
+        cfg.build.engine = "pdflatex".to_string();
+        cfg.build.steps = vec![
+            "latex".to_string(),
+            "bibtex".to_string(),
+            "latex".to_string(),
+            "latex".to_string(),
+        ];
+        let text = serde_json::to_string(&cfg).unwrap();
+        assert!(text.contains("\"engine\":\"pdflatex\""));
+        assert!(text.contains("\"steps\":[\"latex\",\"bibtex\",\"latex\",\"latex\"]"));
+        let back = serde_json::from_str::<AppConfig>(&text).unwrap();
+        assert_eq!(back.build.engine, "pdflatex");
+        assert_eq!(back.build.steps, cfg.build.steps);
+
+        // 归一化：非法引擎 → auto；非法/超限步骤被剔除
+        let mut bad = AppConfig::default();
+        bad.build.engine = "tectonic".to_string();
+        bad.build.steps = vec![
+            "latex".to_string(),
+            "makeindex".to_string(),
+            "latex".to_string(),
+        ];
+        let norm = normalize(bad);
+        assert_eq!(norm.build.engine, "auto");
+        assert_eq!(norm.build.steps, vec!["latex".to_string(), "latex".to_string()]);
+    }
+
+    #[test]
+    fn normalize_build_steps_filters_and_caps() {
+        // 白名单过滤
+        assert_eq!(
+            normalize_build_steps(vec!["latex".into(), "bibtex".into(), "biber".into()]),
+            vec!["latex", "bibtex", "biber"]
+        );
+        // 空序列 = 自动
+        assert!(normalize_build_steps(Vec::new()).is_empty());
+        // 超上限截断（10 个 latex → 8 个）
+        let many: Vec<String> = (0..10).map(|_| "latex".to_string()).collect();
+        assert_eq!(normalize_build_steps(many).len(), MAX_STEPS);
     }
 
     #[test]

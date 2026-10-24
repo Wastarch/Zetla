@@ -1,6 +1,8 @@
 // 编译引擎管理（开发文档 §3.3 / docs/开发计划.md M0-3/9/10/11）
 // M0-3a：发行版检测（PATH + 常见安装目录探测、版本解析）
 // M0-9：多遍编译（latexmk 优先 / 手写兜底管线、进度事件、取消）
+// M1-3：自定义编译流程（steps 非空时绕过 latexmk，按步骤序列直跑：
+// latex=引擎一遍、bibtex/biber=参考文献工具，如 LaTeX → BibTeX → LaTeX → LaTeX）
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -360,6 +362,8 @@ struct Job {
     root: PathBuf,
     main: PathBuf,
     engine: String,
+    /// M1-3：固定流程步骤序列（空=自动 latexmk；非空=按序直跑，见 config::BUILD_STEPS）
+    steps: Vec<String>,
     /// 引擎搜索目录（受管/注册表），find_engine 与子进程 PATH 注入共用
     search_dirs: Vec<PathBuf>,
 }
@@ -401,6 +405,7 @@ fn emit_progress(app: &AppHandle, stage: &str, pct: u32, current: impl Into<Stri
 }
 
 /// 开始编译（立即返回；实际编译在后台任务里跑，事件回传前端）
+/// M1-3：engine 缺省 xelatex；steps 空=自动（latexmk 判定），非空=按序直跑的固定流程
 #[tauri::command]
 pub async fn compile_project(
     app: AppHandle,
@@ -408,6 +413,7 @@ pub async fn compile_project(
     root: String,
     main_file: String,
     engine: Option<String>,
+    steps: Option<Vec<String>>,
 ) -> Result<(), String> {
     let st = state.inner().clone();
     // P0 单并发：抢不到锁说明已有任务
@@ -421,6 +427,8 @@ pub async fn compile_project(
         root: PathBuf::from(root),
         main: PathBuf::from(main_file),
         engine: engine.unwrap_or_else(|| "xelatex".to_string()),
+        // 归一化与 Rust 配置同源：剔非法步骤、超限截断（防呆，前端已保证合法）
+        steps: crate::commands::config::normalize_build_steps(steps.unwrap_or_default()),
         search_dirs: engine_search_dirs(Some(&app)),
     };
 
@@ -502,8 +510,101 @@ async fn run_job(
     // 没有 latexmk 就不必探测 Perl；只有准备走 latexmk 时才做 smoke
     let perl_ok = latexmk.is_none()
         || crate::commands::perl::find_working_perl_in(&job.search_dirs).is_some();
-    let use_latexmk = latexmk.is_some() && perl_ok;
-    if use_latexmk {
+    // M1-3：自定义固定流程时绕过 latexmk（它自行判定遍数、无法指定），按 steps 直跑
+    let use_latexmk = job.steps.is_empty() && latexmk.is_some() && perl_ok;
+
+    // 引擎直跑参数（固定遍数分支与兜底管线共用）
+    let tex_args = |name: &str| {
+        vec![
+            "-synctex=1".to_string(),
+            "-interaction=nonstopmode".to_string(),
+            "-file-line-error".to_string(),
+            name.to_string(),
+        ]
+    };
+
+    if !job.steps.is_empty() {
+        // M1-3：自定义固定流程（如 LaTeX → BibTeX → LaTeX → LaTeX），绕过 latexmk 按序直跑
+        let total = job.steps.len();
+        for (i, step) in job.steps.iter().enumerate() {
+            if cancelled || st.cancelled.load(Ordering::SeqCst) {
+                cancelled = true;
+                break;
+            }
+            let pos = i + 1;
+            match step.as_str() {
+                "latex" => match find_engine(&job.engine, &job.search_dirs) {
+                    Some(exe) => {
+                        passes += 1;
+                        emit_progress(
+                            app,
+                            "running",
+                            0,
+                            format!("{} · 第 {pos}/{total} 步（LaTeX）", job.engine),
+                        );
+                        match run_cmd(app, st, &exe, &tex_args(&main_name), &dir, &job.search_dirs)
+                            .await
+                        {
+                            CmdOutcome::Ok => {}
+                            CmdOutcome::Failed => failed = true,
+                            CmdOutcome::Cancelled => {
+                                cancelled = true;
+                                break;
+                            }
+                            CmdOutcome::SpawnError(msg) => {
+                                failed = true;
+                                emit_progress(app, "running", 0, msg);
+                            }
+                        }
+                    }
+                    None => {
+                        failed = true;
+                        emit_progress(
+                            app,
+                            "running",
+                            0,
+                            format!("未找到编译引擎 {}，请检查 TeX 发行版安装", job.engine),
+                        );
+                        break;
+                    }
+                },
+                // bibtex / biber：用户显式排入流程，但本机没装时不致命——跳过该步骤并提示
+                "bibtex" | "biber" => match find_engine(step, &job.search_dirs) {
+                    Some(exe) => {
+                        emit_progress(
+                            app,
+                            "running",
+                            0,
+                            format!("{step} · 处理参考文献（第 {pos}/{total} 步）"),
+                        );
+                        match run_cmd(app, st, &exe, &[stem.clone()], &dir, &job.search_dirs).await
+                        {
+                            CmdOutcome::Ok => {}
+                            CmdOutcome::Failed => failed = true,
+                            CmdOutcome::Cancelled => {
+                                cancelled = true;
+                                break;
+                            }
+                            CmdOutcome::SpawnError(msg) => {
+                                failed = true;
+                                emit_progress(app, "running", 0, msg);
+                            }
+                        }
+                    }
+                    None => {
+                        emit_progress(
+                            app,
+                            "running",
+                            0,
+                            format!("未找到 {step}，跳过该步骤（第 {pos}/{total} 步）"),
+                        );
+                    }
+                },
+                // 归一化已剔非法步骤；双保险忽略
+                _ => {}
+            }
+        }
+    } else if use_latexmk {
         let lmk = latexmk.as_ref().expect("latexmk checked above");
         // 首选 latexmk：交叉引用 / 参考文献 / 多遍由它自己调度
         passes += 1;
@@ -539,15 +640,6 @@ async fn run_job(
             );
         }
         // 兜底：引擎自带管线（第 1 遍 → biber（有 .bcf）→ 再两遍收敛）
-        let tex_args = |name: &str| {
-            vec![
-                "-synctex=1".to_string(),
-                "-interaction=nonstopmode".to_string(),
-                "-file-line-error".to_string(),
-                name.to_string(),
-            ]
-        };
-
         passes += 1;
         emit_progress(app, "running", 0, format!("{} · 第 1 遍", job.engine));
         match run_cmd(app, st, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {

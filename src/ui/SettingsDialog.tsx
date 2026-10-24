@@ -1,19 +1,28 @@
 // M0-14a · 偏好设置页（对齐 docs/UI/code.html 679–769 偏好设置模态）
 // 页签：编译设置 / 编辑器 / PDF 预览 / 外观与保存 / 关于 Zetla
 // 交互：改动即时预览（setSettings → 运行时立即生效），「保存设置」落盘并关闭，「取消」回滚快照
-// 未接通项按硬约定置灰 + tooltip 标注接通切片（多引擎 M1、小地图/折叠 M1、Synctex M3；
-// 暗色主题 M1-2 已接：外观页「主题」下拉 + 菜单「切换明暗主题」）
+// 未接通项按硬约定置灰 + tooltip 标注接通切片（小地图/折叠 M1、Synctex M3；
+// 暗色主题 M1-2 已接：外观页「主题」下拉 + 菜单「切换明暗主题」；
+// 多编译引擎 / 自定义编译流程 M1-3 已接：编译页「默认编译引擎」「编译流程」（预设 + 步骤编辑器）；
+// 界面密度经用户确认取消，不占位）
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { APP_VERSION } from "@/version";
 import { useAppStore, type SettingsPane } from "@/core/store";
 import { cloneSettings, useSettingsStore } from "@/core/settings";
-import { notify, useProjectStore } from "@/project/useProject";
+import { notify } from "@/project/useProject";
 import { useModuleList } from "@/modules/useModuleList";
-import { engineLabel } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
 import { Icon } from "@/ui/Icon";
-import type { AppSettings, AppTheme, EditorFontFamily, PdfDefaultZoom } from "@/types/settings";
+import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel } from "@/types/settings";
+import type {
+  AppSettings,
+  AppTheme,
+  CompileEngine,
+  CompileStep,
+  EditorFontFamily,
+  PdfDefaultZoom,
+} from "@/types/settings";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "general", icon: "layout", label: "通用" },
@@ -29,6 +38,12 @@ const FONT_OPTIONS: EditorFontFamily[] = ["IBM Plex Mono", "Consolas", "Cascadia
 /** 字号可选值 8–32（M0-14a 用户追加：Ctrl+滚轮缩放后为连续范围） */
 const FONT_SIZE_OPTIONS = Array.from({ length: 25 }, (_, i) => i + 8);
 const INTERVAL_OPTIONS = [5, 15, 30, 60];
+/** M1-3：编译流程步骤可选项（设置页步骤编辑器） */
+const STEP_OPTIONS: { value: CompileStep; label: string }[] = [
+  { value: "latex", label: "LaTeX（跑一次引擎）" },
+  { value: "bibtex", label: "BibTeX（传统参考文献）" },
+  { value: "biber", label: "Biber（biblatex 参考文献）" },
+];
 const ZOOM_OPTIONS: { value: PdfDefaultZoom; label: string }[] = [
   { value: "fit-width", label: "适合宽度" },
   { value: "100", label: "100%" },
@@ -98,7 +113,6 @@ export function SettingsDialog() {
   const pane = useAppStore((s) => s.settingsDialog);
   const closeSettings = useAppStore((s) => s.closeSettings);
   const setSettings = useSettingsStore((s) => s.setSettings);
-  const tree = useProjectStore((s) => s.tree);
   const draft = useSettingsStore((s) => s.settings);
   const env = useAppStore((s) => s.env);
 
@@ -264,24 +278,151 @@ export function SettingsDialog() {
                 <h4 style={{ marginTop: 18 }}>编译流水线</h4>
                 <Fld
                   label="默认编译引擎"
-                  hint="由项目 .ltex/config.json 决定"
-                  tip="引擎跟随项目配置（MVP 固定 xelatex）；多编译引擎切换 M1 接通"
+                  hint={
+                    draft.build.engine === "auto"
+                      ? "跟随项目 .ltex/config.json（缺省 XeLaTeX）"
+                      : "全局覆盖各项目的 .ltex/config.json"
+                  }
+                  tip={
+                    draft.build.engine === "auto"
+                      ? "选择具体引擎后，对所有项目全局生效（不再读项目配置）"
+                      : "当前全局覆盖中；选「跟随项目（自动）」恢复按项目决定"
+                  }
                 >
-                  <select disabled value={engineLabel(tree?.engine ?? "xelatex")} onChange={() => {}}>
-                    <option>{engineLabel(tree?.engine ?? "xelatex")}</option>
-                    <option hidden>LuaLaTeX</option>
-                    <option hidden>PdfLaTeX</option>
+                  <select
+                    value={draft.build.engine}
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        build: { ...d.build, engine: e.target.value as CompileEngine },
+                      }))
+                    }
+                  >
+                    <option value="auto">跟随项目（自动）</option>
+                    <option value="xelatex">XeLaTeX</option>
+                    <option value="pdflatex">pdfLaTeX</option>
+                    <option value="lualatex">LuaLaTeX</option>
                   </select>
                 </Fld>
                 <Fld
-                  label="多轮编译次数"
-                  hint="latexmk 自动循环（MVP 固定）"
-                  tip="MVP 固定 latexmk 自动多轮；自定义轮次 M1 接通"
+                  label="编译流程"
+                  hint={
+                    draft.build.steps.length === 0
+                      ? "latexmk 自动循环直到收敛"
+                      : stepsLabel(draft.build.steps)
+                  }
+                  tip="自动：latexmk 自行判定遍数与参考文献工具；固定流程：按步骤序列直跑（绕过 latexmk），可用预设或自定义增删调整"
                 >
-                  <select disabled value="" onChange={() => {}}>
-                    <option value="">自动（latexmk）</option>
+                  <select
+                    value={matchPipelinePreset(draft.build.steps)}
+                    onChange={(e) => {
+                      const preset = PIPELINE_PRESETS.find((p) => p.id === e.target.value);
+                      // 「自定义」：从当前序列出发；自动（空序列）时给一个常见起点再增删
+                      const seed: CompileStep[] = preset
+                        ? [...preset.steps]
+                        : draft.build.steps.length > 0
+                          ? draft.build.steps
+                          : ["latex", "bibtex", "latex", "latex"];
+                      update((d) => ({ ...d, build: { ...d.build, steps: seed } }));
+                    }}
+                  >
+                    {PIPELINE_PRESETS.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                    <option value="custom">自定义…</option>
                   </select>
                 </Fld>
+                {draft.build.steps.length > 0 && (
+                  <div className="steps-editor">
+                    {draft.build.steps.map((s, i) => (
+                      <div className="step-row" key={i}>
+                        <span className="step-pos">{i + 1}</span>
+                        <select
+                          className="step-sel"
+                          value={s}
+                          onChange={(e) =>
+                            update((d) => {
+                              const steps = [...d.build.steps];
+                              steps[i] = e.target.value as CompileStep;
+                              return { ...d, build: { ...d.build, steps } };
+                            })
+                          }
+                        >
+                          {STEP_OPTIONS.map((o) => (
+                            <option key={o.value} value={o.value}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          className="btn step-btn"
+                          disabled={i === 0}
+                          title="上移"
+                          onClick={() =>
+                            update((d) => {
+                              const steps = [...d.build.steps];
+                              [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]];
+                              return { ...d, build: { ...d.build, steps } };
+                            })
+                          }
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          className="btn step-btn"
+                          disabled={i === draft.build.steps.length - 1}
+                          title="下移"
+                          onClick={() =>
+                            update((d) => {
+                              const steps = [...d.build.steps];
+                              [steps[i + 1], steps[i]] = [steps[i], steps[i + 1]];
+                              return { ...d, build: { ...d.build, steps } };
+                            })
+                          }
+                        >
+                          ↓
+                        </button>
+                        <button
+                          type="button"
+                          className="btn step-btn"
+                          title="删除该步骤"
+                          onClick={() =>
+                            update((d) => ({
+                              ...d,
+                              build: {
+                                ...d.build,
+                                steps: d.build.steps.filter((_, j) => j !== i),
+                              },
+                            }))
+                          }
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                    <div className="step-row">
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={() =>
+                          update((d) => ({
+                            ...d,
+                            build: { ...d.build, steps: [...d.build.steps, "latex" as CompileStep] },
+                          }))
+                        }
+                      >
+                        + 添加步骤
+                      </button>
+                      <span className="set-note" style={{ margin: 0 }}>
+                        预览：{stepsLabel(draft.build.steps)}
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <Fld
                   label="latexmk 路径"
                   hint="当前使用 PATH 中的版本"
@@ -480,11 +621,6 @@ export function SettingsDialog() {
                       }));
                     }}
                   />
-                </Fld>
-                <Fld label="界面密度" hint="影响列表与工具栏间距" tip="界面密度 M1 接通">
-                  <select disabled value="" onChange={() => {}}>
-                    <option value="">紧凑</option>
-                  </select>
                 </Fld>
               </div>
             )}

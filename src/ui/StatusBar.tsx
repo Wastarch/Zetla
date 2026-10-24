@@ -2,13 +2,15 @@
 // 左：状态点 + 编译文案 + 进度条 + 日志⛔ + 引擎 chip⛔
 // 右（.right 组）：行/列 · LaTeX 语言 · 当前文件/脏 · 编码 · 换行
 // M0-13 前移：光标位置从编辑器内部状态行上提到此处；移除设置/主题按钮（设置 M1 · 主题 M3）
-// M0-9：编译文案按钮触发编译/取消、日志按钮开合面板、引擎 chip 显示项目真实引擎（切换留 M1）
+// M0-9：编译文案按钮触发编译/取消、日志按钮开合面板、引擎 chip 显示生效引擎
+// M1-3：引擎 chip 显示「设置页显式值 ?? 项目 config」的生效引擎，点击打开设置→编译设置切换
 import { Icon } from "@/ui/Icon";
 import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { base, useProjectStore } from "@/project/useProject";
-import { cancelCompile, engineLabel, startCompile } from "@/compile/useCompile";
+import { cancelCompile, effectiveEngine, engineLabel, startCompile } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
+import { useSettingsStore } from "@/core/settings";
 
 const DOT_CLASS: Record<string, string> = {
   running: "run",
@@ -27,6 +29,9 @@ export function StatusBar() {
   const tree = useProjectStore((s) => s.tree);
   const hasMain = !!tree?.mainFile;
   const env = useAppStore((s) => s.env);
+  // M1-3：设置页显式引擎覆盖项目 config（"auto" 时跟随项目）
+  const engineSetting = useSettingsStore((s) => s.settings.build.engine);
+  const activeEngine = tree ? effectiveEngine(engineSetting, tree.engine) : null;
 
   const running = compileStatus === "running";
   const statusText =
@@ -81,11 +86,10 @@ export function StatusBar() {
       <button
         type="button"
         className="sbtn"
-        disabled
-        title="引擎切换（M1 接通）；当前引擎来自 .ltex/config.json"
+        title="当前生效的编译引擎 · 点击在 设置 → 编译设置 中切换（默认跟随项目 .ltex/config.json）"
+        onClick={() => useAppStore.getState().openSettings("build")}
       >
-        引擎{" "}
-        <span className="engine-chip">{tree ? engineLabel(tree.engine) : "—"}</span>
+        引擎 <span className="engine-chip">{tree ? engineLabel(activeEngine) : "—"}</span>
       </button>
 
       {/* M0-15a：TeX 环境 chip（点击打开环境引导） */}
