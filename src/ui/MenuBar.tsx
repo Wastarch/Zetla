@@ -240,9 +240,10 @@ export function MenuBar() {
           onClick: () => useAppStore.getState().setSidebarView("outline"),
         },
         {
-          label: `${sidebarVisible && sidebarView === "modules" ? "✓ " : ""}模块`,
+          // M1-6b：第三视图由「模块」改为「符号面板」专用入口
+          label: `${sidebarVisible && sidebarView === "symbol" ? "✓ " : ""}符号面板`,
           sc: "Ctrl+B 3",
-          onClick: () => useAppStore.getState().setSidebarView("modules"),
+          onClick: () => useAppStore.getState().setSidebarView("symbol"),
         },
         {
           label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
@@ -363,11 +364,11 @@ export function MenuBar() {
           useAppStore.getState().toggleSidebar();
           return;
         }
-        // M1-5a：Ctrl+B 1/2/3 直达活动栏视图（资源管理器 / 大纲 / 模块）
+        // M1-5a：Ctrl+B 1/2/3 直达活动栏视图（资源管理器 / 大纲 / 符号面板）
         if (e.key === "1" || e.key === "2" || e.key === "3") {
           e.preventDefault();
           clearChord();
-          const v = e.key === "1" ? "explorer" : e.key === "2" ? "outline" : "modules";
+          const v = e.key === "1" ? "explorer" : e.key === "2" ? "outline" : "symbol";
           useAppStore.getState().setSidebarView(v);
           return;
         }

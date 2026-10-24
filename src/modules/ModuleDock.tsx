@@ -1,5 +1,7 @@
 // M1-1 · 模块面板停靠区（仅渲染已启用且声明 slot="sidebar" 的模块）
 // M1-5a：支持 fill 模式 —— 作为侧栏「模块」视图独占整栏（原先是资源管理器底部固定区）
+// M1-6b：**当前未挂载** —— 侧栏第三视图已改为「符号面板」专用入口（`Sidebar.SymbolView`），
+//        不再经坞列表渲染；本组件保留给后续需要「通用坞」的 slot 模块（如 M2 绘图/表格）。
 // 懒加载组件统一走 React.Suspense；无启用模块时：fill 显示空态，否则整体不占位。
 import { Suspense } from "react";
 import { useAppStore } from "@/core/store";

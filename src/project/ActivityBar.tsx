@@ -16,7 +16,7 @@ interface Item {
 const ITEMS: Item[] = [
   { view: "explorer", icon: "folder", label: "资源管理器", hint: "Ctrl+B 1" },
   { view: "outline", icon: "menu", label: "大纲", hint: "Ctrl+B 2" },
-  { view: "modules", icon: "layout", label: "模块", hint: "Ctrl+B 3" },
+  { view: "symbol", icon: "wand", label: "符号面板", hint: "Ctrl+B 3" },
 ];
 
 export function ActivityBar() {

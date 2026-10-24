@@ -1705,6 +1705,46 @@ body.col-resizing {
   border-top: none;
 }
 
+/* M1-6b：符号面板专用视图（活动栏第三图标 / Ctrl+B 3）—— 头部版本号 + 面板占满剩余高度 */
+.side-view > .symbol-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 8px 10px 10px;
+}
+
+.side-ver {
+  margin-left: auto;
+  font-size: 9.5px;
+  color: var(--txt-4);
+  font-family: var(--font-mono, monospace);
+}
+
+.side-loading {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: var(--txt-3);
+}
+
+/* 视图级空态（如符号面板被停用）：与 .mod-dock-empty 同构图，独立命名便于复用 */
+.side-empty {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 18px 12px;
+  font-size: 11.5px;
+  color: var(--txt-3);
+}
+
+.side-empty .btn {
+  height: 26px;
+  padding: 0 12px;
+  font-size: 11px;
+}
+
 /* ── 项目树 ─────────────────────────────── */
 .tree {
   flex: 1 1 0;
@@ -3581,6 +3621,146 @@ body.col-resizing {
 .mod-panel-v {
   color: var(--txt-2);
   font-family: var(--font-mono, monospace);
+}
+
+/* M1-6 · 符号面板（ModuleRegistry 业务模块，slot=sidebar） */
+/* 独占侧栏视图时让模块项成为可滚动的 flex 列，面板内部自行滚动 */
+.mod-dock.fill .mod-dock-item {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.mod-dock.fill .mod-dock-head {
+  flex: none;
+}
+.mod-dock.fill .symbol-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* 资源管理器底部停靠：限制高度后仍可滚动 */
+.mod-dock:not(.fill) .symbol-panel {
+  max-height: 320px;
+}
+
+.symbol-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.symbol-toolbar {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.symbol-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  color: var(--txt-1);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius, 6px);
+  outline: none;
+}
+.symbol-search:focus {
+  border-color: var(--accent);
+}
+.symbol-search::placeholder {
+  color: var(--txt-4);
+}
+
+.symbol-cat {
+  flex: none;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 11.5px;
+  color: var(--txt-2);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius, 6px);
+  outline: none;
+  cursor: pointer;
+}
+.symbol-cat:focus {
+  border-color: var(--accent);
+}
+
+.symbol-flash {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: var(--radius, 6px);
+  padding: 3px 8px;
+}
+
+.symbol-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 6px;
+  align-content: start;
+  padding-right: 2px;
+}
+
+.symbol-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 44px;
+  padding: 4px 2px;
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius, 6px);
+  cursor: pointer;
+  transition: background .12s, border-color .12s;
+}
+.symbol-btn:hover {
+  background: var(--bg-4);
+  border-color: var(--accent);
+}
+.symbol-btn:active {
+  background: var(--accent-soft);
+}
+
+.symbol-glyph {
+  font-size: 17px;
+  line-height: 1.1;
+  color: var(--txt-1);
+}
+.symbol-glyph.is-cmd {
+  font-family: var(--font-mono, monospace);
+  font-size: 10.5px;
+  color: var(--txt-2);
+  word-break: break-all;
+}
+
+.symbol-name {
+  font-size: 9px;
+  color: var(--txt-4);
+  font-family: var(--font-mono, monospace);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.symbol-empty {
+  grid-column: 1 / -1;
+  font-size: 11px;
+  color: var(--txt-3);
+  text-align: center;
+  padding: 18px 0;
 }
 
 /* 设置页说明行（模块页签空态/脚注） */
