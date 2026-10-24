@@ -52,6 +52,8 @@ pub struct AppConfig {
     pub perl: PerlConfig,
     /// M1-1：功能模块开关（模块 id → 是否启用；空 = 各模块走前端 defaultEnabled）
     pub modules: BTreeMap<String, bool>,
+    /// M1-10：公式模块配置（收藏 / 自定义 / 插入行为）
+    pub formula: FormulaConfig,
 }
 
 impl Default for AppConfig {
@@ -69,6 +71,7 @@ impl Default for AppConfig {
             tex: TexConfig::default(),
             perl: PerlConfig::default(),
             modules: BTreeMap::new(),
+            formula: FormulaConfig::default(),
         }
     }
 }
@@ -177,6 +180,81 @@ pub const TEX_DISTROS: [&str; 1] = ["texlive"];
 #[serde(rename_all = "camelCase", default)]
 pub struct PerlConfig {
     pub install_dir: Option<String>,
+}
+
+/// M1-10：公式定义（内置库 + 用户自定义共用）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FormulaDef {
+    /// 稳定 id（内置：fr-xxx；自定义：c-<时间戳>-<随机>）
+    pub id: String,
+    /// 展示名
+    pub name: String,
+    /// LaTeX 内容（内部片段，或 is_env 时的完整环境）
+    pub latex: String,
+    /// 分类
+    pub category: String,
+    /// 近似字形/说明（可选）
+    pub glyph: Option<String>,
+    /// 描述（可选；参与搜索）
+    pub desc: Option<String>,
+    /// 整段已是完整环境（插入时不套编号/行内包裹）；缺省 false
+    pub is_env: bool,
+}
+
+/// M1-10：公式模块配置（收藏 / 自定义 / 插入行为）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct FormulaConfig {
+    /// 收藏的内置公式 id（去重、上限 100）
+    pub favorites: Vec<String>,
+    /// 用户自定义公式（按 id 去重、上限 200）
+    pub custom: Vec<FormulaDef>,
+    /// 插入时是否带公式编号：true=equation（编号），false=equation*（无编号）
+    pub numbered: bool,
+    /// 插入时是否为行内公式：true=$...$，false=display 环境（numbered 不生效）
+    pub inline: bool,
+}
+
+/// M1-10：收藏数量上限（防呆）
+pub const MAX_FAVORITES: usize = 100;
+/// M1-10：自定义公式数量上限（防呆）
+pub const MAX_CUSTOM_FORMULAS: usize = 200;
+
+/// M1-10：公式配置归一化——favorites 去空白/去重/截断；custom 去空白 + 必填校验 +
+/// 按 id 去重（后者覆盖）/截断；numbered/inline 保持布尔。
+pub fn normalize_formula(mut f: FormulaConfig) -> FormulaConfig {
+    let mut seen: Vec<String> = Vec::new();
+    f.favorites.retain(|id| {
+        let t = id.trim();
+        !t.is_empty() && !seen.iter().any(|s| s == t) && {
+            seen.push(t.to_string());
+            true
+        }
+    });
+    f.favorites.truncate(MAX_FAVORITES);
+
+    let mut by_id: std::collections::HashMap<String, FormulaDef> = std::collections::HashMap::new();
+    for mut d in f.custom.drain(..) {
+        let id = d.id.trim().to_string();
+        let name = d.name.trim().to_string();
+        let latex = d.latex.trim().to_string();
+        let category = d.category.trim().to_string();
+        if id.is_empty() || name.is_empty() || latex.is_empty() || category.is_empty() {
+            continue; // 必填字段缺失 → 丢弃
+        }
+        d.id = id;
+        d.name = name;
+        d.latex = latex;
+        d.category = category;
+        d.glyph = clean_opt_str(d.glyph);
+        d.desc = clean_opt_str(d.desc);
+        by_id.insert(d.id.clone(), d);
+    }
+    let mut custom: Vec<FormulaDef> = by_id.into_values().collect();
+    custom.truncate(MAX_CUSTOM_FORMULAS);
+    f.custom = custom;
+    f
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -304,6 +382,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     }
     // M0-13c：会话标签页归一化（去空白/去重/截断；active_file 必须在列表内）
     cfg.session = normalize_session(cfg.session);
+    // M1-10：公式配置归一化（收藏去重/截断；自定义校验/去重/截断）
+    cfg.formula = normalize_formula(cfg.formula);
     // M1-3：编译引擎白名单 + 流程步骤归一化（非法引擎回退 auto，保持「跟随项目」行为）
     if !BUILD_ENGINES.contains(&cfg.build.engine.as_str()) {
         cfg.build.engine = "auto".to_string();
@@ -865,5 +945,89 @@ mod tests {
             cfg.layout.pv_side_width = input;
             assert_eq!(normalize(cfg).layout.pv_side_width, expect, "input={input}");
         }
+    }
+
+    #[test]
+    fn formula_default_and_normalize() {
+        // 缺 formula 字段 → serde default（空收藏/空自定义/编号关/行内关）
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert!(parsed.formula.favorites.is_empty());
+        assert!(parsed.formula.custom.is_empty());
+        assert!(!parsed.formula.numbered);
+        assert!(!parsed.formula.inline);
+
+        // camelCase 键名往返
+        let text = serde_json::to_string(&parsed).unwrap();
+        assert!(text.contains("\"formula\""));
+        assert!(text.contains("\"favorites\""));
+        assert!(text.contains("\"custom\""));
+        assert!(text.contains("\"numbered\""));
+        assert!(text.contains("\"inline\""));
+
+        // 归一化：favorites 去空白/去重/截断；custom 必填校验 + 按 id 去重/截断
+        let mut cfg = AppConfig::default();
+        cfg.formula.favorites = vec![
+            "fr-a".into(),
+            "  ".into(),
+            "fr-a".into(),
+            "fr-b".into(),
+        ];
+        cfg.formula.custom = vec![
+            // 必填缺失应被丢弃
+            FormulaDef {
+                id: "".into(),
+                name: "坏".into(),
+                latex: "x".into(),
+                category: "c".into(),
+                ..Default::default()
+            },
+            // 正常条目：空白应被 trim
+            FormulaDef {
+                id: "c1".into(),
+                name: "  A  ".into(),
+                latex: " \\alpha ".into(),
+                category: "  trig  ".into(),
+                glyph: Some("  α  ".into()),
+                ..Default::default()
+            },
+            // 同 id 后者覆盖前者
+            FormulaDef {
+                id: "c1".into(),
+                name: "B".into(),
+                latex: "y".into(),
+                category: "c".into(),
+                ..Default::default()
+            },
+            // 另一条目：单独验证 trim
+            FormulaDef {
+                id: "c2".into(),
+                name: "  D  ".into(),
+                latex: " z ".into(),
+                category: "  k  ".into(),
+                ..Default::default()
+            },
+        ];
+        let got = normalize_formula(cfg.formula);
+        assert_eq!(got.favorites, vec!["fr-a".to_string(), "fr-b".to_string()]);
+        // c1 出现两次 → 去重保留后者（B）；c2 正常；空 id 条目被丢弃
+        assert_eq!(got.custom.len(), 2);
+        let by_id: std::collections::HashMap<&str, &FormulaDef> =
+            got.custom.iter().map(|d| (d.id.as_str(), d)).collect();
+        let c1 = by_id.get("c1").unwrap();
+        assert_eq!(c1.name, "B"); // 后者覆盖前者
+        assert_eq!(c1.latex, "y");
+        assert_eq!(c1.category, "c");
+        assert_eq!(c1.glyph, None); // 后者无 glyph
+        let c2 = by_id.get("c2").unwrap();
+        assert_eq!(c2.name, "D"); // 空白被 trim
+        assert_eq!(c2.latex, "z");
+        assert_eq!(c2.category, "k");
     }
 }

@@ -247,6 +247,12 @@ export function MenuBar() {
           onClick: () => useAppStore.getState().setSidebarView("symbol"),
         },
         {
+          // M1-10：第四视图「公式」专用入口
+          label: `${sidebarVisible && sidebarView === "formula" ? "✓ " : ""}公式`,
+          sc: "Ctrl+B 4",
+          onClick: () => useAppStore.getState().setSidebarView("formula"),
+        },
+        {
           label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
           onClick: () => useAppStore.getState().togglePreview(),
         },
@@ -377,11 +383,18 @@ export function MenuBar() {
           useAppStore.getState().toggleSidebar();
           return;
         }
-        // M1-5a：Ctrl+B 1/2/3 直达活动栏视图（资源管理器 / 大纲 / 符号面板）
-        if (e.key === "1" || e.key === "2" || e.key === "3") {
+        // M1-5a：Ctrl+B 1/2/3/4 直达活动栏视图（资源管理器 / 大纲 / 符号面板 / 公式）
+        if (e.key === "1" || e.key === "2" || e.key === "3" || e.key === "4") {
           e.preventDefault();
           clearChord();
-          const v = e.key === "1" ? "explorer" : e.key === "2" ? "outline" : "symbol";
+          const v =
+            e.key === "1"
+              ? "explorer"
+              : e.key === "2"
+                ? "outline"
+                : e.key === "3"
+                  ? "symbol"
+                  : "formula";
           useAppStore.getState().setSidebarView(v);
           return;
         }

@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { moduleRegistry, bindModuleBus, KERNEL_CAPABILITIES } from "./moduleRegistry";
 import { useSettingsStore } from "./settings";
 import { registerSymbolModule } from "@/modules/symbol/symbolModule";
+import { registerFormulaModule } from "@/modules/formula/formulaModule";
 
 export function useModuleRuntime(): void {
   useEffect(() => {
@@ -14,6 +15,8 @@ export function useModuleRuntime(): void {
     // M1-6 · 符号面板：唯一业务模块，DEV+release 均注册，默认启用（验证 registry 通路）。
     // M1-6b：M1-1 的「示例模块（开发自检）」已移除，设置页只保留真实模块。
     registerSymbolModule();
+    // M1-10：公式模块（侧栏第四视图专用入口，镜像 symbol）
+    registerFormulaModule();
 
     // 设置页覆盖值 → 注册表：
     // - 配置未加载完成前传 null（各模块走 defaultEnabled）

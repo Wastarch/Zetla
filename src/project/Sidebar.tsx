@@ -56,6 +56,46 @@ function SymbolView() {
   );
 }
 
+/** 公式视图：直接挂载 formula 模块的懒加载组件（受设置页启停控制） */
+function FormulaView() {
+  const mods = useModuleList();
+  const [, setRev] = useState(0);
+  useEffect(() => {
+    const t = window.setTimeout(() => setRev((r) => r + 1), 0);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  const mod = moduleRegistry.get("formula");
+  const enabled = mods.find((m) => m.id === "formula")?.enabled ?? false;
+  const Comp = mod?.component;
+
+  return (
+    <div className="side-view">
+      <div className="side-head">
+        <div className="side-title">公式</div>
+        {mod && <span className="side-ver">v{mod.version}</span>}
+      </div>
+
+      {enabled && Comp ? (
+        <Suspense fallback={<div className="side-loading">加载中…</div>}>
+          <Comp />
+        </Suspense>
+      ) : (
+        <div className="side-empty">
+          <div>公式模块已停用</div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => useAppStore.getState().openSettings("modules")}
+          >
+            去设置启用
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Sidebar({ style }: SidebarProps) {
   const view = useAppStore((s) => s.sidebarView);
 
@@ -73,6 +113,8 @@ export function Sidebar({ style }: SidebarProps) {
         <div className="side-view">
           <OutlinePanel />
         </div>
+      ) : view === "formula" ? (
+        <FormulaView />
       ) : (
         <SymbolView />
       )}

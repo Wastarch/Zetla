@@ -25,6 +25,40 @@ export type CompileEngine = "auto" | "xelatex" | "pdflatex" | "lualatex";
  */
 export type CompileStep = "latex" | "bibtex" | "biber";
 
+/**
+ * M1-10：公式定义（内置库 formulas.json + 用户自定义共用）。
+ * latex 为公式**内部片段**（不含外层 $ 或 equation 环境）；
+ * isEnv=true 表示整段已是完整环境（如 align/cases），插入时不再包裹编号/行内。
+ */
+export interface FormulaDef {
+  /** 稳定 id（内置：fr-xxx；自定义：c-<时间戳>-<随机>） */
+  id: string;
+  /** 展示名（如「二次公式」） */
+  name: string;
+  /** LaTeX 内容（内部片段，或 isEnv 时的完整环境） */
+  latex: string;
+  /** 分类（9 类之一） */
+  category: string;
+  /** 近似字形/说明（可选；列表缩略用） */
+  glyph?: string;
+  /** 描述（可选；参与搜索） */
+  desc?: string;
+  /** 整段已是完整环境（不套用编号/行内包裹）；缺省 false */
+  isEnv?: boolean;
+}
+
+/** M1-10：公式模块配置（收藏 / 自定义 / 插入行为） */
+export interface FormulaConfig {
+  /** 收藏的内置公式 id（去重、上限 100；失效 id 前端惰性过滤） */
+  favorites: string[];
+  /** 用户自定义公式（增删改；按 id 去重、上限 200） */
+  custom: FormulaDef[];
+  /** 插入时是否带公式编号：true=\begin{equation}（编号），false=\begin{equation*}（无编号） */
+  numbered: boolean;
+  /** 插入时是否为行内公式：true=$...$，false=display 环境（numbered 不生效） */
+  inline: boolean;
+}
+
 export interface AppSettings {
   schemaVersion: number;
   editor: {
@@ -99,6 +133,8 @@ export interface AppSettings {
    * 与 Rust AppConfig.modules（BTreeMap<String, bool>）一一对应，camelCase。
    */
   modules: Record<string, boolean>;
+  /** M1-10：公式模块配置（收藏 / 自定义 / 插入行为） */
+  formula: FormulaConfig;
 }
 
 /** 前端兜底默认值（与 Rust Default 一致；正常路径以 load_app_config 返回为准） */
@@ -121,6 +157,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   tex: { distro: null, installDir: null, engineBinDir: null },
   perl: { installDir: null },
   modules: {},
+  formula: { favorites: [], custom: [], numbered: false, inline: false },
 };
 
 /** 字体族 → CSS font-family 栈（应用到 --editor-ff，仅影响编辑器代码区） */

@@ -4,8 +4,8 @@ import type { CompileResult, ProjectInfo, TexDistInfo } from "@/types";
 
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
-/** 侧栏视图（M1-5a · 活动栏切换）：资源管理器 / 大纲 / 模块 */
-export type SidebarView = "explorer" | "outline" | "symbol";
+/** 侧栏视图（M1-5a · 活动栏切换）：资源管理器 / 大纲 / 符号 / 公式 */
+export type SidebarView = "explorer" | "outline" | "symbol" | "formula";
 
 /** 偏好设置页当前打开的页签（null = 关闭） */
 export type SettingsPane =

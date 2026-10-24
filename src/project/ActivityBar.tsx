@@ -17,6 +17,7 @@ const ITEMS: Item[] = [
   { view: "explorer", icon: "folder", label: "资源管理器", hint: "Ctrl+B 1" },
   { view: "outline", icon: "menu", label: "大纲", hint: "Ctrl+B 2" },
   { view: "symbol", icon: "wand", label: "符号面板", hint: "Ctrl+B 3" },
+  { view: "formula", icon: "formula", label: "公式", hint: "Ctrl+B 4" },
 ];
 
 export function ActivityBar() {

@@ -1,0 +1,591 @@
+[
+    {
+        "id": "fr-frac",
+        "name": "分数",
+        "latex": "\\frac{a}{b}",
+        "category": "分数根式",
+        "glyph": "a⁄b",
+        "desc": "分式"
+    },
+    {
+        "id": "fr-frac-par",
+        "name": "带括号分式",
+        "latex": "\\frac{a+b}{c+d}",
+        "category": "分数根式",
+        "desc": "分子分母含多项式"
+    },
+    {
+        "id": "fr-sqrt",
+        "name": "平方根",
+        "latex": "\\sqrt{x}",
+        "category": "分数根式",
+        "glyph": "√x",
+        "desc": "平方根"
+    },
+    {
+        "id": "fr-nthroot",
+        "name": "n 次根",
+        "latex": "\\sqrt[n]{x}",
+        "category": "分数根式",
+        "desc": "n 次根号"
+    },
+    {
+        "id": "fr-binom",
+        "name": "二项式系数",
+        "latex": "\\binom{n}{k}",
+        "category": "分数根式",
+        "desc": "组合数"
+    },
+    {
+        "id": "fr-sqrt-sum",
+        "name": "平方和根",
+        "latex": "\\sqrt{a^2 + b^2}",
+        "category": "分数根式",
+        "desc": "勾股定理"
+    },
+    {
+        "id": "fr-sqrt-frac",
+        "name": "根式分式",
+        "latex": "\\sqrt{\\frac{a}{b}}",
+        "category": "分数根式",
+        "desc": "根号内含分式"
+    },
+    {
+        "id": "fr-frac-deriv",
+        "name": "导数分式",
+        "latex": "\\frac{dy}{dx}",
+        "category": "分数根式",
+        "desc": "莱布尼茨导数"
+    },
+    {
+        "id": "fr-frac-partial",
+        "name": "偏导分式",
+        "latex": "\\frac{\\partial f}{\\partial x}",
+        "category": "分数根式",
+        "desc": "偏导数"
+    },
+    {
+        "id": "fr-sup",
+        "name": "上标",
+        "latex": "a^n",
+        "category": "上下标",
+        "desc": "幂"
+    },
+    {
+        "id": "fr-sub",
+        "name": "下标",
+        "latex": "a_i",
+        "category": "上下标",
+        "desc": "索引"
+    },
+    {
+        "id": "fr-subsup",
+        "name": "上下标",
+        "latex": "a_i^n",
+        "category": "上下标",
+        "desc": "同时上下标"
+    },
+    {
+        "id": "fr-sup2",
+        "name": "平方",
+        "latex": "x^2",
+        "category": "上下标",
+        "desc": "二次方"
+    },
+    {
+        "id": "fr-sup3",
+        "name": "立方",
+        "latex": "x^3",
+        "category": "上下标",
+        "desc": "三次方"
+    },
+    {
+        "id": "fr-vec-comp",
+        "name": "向量分量",
+        "latex": "v_1, v_2, \\dots, v_n",
+        "category": "上下标",
+        "desc": "分量序列"
+    },
+    {
+        "id": "fr-prime",
+        "name": "导数符号",
+        "latex": "f^{\\prime}(x)",
+        "category": "上下标",
+        "desc": "一撇导数"
+    },
+    {
+        "id": "fr-tensor",
+        "name": "张量上下标",
+        "latex": "T^{ij}_{kl}",
+        "category": "上下标",
+        "desc": "混合上下标"
+    },
+    {
+        "id": "fr-lim-sub",
+        "name": "下标极限",
+        "latex": "\\lim_{n \\to \\infty}",
+        "category": "上下标",
+        "desc": "极限下限"
+    },
+    {
+        "id": "fr-int",
+        "name": "定积分",
+        "latex": "\\int_a^b f(x)\\,dx",
+        "category": "微积分",
+        "desc": "定积分"
+    },
+    {
+        "id": "fr-int-inf",
+        "name": "无穷积分",
+        "latex": "\\int_{-\\infty}^{\\infty} f(x)\\,dx",
+        "category": "微积分",
+        "desc": "广义积分"
+    },
+    {
+        "id": "fr-iint",
+        "name": "二重积分",
+        "latex": "\\iint_D f(x,y)\\,dx\\,dy",
+        "category": "微积分",
+        "desc": "面积分"
+    },
+    {
+        "id": "fr-iiint",
+        "name": "三重积分",
+        "latex": "\\iiint_V f\\,dV",
+        "category": "微积分",
+        "desc": "体积分"
+    },
+    {
+        "id": "fr-sum",
+        "name": "求和",
+        "latex": "\\sum_{i=1}^{n} a_i",
+        "category": "微积分",
+        "desc": "求和号"
+    },
+    {
+        "id": "fr-prod",
+        "name": "连乘",
+        "latex": "\\prod_{i=1}^{n} a_i",
+        "category": "微积分",
+        "desc": "连乘积"
+    },
+    {
+        "id": "fr-lim",
+        "name": "极限",
+        "latex": "\\lim_{x \\to 0} f(x)",
+        "category": "微积分",
+        "desc": "极限"
+    },
+    {
+        "id": "fr-partial",
+        "name": "偏导",
+        "latex": "\\frac{\\partial}{\\partial x}",
+        "category": "微积分",
+        "desc": "偏导数算子"
+    },
+    {
+        "id": "fr-grad",
+        "name": "梯度",
+        "latex": "\\nabla f",
+        "category": "微积分",
+        "desc": "梯度算子"
+    },
+    {
+        "id": "fr-pmatrix",
+        "name": "圆括号矩阵",
+        "latex": "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}",
+        "category": "矩阵行列式",
+        "isEnv": true
+    },
+    {
+        "id": "fr-bmatrix",
+        "name": "方括号矩阵",
+        "latex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
+        "category": "矩阵行列式",
+        "isEnv": true
+    },
+    {
+        "id": "fr-vmatrix",
+        "name": "行列式",
+        "latex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
+        "category": "矩阵行列式",
+        "isEnv": true
+    },
+    {
+        "id": "fr-matrix",
+        "name": "无括号矩阵",
+        "latex": "\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
+        "category": "矩阵行列式",
+        "isEnv": true
+    },
+    {
+        "id": "fr-2x2det",
+        "name": "二阶行列式",
+        "latex": "ad - bc",
+        "category": "矩阵行列式",
+        "desc": "二阶行列式展开"
+    },
+    {
+        "id": "fr-transpose",
+        "name": "转置",
+        "latex": "A^{\\mathsf{T}}",
+        "category": "矩阵行列式",
+        "desc": "矩阵转置"
+    },
+    {
+        "id": "fr-inv",
+        "name": "逆矩阵",
+        "latex": "A^{-1}",
+        "category": "矩阵行列式",
+        "desc": "矩阵求逆"
+    },
+    {
+        "id": "fr-det",
+        "name": "行列式符号",
+        "latex": "\\det(A)",
+        "category": "矩阵行列式",
+        "desc": "行列式函数"
+    },
+    {
+        "id": "fr-trace",
+        "name": "迹",
+        "latex": "\\operatorname{tr}(A)",
+        "category": "矩阵行列式",
+        "desc": "矩阵迹"
+    },
+    {
+        "id": "fr-sin",
+        "name": "正弦",
+        "latex": "\\sin x",
+        "category": "三角对数指数"
+    },
+    {
+        "id": "fr-cos",
+        "name": "余弦",
+        "latex": "\\cos x",
+        "category": "三角对数指数"
+    },
+    {
+        "id": "fr-tan",
+        "name": "正切",
+        "latex": "\\tan x",
+        "category": "三角对数指数"
+    },
+    {
+        "id": "fr-arcsin",
+        "name": "反正弦",
+        "latex": "\\arcsin x",
+        "category": "三角对数指数"
+    },
+    {
+        "id": "fr-log",
+        "name": "常用对数",
+        "latex": "\\log x",
+        "category": "三角对数指数"
+    },
+    {
+        "id": "fr-ln",
+        "name": "自然对数",
+        "latex": "\\ln x",
+        "category": "三角对数指数"
+    },
+    {
+        "id": "fr-exp",
+        "name": "指数",
+        "latex": "e^{x}",
+        "category": "三角对数指数",
+        "desc": "自然指数"
+    },
+    {
+        "id": "fr-powbase",
+        "name": "以 a 为底",
+        "latex": "a^{x}",
+        "category": "三角对数指数",
+        "desc": "幂函数"
+    },
+    {
+        "id": "fr-euler",
+        "name": "欧拉恒等式",
+        "latex": "e^{i\\pi} + 1 = 0",
+        "category": "三角对数指数",
+        "desc": "欧拉公式"
+    },
+    {
+        "id": "fr-to",
+        "name": "趋近",
+        "latex": "\\to",
+        "category": "箭头关系",
+        "glyph": "→",
+        "desc": "趋于"
+    },
+    {
+        "id": "fr-implies",
+        "name": "推出",
+        "latex": "\\implies",
+        "category": "箭头关系",
+        "glyph": "⇒",
+        "desc": "蕴含"
+    },
+    {
+        "id": "fr-iff",
+        "name": "等价",
+        "latex": "\\iff",
+        "category": "箭头关系",
+        "glyph": "⇔",
+        "desc": "当且仅当"
+    },
+    {
+        "id": "fr-mapsto",
+        "name": "映射",
+        "latex": "\\mapsto",
+        "category": "箭头关系",
+        "glyph": "↦",
+        "desc": "映射到"
+    },
+    {
+        "id": "fr-approx",
+        "name": "约等于",
+        "latex": "\\approx",
+        "category": "箭头关系",
+        "glyph": "≈",
+        "desc": "近似"
+    },
+    {
+        "id": "fr-equiv",
+        "name": "恒等",
+        "latex": "\\equiv",
+        "category": "箭头关系",
+        "glyph": "≡",
+        "desc": "恒等于"
+    },
+    {
+        "id": "fr-leq",
+        "name": "小于等于",
+        "latex": "\\leq",
+        "category": "箭头关系",
+        "glyph": "≤",
+        "desc": "不大于"
+    },
+    {
+        "id": "fr-geq",
+        "name": "大于等于",
+        "latex": "\\geq",
+        "category": "箭头关系",
+        "glyph": "≥",
+        "desc": "不小于"
+    },
+    {
+        "id": "fr-propto",
+        "name": "正比于",
+        "latex": "\\propto",
+        "category": "箭头关系",
+        "glyph": "∝",
+        "desc": "成比例"
+    },
+    {
+        "id": "fr-paren",
+        "name": "圆括号",
+        "latex": "\\left( \\frac{a}{b} \\right)",
+        "category": "括号定界符",
+        "desc": "自适应圆括号"
+    },
+    {
+        "id": "fr-brack",
+        "name": "方括号",
+        "latex": "\\left[ \\frac{a}{b} \\right]",
+        "category": "括号定界符",
+        "desc": "自适应方括号"
+    },
+    {
+        "id": "fr-brace",
+        "name": "花括号",
+        "latex": "\\left\\{ x \\in \\mathbb{R} \\right\\}",
+        "category": "括号定界符",
+        "desc": "自适应花括号"
+    },
+    {
+        "id": "fr-angle",
+        "name": "尖括号",
+        "latex": "\\langle u, v \\rangle",
+        "category": "括号定界符",
+        "desc": "内积括号"
+    },
+    {
+        "id": "fr-norm",
+        "name": "范数",
+        "latex": "\\left\\| \\vec{v} \\right\\|",
+        "category": "括号定界符",
+        "desc": "向量范数"
+    },
+    {
+        "id": "fr-floor",
+        "name": "下取整",
+        "latex": "\\lfloor x \\rfloor",
+        "category": "括号定界符",
+        "desc": "向下取整"
+    },
+    {
+        "id": "fr-ceil",
+        "name": "上取整",
+        "latex": "\\lceil x \\rceil",
+        "category": "括号定界符",
+        "desc": "向上取整"
+    },
+    {
+        "id": "fr-abs",
+        "name": "绝对值",
+        "latex": "\\left| x \\right|",
+        "category": "括号定界符",
+        "desc": "绝对值"
+    },
+    {
+        "id": "fr-big",
+        "name": "自适应括号",
+        "latex": "\\left( \\cdots \\right)",
+        "category": "括号定界符",
+        "desc": "自适应大小占位"
+    },
+    {
+        "id": "fr-thm",
+        "name": "定理",
+        "latex": "\\begin{theorem}\n  内容\n\\end{theorem}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 定理"
+    },
+    {
+        "id": "fr-lemma",
+        "name": "引理",
+        "latex": "\\begin{lemma}\n  内容\n\\end{lemma}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 引理"
+    },
+    {
+        "id": "fr-corollary",
+        "name": "推论",
+        "latex": "\\begin{corollary}\n  内容\n\\end{corollary}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 推论"
+    },
+    {
+        "id": "fr-def",
+        "name": "定义",
+        "latex": "\\begin{definition}\n  内容\n\\end{definition}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 定义"
+    },
+    {
+        "id": "fr-proof",
+        "name": "证明",
+        "latex": "\\begin{proof}\n  \\dots\n\\end{proof}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 证明"
+    },
+    {
+        "id": "fr-prop",
+        "name": "命题",
+        "latex": "\\begin{proposition}\n  内容\n\\end{proposition}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 命题"
+    },
+    {
+        "id": "fr-ex",
+        "name": "例",
+        "latex": "\\begin{example}\n  内容\n\\end{example}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 例"
+    },
+    {
+        "id": "fr-remark",
+        "name": "注",
+        "latex": "\\begin{remark}\n  内容\n\\end{remark}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 注"
+    },
+    {
+        "id": "fr-claim",
+        "name": "断言",
+        "latex": "\\begin{claim}\n  内容\n\\end{claim}",
+        "category": "定理环境",
+        "isEnv": true,
+        "desc": "amsthm 断言"
+    },
+    {
+        "id": "fr-align",
+        "name": "多行对齐",
+        "latex": "\\begin{align}\n  a &= b \\\\\n  c &= d\n\\end{align}",
+        "category": "环境模板",
+        "isEnv": true,
+        "desc": "等号对齐多行"
+    },
+    {
+        "id": "fr-cases",
+        "name": "分段函数",
+        "latex": "\\begin{cases}\n  x & x \\geq 0 \\\\\n  -x & x < 0\n\\end{cases}",
+        "category": "环境模板",
+        "isEnv": true,
+        "desc": "cases 分段"
+    },
+    {
+        "id": "fr-gather",
+        "name": "居中多行",
+        "latex": "\\begin{gather}\n  a \\\\\n  b\n\\end{gather}",
+        "category": "环境模板",
+        "isEnv": true,
+        "desc": "gather 多行公式"
+    },
+    {
+        "id": "fr-split",
+        "name": "单式多行",
+        "latex": "\\begin{split}\n  a &= b \\\\\n  &= c\n\\end{split}",
+        "category": "环境模板",
+        "isEnv": true,
+        "desc": "split 拆分"
+    },
+    {
+        "id": "fr-array",
+        "name": "数组",
+        "latex": "\\begin{array}{cc}\n  a & b \\\\\n  c & d\n\\end{array}",
+        "category": "环境模板",
+        "isEnv": true,
+        "desc": "array 表格公式"
+    },
+    {
+        "id": "fr-aligned",
+        "name": "内嵌对齐",
+        "latex": "\\begin{aligned}\n  a &= b \\\\\n  c &= d\n\\end{aligned}",
+        "category": "环境模板",
+        "isEnv": true,
+        "desc": "aligned 嵌套对齐"
+    },
+    {
+        "id": "fr-multline",
+        "name": "长式折行",
+        "latex": "\\begin{multline}\n  a + b + c \\\\\n  + d + e\n\\end{multline}",
+        "category": "环境模板",
+        "isEnv": true,
+        "desc": "multline 折行"
+    },
+    {
+        "id": "fr-substack",
+        "name": "条件求和",
+        "latex": "\\sum_{\\substack{i=1 \\\\ i \\neq j}}^{n} a_i",
+        "category": "环境模板",
+        "desc": "substack 多行下标"
+    },
+    {
+        "id": "fr-eqnarray",
+        "name": "编号多行",
+        "latex": "\\begin{eqnarray}\n  a &=& b \\\\\n  c &=& d\n\\end{eqnarray}",
+        "category": "环境模板",
+        "isEnv": true,
+        "desc": "eqnarray 编号"
+    }
+]
