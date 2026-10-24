@@ -89,6 +89,32 @@ pub struct WindowConfig {
 pub struct SessionConfig {
     /// 上次打开的项目根路径（绝对路径）；打开项目时写回
     pub last_project: Option<String>,
+    /// M0-13c：上次离开时打开的编辑器标签页（绝对路径，按打开顺序）
+    pub open_files: Vec<String>,
+    /// M0-13c：上次离开时的活动标签（须在 open_files 内；None=无活动标签）
+    pub active_file: Option<String>,
+}
+
+/// M0-13c：会话标签页数量上限（防呆；超出按打开顺序截断）
+pub const MAX_OPEN_FILES: usize = 50;
+
+/// M0-13c：会话归一化——去空白/去重、截断至上限；active_file 不在列表内则置空
+pub fn normalize_session(mut session: SessionConfig) -> SessionConfig {
+    let mut files: Vec<String> = Vec::new();
+    for p in session.open_files.drain(..) {
+        let t = p.trim();
+        if t.is_empty() || files.iter().any(|f| f == t) {
+            continue;
+        }
+        files.push(t.to_string());
+    }
+    files.truncate(MAX_OPEN_FILES);
+    session.open_files = files;
+    session.active_file = session
+        .active_file
+        .map(|a| a.trim().to_string())
+        .filter(|a| !a.is_empty() && session.open_files.iter().any(|p| p == a));
+    session
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -276,6 +302,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     if !THEMES.contains(&cfg.general.theme.as_str()) {
         cfg.general.theme = "light".to_string();
     }
+    // M0-13c：会话标签页归一化（去空白/去重/截断；active_file 必须在列表内）
+    cfg.session = normalize_session(cfg.session);
     // M1-3：编译引擎白名单 + 流程步骤归一化（非法引擎回退 auto，保持「跟随项目」行为）
     if !BUILD_ENGINES.contains(&cfg.build.engine.as_str()) {
         cfg.build.engine = "auto".to_string();
@@ -595,6 +623,53 @@ mod tests {
         let mut bad = AppConfig::default();
         bad.general.theme = "blue".to_string();
         assert_eq!(normalize(bad).general.theme, "light");
+    }
+
+    #[test]
+    fn session_open_files_roundtrip_and_normalize() {
+        // M0-13c：open_files/active_file 往返保留；旧配置缺字段 → 空
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "session": {
+                "lastProject": "D:/proj",
+                "openFiles": ["D:/proj/main.tex", "D:/proj/chap/intro.tex"],
+                "activeFile": "D:/proj/chap/intro.tex"
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(parsed.session.open_files.len(), 2);
+        assert_eq!(
+            parsed.session.active_file.as_deref(),
+            Some("D:/proj/chap/intro.tex")
+        );
+        // camelCase 键名往返
+        let text = serde_json::to_string(&parsed).unwrap();
+        assert!(text.contains("\"openFiles\""));
+        assert!(text.contains("\"activeFile\""));
+
+        // 归一化：去空白项/去重/截断；active_file 不在列表内 → None
+        let mut cfg = AppConfig::default();
+        cfg.session.open_files = vec![
+            "  ".into(),
+            "D:/a.tex".into(),
+            "D:/a.tex".into(),
+            "D:/b.tex".into(),
+        ];
+        cfg.session.active_file = Some("D:/ghost.tex".into());
+        let got = normalize(cfg);
+        assert_eq!(got.session.open_files, vec!["D:/a.tex", "D:/b.tex"]);
+        assert_eq!(got.session.active_file, None);
+
+        let mut many = AppConfig::default();
+        many.session.open_files = (0..60).map(|i| format!("D:/f{i}.tex")).collect();
+        many.session.active_file = Some("D:/f59.tex".into());
+        let got = normalize(many);
+        assert_eq!(got.session.open_files.len(), MAX_OPEN_FILES);
+        assert_eq!(got.session.active_file, None); // 被截断掉
     }
 
     #[test]

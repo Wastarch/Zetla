@@ -45,7 +45,8 @@ function basename(p: string): string {
   return segs[segs.length - 1] || p;
 }
 
-interface BuffersState {
+/** 缓冲区 store 状态（外部订阅/键计算用，如 useWindowMemory 的会话记忆） */
+export interface BuffersState {
   buffers: EditorBuffer[];
   activePath: string | null;
   notice: BuffersNotice | null;

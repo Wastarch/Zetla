@@ -60,6 +60,10 @@ export interface AppSettings {
   /** M0-13：会话记忆 */
   session: {
     lastProject: string | null;
+    /** M0-13c：上次离开时打开的编辑器标签页（绝对路径，按打开顺序） */
+    openFiles: string[];
+    /** M0-13c：上次离开时的活动标签（须在 openFiles 内；null=无活动标签） */
+    activeFile: string | null;
   };
   /** M0-13：布局（侧栏/预览宽度与显隐） */
   layout: {
@@ -105,7 +109,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   build: { saveBeforeCompile: true, engine: "auto", steps: [] },
   pdf: { defaultZoom: "fit-width" },
   window: { width: null, height: null, x: null, y: null, maximized: false },
-  session: { lastProject: null },
+  session: { lastProject: null, openFiles: [], activeFile: null },
   layout: {
     sidebarVisible: true,
     sidebarWidth: 258,
