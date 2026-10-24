@@ -5388,7 +5388,7 @@ dependencies = [
 
 [[package]]
 name = "zetla"
-version = "0.1.3"
+version = "0.1.4"
 dependencies = [
  "chardetng",
  "encoding_rs",
