@@ -14,6 +14,7 @@ import { openSearchPanel } from "@codemirror/search";
 import { latex } from "codemirror-lang-latex";
 import { useSettingsStore } from "@/core/settings";
 import type { EffectiveTheme } from "@/types/settings";
+import { mathSlotsExtension } from "./mathSlots";
 
 /**
  * M1-2：LaTeX 语法高亮配色。
@@ -160,6 +161,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
         }),
         // 语法高亮配色（亮/暗双份，随主题切换；CM6 基础主题由 theme prop 接管）
         syntaxHighlighting(LATEX_HIGHLIGHT[theme]),
+        // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转）
+        ...mathSlotsExtension,
         // M1-4：Ctrl/⌘+点击源码行 → synctex 正向跳转（posAtCoords 取点击处行/列）
         EditorView.domEventHandlers({
           mousedown: (e, view) => {

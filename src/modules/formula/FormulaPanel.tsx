@@ -1,22 +1,26 @@
 // M1-10 · 公式面板（懒加载组件，镜像 SymbolPanel 验证 slot 挂载 + Suspense 通路）
-// 行为：9 分类 + 名称/LaTeX/描述搜索；分页签（全部/收藏/最近/自定义）+ 新建；
+// 行为：9 分类 + 名称/LaTeX/描述搜索；分页签（全部/收藏/最近/自定义/搭建）+ 新建；
 // 收藏星标；自定义公式增删改（落盘）；插入时按「编号/行内」开关智能包裹（见 wrapFormula）。
+// M1-11：「搭建」页签为图形化公式搭建器（模板点击嵌套搭建，\Box 空槽 + 编辑器 Tab 跳转）。
 import { useEffect, useMemo, useRef, useState } from "react";
-import { insertSnippet } from "@/core/moduleRegistry";
+import { insertSnippetWithSlots } from "@/editor/mathSlots";
 import { useSettingsStore } from "@/core/settings";
 import type { FormulaConfig, FormulaDef } from "@/types/settings";
+import FormulaBuilder from "./FormulaBuilder";
+import FormulaKaTeX from "./FormulaKaTeX";
 import formulasData from "./formulas.json";
 
 const BUILTIN = formulasData as FormulaDef[];
 /** 最近使用上限（仅会话内记忆，不落盘） */
 const RECENT_CAP = 12;
 
-type Tab = "all" | "fav" | "recent" | "custom";
+type Tab = "all" | "fav" | "recent" | "custom" | "builder";
 const TABS: { id: Tab; label: string }[] = [
   { id: "all", label: "全部" },
   { id: "fav", label: "收藏" },
   { id: "recent", label: "最近" },
   { id: "custom", label: "自定义" },
+  { id: "builder", label: "搭建" },
 ];
 
 /** 按「编号/行内」开关包裹公式片段（M1-10 用户规格） */
@@ -90,7 +94,8 @@ export default function FormulaPanel() {
   };
 
   const insert = (def: FormulaDef) => {
-    const ok = insertSnippet(wrapFormula(def, formula.numbered, formula.inline));
+    // M1-11：改走带槽位导航的插入（自定义公式内含 \Box 时同样可 Tab 跳转）
+    const ok = insertSnippetWithSlots(wrapFormula(def, formula.numbered, formula.inline));
     if (!ok) return;
     setFlash(def.name);
     if (flashTimer.current) window.clearTimeout(flashTimer.current);
@@ -163,27 +168,29 @@ export default function FormulaPanel() {
 
   return (
     <div className="symbol-panel formula-panel">
-      <div className="symbol-toolbar">
-        <input
-          className="symbol-search"
-          placeholder="搜索公式，如 frac / sum / 矩阵"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={onSearchKey}
-        />
-        <select
-          className="symbol-cat"
-          value={cat}
-          onChange={(e) => setCat(e.target.value)}
-          aria-label="公式分类"
-        >
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </select>
-      </div>
+      {tab !== "builder" && (
+        <div className="symbol-toolbar">
+          <input
+            className="symbol-search"
+            placeholder="搜索公式，如 frac / sum / 矩阵"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onSearchKey}
+          />
+          <select
+            className="symbol-cat"
+            value={cat}
+            onChange={(e) => setCat(e.target.value)}
+            aria-label="公式分类"
+          >
+            {CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* 插入模式开关（编号 / 行内）—— 直接驱动公式外观 */}
       <div className="formula-mode">
@@ -225,6 +232,7 @@ export default function FormulaPanel() {
           className="formula-new"
           title="新建自定义公式"
           onClick={openNew}
+          style={tab === "builder" ? { visibility: "hidden" } : undefined}
         >
           ＋
         </button>
@@ -232,7 +240,7 @@ export default function FormulaPanel() {
 
       {flash && <div className="symbol-flash">已插入 {flash}</div>}
 
-      {editing && (
+      {editing && tab !== "builder" && (
         <div className="formula-editor">
           <div className="formula-editor-row">
             <input
@@ -280,59 +288,66 @@ export default function FormulaPanel() {
         </div>
       )}
 
-      <div className="symbol-grid">
-        {visible.map((d) => {
-          const isFav = favSet.has(d.id);
-          const isCustom = customMap.has(d.id);
-          return (
-            <div className="formula-item" key={d.id}>
-              <button
-                type="button"
-                className="formula-insert"
-                title={`插入 ${d.name}（${d.latex}）`}
-                onClick={() => insert(d)}
-              >
-                <span className="formula-name">{d.name}</span>
-                <span className="formula-latex">{d.latex}</span>
-                <span className="formula-cat">{d.category}</span>
-              </button>
-              <button
-                type="button"
-                className={isFav ? "fav-star on" : "fav-star"}
-                title={isFav ? "取消收藏" : "收藏"}
-                onClick={() => toggleFav(d.id)}
-              >
-                {isFav ? "★" : "☆"}
-              </button>
-              {isCustom && (
-                <>
-                  <button
-                    type="button"
-                    className="formula-edit"
-                    title="编辑"
-                    onClick={() => openEdit(d)}
-                  >
-                    ✎
-                  </button>
-                  <button
-                    type="button"
-                    className="formula-del"
-                    title="删除"
-                    onClick={() => deleteCustom(d.id)}
-                  >
-                    ✕
-                  </button>
-                </>
-              )}
+      {tab === "builder" ? (
+        <FormulaBuilder />
+      ) : (
+        <div className="symbol-grid">
+          {visible.map((d) => {
+            const isFav = favSet.has(d.id);
+            const isCustom = customMap.has(d.id);
+            return (
+              <div className="formula-item" key={d.id}>
+                <button
+                  type="button"
+                  className="formula-insert"
+                  title={`插入 ${d.name}（${d.latex}）`}
+                  onClick={() => insert(d)}
+                >
+                  <span className="formula-name">{d.name}</span>
+                  {/* M1-11：LaTeX 源码行改为 KaTeX 渲染预览（整段失败回退源码，title 保留源码） */}
+                  <span className="formula-latex">
+                    <FormulaKaTeX tex={d.latex} strict />
+                  </span>
+                  <span className="formula-cat">{d.category}</span>
+                </button>
+                <button
+                  type="button"
+                  className={isFav ? "fav-star on" : "fav-star"}
+                  title={isFav ? "取消收藏" : "收藏"}
+                  onClick={() => toggleFav(d.id)}
+                >
+                  {isFav ? "★" : "☆"}
+                </button>
+                {isCustom && (
+                  <>
+                    <button
+                      type="button"
+                      className="formula-edit"
+                      title="编辑"
+                      onClick={() => openEdit(d)}
+                    >
+                      ✎
+                    </button>
+                    <button
+                      type="button"
+                      className="formula-del"
+                      title="删除"
+                      onClick={() => deleteCustom(d.id)}
+                    >
+                      ✕
+                    </button>
+                  </>
+                )}
+              </div>
+            );
+          })}
+          {visible.length === 0 && (
+            <div className="symbol-empty">
+              {tab === "custom" ? "尚无自定义公式，点击右上角 ＋ 新建" : "未找到匹配公式"}
             </div>
-          );
-        })}
-        {visible.length === 0 && (
-          <div className="symbol-empty">
-            {tab === "custom" ? "尚无自定义公式，点击右上角 ＋ 新建" : "未找到匹配公式"}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
