@@ -2,10 +2,12 @@
 // - \Box 渲染为空心槽，点击 → 编写区光标定位到该槽（MathType 式；M1-11 injectSlots 协议）
 // - 动作条：插入编辑器（主，等同 Ctrl+Enter）/ 复制 LaTeX
 // - 缩放：预览整体字号（50–200%）；空态显示 LaTeX 水印
+// - 2026-10-25：输出区域支持 Ctrl+滚轮缩放（对应右上「差 − 200% +」，步进 25%）
 import FormulaKaTeX from "./FormulaKaTeX";
 import { useComposeStore } from "./composeStore";
 import { boxOffset, serializeSlotsText, slotIdIndex } from "./mathTex";
 import { copyCompose, submitCompose } from "./mathInsert";
+import { useCtrlWheelZoom } from "./useCtrlWheelZoom";
 
 export default function MathOutput() {
   const text = useComposeStore((s) => s.text);
@@ -13,6 +15,9 @@ export default function MathOutput() {
   const zoomPreview = useComposeStore((s) => s.zoomPreview);
   const setCursor = useComposeStore((s) => s.setCursor);
   const setMode = useComposeStore((s) => s.setMode);
+
+  // Ctrl+滚轮 → 预览缩放（±25% 一档，与按钮一致）
+  const outputZoomRef = useCtrlWheelZoom<HTMLDivElement>((dir) => zoomPreview(dir * 25));
 
   const empty = text.trim() === "";
   const { tex, slotIds } = serializeSlotsText(text);
@@ -28,15 +33,15 @@ export default function MathOutput() {
   };
 
   return (
-    <div className="math-region math-output">
+    <div className="math-region math-output" ref={outputZoomRef}>
       <div className="math-region-head">
         <span className="math-region-title">输出区域 Output</span>
         <div className="math-zoom">
-          <button type="button" title="缩小预览" onClick={() => zoomPreview(-25)}>
+          <button type="button" title="缩小预览（Ctrl+滚轮）" onClick={() => zoomPreview(-25)}>
             −
           </button>
           <span className="math-zoom-val">{zoom}%</span>
-          <button type="button" title="放大预览" onClick={() => zoomPreview(25)}>
+          <button type="button" title="放大预览（Ctrl+滚轮）" onClick={() => zoomPreview(25)}>
             +
           </button>
         </div>

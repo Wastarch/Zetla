@@ -176,11 +176,11 @@ export default function MathToolbar() {
           </button>
         </div>
         <div className="math-zoom">
-          <button type="button" title="缩小字号" onClick={() => zoomFont(-1)}>
+          <button type="button" title="缩小字号（Ctrl+滚轮）" onClick={() => zoomFont(-1)}>
             −
           </button>
           <span className="math-zoom-val">{fontSize}</span>
-          <button type="button" title="放大字号" onClick={() => zoomFont(1)}>
+          <button type="button" title="放大字号（Ctrl+滚轮）" onClick={() => zoomFont(1)}>
             +
           </button>
         </div>

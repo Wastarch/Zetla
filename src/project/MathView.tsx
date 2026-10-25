@@ -19,6 +19,8 @@ import type { FormulaConfig } from "@/types/settings";
 import MathCompose from "@/modules/formula/MathCompose";
 import MathOutput from "@/modules/formula/MathOutput";
 import MathToolbar from "@/modules/formula/MathToolbar";
+import { useComposeStore } from "@/modules/formula/composeStore";
+import { useCtrlWheelZoom } from "@/modules/formula/useCtrlWheelZoom";
 
 type MathTab = "tools" | "library";
 
@@ -113,6 +115,10 @@ export function MathView() {
     return a;
   }, [symbol.enabled, formula.enabled]);
 
+  // 输入区域 Ctrl+滚轮 → 编写区字号缩放（2026-10-25 用户反馈；对应工具栏「− 18 +」）
+  const zoomFont = useComposeStore((s) => s.zoomFont);
+  const inputZoomRef = useCtrlWheelZoom<HTMLElement>((dir) => zoomFont(dir));
+
   // 双模块全停用：空态 + 去设置启用（复用 .side-empty 构图）
   if (avail.length === 0) {
     return (
@@ -137,7 +143,7 @@ export function MathView() {
   return (
     <div className="side-view math-view">
       {/* ── 输入区域 ── */}
-      <section className="math-region math-input">
+      <section className="math-region math-input" ref={inputZoomRef}>
         <div className="math-region-head">
           <span className="math-region-title">输入区域 Input</span>
           <div className="math-prefs-anchor" ref={prefsAnchor}>
