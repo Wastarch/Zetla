@@ -41,6 +41,9 @@ zip = { version = "9", default-features = false, features = ["deflate-flate2-zli
 winreg = "0.55"
 # M1-4：解压 .synctex.gz（纯 Rust 后端 miniz_oxide，无 C 依赖）
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+# M1-13：更新检测 —— 安装包 sha256 校验（无代码签名下的完整性保障）
+sha2 = "0.10"
+hex = "0.4"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

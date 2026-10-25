@@ -2733,6 +2733,119 @@ body.col-resizing {
 }
 
 /* ============================================================
+   M1-13 · 关于页更新区 / 红点 / 安装确认弹窗
+   ============================================================ */
+.update-region {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.update-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.update-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--txt-2);
+}
+
+.update-badge {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #fff;
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 1px 9px;
+  letter-spacing: 0.03em;
+}
+
+.update-badge.req {
+  background: #e5484d;
+}
+
+.update-line {
+  font-size: 12px;
+  line-height: 1.8;
+  color: var(--txt-2);
+  margin: 0;
+}
+
+.update-line.ok {
+  color: var(--txt-3);
+}
+
+.update-line.err {
+  color: #e5484d;
+}
+
+.update-notes {
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--txt-2);
+  background: rgba(127, 127, 127, 0.08);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 8px 0 0;
+  white-space: pre-wrap;
+}
+
+.update-found,
+.update-err {
+  margin-top: 6px;
+}
+
+.update-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 10px;
+}
+
+.update-progress {
+  margin-top: 8px;
+}
+
+.update-progress .bar {
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.16);
+  overflow: hidden;
+}
+
+.update-progress .bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s;
+}
+
+.update-actions-bottom {
+  margin-top: 14px;
+}
+
+/* 帮助菜单按钮红点 */
+.menubar .menu > button {
+  position: relative;
+}
+
+.menu-dot {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e5484d;
+  box-shadow: 0 0 0 1.5px var(--bg-0, #fff);
+}
+
+/* ============================================================
    TeX 环境引导面板（M0-15a）
    独立于 .modal.settings 的左右分栏：此处是单列流式布局
    ============================================================ */

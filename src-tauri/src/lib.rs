@@ -4,6 +4,9 @@ mod commands;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // M1-13：清掉上次残留的临时安装包
+    commands::updater::cleanup_update_temp();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         // M0-4：文件对话框（打开 .tex / 选项目文件夹）
@@ -59,6 +62,9 @@ pub fn run() {
             // 项目目录监听（M0-9a）
             commands::watch::watch_project,
             commands::watch::unwatch_project,
+            // M1-13：自动更新（自下载安装包 + 拉起安装向导）
+            commands::updater::download_app_update,
+            commands::updater::launch_installer_and_exit,
             // M0-2+ 逐步注册：
             // list_templates, get_template, create_project, import_template,
             // scan_project, read_file, write_file, revert_file, clean_aux

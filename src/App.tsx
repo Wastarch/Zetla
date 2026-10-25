@@ -21,6 +21,7 @@ import { PdfPreview } from "@/preview/PdfPreview";
 import { useCompileBridge } from "@/compile/useCompile";
 import { useModuleRuntime } from "@/core/useModuleRuntime";
 import { useProjectWatch } from "@/project/useProjectWatch";
+import { useUpdateCheck } from "@/modules/updater/useUpdateCheck";
 import { useAutosave } from "@/editor/useAutosave";
 import { useWindowMemory } from "@/window/useWindowMemory";
 import "./styles/zetla.css";
@@ -45,6 +46,8 @@ function App() {
   useCompileBridge();
   // M1-1：模块接口层运行时（能力登记 / DEV 演示模块 / 设置→注册表 / 总线钩子）
   useModuleRuntime();
+  // M1-13：启动自动检测更新一次（Gitee 优先 → GitHub 兜底）
+  useUpdateCheck();
   // M0-9a：项目目录变更 → 资源树自动刷新
   useProjectWatch();
   // M0-14a：偏好设置启动加载 + 编辑器 CSS 生效 + 定时自动保存

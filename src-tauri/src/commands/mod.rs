@@ -9,4 +9,5 @@ pub mod perl;
 pub mod project;
 pub mod synctex;
 pub mod template;
+pub mod updater;
 pub mod watch;

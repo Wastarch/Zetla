@@ -1,0 +1,18 @@
+{
+    "version": "0.1.4",
+    "notes": "当前为最新版（占位模板：发版时把 version 改成新版本号，并替换下方两条 installer 的 url 与各自 sha256）",
+    "pubDate": "2026-10-25T10:00:00+08:00",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.1.4",
+    "installers": [
+        {
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.1.4/ZetlaSetup-0.1.4-x64.exe",
+            "sha256": "replace-with-real-sha256-when-releasing"
+        },
+        {
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.1.4/ZetlaSetup-0.1.4-x64.exe",
+            "sha256": "replace-with-real-sha256-when-releasing"
+        }
+    ],
+    "minVersion": "0.1.0",
+    "mandatory": false
+}

@@ -16,6 +16,7 @@ import { useProjectStore, notify } from "@/project/useProject";
 import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
 import { jumpToPdfFromSource } from "@/preview/syncTex";
+import { useUpdateStore, selectHasUpdate } from "@/modules/updater/updateStore";
 
 /** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
 interface MenuItemDef {
@@ -32,6 +33,8 @@ interface MenuItemDef {
 interface MenuDef {
   label: string;
   items: MenuItemDef[];
+  /** 菜单按钮右上角红点（如：有可用更新） */
+  dot?: boolean;
 }
 
 /** 有活动编辑器时才可执行编辑类命令 */
@@ -88,6 +91,8 @@ export function MenuBar() {
   const effectiveTheme = useSettingsStore((s) => s.effectiveTheme);
 
   const canEdit = activePath !== null;
+  // M1-13：有可用更新时，帮助菜单按钮显示红点
+  const hasUpdate = useUpdateStore(selectHasUpdate);
 
   const menus: MenuDef[] = [
     {
@@ -312,7 +317,24 @@ export function MenuBar() {
     },
     {
       label: "帮助",
+      dot: hasUpdate,
       items: [
+        {
+          label: "检查更新",
+          hint: "检测 GitHub / Gitee 上的新版本",
+          onClick: () => {
+            const st = useUpdateStore.getState();
+            if (
+              st.status === "update" ||
+              st.status === "downloading" ||
+              st.status === "downloaded"
+            ) {
+              useAppStore.getState().openSettings("about");
+            } else {
+              void st.check();
+            }
+          },
+        },
         {
           label: "TeX 环境检测…",
           hint: "检测 TeX 发行版 / 打开环境引导",
@@ -456,6 +478,7 @@ export function MenuBar() {
               onClick={() => setOpenIdx(openIdx === i ? null : i)}
             >
               {m.label}
+              {m.dot && <span className="menu-dot" aria-label="有可用更新" />}
             </button>
             <div className="drop" role="menu">
               {m.items.map((it, j) =>

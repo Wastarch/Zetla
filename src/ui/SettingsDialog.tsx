@@ -13,6 +13,9 @@ import { cloneSettings, useSettingsStore } from "@/core/settings";
 import { notify } from "@/project/useProject";
 import { useModuleList } from "@/modules/useModuleList";
 import { openEnvGuide } from "@/env/useEnvCheck";
+import { useUpdateStore } from "@/modules/updater/updateStore";
+import type { UpdateProgress } from "@/modules/updater/types";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { Icon } from "@/ui/Icon";
 import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel } from "@/types/settings";
 import type {
@@ -666,6 +669,7 @@ export function SettingsDialog() {
                   桌面 LaTeX 工作台：项目树管理 · 多标签编辑 · 一键 XeLaTeX 编译 ·
                   PDF 预览。所有文件读写与编译均在本机完成，不上传云端。
                 </p>
+                <UpdateRegion />
               </div>
             )}
           </div>
@@ -695,3 +699,141 @@ export function SettingsDialog() {
 }
 
 export default SettingsDialog;
+
+// ── M1-13 · 关于页「软件更新」区 ───────────────────────────────
+function fmtBytes(n?: number): string {
+  if (!n) return "0 B";
+  const u = ["B", "KB", "MB", "GB"];
+  let i = 0;
+  let v = n;
+  while (v >= 1024 && i < u.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
+}
+
+function fmtDate(s?: string): string {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("zh-CN");
+}
+
+function pct(p?: UpdateProgress | null): number {
+  if (!p || !p.total) return 0;
+  return Math.min(100, Math.round((p.downloaded / p.total) * 100));
+}
+
+/** 关于页更新区：检测中 / 已是最新 / 发现新版本 / 下载进度 / 已下载 / 失败 五态 */
+function UpdateRegion() {
+  const status = useUpdateStore((s) => s.status);
+  const latest = useUpdateStore((s) => s.latest);
+  const mandatory = useUpdateStore((s) => s.mandatory);
+  const error = useUpdateStore((s) => s.error);
+  const progress = useUpdateStore((s) => s.progress);
+  const check = useUpdateStore((s) => s.check);
+  const download = useUpdateStore((s) => s.download);
+  const confirmInstall = useUpdateStore((s) => s.confirmInstall);
+  const openRelease = useUpdateStore((s) => s.openRelease);
+  const retry = useUpdateStore((s) => s.retry);
+
+  const onInstallClick = async () => {
+    const ok = await confirm(
+      "将关闭 Zetla 并启动安装程序，是否继续？\n若 Windows 弹出安全拦截提示，点击「仍要运行」即可（安装包未做代码签名）。",
+      { title: "安装更新", kind: "warning" },
+    );
+    if (ok) void confirmInstall();
+  };
+
+  return (
+    <div className="update-region">
+      <div className="update-head">
+        <span className="update-title">软件更新</span>
+        {status === "update" && (
+          <span className={`update-badge${mandatory ? " req" : ""}`}>
+            {mandatory ? "必须更新" : "有新版本"}
+          </span>
+        )}
+      </div>
+
+      {status === "checking" && <p className="update-line">正在检查更新…</p>}
+      {status === "uptodate" && <p className="update-line ok">已是最新版本。</p>}
+
+      {status === "update" && latest && (
+        <div className="update-found">
+          <p className="update-line">
+            发现新版本 <b>v{latest.version}</b>
+            {latest.pubDate ? `（发布于 ${fmtDate(latest.pubDate)}）` : ""}
+          </p>
+          {latest.notes && <p className="update-notes">{latest.notes}</p>}
+          <div className="update-acts">
+            <button type="button" className="btn primary" onClick={() => void download()}>
+              下载并安装
+            </button>
+            {latest.releaseUrl && (
+              <button type="button" className="btn" onClick={openRelease}>
+                查看发布说明
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {status === "downloading" && (
+        <div className="update-progress">
+          <div className="bar">
+            <div className="bar-fill" style={{ width: `${pct(progress)}%` }} />
+          </div>
+          <p className="update-line">
+            {progress?.source ? `${progress.source} · ` : ""}
+            下载中 {fmtBytes(progress?.downloaded)} / {fmtBytes(progress?.total)}
+          </p>
+        </div>
+      )}
+
+      {status === "downloaded" && (
+        <div className="update-found">
+          <p className="update-line">更新已下载完成，点击安装将关闭 Zetla 并启动安装程序。</p>
+          <div className="update-acts">
+            <button type="button" className="btn primary" onClick={() => void onInstallClick()}>
+              立即安装
+            </button>
+            {latest?.releaseUrl && (
+              <button type="button" className="btn" onClick={openRelease}>
+                查看发布说明
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {status === "error" && (
+        <div className="update-err">
+          <p className="update-line err">更新失败：{error}</p>
+          <div className="update-acts">
+            <button type="button" className="btn" onClick={() => void retry()}>
+              重试
+            </button>
+            {latest?.releaseUrl && (
+              <button type="button" className="btn" onClick={openRelease}>
+                去发布页手动下载
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="update-actions-bottom">
+        <button
+          type="button"
+          className="btn"
+          disabled={status === "checking" || status === "downloading"}
+          onClick={() => void check()}
+        >
+          {status === "checking" ? "检查中…" : "检查更新"}
+        </button>
+      </div>
+    </div>
+  );
+}
