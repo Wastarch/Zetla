@@ -5,15 +5,15 @@
 //   输入区域 Input：区域头（标题 + 插入偏好齿轮）→ 页签（快捷工具/公式模板）→ 面板挂载区 → 工具栏 → 编写区
 //   输出区域 Output：区域头（标题 + 预览缩放）→ KaTeX 实时预览 → 动作条（插入编辑器 / 复制 LaTeX）
 // 交互铁律（用户定稿）：单击符号/模板 → 写入编写区；右键 → 直插菜单；Ctrl+Enter / 按钮提交。
-// 页签按模块启停生成：symbol 停用 → 无「快捷工具」；formula 停用 → 无「公式模板」；
-// 双停用 → 空态 + 「去设置启用」。
+// 页签随「公式」模块整体启停：模块停用 → 空态 + 「去设置启用」；启用 → 两页签常驻。
 // bundle：本组件经 Sidebar lazy 加载——katex（MathCompose 可视化模式 + MathOutput）随本 chunk，
 //          首开公式侧栏时按需拉取；SymbolPanel/FormulaPanel 仍为各自懒加载 chunk。
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
-import { moduleRegistry } from "@/core/moduleRegistry";
 import { useModuleList } from "@/modules/useModuleList";
+const SymbolPanel = lazy(() => import("@/modules/symbol/SymbolPanel"));
+const FormulaPanel = lazy(() => import("@/modules/formula/FormulaPanel"));
 import { Icon } from "@/ui/Icon";
 import type { FormulaConfig } from "@/types/settings";
 import MathCompose from "@/modules/formula/MathCompose";
@@ -29,24 +29,15 @@ const TAB_LABELS: { id: MathTab; label: string }[] = [
   { id: "library", label: "公式模板" },
 ];
 
-/** 读模块注册态 + 启用态（注册在 App 根部 effect，晚于本组件挂载 → 补一拍重读，防首帧误判停用） */
-function useMathModules() {
+/** 读「公式」模块启用态（注册在 App 根部 effect，晚于本组件挂载 → 补一拍重读，防首帧误判停用） */
+function useMathModuleEnabled(): boolean {
   const mods = useModuleList();
   const [, setRev] = useState(0);
   useEffect(() => {
     const t = window.setTimeout(() => setRev((r) => r + 1), 0);
     return () => window.clearTimeout(t);
   }, []);
-  return {
-    symbol: {
-      enabled: mods.find((m) => m.id === "symbol")?.enabled ?? false,
-      Comp: moduleRegistry.get("symbol")?.component ?? null,
-    },
-    formula: {
-      enabled: mods.find((m) => m.id === "formula")?.enabled ?? false,
-      Comp: moduleRegistry.get("formula")?.component ?? null,
-    },
-  };
+  return mods.find((m) => m.id === "formula")?.enabled ?? false;
 }
 
 /** 插入偏好 popover（行内 / 编号 / 无编号 → settings.formula，即时生效并落盘；纯展示，关闭由外层管） */
@@ -86,7 +77,7 @@ function InsertPrefs() {
 }
 
 export function MathView() {
-  const { symbol, formula } = useMathModules();
+  const mathEnabled = useMathModuleEnabled();
   const [tab, setTab] = useState<MathTab>("tools");
   const [prefsOpen, setPrefsOpen] = useState(false);
   const prefsAnchor = useRef<HTMLDivElement>(null);
@@ -108,12 +99,10 @@ export function MathView() {
     };
   }, [prefsOpen]);
 
-  const avail = useMemo<MathTab[]>(() => {
-    const a: MathTab[] = [];
-    if (symbol.enabled) a.push("tools");
-    if (formula.enabled) a.push("library");
-    return a;
-  }, [symbol.enabled, formula.enabled]);
+  const avail = useMemo<MathTab[]>(
+    () => (mathEnabled ? (["tools", "library"] as MathTab[]) : []),
+    [mathEnabled],
+  );
 
   // 输入区域 Ctrl+滚轮 → 编写区字号缩放（2026-10-25 用户反馈；对应工具栏「− 18 +」）
   const zoomFont = useComposeStore((s) => s.zoomFont);
@@ -175,8 +164,8 @@ export function MathView() {
 
         <div className="math-input-body">
           <Suspense fallback={<div className="side-loading">加载中…</div>}>
-            {active === "tools" && symbol.Comp ? <symbol.Comp /> : null}
-            {active === "library" && formula.Comp ? <formula.Comp /> : null}
+            {active === "tools" && <SymbolPanel />}
+            {active === "library" && <FormulaPanel />}
           </Suspense>
         </div>
 

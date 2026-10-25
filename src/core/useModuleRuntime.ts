@@ -4,19 +4,16 @@
 import { useEffect } from "react";
 import { moduleRegistry, bindModuleBus, KERNEL_CAPABILITIES } from "./moduleRegistry";
 import { useSettingsStore } from "./settings";
-import { registerSymbolModule } from "@/modules/symbol/symbolModule";
-import { registerFormulaModule } from "@/modules/formula/formulaModule";
+import { registerMathModule } from "@/modules/formula/mathModule";
 
 export function useModuleRuntime(): void {
   useEffect(() => {
     // 内核能力登记（模块 requires 校验用；与 src/ 实际域一一对应）
     for (const cap of KERNEL_CAPABILITIES) moduleRegistry.registerCapability(cap);
 
-    // M1-6 · 符号面板：唯一业务模块，DEV+release 均注册，默认启用（验证 registry 通路）。
-    // M1-6b：M1-1 的「示例模块（开发自检）」已移除，设置页只保留真实模块。
-    registerSymbolModule();
-    // M1-10：公式模块（侧栏第四视图专用入口，镜像 symbol）
-    registerFormulaModule();
+    // M1-12a · 公式模块（合并原符号面板 + 公式库）：侧栏「公式」单视图的统一开关。
+    // DEV+release 均注册，默认启用；设置页覆盖值经 setOverrides 落地实现「即时启停」。
+    registerMathModule();
 
     // 设置页覆盖值 → 注册表：
     // - 配置未加载完成前传 null（各模块走 defaultEnabled）
