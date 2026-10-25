@@ -4603,3 +4603,213 @@ body.col-resizing {
 .math-output-actions .btn.primary {
   flex: 1 1 auto;
 }
+
+/* ============================================================
+   M1-12b · 符号面板 10 分类 + 二级工具栏 + 可视化编写区
+   ============================================================ */
+/* 10 分类大钮（2 行 × 5；▾ 角标；点击内嵌展开该类网格） */
+.sym-cats {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+}
+
+.sym-cat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 40px;
+  padding: 3px 2px 4px;
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.sym-cat:hover {
+  border-color: var(--accent);
+}
+.sym-cat.is-open {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.sym-cat-icon {
+  font-size: 13px;
+  line-height: 1.15;
+  color: var(--txt);
+}
+.sym-cat.is-open .sym-cat-icon {
+  color: var(--accent);
+}
+
+.sym-cat-name {
+  font-size: 9.5px;
+  line-height: 1.15;
+  color: var(--txt-3);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sym-cat.is-open .sym-cat-name {
+  color: var(--accent);
+}
+
+.sym-cat-arrow {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  font-size: 8px;
+  line-height: 1;
+  color: var(--txt-3);
+}
+.sym-cat.is-open .sym-cat-arrow {
+  color: var(--accent);
+}
+.sym-cat-arrow.up {
+  transform: rotate(180deg);
+}
+
+/* 分类全部收起时的提示行 */
+.sym-cats-hint {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: var(--txt-3);
+}
+
+/* 模板钮区分：左侧 accent 细条（符号为纯细边） */
+.symbol-btn.is-tpl {
+  border-left: 2px solid var(--accent);
+}
+
+/* 二级工具栏（两行） */
+.math-tools {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px 0;
+}
+
+.math-tools-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.math-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
+  color: var(--txt-2);
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.math-tool:hover,
+.math-tool.on {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.math-tool-arrow {
+  font-size: 8px;
+  line-height: 1;
+}
+
+/* 下拉面板（fixed 定位——.math-region 有 overflow:hidden，absolute 会被区域边缘裁掉；
+   左/上由 JS 夹取，视口右溢左收、下溢上翻） */
+.math-drop {
+  position: fixed;
+  z-index: 90;
+  min-width: 150px;
+  max-height: 320px;
+  overflow: auto;
+  padding: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.math-drop .mi {
+  padding: 5px 8px;
+  font-size: 11.5px;
+}
+
+/* 源码 | 可视化 两段开关 */
+.math-seg {
+  display: inline-flex;
+  height: 22px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.math-seg button {
+  height: 100%;
+  padding: 0 10px;
+  font-size: 11px;
+  border: 0;
+  background: var(--bg-3);
+  color: var(--txt-3);
+  cursor: pointer;
+}
+.math-seg button:hover {
+  color: var(--accent);
+}
+.math-seg button.on {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* 可视化模式编写区（KaTeX 只读渲染；点空槽切回源码） */
+.math-compose-fx {
+  position: relative;
+  min-height: 104px;
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+.math-compose-fx-empty {
+  font-size: 11.5px;
+  color: var(--txt-3);
+}
+
+.math-compose-fx-hint {
+  position: absolute;
+  right: 10px;
+  bottom: 6px;
+  font-size: 10px;
+  color: var(--txt-3);
+  pointer-events: none;
+}
+
+/* 插入项右键菜单：主项 accent 高亮 */
+.ctx .mi.primary {
+  color: var(--accent);
+  font-weight: 500;
+}
+.ctx .mi.primary:hover {
+  background: var(--accent-soft);
+}

@@ -49,6 +49,8 @@ export interface Tpl {
   icon: string;
   /** 分组（模板网格分组标题） */
   group: string;
+  /** M1-12b：符号面板 10 分类归属（Formula.html 体系；与 group 正交——group 服务搭建器分组，cat 服务符号面板分类） */
+  cat: string;
   /** 各槽位展示名 */
   slotLabels: string[];
   /** 由序列化后的槽位内容生成结构 LaTeX 片段 */
@@ -64,116 +66,132 @@ function grid(env: string, rows: number, cols: number, s: string[]): string {
   return `\\begin{${env}}\n${lines.join(" \\\\\n")}\n\\end{${env}}`;
 }
 
-/** M1-11：结构模板库（约 18 个；icon 为 ASCII 示意，名称说人话） */
+/** M1-11：结构模板库（M1-12b 起 24 个；icon 为 ASCII 示意，名称说人话）
+ *  group = 搭建器分组（结构/运算/括号/矩阵）；cat = 符号面板 10 分类（Formula.html 体系） */
 export const TPLS: Tpl[] = [
   // ── 结构 ──
   {
-    id: "frac", name: "分数", icon: "a/b", group: "结构",
+    id: "frac", name: "分数", icon: "a/b", group: "结构", cat: "分数微分",
     slotLabels: ["分子", "分母"],
     latex: (s) => `\\frac{${s[0] ?? SLOT_MARK}}{${s[1] ?? SLOT_MARK}}`,
   },
   {
-    id: "sup", name: "上标", icon: "a^b", group: "结构",
+    id: "sup", name: "上标", icon: "a^b", group: "结构", cat: "根式角标",
     slotLabels: ["底数", "上标"],
     latex: (s) => `{${s[0] ?? SLOT_MARK}}^{${s[1] ?? SLOT_MARK}}`,
   },
   {
-    id: "sub", name: "下标", icon: "a_b", group: "结构",
+    id: "sub", name: "下标", icon: "a_b", group: "结构", cat: "根式角标",
     slotLabels: ["底数", "下标"],
     latex: (s) => `{${s[0] ?? SLOT_MARK}}_{${s[1] ?? SLOT_MARK}}`,
   },
   {
-    id: "sqrt", name: "根式", icon: "√", group: "结构",
+    id: "sqrt", name: "根式", icon: "√", group: "结构", cat: "根式角标",
     slotLabels: ["被开方数"],
     latex: (s) => `\\sqrt{${s[0] ?? SLOT_MARK}}`,
   },
   {
-    id: "root", name: "n 次根", icon: "ⁿ√", group: "结构",
+    id: "root", name: "n 次根", icon: "ⁿ√", group: "结构", cat: "根式角标",
     slotLabels: ["根指数", "被开方数"],
     latex: (s) => `\\sqrt[${s[0] ?? SLOT_MARK}]{${s[1] ?? SLOT_MARK}}`,
   },
   {
-    id: "binom", name: "二项式", icon: "C()", group: "结构",
+    id: "binom", name: "二项式", icon: "C()", group: "结构", cat: "分数微分",
     slotLabels: ["上参数", "下参数"],
     latex: (s) => `\\binom{${s[0] ?? SLOT_MARK}}{${s[1] ?? SLOT_MARK}}`,
   },
   // ── 运算 ──
   {
-    id: "sum", name: "求和", icon: "∑", group: "运算",
+    id: "sum", name: "求和", icon: "∑", group: "运算", cat: "大型运算",
     slotLabels: ["下限", "上限"],
     latex: (s) => `\\sum_{${s[0] ?? SLOT_MARK}}^{${s[1] ?? SLOT_MARK}}`,
   },
   {
-    id: "prod", name: "连乘", icon: "∏", group: "运算",
+    id: "prod", name: "连乘", icon: "∏", group: "运算", cat: "大型运算",
     slotLabels: ["下限", "上限"],
     latex: (s) => `\\prod_{${s[0] ?? SLOT_MARK}}^{${s[1] ?? SLOT_MARK}}`,
   },
   {
-    id: "int", name: "积分", icon: "∫", group: "运算",
+    id: "int", name: "积分", icon: "∫", group: "运算", cat: "积分运算",
     slotLabels: ["下限", "上限"],
     latex: (s) => `\\int_{${s[0] ?? SLOT_MARK}}^{${s[1] ?? SLOT_MARK}}`,
   },
   {
-    id: "lim", name: "极限", icon: "lim", group: "运算",
+    id: "lim", name: "极限", icon: "lim", group: "运算", cat: "极限对数",
     slotLabels: ["条件"],
     latex: (s) => `\\lim_{${s[0] ?? SLOT_MARK}}`,
   },
   {
-    id: "sin", name: "正弦", icon: "sin", group: "运算",
+    id: "sin", name: "正弦", icon: "sin", group: "运算", cat: "三角函数",
     slotLabels: ["参数"],
     latex: (s) => `\\sin(${s[0] ?? SLOT_MARK})`,
   },
   {
-    id: "cos", name: "余弦", icon: "cos", group: "运算",
+    id: "cos", name: "余弦", icon: "cos", group: "运算", cat: "三角函数",
     slotLabels: ["参数"],
     latex: (s) => `\\cos(${s[0] ?? SLOT_MARK})`,
   },
   {
-    id: "tan", name: "正切", icon: "tan", group: "运算",
+    id: "tan", name: "正切", icon: "tan", group: "运算", cat: "三角函数",
     slotLabels: ["参数"],
     latex: (s) => `\\tan(${s[0] ?? SLOT_MARK})`,
   },
   {
-    id: "log", name: "对数", icon: "log", group: "运算",
+    id: "log", name: "对数", icon: "log", group: "运算", cat: "极限对数",
     slotLabels: ["底数", "真数"],
     latex: (s) => `\\log_{${s[0] ?? SLOT_MARK}}(${s[1] ?? SLOT_MARK})`,
   },
   // ── 括号 ──
   {
-    id: "paren", name: "圆括号", icon: "( )", group: "括号",
+    id: "paren", name: "圆括号", icon: "( )", group: "括号", cat: "括号取整",
     slotLabels: ["内容"],
     latex: (s) => `\\left( ${s[0] ?? SLOT_MARK} \\right)`,
   },
   {
-    id: "brack", name: "方括号", icon: "[ ]", group: "括号",
+    id: "brack", name: "方括号", icon: "[ ]", group: "括号", cat: "括号取整",
     slotLabels: ["内容"],
     latex: (s) => `\\left[ ${s[0] ?? SLOT_MARK} \\right]`,
   },
   {
-    id: "brace", name: "花括号", icon: "{ }", group: "括号",
+    id: "brace", name: "花括号", icon: "{ }", group: "括号", cat: "括号取整",
     slotLabels: ["内容"],
     latex: (s) => `\\left\\{ ${s[0] ?? SLOT_MARK} \\right\\}`,
   },
   // ── 矩阵 ──
   {
-    id: "mat2", name: "矩阵 2×2", icon: "▦", group: "矩阵",
+    id: "mat2", name: "矩阵 2×2", icon: "▦", group: "矩阵", cat: "数组矩阵",
     slotLabels: ["(1,1)", "(1,2)", "(2,1)", "(2,2)"],
     latex: (s) => grid("matrix", 2, 2, s),
   },
   {
-    id: "mat3", name: "矩阵 3×3", icon: "▤", group: "矩阵",
+    id: "mat3", name: "矩阵 3×3", icon: "▤", group: "矩阵", cat: "数组矩阵",
     slotLabels: ["(1,1)", "(1,2)", "(1,3)", "(2,1)", "(2,2)", "(2,3)", "(3,1)", "(3,2)", "(3,3)"],
     latex: (s) => grid("matrix", 3, 3, s),
   },
   {
-    id: "vmat2", name: "行列式 2×2", icon: "|▦|", group: "矩阵",
+    id: "vmat2", name: "行列式 2×2", icon: "|▦|", group: "矩阵", cat: "数组矩阵",
     slotLabels: ["(1,1)", "(1,2)", "(2,1)", "(2,2)"],
     latex: (s) => grid("vmatrix", 2, 2, s),
   },
   {
-    id: "cases", name: "分段 cases", icon: "{▾", group: "矩阵",
+    id: "cases", name: "分段 cases", icon: "{▾", group: "矩阵", cat: "数组矩阵",
     slotLabels: ["条件 1", "取值 1", "条件 2", "取值 2"],
     latex: (s) => grid("cases", 2, 2, s),
+  },
+  {
+    id: "partial", name: "偏导", icon: "∂/∂", group: "结构", cat: "分数微分",
+    slotLabels: ["分子", "分母"],
+    latex: (s) => `\frac{\partial ${s[0] ?? SLOT_MARK}}{\partial ${s[1] ?? SLOT_MARK}}`,
+  },
+  {
+    id: "intdx", name: "不定积分", icon: "∫dx", group: "运算", cat: "积分运算",
+    slotLabels: ["被积函数", "积分变量"],
+    latex: (s) => `\int ${s[0] ?? SLOT_MARK} \,d${s[1] ?? SLOT_MARK}`,
+  },
+  {
+    id: "iint", name: "二重积分", icon: "∬", group: "运算", cat: "积分运算",
+    slotLabels: ["被积函数", "积分变量"],
+    latex: (s) => `\iint ${s[0] ?? SLOT_MARK} \,d${s[1] ?? SLOT_MARK}`,
   },
 ];
 

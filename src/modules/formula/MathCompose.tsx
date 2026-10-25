@@ -1,62 +1,98 @@
 // M1-12a · 编写区（输入区域主体）：多行 LaTeX 源码编辑
-// - 符号/模板点击 → composeStore.insert() 写入光标处（M1-12b 接通符号面板）
+// M1-12b：
+// - 选区模型：onSelect/点击/键入都同步 selStart/selEnd（不再折叠拖拽选区——
+//   工具栏的「字体/字号/环境」要包裹选区，符号插入要替换选区）
+// - 源码/可视化双模式：源码 = textarea；可视化 = KaTeX 只读渲染（点空槽切回源码并定位光标）
 // - Ctrl+Enter → mathInsert.submitCompose() 提交到主编辑器
-// - 光标变更经 cursorSeq 同步（点输出区空槽 → 编写区选中对应 \Box，MathType 式）
 import { useEffect, useRef } from "react";
+import FormulaKaTeX from "./FormulaKaTeX";
 import { useComposeStore } from "./composeStore";
+import { boxOffset, serializeSlotsText, slotIdIndex } from "./mathTex";
 import { submitCompose } from "./mathInsert";
 
 export default function MathCompose() {
   const text = useComposeStore((s) => s.text);
-  const cursor = useComposeStore((s) => s.cursor);
+  const selStart = useComposeStore((s) => s.selStart);
+  const selEnd = useComposeStore((s) => s.selEnd);
   const cursorSeq = useComposeStore((s) => s.cursorSeq);
+  const mode = useComposeStore((s) => s.mode);
   const fontSize = useComposeStore((s) => s.fontSize);
-  const setText = useComposeStore((s) => s.setText);
+  const edit = useComposeStore((s) => s.edit);
+  const setSelection = useComposeStore((s) => s.setSelection);
   const setCursor = useComposeStore((s) => s.setCursor);
+  const setMode = useComposeStore((s) => s.setMode);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const composing = useRef(false);
 
-  // 程序化光标定位（点预览空槽 / insert 后）：同步选区到光标处。
-  // 用户自身输入也会走 setCursor，此时目标位与选区一致 → 比较后跳过，不抢夺光标。
+  // 程序化选区同步（点预览空槽 / insert / wrapSelection 后）：
+  // IME 组词期间不碰选区（会打断输入法）；值与现值一致时跳过，不与用户抢夺光标。
   useEffect(() => {
     const ta = taRef.current;
-    if (!ta) return;
-    const c = Math.min(Math.max(cursor, 0), text.length);
-    if (ta.selectionStart !== c || ta.selectionEnd !== c) {
-      ta.setSelectionRange(c, c);
+    if (!ta || composing.current) return;
+    const a = Math.min(Math.max(selStart, 0), text.length);
+    const b = Math.min(Math.max(selEnd, a), text.length);
+    if (ta.selectionStart !== a || ta.selectionEnd !== b) {
+      ta.setSelectionRange(a, b);
     }
-  }, [cursorSeq, cursor, text]);
+  }, [cursorSeq, selStart, selEnd, text]);
 
-  // 仅在选区折叠（纯光标）时同步——拖拽/Shift 方向键选中的文字不折叠，
-  // 否则 onClick（拖选完毕也会触发 click）会把用户选区抹成光标。
-  const syncCursor = () => {
+  const syncSelection = () => {
     const ta = taRef.current;
-    if (ta && ta.selectionStart === ta.selectionEnd) setCursor(ta.selectionStart);
+    if (ta) setSelection(ta.selectionStart, ta.selectionEnd);
   };
+
+  // 可视化模式：点空槽 → 切回源码并把光标放回该 \Box（看得见才能改）
+  const onSlotClick = (id: string) => {
+    const idx = slotIdIndex(id);
+    if (idx < 0) return;
+    const pos = boxOffset(text, idx);
+    if (pos < 0) return;
+    setMode("source");
+    setCursor(pos);
+  };
+
+  const { tex, slotIds } = serializeSlotsText(text);
+  const empty = text.trim() === "";
 
   return (
     <div className="math-compose">
-      <textarea
-        ref={taRef}
-        className="math-compose-ta"
-        style={{ fontSize }}
-        placeholder="请输入您的 LaTeX 表达式"
-        spellCheck={false}
-        value={text}
-        onChange={(e) => {
-          setText(e.target.value);
-          setCursor(e.target.selectionStart);
-        }}
-        onSelect={syncCursor}
-        onKeyUp={syncCursor}
-        onClick={syncCursor}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault();
-            submitCompose();
-          }
-        }}
-      />
-      {!text && <span className="math-compose-wm">LaTeX</span>}
+      {mode === "visual" ? (
+        <div className="math-compose-fx" style={{ fontSize }}>
+          {empty ? (
+            <span className="math-compose-fx-empty">（空公式，切到源码开始输入）</span>
+          ) : (
+            <FormulaKaTeX tex={tex} display slots={slotIds} onSlotClick={onSlotClick} />
+          )}
+          <span className="math-compose-fx-hint">可视化预览 · 点击空槽切回源码编辑</span>
+        </div>
+      ) : (
+        <textarea
+          ref={taRef}
+          className="math-compose-ta"
+          style={{ fontSize }}
+          placeholder="请输入您的 LaTeX 表达式"
+          spellCheck={false}
+          value={text}
+          onChange={(e) => edit(e.target.value, e.target.selectionStart, e.target.selectionEnd)}
+          onSelect={syncSelection}
+          onKeyUp={syncSelection}
+          onClick={syncSelection}
+          onCompositionStart={() => {
+            composing.current = true;
+          }}
+          onCompositionEnd={() => {
+            composing.current = false;
+            syncSelection();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              submitCompose();
+            }
+          }}
+        />
+      )}
+      {mode === "source" && !text && <span className="math-compose-wm">LaTeX</span>}
     </div>
   );
 }
