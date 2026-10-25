@@ -4317,3 +4317,289 @@ body.col-resizing {
   color: var(--txt-3);
   margin: 10px 2px 0;
 }
+
+/* ============================================================
+   M1-12a · 公式侧栏（符号/公式/搭建合并；输入/输出双区）
+   参考 docs/Formula.html 双区结构。258px 窄栏预算：
+   上区（输入）= 区域头 + 页签 + 面板挂载区 + 编写区（弹性占满）
+   下区（输出）= 区域头 + KaTeX 预览（主区）+ 动作条（固定基准高）
+   ============================================================ */
+.math-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 8px 10px;
+}
+
+/* 双区容器（面板感：浅一档底 + 细边框 + 圆角） */
+.math-region {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+/* 上区：输入区域（弹性占满剩余高度；编写区固定在下） */
+.math-input {
+  flex: 1 1 auto;
+  min-height: 220px;
+}
+
+/* 下区：输出区域（预览主区 + 动作条） */
+.math-output {
+  flex: 0 0 246px;
+}
+
+.math-region-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px 0 10px;
+  flex: none;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.math-region-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+}
+
+/* 插入偏好（齿轮 + popover 锚点） */
+.math-prefs-anchor {
+  margin-left: auto;
+  position: relative;
+  display: flex;
+}
+
+.math-gear {
+  width: 22px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--txt-3);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.math-gear:hover,
+.math-gear.on {
+  background: var(--bg-4);
+  color: var(--accent);
+}
+
+.math-prefs {
+  position: absolute;
+  top: 24px;
+  right: 0;
+  z-index: 80;
+  min-width: 178px;
+  padding: 6px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.math-prefs-title {
+  font-size: 10.5px;
+  color: var(--txt-3);
+  padding: 2px 8px 4px;
+}
+
+.math-prefs-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.math-prefs-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.math-prefs-item input {
+  accent-color: var(--accent);
+}
+
+/* 页签（快捷工具 / 公式模板 / 搭建） */
+.math-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 6px 8px 0;
+  flex: none;
+}
+
+.math-tab {
+  height: 22px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  color: var(--txt-3);
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.math-tab:hover {
+  color: var(--txt);
+  border-color: var(--line);
+}
+.math-tab.active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* 面板挂载区（symbol/formula/builder 懒加载组件撑满） */
+.math-input-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px 0;
+}
+
+.math-input-body > .symbol-panel,
+.math-input-body > .formula-panel,
+.math-input-body > .fbuilder {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* 编写区（输入区域底部；聚焦蓝框） */
+.math-compose {
+  position: relative;
+  flex: none;
+  padding: 8px;
+}
+
+.math-compose-ta {
+  display: block;
+  width: 100%;
+  height: 104px;
+  resize: none;
+  padding: 8px 10px;
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--txt);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  outline: none;
+}
+.math-compose-ta:focus {
+  border-color: var(--accent);
+}
+.math-compose-ta::placeholder {
+  color: var(--txt-3);
+}
+
+/* 空态 LaTeX 水印（大而淡，纯装饰） */
+.math-compose-wm {
+  position: absolute;
+  right: 16px;
+  bottom: 12px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: var(--line);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* 输出区域：预览缩放（− 100% +） */
+.math-zoom {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.math-zoom button {
+  width: 20px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--txt-3);
+  font-size: 13px;
+  line-height: 1;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.math-zoom button:hover {
+  background: var(--bg-4);
+  color: var(--accent);
+}
+
+.math-zoom-val {
+  min-width: 40px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--txt-3);
+  font-family: var(--font-mono, monospace);
+}
+
+/* 输出区域：KaTeX 实时预览（字号由行内 style 按缩放百分比驱动） */
+.math-output-fx {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 12px;
+}
+
+.math-output-empty {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--txt-3);
+}
+
+.math-output-wm {
+  display: block;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--line);
+  margin-bottom: 8px;
+}
+
+/* 输出区域：动作条 */
+.math-output-actions {
+  flex: none;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--line-soft);
+}
+.math-output-actions .btn {
+  height: 27px;
+  padding: 0 12px;
+  font-size: 11.5px;
+}
+.math-output-actions .btn.primary {
+  flex: 1 1 auto;
+}

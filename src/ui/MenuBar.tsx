@@ -241,16 +241,10 @@ export function MenuBar() {
           onClick: () => useAppStore.getState().setSidebarView("outline"),
         },
         {
-          // M1-6b：第三视图由「模块」改为「符号面板」专用入口
-          label: `${sidebarVisible && sidebarView === "symbol" ? "✓ " : ""}符号面板`,
+          // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库/搭建 三页签）
+          label: `${sidebarVisible && sidebarView === "math" ? "✓ " : ""}公式`,
           sc: "Ctrl+B 3",
-          onClick: () => useAppStore.getState().setSidebarView("symbol"),
-        },
-        {
-          // M1-10：第四视图「公式」专用入口
-          label: `${sidebarVisible && sidebarView === "formula" ? "✓ " : ""}公式`,
-          sc: "Ctrl+B 4",
-          onClick: () => useAppStore.getState().setSidebarView("formula"),
+          onClick: () => useAppStore.getState().setSidebarView("math"),
         },
         {
           label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
@@ -383,18 +377,11 @@ export function MenuBar() {
           useAppStore.getState().toggleSidebar();
           return;
         }
-        // M1-5a：Ctrl+B 1/2/3/4 直达活动栏视图（资源管理器 / 大纲 / 符号面板 / 公式）
-        if (e.key === "1" || e.key === "2" || e.key === "3" || e.key === "4") {
+        // M1-12a：Ctrl+B 1/2/3 直达活动栏视图（资源管理器 / 大纲 / 公式；原 4=公式已合并入 3）
+        if (e.key === "1" || e.key === "2" || e.key === "3") {
           e.preventDefault();
           clearChord();
-          const v =
-            e.key === "1"
-              ? "explorer"
-              : e.key === "2"
-                ? "outline"
-                : e.key === "3"
-                  ? "symbol"
-                  : "formula";
+          const v = e.key === "1" ? "explorer" : e.key === "2" ? "outline" : "math";
           useAppStore.getState().setSidebarView(v);
           return;
         }

@@ -357,17 +357,12 @@ export function serialize(root: FSlot): string {
  * \zs1 形式会被 KaTeX 拆成 \zs + 1 两个 token，数字后缀不可用）。
  * KaTeX 对未定义命令宽容渲染为红字原文 span，FormulaKaTeX 后处理按出现序
  * 替换为可点选槽位节点（.zetla-slot[data-slot]）。
+ *
+ * M1-12a：实现移至 slotCmd.ts（编写区预览共用，避免 builderTypes 进主 bundle），
+ * 此处 re-export 保持既有引用方（serializeSlots / 单测）不变。
  */
-export function slotCmd(i: number): string {
-  let n = i + 1;
-  let s = "";
-  while (n > 0) {
-    const r = (n - 1) % 26;
-    s = String.fromCharCode(97 + r) + s;
-    n = Math.floor((n - 1) / 26);
-  }
-  return `\\z${s}`;
-}
+export { slotCmd } from "./slotCmd";
+import { slotCmd } from "./slotCmd";
 
 /**
  * 预览专用序列化：空槽 → slotCmd(i) 命令，并返回同序空槽 id 列表。
