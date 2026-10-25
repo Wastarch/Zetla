@@ -1705,19 +1705,7 @@ body.col-resizing {
   border-top: none;
 }
 
-/* M1-6b：符号面板专用视图（活动栏第三图标 / Ctrl+B 3）—— 头部版本号 + 面板占满剩余高度 */
-.side-view > .symbol-panel {
-  flex: 1 1 auto;
-  min-height: 0;
-  padding: 8px 10px 10px;
-}
-
-.side-ver {
-  margin-left: auto;
-  font-size: 9.5px;
-  color: var(--txt-4);
-  font-family: var(--font-mono, monospace);
-}
+/* M1-12c：符号/公式面板改挂 .math-input-body（MathView），原 .side-view 直挂规则已废止 */
 
 .side-loading {
   padding: 10px 12px;
@@ -3847,7 +3835,6 @@ body.col-resizing {
   padding: 0 6px;
   align-self: flex-start;
 }
-.fav-star,
 .formula-edit,
 .formula-del {
   flex: none;
@@ -3860,54 +3847,16 @@ body.col-resizing {
   color: var(--txt-3);
   transition: background .12s, color .12s, border-color .12s;
 }
-.fav-star:hover,
 .formula-edit:hover,
 .formula-del:hover {
   background: var(--bg-4);
-}
-.fav-star.on {
-  color: #f5b301;
-  border-color: #f5b301;
 }
 .formula-del:hover {
   color: var(--danger, #e5484d);
   border-color: var(--danger, #e5484d);
 }
 
-/* 插入模式开关（编号 / 行内） */
-.formula-mode {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 10px;
-  flex: none;
-  padding: 4px 8px;
-  background: var(--bg-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius, 6px);
-  font-size: 10.5px;
-  color: var(--txt-2);
-}
-.formula-mode-item {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  cursor: pointer;
-}
-.formula-mode-item.is-disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.formula-mode-item input {
-  margin: 0;
-}
-.formula-mode-hint {
-  margin-left: auto;
-  color: var(--accent);
-  font-family: var(--font-mono, monospace);
-}
-
-/* 分页签（全部/收藏/最近/自定义） */
+/* 分页签（全部/最近/自定义） */
 .formula-tabs {
   display: flex;
   align-items: center;
