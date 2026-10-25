@@ -654,34 +654,18 @@ export function SettingsDialog() {
             )}
 
             {pane === "about" && (
-              <div className="set-pane" role="tabpanel">
+              <div className="set-pane about-pane" role="tabpanel">
                 <div className="about-hero">
                   <div className="mark">Z</div>
                   <div>
                     <h3>Zetla</h3>
-                    <p>
-                      版本 {version} · Tauri 2 · React 19 · WebView2
-                    </p>
+                    <p className="about-ver">版本 {version}</p>
                   </div>
                 </div>
                 <p className="about-desc">
-                  桌面 LaTeX 工作台：项目树 · 多标签编辑 · 一键 XeLaTeX 编译 · PDF 预览。
-                  所有文件读写与编译均在本机完成，不上传云端。
+                  桌面 LaTeX 工作台：项目树管理 · 多标签编辑 · 一键 XeLaTeX 编译 ·
+                  PDF 预览。所有文件读写与编译均在本机完成，不上传云端。
                 </p>
-                <dl className="spec">
-                  <dt>运行环境</dt>
-                  <dd>Windows 10 / 11 · WebView2 Runtime</dd>
-                  <dt>编译依赖</dt>
-                  <dd>TeX Live（自带 Perl）· latexmk · xelatex</dd>
-                  <dt>渲染引擎</dt>
-                  <dd>pdf.js · CodeMirror 6 (stex)</dd>
-                  <dt>配置文件</dt>
-                  <dd>%APPDATA%\Zetla\config.json</dd>
-                  <dt>数据存储</dt>
-                  <dd>纯本地目录，无云端同步</dd>
-                  <dt>许可证</dt>
-                  <dd>MIT License</dd>
-                </dl>
               </div>
             )}
           </div>

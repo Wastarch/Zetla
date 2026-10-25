@@ -2688,58 +2688,47 @@ body.col-resizing {
   cursor: not-allowed;
 }
 
-/* 关于页 */
+/* 关于页（重设计：仅保留软件简介 + 版本，剔除技术栈说明） */
+.about-pane {
+  max-width: 460px;
+}
+
 .about-hero {
   display: flex;
   align-items: center;
-  gap: 15px;
+  gap: 16px;
 }
 
 .about-hero .mark {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  font-size: 25px;
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  font-size: 28px;
+  flex: none;
 }
 
 .about-hero h3 {
   font-family: var(--font-serif);
-  font-size: 21px;
+  font-size: 22px;
   font-weight: 600;
 }
 
-.about-hero p {
+.about-hero .about-ver {
+  display: inline-block;
   font-size: 11px;
-  color: var(--txt-3);
-  margin-top: 3px;
-  letter-spacing: 0.03em;
+  color: var(--txt-2);
+  background: rgba(127, 127, 127, 0.12);
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  padding: 2px 11px;
+  margin-top: 7px;
+  letter-spacing: 0.02em;
 }
 
 .about-desc {
-  font-size: 11.5px;
-  line-height: 1.85;
+  font-size: 12px;
+  line-height: 1.95;
   color: var(--txt-2);
-  margin: 0;
-}
-
-.spec {
-  display: grid;
-  grid-template-columns: 104px 1fr;
-  gap: 8px 14px;
-  font-size: 11.5px;
-  border-top: 1px solid var(--line-soft);
-  padding-top: 15px;
-  margin: 0;
-}
-
-.spec dt {
-  color: var(--txt-3);
-}
-
-.spec dd {
-  color: var(--txt-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
   margin: 0;
 }
 
