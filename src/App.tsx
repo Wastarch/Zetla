@@ -137,6 +137,7 @@ function App() {
               title="拖拽调整侧栏宽度"
               onMouseDown={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 startResize();
               }}
             />
@@ -150,6 +151,7 @@ function App() {
               title="拖拽调整预览宽度"
               onMouseDown={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 startPrevResize();
               }}
             />

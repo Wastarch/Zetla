@@ -5,7 +5,7 @@ import type { CompileResult, ProjectInfo, TexDistInfo } from "@/types";
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
 /** 侧栏视图（M1-5a · 活动栏切换）：资源管理器 / 大纲 / 公式。
- *  M1-12a：原「符号 / 公式」两视图合并为「公式」单视图（内部含 快捷工具/公式模板/搭建 三页签，
+ *  M1-12a：原「符号 / 公式」两视图合并为「公式」单视图（内部含 快捷工具/公式模板 两页签，
  *  输入/输出双区结构，见 src/project/MathView.tsx） */
 export type SidebarView = "explorer" | "outline" | "math";
 

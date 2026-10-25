@@ -112,7 +112,13 @@ export default function SymbolPanel() {
       {!searching && !openCat ? (
         <div className="sym-cats-hint">点击上方分类，展开该类符号 / 模板</div>
       ) : (
-        <div className="symbol-grid">
+        <>
+          {/* 分类名/搜索结果 与具体符号之间加分割条（2026-10-25 用户反馈「区分一下」） */}
+          <div className="sym-sec">
+            <span className="sym-sec-name">{searching ? "搜索结果" : openCat}</span>
+            <span className="sym-sec-count">{items.length} 项</span>
+          </div>
+          <div className="symbol-grid">
           {items.map((it) => {
             // 符号有真字形 → 大图；无字形符号（glyph=cmd）与模板 → 等宽小字
             const big = it.kind === "symbol" ? it.glyph !== it.latex : it.glyph.length <= 2;
@@ -136,7 +142,8 @@ export default function SymbolPanel() {
             );
           })}
           {items.length === 0 && <div className="symbol-empty">未找到匹配项</div>}
-        </div>
+          </div>
+        </>
       )}
 
       {ctx && (

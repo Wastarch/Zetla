@@ -241,7 +241,7 @@ export function MenuBar() {
           onClick: () => useAppStore.getState().setSidebarView("outline"),
         },
         {
-          // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库/搭建 三页签）
+          // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库 两页签）
           label: `${sidebarVisible && sidebarView === "math" ? "✓ " : ""}公式`,
           sc: "Ctrl+B 3",
           onClick: () => useAppStore.getState().setSidebarView("math"),

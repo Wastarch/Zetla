@@ -1653,7 +1653,20 @@ body {
   flex: none;
   cursor: col-resize;
   position: relative;
+  z-index: 20;
   background: transparent;
+  touch-action: none;
+}
+
+/* 命中区放大（2026-10-25 反馈「拖不动」）：视觉仍是 5px 窄条，但向两侧各探出 4px，
+   覆盖可见分隔线（.sidebar 的 border-right 在边框内），贴着线点也能抓到 */
+.resizer::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
 }
 
 .resizer::after {
@@ -3767,10 +3780,11 @@ body.col-resizing {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
-  padding: 6px 8px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 5px 10px;
   text-align: left;
   background: var(--bg-3);
   border: 1px solid var(--line-soft);
@@ -3786,27 +3800,30 @@ body.col-resizing {
   background: var(--accent-soft);
 }
 .formula-name {
+  flex: 0 0 74px;
   font-size: 11.5px;
   color: var(--txt-1);
   font-weight: 600;
-}
-/* 公式库列表：LaTeX 源码行改为 KaTeX 渲染预览（M1-11） */
-.formula-latex {
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  color: var(--txt-3);
-  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 公式库列表：一行式 [名称 | KaTeX 预览 | 分类]（2026-10-25 反馈：竖排预览太小 → 改横排放大） */
+.formula-latex {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--txt-2);
+}
 .formula-latex .fx {
   display: inline-block;
   max-width: 100%;
-  max-height: 22px;
   overflow: hidden;
   vertical-align: middle;
-  font-size: 11px;
+  font-size: 14px;
 }
 /* KaTeX 渲染容器通用样式 */
 .fx {
@@ -3828,12 +3845,14 @@ body.col-resizing {
   color: #ff6d5f;
 }
 .formula-cat {
+  flex: none;
   font-size: 9px;
   color: var(--txt-4);
   background: var(--bg-4);
   border-radius: 99px;
   padding: 0 6px;
-  align-self: flex-start;
+  align-self: center;
+  white-space: nowrap;
 }
 .formula-edit,
 .formula-del {
@@ -3905,258 +3924,53 @@ body.col-resizing {
   cursor: pointer;
 }
 
-/* ── M1-11 图形化公式搭建器（「搭建」页签） ── */
-.fbuilder {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-height: 0;
-  flex: 1;
-  padding: 8px;
-  overflow: hidden;
-}
+
+
 /* 类别条：同一种类只保留一个钮，点击展开/收起该类结构（M1-11 反馈迭代） */
-.fbuilder-cats {
-  flex: none;
-  display: flex;
-  gap: 4px;
-}
-.fbuilder-cat {
-  flex: 1;
-  min-width: 0;
-  height: 22px;
-  padding: 0 4px;
-  font-size: 10.5px;
-  color: var(--txt-2);
-  background: var(--bg-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius, 6px);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.fbuilder-cat:hover {
-  color: var(--txt-1);
-  border-color: var(--accent);
-}
-.fbuilder-cat.is-open {
-  color: var(--accent);
-  border-color: var(--accent);
-}
+
+
+
+
 /* 类别收起时的占位提示（点击类别钮展开） */
-.fbuilder-tpls-hint {
-  flex: none;
-  padding: 7px 6px;
-  font-size: 10.5px;
-  color: var(--txt-4);
-  text-align: center;
-  border: 1px dashed var(--line-soft);
-  border-radius: var(--radius, 6px);
-}
+
 /* 展开类别的结构网格（单类最多 8 项 = 2 行；overflow 兜底） */
-.fbuilder-tpls {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-  flex: none;
-  max-height: 84px;
-  overflow: auto;
-}
-.fbuilder-tpl {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1px;
-  padding: 5px 2px 4px;
-  background: var(--bg-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius, 6px);
-  cursor: pointer;
-}
-.fbuilder-tpl:hover {
-  border-color: var(--accent);
-}
-.fbuilder-tpl-icon {
-  font-size: 12px;
-  line-height: 1.1;
-  color: var(--accent);
-  font-family: var(--font-mono, monospace);
-  white-space: nowrap;
-}
-.fbuilder-tpl-name {
-  font-size: 9.5px;
-  color: var(--txt-2);
-  white-space: nowrap;
-}
+
+
+
+
+
 
 /* 公式树（缩进列表；活动槽高亮；限高滚动，预览为主区） */
-.fbuilder-tree {
-  flex: none;
-  min-height: 0;
-  max-height: 92px;
-  overflow: auto;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius, 6px);
-  background: var(--bg-2);
-  padding: 4px;
-}
-.fbuilder-node {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  width: 100%;
-  padding: 2px 4px;
-  font-size: 11px;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 4px;
-  cursor: default;
-  color: var(--txt-2);
-}
-.fbuilder-node.is-text {
-  color: var(--txt-1);
-  font-family: var(--font-mono, monospace);
-}
-.fbuilder-node.is-active {
-  border-color: var(--accent);
-  background: var(--bg-3);
-}
-.fbuilder-node-mark {
-  flex: none;
-  font-size: 10px;
-  color: var(--txt-4);
-}
-.fbuilder-node.is-active .fbuilder-node-mark {
-  color: var(--accent);
-}
-.fbuilder-node-label {
-  flex: none;
-  color: var(--txt-3);
-}
-.fbuilder-node-latex {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono, monospace);
-  color: var(--txt-2);
-}
-.fbuilder-node.is-active .fbuilder-node-latex {
-  color: var(--accent);
-}
-.fbuilder-empty {
-  font-size: 11px;
-  color: var(--txt-3);
-  text-align: center;
-  padding: 18px 8px;
-  line-height: 1.7;
-}
+
+
+
+
+
+
+
+
+
+
 
 /* 符号条（填入活动槽） */
-.fbuilder-syms {
-  flex: none;
-  display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  gap: 2px;
-  max-height: 66px;
-  overflow: auto;
-  padding: 4px;
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius, 6px);
-  background: var(--bg-2);
-}
-.fbuilder-sym {
-  padding: 2px 0;
-  font-size: 12px;
-  line-height: 1.4;
-  color: var(--txt-1);
-  background: transparent;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-.fbuilder-sym:hover {
-  background: var(--bg-4);
-  color: var(--accent);
-}
+
+
+
 
 /* 活动槽操作行（文本输入 / 删除 / 清空） */
-.fbuilder-actions {
-  flex: none;
-  display: flex;
-  gap: 4px;
-}
-.fbuilder-input {
-  flex: 1;
-  min-width: 0;
-  height: 24px;
-  padding: 0 7px;
-  font-size: 11px;
-  font-family: var(--font-mono, monospace);
-  color: var(--txt-1);
-  background: var(--bg-2);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius, 6px);
-}
-.fbuilder-input:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-.fbuilder-input::placeholder {
-  color: var(--txt-4);
-}
-.fbuilder-btn {
-  flex: none;
-  height: 24px;
-  padding: 0 8px;
-  font-size: 11px;
-  color: var(--txt-2);
-  background: var(--bg-3);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius, 6px);
-  cursor: pointer;
-}
-.fbuilder-btn:hover:not(:disabled) {
-  color: var(--txt-1);
-  border-color: var(--accent);
-}
-.fbuilder-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.fbuilder-btn.primary {
-  color: var(--accent);
-  border-color: var(--accent);
-}
+
+
+
+
+
+
+
+
 
 /* 公式预览：KaTeX 渲染区（上，flex:1 主区）+ LaTeX 源码区（下，小字等宽） */
-.fbuilder-preview {
-  flex: 1;
-  min-height: 120px;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  overflow: hidden;
-  background: var(--bg-2);
-  border: 1px solid var(--line-soft);
-  border-radius: var(--radius, 6px);
-}
-.fbuilder-preview-fx {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 8px 10px;
-  color: var(--txt-1);
-}
-.fbuilder-preview-fx:empty::before,
-.fbuilder-preview-fx > .fx-fallback:only-child {
-  color: var(--txt-4);
-}
+
+
+
 /* 预览中的空槽方框（\Box → .zetla-slot）：可点击选槽（MathType 式）
    注意 position/z-index 不可删：KaTeX 多行结构（矩阵/cases）每列是 vlist-t2 双行表格，
    底行内容会溢出首行单元格，被第二行那个空单元格（position:relative、文档序在后）盖住
@@ -4176,20 +3990,7 @@ body.col-resizing {
   background: color-mix(in srgb, var(--accent) 30%, transparent);
   box-shadow: inset 0 0 0 1px var(--accent);
 }
-.fbuilder-preview-src {
-  flex: none;
-  margin: 0;
-  padding: 4px 8px;
-  max-height: 40px;
-  overflow: auto;
-  font-size: 9.5px;
-  font-family: var(--font-mono, monospace);
-  color: var(--txt-4);
-  white-space: pre-wrap;
-  word-break: break-all;
-  border-top: 1px solid var(--line-soft);
-  background: var(--bg-3);
-}
+
 
 /* 编辑器：\Box 槽位占位高亮（剩余槽一目了然；Tab 跳转；鼠标点击即选中） */
 .cm-math-slot {
@@ -4388,7 +4189,7 @@ body.col-resizing {
   accent-color: var(--accent);
 }
 
-/* 页签（快捷工具 / 公式模板 / 搭建） */
+/* 页签（快捷工具 / 公式模板） */
 .math-tabs {
   display: flex;
   gap: 4px;
@@ -4427,8 +4228,7 @@ body.col-resizing {
 }
 
 .math-input-body > .symbol-panel,
-.math-input-body > .formula-panel,
-.math-input-body > .fbuilder {
+.math-input-body > .formula-panel {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -4633,6 +4433,37 @@ body.col-resizing {
   justify-content: center;
   font-size: 11px;
   color: var(--txt-3);
+}
+
+/* M1-12b 修复（2026-10-25 用户反馈）：搜索框作为侧栏面板直接子元素时固定高度
+   —— 原 flex:1 1 auto 在纵向 flex 容器里会被拉满（分类收起/内容不满时更明显）；
+   FormulaPanel 的 .symbol-toolbar（横向行）仍保留 .symbol-search 的 flex:1 撑宽，不受影响 */
+.symbol-panel > .symbol-search {
+  flex: none;
+  height: 28px;
+}
+
+/* 分类名 / 搜索结果 与具体符号之间的分割条（用户 2026-10-25 反馈「区分一下」） */
+.sym-sec {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  padding: 1px 2px 5px;
+  border-bottom: 1px solid var(--line);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--txt-3);
+}
+.sym-sec-name {
+  color: var(--txt-2);
+  font-weight: 600;
+}
+.sym-sec-count {
+  color: var(--txt-4);
+  font-family: var(--font-mono, monospace);
 }
 
 /* 模板钮区分：左侧 accent 细条（符号为纯细边） */

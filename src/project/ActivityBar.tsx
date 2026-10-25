@@ -16,7 +16,7 @@ interface Item {
 const ITEMS: Item[] = [
   { view: "explorer", icon: "folder", label: "资源管理器", hint: "Ctrl+B 1" },
   { view: "outline", icon: "menu", label: "大纲", hint: "Ctrl+B 2" },
-  // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库/搭建 三页签）
+  // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库 两页签）
   { view: "math", icon: "formula", label: "公式", hint: "Ctrl+B 3" },
 ];
 
