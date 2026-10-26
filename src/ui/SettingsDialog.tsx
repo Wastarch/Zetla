@@ -442,6 +442,17 @@ export function SettingsDialog() {
                   />
                 </Fld>
                 <Fld
+                  label="保存时自动编译"
+                  hint="手动保存（Ctrl+S / 保存）.tex 后自动触发编译；自动保存不触发"
+                >
+                  <Switch
+                    checked={draft.build.compileOnSave}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, build: { ...d.build, compileOnSave: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld
                   label="编译完成后清理辅助文件"
                   hint=".aux / .log / .out 等"
                   tip="清理辅助文件 M1 接通"

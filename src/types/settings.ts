@@ -79,6 +79,11 @@ export interface AppSettings {
     engine: CompileEngine;
     /** M1-3：编译流程步骤序列（空=自动 latexmk；非空=按序直跑，见 CompileStep） */
     steps: CompileStep[];
+    /**
+     * 保存时自动编译：手动保存（Ctrl+S / 保存菜单 / 保存按钮，不含自动保存）
+     * 一个 .tex 文件成功后触发编译；自动保存到旧内容不触发，避免频繁编译。
+     */
+    compileOnSave: boolean;
   };
   pdf: {
     defaultZoom: PdfDefaultZoom;
@@ -142,7 +147,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
   editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true },
   autosave: { enabled: true, intervalSeconds: 30, pauseWhileCompiling: true },
-  build: { saveBeforeCompile: true, engine: "auto", steps: [] },
+  build: { saveBeforeCompile: true, engine: "auto", steps: [], compileOnSave: false },
   pdf: { defaultZoom: "fit-width" },
   window: { width: null, height: null, x: null, y: null, maximized: false },
   session: { lastProject: null, openFiles: [], activeFile: null },

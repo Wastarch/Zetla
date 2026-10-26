@@ -307,6 +307,8 @@ pub struct BuildConfig {
     /// 如 ["latex","bibtex","latex","latex"] = LaTeX → BibTeX → LaTeX → LaTeX）
     #[serde(default = "default_build_steps")]
     pub steps: Vec<String>,
+    /// 保存时自动编译：手动保存 .tex 成功后触发编译（不含自动保存，避免频繁编译）
+    pub compile_on_save: bool,
 }
 
 impl Default for BuildConfig {
@@ -315,6 +317,7 @@ impl Default for BuildConfig {
             save_before_compile: true,
             engine: "auto".to_string(),
             steps: Vec::new(),
+            compile_on_save: false,
         }
     }
 }
@@ -536,6 +539,7 @@ mod tests {
         cfg.autosave.enabled = false;
         cfg.autosave.interval_seconds = 60;
         cfg.build.save_before_compile = false;
+        cfg.build.compile_on_save = true;
         cfg.pdf.default_zoom = "125".to_string();
         cfg.window = WindowConfig {
             width: Some(1440),
@@ -579,6 +583,7 @@ mod tests {
         assert!(text.contains("intervalSeconds"));
         assert!(text.contains("pauseWhileCompiling"));
         assert!(text.contains("saveBeforeCompile"));
+        assert!(text.contains("compileOnSave"));
         assert!(text.contains("defaultZoom"));
         // M0-13 字段
         assert!(text.contains("lastProject"));

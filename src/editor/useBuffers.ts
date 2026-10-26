@@ -5,10 +5,27 @@
 import { create } from "zustand";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "@/ipc/invoke";
+import { useSettingsStore } from "@/core/settings";
+import { startCompile } from "@/compile/useCompile";
 import type { FileDoc } from "@/types";
 
 /** 正在写盘的缓冲路径（防止手动保存与自动保存并发互踩） */
 const savingPaths = new Set<string>();
+
+/**
+ * 保存时自动编译：手动保存（Ctrl+S / 保存菜单 / 保存按钮，silent=false）成功后，
+ * 若设置开启且保存的是 .tex 文件，防抖触发一次编译。连续保存（如「全部保存」）
+ * 会合并为一次编译；自动保存（silent=true）不触发，避免频繁编译。
+ */
+let compileOnSaveTimer: number | undefined;
+function scheduleCompileOnSave(): void {
+  if (!useSettingsStore.getState().settings.build.compileOnSave) return;
+  if (compileOnSaveTimer !== undefined) window.clearTimeout(compileOnSaveTimer);
+  compileOnSaveTimer = window.setTimeout(() => {
+    compileOnSaveTimer = undefined;
+    void startCompile();
+  }, 400);
+}
 
 /** 一个打开的文档（标签页） */
 export interface EditorBuffer {
@@ -189,6 +206,10 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
               kind: intact ? "ok" : "err",
             },
       }));
+      // 手动保存 .tex 成功后，按设置触发自动编译（自动保存 silent=true 不触发）
+      if (!silent && path.toLowerCase().endsWith(".tex")) {
+        scheduleCompileOnSave();
+      }
       return true;
     } catch (e) {
       set({ notice: { text: `保存失败 ${buf.name}：${String(e)}`, kind: "err" } });
