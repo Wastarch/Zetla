@@ -8,6 +8,10 @@
 \author{<%= author %>}
 \date{\today}
 
+% 超链接：让 \cite 的 [1] 可点击跳转到参考文献，\ref/\url 亦可跳转。
+% 放在导言区末尾：若后续加入 biblatex 等宏包，hyperref 会自然位于其后（biblatex 建议的顺序）。
+\usepackage[colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue]{hyperref}
+
 \begin{document}
 
 \maketitle
