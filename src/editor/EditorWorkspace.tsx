@@ -133,6 +133,7 @@ export function EditorWorkspace() {
                     if (useBuffersStore.getState().activePath === b.path) setCursor({ line, col });
                   }}
                   onJumpToPdf={(line, col) => void jumpToPdfFromSource(b.path, line, col)}
+                  path={b.path}
                   placeholder="开始输入 LaTeX…"
                 />
               ) : null}

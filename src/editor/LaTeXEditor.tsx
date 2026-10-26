@@ -15,6 +15,8 @@ import { latex } from "codemirror-lang-latex";
 import { useSettingsStore } from "@/core/settings";
 import type { EffectiveTheme } from "@/types/settings";
 import { mathSlotsExtension } from "./mathSlots";
+import { bibtexLanguage, BIB_HIGHLIGHT } from "./bibtex";
+import { extOf } from "@/project/useProject";
 
 /**
  * M1-2：LaTeX 语法高亮配色。
@@ -102,6 +104,8 @@ export interface LaTeXEditorProps {
   lineWrapping?: boolean;
   /** M1-4：Ctrl/⌘+点击源码行 → 正向跳转到 PDF 对应位置（synctex） */
   onJumpToPdf?: (line: number, col: number) => void;
+  /** M1-14b：当前文档路径（区分 .tex / .bib 以切换语言与高亮） */
+  path?: string;
 }
 
 export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
@@ -116,6 +120,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
       height = "60vh",
       lineWrapping = true,
       onJumpToPdf,
+      path,
     },
     ref,
   ) {
@@ -137,9 +142,13 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const onJumpRef = useRef(onJumpToPdf);
     onJumpRef.current = onJumpToPdf;
 
+    const isBib = path ? extOf(path) === "bib" : false;
     const extensions = useMemo(
       () => [
-        latex({ autoCloseBrackets: true, autoCloseTags: true }),
+        // M1-14b：.bib 用专属词法 + 高亮，.tex 维持 LaTeX
+        isBib
+          ? bibtexLanguage
+          : latex({ autoCloseBrackets: true, autoCloseTags: true }),
         // 软换行：只影响显示，不向文档写入换行符
         lineWrapping ? EditorView.lineWrapping : [],
         keymap.of([
@@ -160,9 +169,11 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           }
         }),
         // 语法高亮配色（亮/暗双份，随主题切换；CM6 基础主题由 theme prop 接管）
-        syntaxHighlighting(LATEX_HIGHLIGHT[theme]),
-        // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转）
-        ...mathSlotsExtension,
+        isBib
+          ? syntaxHighlighting(BIB_HIGHLIGHT[theme])
+          : syntaxHighlighting(LATEX_HIGHLIGHT[theme]),
+        // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转），仅 .tex 启用
+        ...(isBib ? [] : mathSlotsExtension),
         // M1-4：Ctrl/⌘+点击源码行 → synctex 正向跳转（posAtCoords 取点击处行/列）
         EditorView.domEventHandlers({
           mousedown: (e, view) => {
@@ -176,7 +187,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           },
         }),
       ],
-      [lineWrapping, theme],
+      [lineWrapping, theme, isBib],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置
