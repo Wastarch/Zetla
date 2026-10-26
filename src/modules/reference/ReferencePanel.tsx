@@ -1,8 +1,14 @@
 // M1-14f · 引用管理面板（纯前端，零 Rust 改动）—— 见 docs/开发计划.md M1-14f
 // 活动栏「引用」视图：校验汇总条 + 搜索 + 按 .bib 文件分组的条目列表 + 导入 .bib。
-// M1-14g：条目左键插入 \cite、右键菜单（跳到条目 / 查看反向引用）。
+// M1-14g+：条目左键 → 浮窗预览（只读）；右键菜单 → 插入 \cite / 跳到条目 / 查看反向引用。
 // 所有数据只读 useReferenceStore 缓存（entries/byKey/duplicateKeys/citations），不重解、不重读盘。
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useReferenceStore } from "./useReferenceStore";
 import { useProjectStore, notify } from "@/project/useProject";
@@ -10,7 +16,24 @@ import { projectApi } from "@/ipc/invoke";
 import { jumpToFile } from "@/editor/jump";
 import { insertSnippet } from "@/core/moduleRegistry";
 import { firstDuplicateEntry, type MissingCiteSummary } from "./lintLogic";
+import { RefPreviewCard } from "./RefPreviewCard";
 import type { BibEntry } from "./bibParser";
+
+/** 浮窗尺寸估算（用于定位 clamp，实际宽高由 CSS 决定） */
+const PREVIEW_W = 340;
+const PREVIEW_H_EST = 300;
+
+/** 以条目矩形为锚点计算浮窗位置：优先右侧，空间不足翻左侧，并 clamp 到视口内 */
+function previewPos(rect: DOMRect): { left: number; top: number } {
+  let left = rect.right + 8;
+  if (left + PREVIEW_W > window.innerWidth - 8) left = rect.left - PREVIEW_W - 8;
+  if (left < 8) left = 8;
+  let top = rect.top;
+  if (top + PREVIEW_H_EST > window.innerHeight - 8) {
+    top = Math.max(8, window.innerHeight - PREVIEW_H_EST - 8);
+  }
+  return { left, top };
+}
 
 export default function ReferencePanel() {
   const entries = useReferenceStore((s) => s.entries);
@@ -21,12 +44,20 @@ export default function ReferencePanel() {
 
   const [q, setQ] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  /** 右键菜单：命中的 key 与屏幕坐标 */
-  const [menu, setMenu] = useState<{ key: string; entry: BibEntry; x: number; y: number } | null>(
-    null,
-  );
-  /** 展开反向引用列表的 key（null = 全收起） */
-  const [revKey, setRevKey] = useState<string | null>(null);
+  /** 右键菜单：命中的条目、屏幕坐标、以及「查看反向引用」用的浮窗锚点 */
+  const [menu, setMenu] = useState<{
+    entry: BibEntry;
+    x: number;
+    y: number;
+    pos: { left: number; top: number };
+  } | null>(null);
+  /** 左键浮窗预览（info 预览 / refs 反向引用） */
+  const [preview, setPreview] = useState<{
+    entry: BibEntry;
+    mode: "info" | "refs";
+    left: number;
+    top: number;
+  } | null>(null);
 
   // 右键菜单：点击空白/滚动/Esc 关闭
   useEffect(() => {
@@ -45,16 +76,51 @@ export default function ReferencePanel() {
     };
   }, [menu]);
 
-  /** 左键：在活动编辑器光标处插入 \cite{key} */
+  // 浮窗预览：点击浮窗/条目之外、Esc、滚动（浮窗内部滚动除外）关闭
+  useEffect(() => {
+    if (!preview) return;
+    const onPointerDown = (ev: PointerEvent) => {
+      const t = ev.target as HTMLElement | null;
+      if (t && (t.closest(".ref-preview") || t.closest(".ref-entry"))) return;
+      setPreview(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreview(null);
+    };
+    const onScroll = (ev: Event) => {
+      const t = ev.target as HTMLElement | null;
+      if (t && t.closest && t.closest(".ref-preview")) return;
+      setPreview(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown, true);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [preview]);
+
+  /** 左键：打开/切换浮窗预览（再点同一条目收起） */
+  const onRowClick = useCallback((e: BibEntry, ev: ReactMouseEvent<HTMLButtonElement>) => {
+    const id = `${e.file}:${e.line}`;
+    // 先同步取锚点坐标：setState updater 可能延迟执行，届时 ev.currentTarget 已为 null
+    const pos = previewPos(ev.currentTarget.getBoundingClientRect());
+    setPreview((prev) => {
+      if (prev && `${prev.entry.file}:${prev.entry.line}` === id) {
+        // 同一条目：info 再点收起；refs 则切回 info
+        return prev.mode === "info" ? null : { ...prev, mode: "info" };
+      }
+      return { entry: e, mode: "info", ...pos };
+    });
+  }, []);
+
+  /** 右键：菜单「在光标处插入 \\cite{key}」 */
   const onInsert = useCallback((key: string) => {
     if (!insertSnippet(`\\cite{${key}}`)) {
       notify("请先打开一个 .tex 编辑器并定位光标", "err");
     }
-  }, []);
-
-  /** 查看反向引用（展开/收起该条目下的引用列表） */
-  const onShowRefs = useCallback((key: string) => {
-    setRevKey((prev) => (prev === key ? null : key));
   }, []);
 
   // 重复 key 汇总（store 直接可得，无需读盘）
@@ -224,19 +290,23 @@ export default function ReferencePanel() {
                 {!isCollapsed &&
                   es.map((e) => {
                     const dup = duplicateKeys.has(e.key);
-                    const refs = citesByKey.get(e.key) ?? [];
-                    const refCount = refs.length;
-                    const isRev = revKey === e.key;
+                    const refCount = (citesByKey.get(e.key) ?? []).length;
                     return (
                       <div className="ref-entry-wrap" key={`${e.file}:${e.line}`}>
                         <button
                           type="button"
                           className={dup ? "ref-entry ref-entry-dup" : "ref-entry"}
-                          title={`${e.key} · @${e.type} · 点击插入 \\cite{…}；右键更多`}
-                          onClick={() => onInsert(e.key)}
+                          title={`${e.key} · @${e.type} · 点击预览；右键更多`}
+                          onClick={(ev) => onRowClick(e, ev)}
                           onContextMenu={(ev) => {
                             ev.preventDefault();
-                            setMenu({ key: e.key, entry: e, x: ev.clientX, y: ev.clientY });
+                            setPreview(null);
+                            setMenu({
+                              entry: e,
+                              x: ev.clientX,
+                              y: ev.clientY,
+                              pos: previewPos(ev.currentTarget.getBoundingClientRect()),
+                            });
                           }}
                         >
                           {dup && (
@@ -255,28 +325,6 @@ export default function ReferencePanel() {
                           )}
                           <span className="ref-type">@{e.type}</span>
                         </button>
-                        {isRev && (
-                          <div className="ref-rev">
-                            {refCount === 0 ? (
-                              <div className="ref-rev-empty">未被任何 .tex 引用</div>
-                            ) : (
-                              refs.map((r, i) => (
-                                <button
-                                  type="button"
-                                  className="ref-rev-item"
-                                  key={`${r.file}:${r.line}:${i}`}
-                                  title={r.file}
-                                  onClick={() => jumpToFile(r.file, r.line)}
-                                >
-                                  <span className="ref-rev-file">
-                                    {r.file.split(/[\\/]/).pop()}
-                                  </span>
-                                  <span className="ref-rev-line">:{r.line}</span>
-                                </button>
-                              ))
-                            )}
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -286,13 +334,23 @@ export default function ReferencePanel() {
         )}
       </div>
 
-      {/* 右键菜单：跳到条目 / 查看反向引用 */}
+      {/* 右键菜单：在光标处插入 / 跳到条目 / 查看反向引用 */}
       {menu && (
         <div
           className="ctx-menu"
           style={{ left: menu.x, top: menu.y }}
           onClick={(ev) => ev.stopPropagation()}
         >
+          <button
+            type="button"
+            className="ctx-item"
+            onClick={() => {
+              onInsert(menu.entry.key);
+              setMenu(null);
+            }}
+          >
+            {`在光标处插入 \\cite{${menu.entry.key}}`}
+          </button>
           <button
             type="button"
             className="ctx-item"
@@ -307,13 +365,30 @@ export default function ReferencePanel() {
             type="button"
             className="ctx-item"
             onClick={() => {
-              onShowRefs(menu.key);
+              setPreview({ entry: menu.entry, mode: "refs", ...menu.pos });
               setMenu(null);
             }}
           >
             查看反向引用
           </button>
         </div>
+      )}
+
+      {/* 左键浮窗：预览信息 / 反向引用 */}
+      {preview && (
+        <RefPreviewCard
+          entry={preview.entry}
+          refs={citesByKey.get(preview.entry.key) ?? []}
+          mode={preview.mode}
+          left={preview.left}
+          top={preview.top}
+          onMode={(m) => setPreview((p) => (p ? { ...p, mode: m } : p))}
+          onClose={() => setPreview(null)}
+          onJump={(file, line) => {
+            jumpToFile(file, line);
+            setPreview(null);
+          }}
+        />
       )}
     </div>
   );

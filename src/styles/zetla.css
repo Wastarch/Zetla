@@ -5089,3 +5089,142 @@ body.col-resizing {
   background: var(--accent-soft);
   color: var(--accent);
 }
+
+/* M1-14g+ · 引用条目浮窗预览 */
+.ref-preview {
+  position: fixed;
+  z-index: 3001;
+  width: 340px;
+  max-width: calc(100vw - 16px);
+  max-height: min(70vh, 480px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  overflow: hidden;
+  font-size: 12.5px;
+  color: var(--txt-1);
+}
+.ref-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 6px;
+}
+.ref-preview-key {
+  font-family: var(--font-mono, monospace);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-preview-type {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  color: var(--txt-3);
+  background: var(--bg-3);
+}
+.ref-preview-close {
+  margin-left: auto;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  font-size: 15px;
+  color: var(--txt-3);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  outline: none;
+}
+.ref-preview-close:hover {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+.ref-preview-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+.ref-preview-tab {
+  padding: 5px 8px;
+  font-size: 11.5px;
+  color: var(--txt-3);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  outline: none;
+}
+.ref-preview-tab:hover {
+  color: var(--txt-1);
+}
+.ref-preview-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.ref-preview-body {
+  padding: 9px 11px 10px;
+  overflow: auto;
+}
+.ref-preview-author {
+  font-size: 12px;
+  color: var(--txt-2);
+  margin-bottom: 3px;
+}
+.ref-preview-title {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--txt-1);
+  margin-bottom: 7px;
+}
+.ref-preview-fields {
+  margin: 0 0 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ref-preview-field {
+  display: flex;
+  gap: 8px;
+  font-size: 11.5px;
+}
+.ref-preview-field dt {
+  flex: none;
+  width: 68px;
+  color: var(--txt-4);
+}
+.ref-preview-field dd {
+  margin: 0;
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--txt-2);
+  word-break: break-word;
+}
+.ref-preview-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 7px;
+  border-top: 1px dashed var(--line);
+  font-size: 11px;
+  color: var(--txt-4);
+}
+.ref-preview-src {
+  font-family: var(--font-mono, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ref-preview-cites {
+  flex: none;
+}
