@@ -22,6 +22,7 @@ import { useCompileBridge } from "@/compile/useCompile";
 import { useModuleRuntime } from "@/core/useModuleRuntime";
 import { useProjectWatch } from "@/project/useProjectWatch";
 import { useUpdateCheck } from "@/modules/updater/useUpdateCheck";
+import { startReferenceWatcher } from "@/modules/reference/useReferenceStore";
 import { useAutosave } from "@/editor/useAutosave";
 import { useWindowMemory } from "@/window/useWindowMemory";
 import "./styles/zetla.css";
@@ -50,6 +51,10 @@ function App() {
   useUpdateCheck();
   // M0-9a：项目目录变更 → 资源树自动刷新
   useProjectWatch();
+  // M1-14a：引用索引监听（项目树 / 已打开 .bib 变更 → 防抖重建 key 索引）
+  useEffect(() => {
+    startReferenceWatcher();
+  }, []);
   // M0-14a：偏好设置启动加载 + 编辑器 CSS 生效 + 定时自动保存
   useEffect(() => {
     void useSettingsStore.getState().load();
