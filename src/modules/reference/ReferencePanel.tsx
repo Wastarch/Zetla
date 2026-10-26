@@ -1,52 +1,61 @@
 // M1-14f · 引用管理面板（纯前端，零 Rust 改动）—— 见 docs/开发计划.md M1-14f
 // 活动栏「引用」视图：校验汇总条 + 搜索 + 按 .bib 文件分组的条目列表 + 导入 .bib。
-// 所有数据只读 useReferenceStore 缓存（entries/byKey/duplicateKeys），不重解；
-// 缺失引用汇总按需扫描项目内 .tex 文件（复用 M1-14e 的 collectMissingCiteDiags）。
+// M1-14g：条目左键插入 \cite、右键菜单（跳到条目 / 查看反向引用）。
+// 所有数据只读 useReferenceStore 缓存（entries/byKey/duplicateKeys/citations），不重解、不重读盘。
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Text } from "@codemirror/state";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { useReferenceStore } from "./useReferenceStore";
 import { useProjectStore, notify } from "@/project/useProject";
-import { useBuffersStore } from "@/editor/useBuffers";
 import { projectApi } from "@/ipc/invoke";
 import { jumpToFile } from "@/editor/jump";
-import {
-  firstDuplicateEntry,
-  summarizeMissingCites,
-  type MissingCiteSummary,
-} from "./lintLogic";
+import { insertSnippet } from "@/core/moduleRegistry";
+import { firstDuplicateEntry, type MissingCiteSummary } from "./lintLogic";
 import type { BibEntry } from "./bibParser";
-import type { ProjectNode } from "@/types";
-
-/** 递归收集项目树内所有 .tex / .ltx 文件绝对路径 */
-function collectTexFiles(nodes: ProjectNode[] | undefined, out: string[]): void {
-  if (!nodes) return;
-  for (const n of nodes) {
-    if (
-      n.type === "file" &&
-      (n.name.toLowerCase().endsWith(".tex") || n.name.toLowerCase().endsWith(".ltx"))
-    ) {
-      out.push(n.path);
-    } else if (n.type === "dir" && n.children) {
-      collectTexFiles(n.children, out);
-    }
-  }
-}
-
-const EMPTY_MISSING: MissingCiteSummary = { count: 0, first: null };
 
 export default function ReferencePanel() {
   const entries = useReferenceStore((s) => s.entries);
   const byKey = useReferenceStore((s) => s.byKey);
   const duplicateKeys = useReferenceStore((s) => s.duplicateKeys);
-  const ready = useReferenceStore((s) => s.ready);
-
-  const root = useProjectStore((s) => s.root);
-  const tree = useProjectStore((s) => s.tree);
+  const citesByKey = useReferenceStore((s) => s.citesByKey);
+  const citations = useReferenceStore((s) => s.citations);
 
   const [q, setQ] = useState("");
-  const [missing, setMissing] = useState<MissingCiteSummary>(EMPTY_MISSING);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** 右键菜单：命中的 key 与屏幕坐标 */
+  const [menu, setMenu] = useState<{ key: string; entry: BibEntry; x: number; y: number } | null>(
+    null,
+  );
+  /** 展开反向引用列表的 key（null = 全收起） */
+  const [revKey, setRevKey] = useState<string | null>(null);
+
+  // 右键菜单：点击空白/滚动/Esc 关闭
+  useEffect(() => {
+    if (!menu) return;
+    const close = () => setMenu(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
+
+  /** 左键：在活动编辑器光标处插入 \cite{key} */
+  const onInsert = useCallback((key: string) => {
+    if (!insertSnippet(`\\cite{${key}}`)) {
+      notify("请先打开一个 .tex 编辑器并定位光标", "err");
+    }
+  }, []);
+
+  /** 查看反向引用（展开/收起该条目下的引用列表） */
+  const onShowRefs = useCallback((key: string) => {
+    setRevKey((prev) => (prev === key ? null : key));
+  }, []);
 
   // 重复 key 汇总（store 直接可得，无需读盘）
   const dupSummary = useMemo(() => {
@@ -56,56 +65,22 @@ export default function ReferencePanel() {
     };
   }, [entries, duplicateKeys]);
 
-  // 缺失引用汇总：扫描项目 .tex 文件（复用 M1-14e 逻辑，只读缓存不重解）
-  const computeMissing = useCallback(async () => {
-    const r = useProjectStore.getState().root;
-    const t = useProjectStore.getState().tree;
-    if (!r || !t) {
-      setMissing(EMPTY_MISSING);
-      return;
+  // 缺失引用汇总：直接从 store 的 citation 索引推导（不重读盘、不重扫）
+  const missing = useMemo<MissingCiteSummary>(() => {
+    const known = new Set(byKey.keys());
+    let count = 0;
+    let first: { file: string; line: number } | null = null;
+    // 依文件+行号排序，保证「首个」稳定（citations 顺序取决于树遍历）
+    const sorted = [...citations].sort((a, b) =>
+      a.file === b.file ? a.line - b.line : a.file < b.file ? -1 : 1,
+    );
+    for (const c of sorted) {
+      if (known.has(c.key)) continue;
+      count++;
+      if (!first) first = { file: c.file, line: c.line };
     }
-    const texPaths: string[] = [];
-    collectTexFiles(t.nodes, texPaths);
-    texPaths.sort(); // 确定性顺序，保证「首个」稳定
-    const known = new Set(useReferenceStore.getState().byKey.keys());
-    const files: { path: string; doc: Text }[] = [];
-    for (const p of texPaths) {
-      try {
-        const d = await projectApi.readFile(p);
-        files.push({ path: p, doc: Text.of(d.content.split(/\r?\n/)) });
-      } catch {
-        // 读不到则跳过该文件
-      }
-    }
-    setMissing(summarizeMissingCites(files, known));
-  }, []);
-
-  // bib 重索引 / 项目切换 → 重算缺失汇总
-  useEffect(() => {
-    void computeMissing();
-  }, [ready, byKey, root, tree, computeMissing]);
-
-  // .tex 编辑实时反映到缺失汇总（与引用 watcher 同思路，debounce 300ms）
-  useEffect(() => {
-    let timer: number | null = null;
-    const unsub = useBuffersStore.subscribe((s, prev) => {
-      if (s.buffers === prev.buffers) return;
-      const changedTex = s.buffers.some((b, idx) => {
-        const before = prev.buffers[idx];
-        return (
-          b.path.toLowerCase().endsWith(".tex") &&
-          (!before || before.content !== b.content)
-        );
-      });
-      if (!changedTex) return;
-      if (timer != null) window.clearTimeout(timer);
-      timer = window.setTimeout(() => void computeMissing(), 300);
-    });
-    return () => {
-      if (timer != null) window.clearTimeout(timer);
-      unsub();
-    };
-  }, [computeMissing]);
+    return { count, first };
+  }, [citations, byKey]);
 
   // 分组：按 .bib 文件
   const groups = useMemo(() => {
@@ -161,11 +136,11 @@ export default function ReferencePanel() {
       }
       await projectApi.copyEntry(picked, target);
       notify(`已导入 ${base}，请在 \\addbibresource 中引用`);
-      void computeMissing();
+      void useReferenceStore.getState().reindex();
     } catch (e) {
       notify(`导入失败：${String(e)}`, "err");
     }
-  }, [computeMissing]);
+  }, []);
 
   const toggleGroup = (file: string) => {
     setCollapsed((prev) => {
@@ -249,25 +224,60 @@ export default function ReferencePanel() {
                 {!isCollapsed &&
                   es.map((e) => {
                     const dup = duplicateKeys.has(e.key);
+                    const refs = citesByKey.get(e.key) ?? [];
+                    const refCount = refs.length;
+                    const isRev = revKey === e.key;
                     return (
-                      <button
-                        type="button"
-                        key={`${e.file}:${e.line}`}
-                        className={dup ? "ref-entry ref-entry-dup" : "ref-entry"}
-                        title={`${e.key} · @${e.type} · 点击跳到条目`}
-                        onClick={() => jumpToFile(e.file, e.line)}
-                      >
-                        {dup && (
-                          <span className="ref-dup-dot" title="重复 key">
-                            ●
+                      <div className="ref-entry-wrap" key={`${e.file}:${e.line}`}>
+                        <button
+                          type="button"
+                          className={dup ? "ref-entry ref-entry-dup" : "ref-entry"}
+                          title={`${e.key} · @${e.type} · 点击插入 \\cite{…}；右键更多`}
+                          onClick={() => onInsert(e.key)}
+                          onContextMenu={(ev) => {
+                            ev.preventDefault();
+                            setMenu({ key: e.key, entry: e, x: ev.clientX, y: ev.clientY });
+                          }}
+                        >
+                          {dup && (
+                            <span className="ref-dup-dot" title="重复 key">
+                              ●
+                            </span>
+                          )}
+                          <span className="ref-key">{e.key}</span>
+                          <span className="ref-meta">
+                            {(e.author ?? "—") + (e.year ? ` (${e.year})` : "")}
                           </span>
+                          {refCount > 0 && (
+                            <span className="ref-cite-count" title={`被引用 ${refCount} 次`}>
+                              {refCount}
+                            </span>
+                          )}
+                          <span className="ref-type">@{e.type}</span>
+                        </button>
+                        {isRev && (
+                          <div className="ref-rev">
+                            {refCount === 0 ? (
+                              <div className="ref-rev-empty">未被任何 .tex 引用</div>
+                            ) : (
+                              refs.map((r, i) => (
+                                <button
+                                  type="button"
+                                  className="ref-rev-item"
+                                  key={`${r.file}:${r.line}:${i}`}
+                                  title={r.file}
+                                  onClick={() => jumpToFile(r.file, r.line)}
+                                >
+                                  <span className="ref-rev-file">
+                                    {r.file.split(/[\\/]/).pop()}
+                                  </span>
+                                  <span className="ref-rev-line">:{r.line}</span>
+                                </button>
+                              ))
+                            )}
+                          </div>
                         )}
-                        <span className="ref-key">{e.key}</span>
-                        <span className="ref-meta">
-                          {(e.author ?? "—") + (e.year ? ` (${e.year})` : "")}
-                        </span>
-                        <span className="ref-type">@{e.type}</span>
-                      </button>
+                      </div>
                     );
                   })}
               </div>
@@ -275,6 +285,36 @@ export default function ReferencePanel() {
           })
         )}
       </div>
+
+      {/* 右键菜单：跳到条目 / 查看反向引用 */}
+      {menu && (
+        <div
+          className="ctx-menu"
+          style={{ left: menu.x, top: menu.y }}
+          onClick={(ev) => ev.stopPropagation()}
+        >
+          <button
+            type="button"
+            className="ctx-item"
+            onClick={() => {
+              jumpToFile(menu.entry.file, menu.entry.line);
+              setMenu(null);
+            }}
+          >
+            跳到条目
+          </button>
+          <button
+            type="button"
+            className="ctx-item"
+            onClick={() => {
+              onShowRefs(menu.key);
+              setMenu(null);
+            }}
+          >
+            查看反向引用
+          </button>
+        </div>
+      )}
     </div>
   );
 }

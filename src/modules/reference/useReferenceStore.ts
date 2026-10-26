@@ -1,12 +1,20 @@
 // M1-14a · 引用索引 store（纯前端）—— 见 docs/开发计划.md M1-14a
-// 职责：收集项目内全部 .bib → 解析 → 构建 key 索引 + 重复 key 集合。
-// 触发：项目树变化 / 已打开 .bib 缓冲区内容变化（防抖）；解析全缓存，热路径零重算。
+// 职责：收集项目内全部 .bib → 解析 → 构建 key 索引 + 重复 key 集合；
+//       并收集全部 .tex → 构建反向引用索引（key → 引用位置，M1-14g）。
+// 触发：项目树变化 / 已打开 .bib 或 .tex 缓冲区内容变化（防抖）；解析全缓存，热路径零重算。
 import { create } from "zustand";
 import { parseBib, findDuplicateKeys, type BibEntry } from "./bibParser";
 import { useProjectStore, extOf } from "@/project/useProject";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { projectApi } from "@/ipc/invoke";
+import { scanCitesForIndex } from "./lintLogic";
 import type { ProjectNode } from "@/types";
+
+/** 单个 \cite 引用位置（反向引用索引用） */
+export interface CiteRef {
+  file: string;
+  line: number;
+}
 
 /** 递归收集项目树内所有 .bib 文件绝对路径 */
 function collectBibFiles(nodes: ProjectNode[] | undefined, out: string[]): void {
@@ -14,6 +22,16 @@ function collectBibFiles(nodes: ProjectNode[] | undefined, out: string[]): void 
   for (const node of nodes) {
     if (node.type === "file" && extOf(node.name) === "bib") out.push(node.path);
     else if (node.type === "dir" && node.children) collectBibFiles(node.children, out);
+  }
+}
+
+/** 递归收集项目树内所有 .tex / .ltx 文件绝对路径 */
+function collectTexFiles(nodes: ProjectNode[] | undefined, out: string[]): void {
+  if (!nodes) return;
+  for (const node of nodes) {
+    const e = extOf(node.name);
+    if (node.type === "file" && (e === "tex" || e === "ltx")) out.push(node.path);
+    else if (node.type === "dir" && node.children) collectTexFiles(node.children, out);
   }
 }
 
@@ -26,31 +44,48 @@ interface ReferenceState {
   byKey: Map<string, BibEntry[]>;
   /** 重复 key 集合 */
   duplicateKeys: Set<string>;
+  /** 全部引用位置（扁平，按文件遍历顺序；供汇总/校验直接推导） */
+  citations: { key: string; file: string; line: number }[];
+  /** 反向引用索引：key → 引用位置（来自项目内所有 .tex / .ltx） */
+  citesByKey: Map<string, CiteRef[]>;
+  /** 失效反向引用缓存（项目树变化时调用，强制重读所有 .tex） */
+  invalidateCitations: () => void;
   /** 重新扫描并重建索引 */
   reindex: () => Promise<void>;
 }
+
+/** 反向引用增量缓存：path → 内容 + 已解析引用（已打开走 buffer，关闭文件缓存复用） */
+let citeCache = new Map<string, { content: string; citations: { key: string; line: number }[] }>();
 
 export const useReferenceStore = create<ReferenceState>((set) => ({
   ready: false,
   entries: [],
   byKey: new Map(),
   duplicateKeys: new Set(),
+  citations: [],
+  citesByKey: new Map(),
+
+  invalidateCitations: () => {
+    citeCache.clear();
+  },
 
   reindex: async () => {
     const { root, tree } = useProjectStore.getState();
     if (!root || !tree) {
-      set({ ready: true, entries: [], byKey: new Map(), duplicateKeys: new Set() });
+      set({
+        ready: true,
+        entries: [],
+        byKey: new Map(),
+        duplicateKeys: new Set(),
+        citations: [],
+        citesByKey: new Map(),
+      });
       return;
     }
 
+    // 1) .bib → 条目（已打开缓冲优先，否则读盘）
     const bibPaths: string[] = [];
     collectBibFiles(tree.nodes, bibPaths);
-    if (bibPaths.length === 0) {
-      set({ ready: true, entries: [], byKey: new Map(), duplicateKeys: new Set() });
-      return;
-    }
-
-    // 取内容：已打开缓冲优先（实时），否则读盘
     const open = useBuffersStore.getState().buffers;
     const textByPath = new Map<string, string>();
     for (const p of bibPaths) {
@@ -82,12 +117,55 @@ export const useReferenceStore = create<ReferenceState>((set) => ({
       arr.push(e);
       byKey.set(e.key, arr);
     }
+    const duplicateKeys = findDuplicateKeys(entries);
+
+    // 2) .tex / .ltx → 反向引用索引（增量：已打开走 buffer，关闭文件缓存复用；内容未变跳过重扫）
+    const texPaths: string[] = [];
+    collectTexFiles(tree.nodes, texPaths);
+    const allCites: { key: string; file: string; line: number }[] = [];
+    for (const p of texPaths) {
+      const buf = open.find((b) => b.path.toLowerCase() === p.toLowerCase());
+      let content: string | null = null;
+      if (buf) {
+        content = buf.content; // 实时：内存优先，零磁盘 IO
+      } else {
+        const cached = citeCache.get(p);
+        if (cached) {
+          allCites.push(...cached.citations.map((c) => ({ ...c, file: p })));
+          continue; // 关闭文件且已缓存 → 复用，不读盘不重扫
+        }
+        try {
+          const d = await projectApi.readFile(p);
+          content = d.content;
+        } catch {
+          continue; // 读不到则跳过
+        }
+      }
+      if (content != null) {
+        const cached = citeCache.get(p);
+        if (cached && cached.content === content) {
+          allCites.push(...cached.citations.map((c) => ({ ...c, file: p })));
+          continue; // 内容未变 → 复用
+        }
+        const cites = scanCitesForIndex(content);
+        citeCache.set(p, { content, citations: cites });
+        allCites.push(...cites.map((c) => ({ ...c, file: p })));
+      }
+    }
+    const citesByKey = new Map<string, CiteRef[]>();
+    for (const c of allCites) {
+      const arr = citesByKey.get(c.key) ?? [];
+      arr.push({ file: c.file, line: c.line });
+      citesByKey.set(c.key, arr);
+    }
 
     set({
       ready: true,
       entries,
       byKey,
-      duplicateKeys: findDuplicateKeys(entries),
+      duplicateKeys,
+      citations: allCites,
+      citesByKey,
     });
   },
 }));
@@ -96,9 +174,8 @@ let watcherStarted = false;
 
 /**
  * 启动引用索引监听（模块级只启一次，在 App 根部调用）。
- * - 项目树/根变化 → 防抖重索引（覆盖新增/改名/删除 .bib）
- * - 已打开 .bib 缓冲内容变化 → 防抖重索引（编辑实时反映到补全/校验）
- * - 非 .bib 缓冲（如 .tex）变化不触发，避免无谓解析
+ * - 项目树/根变化 → 清反向引用缓存 + 防抖重索引（覆盖新增/改名/删除 .bib/.tex）
+ * - 已打开 .bib/.tex/.ltx 缓冲内容变化 → 防抖重索引（增量：仅重扫变更文件）
  */
 export function startReferenceWatcher(): void {
   if (watcherStarted) return;
@@ -113,14 +190,20 @@ export function startReferenceWatcher(): void {
   };
 
   useProjectStore.subscribe((s, prev) => {
-    if (s.tree !== prev.tree || s.root !== prev.root) schedule();
+    if (s.tree !== prev.tree || s.root !== prev.root) {
+      // 树变化（新增/删除/改名/切换项目）→ 清反向引用缓存，强制重读
+      useReferenceStore.getState().invalidateCitations();
+      schedule();
+    }
   });
 
   useBuffersStore.subscribe((s, prev) => {
     if (s.buffers === prev.buffers) return;
     const changed = s.buffers.some((b, idx) => {
       const before = prev.buffers[idx];
-      return extOf(b.name) === "bib" && (!before || before.content !== b.content);
+      const e = extOf(b.name);
+      const tracked = e === "bib" || e === "tex" || e === "ltx";
+      return tracked && (!before || before.content !== b.content);
     });
     if (changed) schedule();
   });

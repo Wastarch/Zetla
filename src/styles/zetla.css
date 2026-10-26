@@ -5006,3 +5006,86 @@ body.col-resizing {
   font-size: 10px;
   color: var(--txt-4);
 }
+
+/* M1-14g · 被引徽章 / 反向引用列表 / 右键菜单 */
+.ref-entry-wrap {
+  display: flex;
+  flex-direction: column;
+}
+.ref-cite-count {
+  flex: none;
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  font-size: 9.5px;
+  line-height: 15px;
+  text-align: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.ref-rev {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 3px 10px;
+  padding: 2px 0 2px 8px;
+  border-left: 2px solid var(--line);
+}
+.ref-rev-empty {
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--txt-4);
+}
+.ref-rev-item {
+  display: flex;
+  align-items: baseline;
+  gap: 1px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--txt-2);
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+}
+.ref-rev-item:hover {
+  background: var(--bg-3);
+  color: var(--accent);
+}
+.ref-rev-file {
+  font-family: var(--font-mono, monospace);
+}
+.ref-rev-line {
+  color: var(--txt-4);
+  font-family: var(--font-mono, monospace);
+}
+
+/* 引用条目右键菜单 */
+.ctx-menu {
+  position: fixed;
+  z-index: 3000;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+}
+.ctx-item {
+  padding: 6px 10px;
+  font-size: 12.5px;
+  color: var(--txt-1);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+}
+.ctx-item:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}

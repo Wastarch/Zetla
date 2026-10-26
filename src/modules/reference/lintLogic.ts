@@ -72,6 +72,32 @@ const CITE_SCAN_RE =
   /\\(?:nocite|cite|citep|citet|citeauthor|citeyear|citeyearpar|citetext)(\*)?(?:\[[^\]]*\])*\{([^{}]*)\}/g;
 
 /**
+ * 扫描一段 .tex 文本，抽取其中所有 \cite* 引用的 {key, line}（纯字符串，可在 Node 直接单测）。
+ * 用于反向引用索引（key → 引用位置）；支持 \cite/\citep/\citet/\nocite 等、多 [可选参数]、多 key 逗号分隔；
+ * 跳过空与 \nocite{*} 通配。
+ */
+export function scanCitesForIndex(
+  content: string,
+): { key: string; line: number }[] {
+  const out: { key: string; line: number }[] = [];
+  const lines = content.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const text = lines[i];
+    CITE_SCAN_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = CITE_SCAN_RE.exec(text))) {
+      const keysStr = m[2];
+      if (keysStr.trim() === "*") continue; // \nocite{*} 之类通配，跳过
+      for (const raw of keysStr.split(",")) {
+        const key = raw.trim();
+        if (key && key !== "*") out.push({ key, line: i + 1 });
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * 收集当前 .tex 文档中「\cite{key} 引用缺失」诊断：
  * - key 不在 knownKeys（项目 .bib 定义的全部 key）→ 标红；
  * - 空 \cite{} → 标「未引用任何 key」；
