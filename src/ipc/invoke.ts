@@ -5,6 +5,7 @@ import type {
   AppSettings,
   EntryKind,
   FileDoc,
+  ImportImageResult,
   ProjectInfo,
   ProjectTree,
   SyncTexHit,
@@ -75,6 +76,15 @@ export const projectApi = {
   renameEntry: (from: string, to: string) => call<string>("rename_entry", { from, to }),
   /** 复制文件/目录（M0-6 补充），返回新绝对路径；目标已存在会报错 */
   copyEntry: (from: string, to: string) => call<string>("copy_entry", { from, to }),
+  /** R5 拖拽图片：图片字节落盘到项目图片目录（imageDir），返回落盘信息 */
+  importImage: (root: string, imageDir: string, fileName: string, bytes: Uint8Array) =>
+    call<ImportImageResult>("import_image", { root, imageDir, fileName, bytes }),
+  /** R5 插入菜单：从磁盘源路径复制图片到项目图片目录 */
+  importImageFromPath: (root: string, imageDir: string, srcPath: string) =>
+    call<ImportImageResult>("import_image_from_path", { root, imageDir, srcPath }),
+  /** R5 项目设置：写回 .ltex/config.json 的 imageDir */
+  saveProjectConfig: (root: string, imageDir: string) =>
+    call<void>("save_project_config", { root, imageDir }),
   readFile: (path: string) => call<FileDoc>("read_file", { path }),
   writeFile: (path: string, content: string, options?: WriteOptions) =>
     call<void>("write_file", { path, content, options }),

@@ -32,6 +32,7 @@ import {
   missingCiteLinter,
 } from "@/modules/reference/lint";
 import { extOf } from "@/project/useProject";
+import { importAndInsert, isImageFile } from "./image/importImage";
 
 /**
  * M1-2：LaTeX 语法高亮配色。
@@ -243,6 +244,44 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
             const line = view.state.doc.lineAt(pos);
             onJumpRef.current?.(line.number, pos - line.from + 1);
             e.preventDefault();
+            return true;
+          },
+        }),
+        // R5 拖拽 / 粘贴图片导入（M1-7）：仅拦截含图片文件的拖放与粘贴，纯文本原样交还 CM 处理
+        EditorView.domEventHandlers({
+          dragover: (event, view) => {
+            const dt = event.dataTransfer;
+            if (dt && Array.from(dt.items).some((i) => i.kind === "file")) {
+              event.preventDefault();
+              view.dom.classList.add("drag-over");
+              return true;
+            }
+            return false;
+          },
+          dragleave: (event, view) => {
+            const related = event.relatedTarget;
+            if (related == null || !view.dom.contains(related as Node)) {
+              view.dom.classList.remove("drag-over");
+            }
+            return false;
+          },
+          drop: (event, view) => {
+            const dt = event.dataTransfer;
+            view.dom.classList.remove("drag-over");
+            if (!dt) return false;
+            const files = Array.from(dt.files).filter(isImageFile);
+            if (files.length === 0) return false;
+            event.preventDefault();
+            void importAndInsert(files);
+            return true;
+          },
+          paste: (_event, _view) => {
+            const dt = _event.clipboardData;
+            if (!dt) return false;
+            const files = Array.from(dt.files).filter(isImageFile);
+            if (files.length === 0) return false; // 纯文本粘贴 → 交还 CM，零副作用
+            _event.preventDefault();
+            void importAndInsert(files);
             return true;
           },
         }),

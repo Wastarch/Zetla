@@ -4,7 +4,7 @@
 // Synctex 双向跳转 M1-4 已接）。撤销/重做/注释经
 // 命令桥 src/editor/activeView.ts 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力）。
 import { useEffect, useRef, useState } from "react";
-import { confirm } from "@tauri-apps/plugin-dialog";
+import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { redo, toggleComment, undo } from "@codemirror/commands";
@@ -12,11 +12,12 @@ import { getActiveView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
-import { useProjectStore, notify } from "@/project/useProject";
+import { EXT_IMG, useProjectStore, notify } from "@/project/useProject";
 import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
 import { jumpToPdfFromSource } from "@/preview/syncTex";
 import { useUpdateStore, selectHasUpdate } from "@/modules/updater/updateStore";
+import { importImageFromPaths } from "@/editor/image/importImage";
 
 /** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
 interface MenuItemDef {
@@ -70,6 +71,7 @@ export function MenuBar() {
   const running = useAppStore((s) => s.compileStatus === "running");
   const logPath = useAppStore((s) => s.lastResult?.logPath);
   const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
+  const hasProject = useProjectStore((s) => !!s.root);
   // M1-2b：主题设置值（是否 auto）与生效主题（驱动菜单标签/勾选）
   const themeSetting = useSettingsStore((s) => s.settings.general.theme);
   const effectiveTheme = useSettingsStore((s) => s.effectiveTheme);
@@ -171,6 +173,25 @@ export function MenuBar() {
           enabled: canEdit,
           hint: "未打开文档",
           onClick: () => withView((v) => toggleComment(v)),
+        },
+      ],
+    },
+    {
+      label: "插入",
+      items: [
+        {
+          label: "插入图片…",
+          enabled: canEdit,
+          hint: "未打开文档",
+          onClick: async () => {
+            const picked = await openFileDialog({
+              multiple: true,
+              filters: [{ name: "图片", extensions: [...EXT_IMG] }],
+            });
+            if (!picked) return;
+            const paths = typeof picked === "string" ? [picked] : picked;
+            await importImageFromPaths(paths);
+          },
         },
       ],
     },
@@ -298,6 +319,12 @@ export function MenuBar() {
           label: "偏好设置",
           sc: "Ctrl+,",
           onClick: () => useAppStore.getState().openSettings("build"),
+        },
+        {
+          label: "项目设置…",
+          enabled: hasProject,
+          hint: "未打开项目",
+          onClick: () => useProjectStore.getState().openProjectSettings(),
         },
       ],
     },

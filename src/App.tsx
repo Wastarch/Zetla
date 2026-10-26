@@ -11,6 +11,7 @@ import { ActivityBar } from "@/project/ActivityBar";
 import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
 import { TemplateWizard } from "@/template/TemplateWizard";
+import { ProjectSettingsDialog } from "@/ui/ProjectSettingsDialog";
 import { MenuBar } from "@/ui/MenuBar";
 import { StatusBar } from "@/ui/StatusBar";
 import { LogPanel } from "@/ui/LogPanel";
@@ -172,6 +173,7 @@ function App() {
       <CtxMenu />
       <EntryDialog />
       <TemplateWizard />
+      <ProjectSettingsDialog />
       {settingsPane !== null && <SettingsDialog />}
       {/* M0-15a：TeX 环境引导（放在设置页之后，同开时叠在其上层） */}
       <EnvGuideDialog />

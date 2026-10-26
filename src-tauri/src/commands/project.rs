@@ -6,6 +6,8 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+use serde_json::Map;
+
 /// 树节点（与 src/types/project.ts ProjectNode 对齐）
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +33,8 @@ pub struct ProjectTree {
     pub main_file: String,
     /// 编译引擎（.ltex/config.json 的 engine，缺省 xelatex）—— M0-9 状态栏展示
     pub engine: String,
+    /// 图片目录（R5 拖拽导入；.ltex/config.json 的 imageDir，缺省 "figure"；相对项目根）
+    pub image_dir: Option<String>,
     pub nodes: Vec<ProjectNode>,
 }
 
@@ -123,6 +127,7 @@ fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
         root: to_str(root_path),
         main_file,
         engine: config_engine(root_path),
+        image_dir: config_image_dir(root_path),
         nodes,
     })
 }
@@ -157,6 +162,54 @@ fn config_engine(root: &Path) -> String {
         Some(e) if matches!(e, "xelatex" | "pdflatex" | "lualatex" | "latexmk") => e.to_string(),
         _ => fallback,
     }
+}
+
+/// 读 .ltex/config.json 的 imageDir（R5 拖拽导入）。
+/// 缺省/缺失/非法（绝对路径或含 ..）→ None，前端回落 "figure"。
+fn config_image_dir(root: &Path) -> Option<String> {
+    let cfg = root.join(".ltex").join("config.json");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let d = v.get("imageDir")?.as_str()?.trim().to_string();
+    if d.is_empty() || d.starts_with('/') || d.starts_with('\\') || d.contains("..") {
+        return None;
+    }
+    Some(d)
+}
+
+/// 写回 .ltex/config.json 的 imageDir（R5 项目设置）。
+/// 空串 = 删除该键（回落默认 "figure"）；仅允许相对项目根、禁止绝对路径与 .. 穿越。
+#[tauri::command]
+pub fn save_project_config(root: String, image_dir: String) -> Result<(), String> {
+    let root_path = Path::new(&root);
+    if !root_path.is_dir() {
+        return Err(format!("项目根不存在: {}", root));
+    }
+    let d = image_dir.trim().to_string();
+    if !d.is_empty() && (d.starts_with('/') || d.starts_with('\\') || d.contains("..")) {
+        return Err("图片目录必须为相对项目根的路径（不允许绝对路径或 .. 穿越）".into());
+    }
+    let cfg_path = root_path.join(".ltex").join("config.json");
+    let mut obj: Map<String, serde_json::Value> = if cfg_path.exists() {
+        let text = std::fs::read_to_string(&cfg_path)
+            .map_err(|e| format!("读取配置失败: {}", e))?;
+        serde_json::from_str(&text).unwrap_or_else(|_| Map::new())
+    } else {
+        if let Some(parent) = cfg_path.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("创建 .ltex 失败: {}", e))?;
+        }
+        Map::new()
+    };
+    if d.is_empty() {
+        obj.remove("imageDir");
+    } else {
+        obj.insert("imageDir".into(), serde_json::Value::String(d));
+    }
+    let out = serde_json::to_string_pretty(&obj)
+        .map_err(|e| format!("序列化配置失败: {}", e))?;
+    std::fs::write(&cfg_path, out).map_err(|e| format!("写入配置失败: {}", e))?;
+    Ok(())
 }
 
 /// 主文件识别：根 main.tex → 按(深度, 名称)第一个含 \documentclass 的 .tex → 第一个 .tex

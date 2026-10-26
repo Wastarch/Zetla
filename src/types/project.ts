@@ -42,7 +42,19 @@ export interface ProjectTree {
   mainFile: string;
   /** 编译引擎（.ltex/config.json 的 engine，缺省 xelatex） */
   engine: string;
+  /** 图片目录（R5 拖拽导入；.ltex/config.json 的 imageDir，缺省 "figure"；相对项目根） */
+  imageDir?: string;
   nodes: ProjectNode[];
+}
+
+/** 图片导入结果（import_image / import_image_from_path 返回；与 Rust ImportImageResult 对齐） */
+export interface ImportImageResult {
+  /** 落盘后的绝对路径（前端算相对 .tex 目录路径用） */
+  absPath: string;
+  /** 相对项目根的路径，正斜杠，如 "figure/xxx.png"（仅用于回显/存储） */
+  relRootPath: string;
+  /** 去重后的最终文件名 */
+  fileName: string;
 }
 
 /** 新建条目类型（create_entry.kind，M0-6） */

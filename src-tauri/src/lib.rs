@@ -59,6 +59,11 @@ pub fn run() {
             commands::project::remove_entry,
             commands::project::rename_entry,
             commands::project::copy_entry,
+            // R5 图片目录设置（M1-7）
+            commands::project::save_project_config,
+            // R5 拖拽图片导入（M1-7）
+            commands::image::import_image,
+            commands::image::import_image_from_path,
             // 项目目录监听（M0-9a）
             commands::watch::watch_project,
             commands::watch::unwatch_project,

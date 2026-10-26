@@ -114,6 +114,8 @@ interface ProjectState {
   wizardOpen: boolean;
   /** 向导目标目录默认值（右键目录进入时指定） */
   wizardDir: string | null;
+  /** R5：项目设置对话框（图片目录等） */
+  projectSettingsOpen: boolean;
 
   openProjectDialog: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
@@ -146,6 +148,9 @@ interface ProjectState {
   /** 打开/关闭「从模板新建」向导（dir 缺省用项目根） */
   openWizard: (dir?: string) => void;
   closeWizard: () => void;
+  /** R5：打开/关闭项目设置对话框 */
+  openProjectSettings: () => void;
+  closeProjectSettings: () => void;
 }
 
 export const useProjectStore = create<ProjectState>((set, get) => ({
@@ -158,6 +163,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   clip: null,
   wizardOpen: false,
   wizardDir: null,
+  projectSettingsOpen: false,
 
   openProjectDialog: async () => {
     try {
@@ -428,4 +434,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   openWizard: (dir) => set({ wizardOpen: true, wizardDir: dir ?? get().root ?? null }),
   closeWizard: () => set({ wizardOpen: false, wizardDir: null }),
+
+  openProjectSettings: () => set({ projectSettingsOpen: true }),
+  closeProjectSettings: () => set({ projectSettingsOpen: false }),
 }));

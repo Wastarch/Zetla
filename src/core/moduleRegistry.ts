@@ -233,6 +233,25 @@ export function insertSnippet(code: string): boolean {
   return true;
 }
 
+/**
+ * 向当前活动编辑器插入代码，并把光标选区落在 (selFrom, selTo) 处（相对插入文本起点）。
+ * R5 插入 figure 时用它把光标定位到空 \caption{} 内，用户直接键入标题。
+ */
+export function insertSnippetSelect(code: string, selFrom: number, selTo: number): boolean {
+  const view: EditorView | null = getActiveView();
+  if (!view) {
+    console.warn("[module] insertSnippetSelect：无活动编辑器");
+    return false;
+  }
+  const pos = view.state.selection.main.head;
+  view.dispatch({
+    changes: { from: pos, insert: code },
+    selection: { anchor: pos + selFrom, head: pos + selTo },
+  });
+  view.focus();
+  return true;
+}
+
 /** 浅比较两个字符串→布尔映射（setOverrides 空转判定） */
 function sameMap(
   a: Record<string, boolean> | null,

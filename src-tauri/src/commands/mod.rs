@@ -4,6 +4,7 @@ pub mod config;
 pub mod core;
 pub mod envsetup;
 pub mod fsdoc;
+pub mod image;
 pub mod logparse;
 pub mod perl;
 pub mod project;
