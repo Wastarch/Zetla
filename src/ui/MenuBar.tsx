@@ -4,7 +4,7 @@
 // Synctex 双向跳转 M1-4 已接）。撤销/重做/注释经
 // 命令桥 src/editor/activeView.ts 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力）。
 import { useEffect, useRef, useState } from "react";
-import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { redo, toggleComment, undo } from "@codemirror/commands";
@@ -56,22 +56,6 @@ async function quitApp() {
   await getCurrentWindow().close();
 }
 
-/** 打开已有 PDF 到右侧预览（文件菜单入口） */
-async function openPdfDialog(): Promise<void> {
-  try {
-    const picked = await openFileDialog({
-      multiple: false,
-      directory: false,
-      title: "打开 PDF",
-      filters: [{ name: "PDF", extensions: ["pdf"] }],
-    });
-    if (typeof picked !== "string") return;
-    useAppStore.getState().showPdf(picked);
-  } catch (e) {
-    notify(String(e), "err");
-  }
-}
-
 export function MenuBar() {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -107,10 +91,6 @@ export function MenuBar() {
           label: "打开项目…",
           sc: "Ctrl+Shift+O",
           onClick: () => void useProjectStore.getState().openProjectDialog(),
-        },
-        {
-          label: "打开 PDF…",
-          onClick: () => void openPdfDialog(),
         },
         { sep: true, label: "" },
         {
