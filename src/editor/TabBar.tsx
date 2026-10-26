@@ -23,12 +23,17 @@ export function TabBar({ onFind }: TabBarProps) {
   const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
   const previewVisible = useAppStore((s) => s.previewVisible);
   const togglePreview = useAppStore((s) => s.togglePreview);
+  // 活动缓冲类型：非文本（图片/PDF）时禁用仅适用于源码编辑器的工具
+  const activeKind = useBuffersStore(
+    (s) => s.buffers.find((b) => b.path === s.activePath)?.kind ?? null,
+  );
 
   return (
     <div className="tabbar" role="tablist" aria-label="打开的文档">
       {buffers.map((b) => {
         const active = b.path === activePath;
         const dirty = b.content !== b.savedContent;
+        const iconName = b.kind === "image" ? "image" : b.kind === "pdf" ? "pdf" : "tex";
         return (
           <div
             key={b.path}
@@ -41,7 +46,14 @@ export function TabBar({ onFind }: TabBarProps) {
               if (e.button === 1) void closeBuffer(b.path); // 中键关闭
             }}
           >
-            <Icon name="tex" size={13} style={{ color: "var(--accent)", opacity: 0.75 }} />
+            <Icon
+              name={iconName}
+              size={13}
+              style={{
+                color: b.kind === "text" ? "var(--accent)" : "var(--txt-3)",
+                opacity: 0.75,
+              }}
+            />
             <span className="tname">{b.name}</span>
             {dirty ? (
               <button
@@ -89,8 +101,8 @@ export function TabBar({ onFind }: TabBarProps) {
         <button
           type="button"
           className="ibtn"
-          title="查找替换 (Ctrl+F)"
-          disabled={!activePath}
+          title={activeKind === "text" ? "查找替换 (Ctrl+F)" : "查找替换仅适用于文本编辑器"}
+          disabled={!activePath || activeKind !== "text"}
           onClick={onFind}
         >
           <Icon name="search" />

@@ -271,16 +271,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   openFromTree: (path) => {
     set({ selected: path, ctx: null });
-    const ext = extOf(path);
-    if (ext === "pdf") {
-      // M0-10b：树里的 PDF 直接在右侧预览打开
-      useAppStore.getState().showPdf(path);
-      return;
-    }
-    if (EXT_IMG.has(ext)) {
-      notify(`${base(path)} 将由图片查看器打开（M1）`, "err");
-      return;
-    }
+    // 一律进代码标签页：openFiles 内部按扩展名分流为文本 / 图片查看器 / PDF 查看器。
+    // 右侧 PDF 预览仅由编译完成（compile_finished → showPdf）自动弹出，
+    // 用户手动打开的文件（含 LaTeX 编译产物）不抢占右侧预览。
     void useBuffersStore.getState().openFiles([path]);
   },
 

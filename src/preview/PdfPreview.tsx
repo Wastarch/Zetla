@@ -40,16 +40,31 @@ const SIDE_PDF_MIN = 160;
 type Zoom = { kind: "fit-width" } | { kind: "fit-page" } | { kind: "custom"; scale: number };
 type Layout = "single" | "double";
 
-export function PdfPreview({ style }: { style?: CSSProperties }) {
-  const pdfPath = useAppStore((s) => s.previewPdf);
-  const rev = useAppStore((s) => s.previewRev);
+export function PdfPreview({
+  style,
+  path,
+  rev,
+}: {
+  style?: CSSProperties;
+  /** 标签页复用：传入时优先用它（与右侧预览 store 解耦）；省略则读全局预览 */
+  path?: string;
+  /** 标签页复用时手动指定的加载计数（省略=0，不随同路径重编译刷新） */
+  rev?: number;
+}) {
+  const storePdfPath = useAppStore((s) => s.previewPdf);
+  const storeRev = useAppStore((s) => s.previewRev);
   const compileStatus = useAppStore((s) => s.compileStatus);
   const togglePreview = useAppStore((s) => s.togglePreview);
   const pvSideWidth = useAppStore((s) => s.pvSideWidth);
   // M1-4：synctex 正向跳转目标（源码 Ctrl+点击写入）
   const pdfSync = useAppStore((s) => s.pdfSync);
 
-  const { doc, err, loading, reload } = usePdfDoc(pdfPath, rev);
+  // 标签页模式（path 指定）与右侧预览（store 驱动）解耦；interactive 决定是否支持 synctex 反向跳转
+  const interactive = path == null;
+  const pdfPath = path ?? storePdfPath;
+  const effectiveRev = path != null ? (rev ?? 0) : storeRev;
+
+  const { doc, err, loading, reload } = usePdfDoc(pdfPath, effectiveRev);
   const find = usePdfFind(doc);
 
   // M0-14a：默认缩放来自偏好设置（仅在打开/重载 PDF 时应用）
@@ -273,7 +288,7 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   // 目标页已挂载（连续模式/同页）直接落地；翻页模式目标页未挂载时先跳页，
   // 由下方 effect 等页面挂载后消费
   useEffect(() => {
-    if (!pdfSync) return;
+    if (!interactive || !pdfSync) return;
     const t = {
       page: pdfSync.page,
       x: pdfSync.x,
@@ -297,7 +312,7 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   // 翻页模式/文档延迟就绪：目标页挂载即落地高亮
   useEffect(() => {
     const t = pendingSyncRef.current;
-    if (!t || !doc) return;
+    if (!interactive || !t || !doc) return;
     if (!scrollEl?.querySelector(`[data-page="${t.page}"]`)) return;
     pendingSyncRef.current = null;
     setSyncMark(t);
@@ -445,11 +460,12 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
   const step = paged && layout === "double" ? 2 : 1;
   const sideW = Math.min(SIDE_MAX, Math.max(SIDE_MIN, pvSideWidth));
   const title = pdfPath ? `PDF 预览 · ${fileBase(pdfPath)}` : "PDF 预览";
-  const stale = compileStatus === "error" && !!doc;
+  // stale 仅对右侧预览（store 驱动）有意义；标签页内嵌 PDF 不显示「未更新」
+  const stale = interactive && compileStatus === "error" && !!doc;
 
   return (
     <aside
-      className="preview"
+      className={path != null ? "preview in-tab" : "preview"}
       style={style}
       ref={rootRef}
       aria-label="PDF 预览"
@@ -468,9 +484,11 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
             未更新
           </span>
         )}
-        <button type="button" className="ibtn" title="收起预览面板" onClick={togglePreview}>
-          <Icon name="panel-right" />
-        </button>
+        {path == null && (
+          <button type="button" className="ibtn" title="收起预览面板" onClick={togglePreview}>
+            <Icon name="panel-right" />
+          </button>
+        )}
       </div>
 
       <div className="pv-tools">
@@ -719,7 +737,7 @@ export function PdfPreview({ style }: { style?: CSSProperties }) {
                   onLink={handleLink}
                   onTextRendered={onTextRendered}
                   highlight={syncMark && syncMark.page === n ? syncMark : null}
-                  onSyncClick={(p, x, y) => void jumpToSourceFromPdf(p, x, y)}
+                  onSyncClick={interactive ? (p, x, y) => void jumpToSourceFromPdf(p, x, y) : undefined}
                 />
               ))}
             </div>

@@ -309,6 +309,12 @@ body {
   border-left: 1px solid var(--line);
 }
 
+/* 标签页内嵌复用（用户打开的 PDF）：填充编辑区，无左侧分隔线 */
+.preview.in-tab {
+  border-left: none;
+  min-width: 0;
+}
+
 .pv-head {
   height: 36px;
   flex: none;
@@ -1118,6 +1124,83 @@ body {
 
 .buffer-pane[hidden] {
   display: none;
+}
+
+/* 图片查看器（标签页内嵌，M1）：只读预览，暗/亮自适应 */
+.image-viewer {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  color: var(--txt);
+  min-width: 0;
+  min-height: 0;
+}
+.iv-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 12px;
+  user-select: none;
+}
+.iv-canvas {
+  transform-origin: center center;
+  will-change: transform;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.iv-canvas img {
+  max-width: none;
+  display: block;
+  /* 暗色背景下给图片留一圈描边，避免浅色图片融进背景 */
+  box-shadow: 0 0 0 1px var(--bd-soft), 0 2px 14px rgba(0, 0, 0, 0.28);
+}
+.iv-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: var(--txt-3);
+}
+.iv-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--bd-soft);
+  background: var(--bg-2);
+  font-size: 12px;
+  color: var(--txt-2);
+}
+.iv-bar .iv-name {
+  font-weight: 500;
+  color: var(--txt);
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.iv-bar .iv-dims {
+  font-variant-numeric: tabular-nums;
+}
+.iv-bar .iv-zoom {
+  font-variant-numeric: tabular-nums;
+  min-width: 46px;
+  text-align: right;
+}
+.iv-bar .iv-hint {
+  margin-left: auto;
+  opacity: 0.7;
+}
+.iv-bar .btn.sm {
+  padding: 2px 9px;
+  font-size: 11.5px;
 }
 
 .empty {

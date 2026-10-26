@@ -77,6 +77,11 @@ export function MenuBar() {
   const effectiveTheme = useSettingsStore((s) => s.effectiveTheme);
 
   const canEdit = activePath !== null;
+  // 当前活动标签是否为可编辑文本（图片/PDF 查看器时禁用编辑类命令，但「关闭标签」仍可用）
+  const activeKind = useBuffersStore(
+    (s) => s.buffers.find((b) => b.path === s.activePath)?.kind ?? null,
+  );
+  const canEditText = activeKind === "text";
   // M1-13：有可用更新时，帮助菜单按钮显示红点
   const hasUpdate = useUpdateStore(selectHasUpdate);
 
@@ -94,12 +99,29 @@ export function MenuBar() {
           sc: "Ctrl+Shift+O",
           onClick: () => void useProjectStore.getState().openProjectDialog(),
         },
+        {
+          label: "打开图片 / PDF…",
+          onClick: async () => {
+            const picked = await openFileDialog({
+              multiple: true,
+              filters: [
+                { name: "图片与 PDF", extensions: [...EXT_IMG, "pdf"] },
+                { name: "图片", extensions: [...EXT_IMG] },
+                { name: "PDF", extensions: ["pdf"] },
+              ],
+            });
+            if (!picked) return;
+            const paths = typeof picked === "string" ? [picked] : picked;
+            // 图片/PDF 进入代码标签页查看器（不抢占右侧预览）
+            await useBuffersStore.getState().openFiles(paths);
+          },
+        },
         { sep: true, label: "" },
         {
           label: "保存",
           sc: "Ctrl+S",
-          enabled: canEdit,
-          hint: "未打开文档",
+          enabled: canEditText,
+          hint: canEdit ? "当前标签为查看器，不可保存" : "未打开文档",
           onClick: () => {
             const p = useBuffersStore.getState().activePath;
             if (p) void useBuffersStore.getState().saveBuffer(p);
@@ -130,15 +152,15 @@ export function MenuBar() {
         {
           label: "撤销",
           sc: "Ctrl+Z",
-          enabled: canEdit,
-          hint: "未打开文档",
+          enabled: canEditText,
+          hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
           onClick: () => withView((v) => undo(v)),
         },
         {
           label: "重做",
           sc: "Ctrl+Y",
-          enabled: canEdit,
-          hint: "未打开文档",
+          enabled: canEditText,
+          hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
           onClick: () => withView((v) => redo(v)),
         },
         { sep: true, label: "" },
@@ -170,8 +192,8 @@ export function MenuBar() {
         {
           label: "切换注释",
           sc: "Ctrl+/",
-          enabled: canEdit,
-          hint: "未打开文档",
+          enabled: canEditText,
+          hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
           onClick: () => withView((v) => toggleComment(v)),
         },
       ],
@@ -181,8 +203,8 @@ export function MenuBar() {
       items: [
         {
           label: "插入图片…",
-          enabled: canEdit,
-          hint: "未打开文档",
+          enabled: canEditText,
+          hint: canEdit ? "当前标签为查看器，无法插入" : "未打开文档",
           onClick: async () => {
             const picked = await openFileDialog({
               multiple: true,

@@ -6,6 +6,8 @@ import { useCallback, useEffect, useRef } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
 import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
+import { ImageViewer } from "./ImageViewer";
+import { PdfPreview } from "@/preview/PdfPreview";
 import { setActiveView, setActiveEditorHandle } from "./activeView";
 import { takePendingJump } from "./jump";
 import { jumpToPdfFromSource } from "@/preview/syncTex";
@@ -121,21 +123,27 @@ export function EditorWorkspace() {
               hidden={b.path !== activePath}
             >
               {b.mounted || b.path === activePath ? (
-                <LaTeXEditor
-                  ref={setHandle(b.path)}
-                  value={b.content}
-                  height="100%"
-                  lineWrapping={settings.editor.lineWrapping}
-                  onChange={(v) => updateContent(b.path, v)}
-                  onSave={() => saveBuffer(b.path)}
-                  onCursorChange={(line, col) => {
-                    // 只接收活动编辑器的光标事件
-                    if (useBuffersStore.getState().activePath === b.path) setCursor({ line, col });
-                  }}
-                  onJumpToPdf={(line, col) => void jumpToPdfFromSource(b.path, line, col)}
-                  path={b.path}
-                  placeholder="开始输入 LaTeX…"
-                />
+                b.kind === "image" ? (
+                  <ImageViewer path={b.path} name={b.name} />
+                ) : b.kind === "pdf" ? (
+                  <PdfPreview path={b.path} style={{ position: "absolute", inset: 0 }} />
+                ) : (
+                  <LaTeXEditor
+                    ref={setHandle(b.path)}
+                    value={b.content}
+                    height="100%"
+                    lineWrapping={settings.editor.lineWrapping}
+                    onChange={(v) => updateContent(b.path, v)}
+                    onSave={() => saveBuffer(b.path)}
+                    onCursorChange={(line, col) => {
+                      // 只接收活动编辑器的光标事件
+                      if (useBuffersStore.getState().activePath === b.path) setCursor({ line, col });
+                    }}
+                    onJumpToPdf={(line, col) => void jumpToPdfFromSource(b.path, line, col)}
+                    path={b.path}
+                    placeholder="开始输入 LaTeX…"
+                  />
+                )
               ) : null}
             </div>
           ))

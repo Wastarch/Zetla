@@ -27,22 +27,27 @@ function scheduleCompileOnSave(): void {
   }, 400);
 }
 
+/** 缓冲类型：`text`=普通文本文档（LaTeX 等，可编辑/可保存）；`image`/`pdf`=只读查看器，不持有文本 */
+export type BufferKind = "text" | "image" | "pdf";
+
 /** 一个打开的文档（标签页） */
 export interface EditorBuffer {
   /** 绝对路径（唯一键） */
   path: string;
   /** 标签显示名（文件名） */
   name: string;
-  /** 当前编辑内容 */
+  /** 当前编辑内容（查看器缓冲恒为 ""） */
   content: string;
-  /** 上次保存的内容（脏 = content !== savedContent） */
+  /** 上次保存的内容（脏 = content !== savedContent；查看器缓冲恒为 ""） */
   savedContent: string;
-  /** 打开/保存后回读的编码，"utf-8" | "gbk" | ... */
+  /** 打开/保存后回读的编码，"utf-8" | "gbk" | ...（查看器缓冲无意义，恒 "utf-8"） */
   encoding: string;
-  /** 换行符 */
+  /** 换行符（查看器缓冲恒 "lf"） */
   eol: "lf" | "crlf";
   /** 是否已挂载 CM 实例（首次激活后为 true，切走只隐藏不卸载） */
   mounted: boolean;
+  /** 缓冲类型（决定渲染方式与是否可保存） */
+  kind: BufferKind;
 }
 
 /** 轻量反馈（toast） */
@@ -60,6 +65,24 @@ export interface CursorPos {
 function basename(p: string): string {
   const segs = p.split(/[\\/]/);
   return segs[segs.length - 1] || p;
+}
+
+/** 图片扩展名（与 useProject.EXT_IMG 保持一致；本地副本避免循环依赖） */
+const IMG_EXT = new Set([
+  "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "eps", "tif", "tiff", "avif",
+]);
+
+function extOf(name: string): string {
+  const i = name.lastIndexOf(".");
+  return i > 0 ? name.slice(i + 1).toLowerCase() : "";
+}
+
+/** 按扩展名判定缓冲类型：图片/PDF → 查看器；其余 → 文本 */
+function bufferKind(p: string): BufferKind {
+  const ext = extOf(p);
+  if (ext === "pdf") return "pdf";
+  if (IMG_EXT.has(ext)) return "image";
+  return "text";
 }
 
 /** 缓冲区 store 状态（外部订阅/键计算用，如 useWindowMemory 的会话记忆） */
@@ -110,16 +133,32 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
       if (get().buffers.some((b) => b.path === p)) continue;
       if (fresh.some((b) => b.path === p)) continue;
       try {
-        const d: FileDoc = await projectApi.readFile(p);
-        fresh.push({
-          path: p,
-          name: basename(p),
-          content: d.content,
-          savedContent: d.content,
-          encoding: d.encoding,
-          eol: d.eol,
-          mounted: false,
-        });
+        const kind = bufferKind(p);
+        if (kind === "text") {
+          const d: FileDoc = await projectApi.readFile(p);
+          fresh.push({
+            path: p,
+            name: basename(p),
+            content: d.content,
+            savedContent: d.content,
+            encoding: d.encoding,
+            eol: d.eol,
+            mounted: false,
+            kind,
+          });
+        } else {
+          // 图片 / PDF：仅建查看器缓冲，不读取二进制文本（避免误当文本回读/污染脏状态）
+          fresh.push({
+            path: p,
+            name: basename(p),
+            content: "",
+            savedContent: "",
+            encoding: "utf-8",
+            eol: "lf",
+            mounted: false,
+            kind,
+          });
+        }
       } catch (e) {
         set({ notice: { text: `打开失败 ${basename(p)}：${String(e)}`, kind: "err" } });
       }
@@ -137,7 +176,10 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
       activePath: active,
       notice: fresh[0]
         ? {
-            text: `已打开 ${fresh[0].name} · encoding=${fresh[0].encoding} · eol=${fresh[0].eol}`,
+            text:
+              fresh[0].kind === "text"
+                ? `已打开 ${fresh[0].name} · encoding=${fresh[0].encoding} · eol=${fresh[0].eol}`
+                : `已打开 ${fresh[0].name}（预览）`,
             kind: "ok",
           }
         : s.notice,
@@ -180,10 +222,12 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
 
   saveBuffer: async (path, options) => {
     const silent = !!options?.silent;
-    // 自动保存与手动保存并发时直接跳过（写的是同一快照，残余脏状态由两者之一收尾）
-    if (savingPaths.has(path)) return false;
     const buf = get().buffers.find((b) => b.path === path);
     if (!buf) return false;
+    // 查看器缓冲（图片/PDF）不可保存：避免把二进制当文本写盘、避免 Ctrl+S 副作用
+    if (buf.kind !== "text") return false;
+    // 自动保存与手动保存并发时直接跳过（写的是同一快照，残余脏状态由两者之一收尾）
+    if (savingPaths.has(path)) return false;
     savingPaths.add(path);
     const written = buf.content;
     try {
@@ -220,7 +264,7 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
   },
 
   saveAllBuffers: async () => {
-    const dirty = get().buffers.filter((b) => b.content !== b.savedContent);
+    const dirty = get().buffers.filter((b) => b.kind === "text" && b.content !== b.savedContent);
     for (const b of dirty) {
       await get().saveBuffer(b.path);
     }
@@ -232,7 +276,7 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
 
   // M0-14a · 自动保存：静默写全部脏缓冲；「保存未成功且仍脏且无其他保存接手」才算失败，汇总一条 toast
   autosaveDirty: async () => {
-    const dirty = get().buffers.filter((b) => b.content !== b.savedContent);
+    const dirty = get().buffers.filter((b) => b.kind === "text" && b.content !== b.savedContent);
     const failed: string[] = [];
     for (const b of dirty) {
       const ok = await get().saveBuffer(b.path, { silent: true });
