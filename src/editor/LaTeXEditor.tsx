@@ -18,7 +18,14 @@ import { useSettingsStore } from "@/core/settings";
 import type { EffectiveTheme } from "@/types/settings";
 import { mathSlotsExtension } from "./mathSlots";
 import { bibtexLanguage, BIB_HIGHLIGHT } from "./bibtex";
-import { citeCompletionSource, citeHoverSource, citeJumpAtCursor } from "@/modules/reference/citeSupport";
+import {
+  citeCompletionSource,
+  citeHoverSource,
+  citeJumpHint,
+  citeJumpAtCursor,
+  citeLinkDecorations,
+  ctrlHeldPlugin,
+} from "@/modules/reference/citeSupport";
 import { extOf } from "@/project/useProject";
 
 /**
@@ -198,6 +205,10 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
               }),
               keymap.of(completionKeymap),
               hoverTooltip(citeHoverSource),
+              // M1-14d+：Ctrl 按住时 \cite 显示可点链接提示（下划线+手型）+ 跳转提示气泡
+              citeLinkDecorations,
+              ctrlHeldPlugin,
+              hoverTooltip(citeJumpHint),
             ]),
         // M1-4：Ctrl/⌘+点击 → 优先 \cite 跳 bib 条目（M1-14d），否则回落 synctex 正向跳转
         EditorView.domEventHandlers({
