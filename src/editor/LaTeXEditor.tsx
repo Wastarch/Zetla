@@ -11,11 +11,14 @@ import CodeMirror, {
 import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
 import { tags as t } from "@lezer/highlight";
 import { openSearchPanel } from "@codemirror/search";
-import { latex } from "codemirror-lang-latex";
+import { latex, latexCompletionSource } from "codemirror-lang-latex";
+import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
+import { hoverTooltip } from "@codemirror/view";
 import { useSettingsStore } from "@/core/settings";
 import type { EffectiveTheme } from "@/types/settings";
 import { mathSlotsExtension } from "./mathSlots";
 import { bibtexLanguage, BIB_HIGHLIGHT } from "./bibtex";
+import { citeCompletionSource, citeHoverSource } from "@/modules/reference/citeSupport";
 import { extOf } from "@/project/useProject";
 
 /**
@@ -148,7 +151,14 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
         // M1-14b：.bib 用专属词法 + 高亮，.tex 维持 LaTeX
         isBib
           ? bibtexLanguage
-          : latex({ autoCloseBrackets: true, autoCloseTags: true }),
+          : // enableAutocomplete:false —— 关闭 latex() 自带的 autocompletion override，
+            // 改由下方唯一的 autocompletion({override:[latex+cite]}) 提供，避免
+            // 两个 override 配置冲突（Config merge conflict）导致编辑器崩溃白屏。
+            latex({
+              autoCloseBrackets: true,
+              autoCloseTags: true,
+              enableAutocomplete: false,
+            }),
         // 软换行：只影响显示，不向文档写入换行符
         lineWrapping ? EditorView.lineWrapping : [],
         keymap.of([
@@ -174,6 +184,21 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           : syntaxHighlighting(LATEX_HIGHLIGHT[theme]),
         // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转），仅 .tex 启用
         ...(isBib ? [] : mathSlotsExtension),
+        // M1-14c：.tex 内 \cite{ 补全 + 悬浮预览。
+        // 唯一的 autocompletion override（合并 LaTeX 命令补全 + 引用补全），
+        // 因 latex() 已设 enableAutocomplete:false，此处不会再有第二个 override 冲突。
+        ...(isBib
+          ? []
+          : [
+              autocompletion({
+                override: [latexCompletionSource(true), citeCompletionSource],
+                defaultKeymap: true,
+                activateOnTyping: true,
+                icons: true,
+              }),
+              keymap.of(completionKeymap),
+              hoverTooltip(citeHoverSource),
+            ]),
         // M1-4：Ctrl/⌘+点击源码行 → synctex 正向跳转（posAtCoords 取点击处行/列）
         EditorView.domEventHandlers({
           mousedown: (e, view) => {
@@ -289,7 +314,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
             highlightActiveLine: true,
             highlightActiveLineGutter: true,
             foldGutter: false, // MVP 暂不做代码折叠（MVP.md Phase 1-2）
-            autocompletion: true,
+            autocompletion: false, // M1-14c：改由 autocompletion({override}) 提供（LaTeX + \cite）
             closeBrackets: true,
             bracketMatching: true,
             searchKeymap: true,

@@ -4695,3 +4695,50 @@ body.col-resizing {
 .ctx .mi.primary:hover {
   background: var(--accent-soft);
 }
+
+/* M1-14c · \cite 悬浮预览卡片 */
+.cm-cite-tooltip {
+  max-width: 360px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg-3);
+  color: var(--txt);
+  box-shadow: var(--shadow);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.cm-cite-tooltip .cm-cite-type {
+  display: inline-block;
+  margin-bottom: 3px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+}
+.cm-cite-tooltip .cm-cite-title {
+  font-weight: 600;
+  color: var(--txt);
+}
+.cm-cite-tooltip .cm-cite-meta {
+  margin-top: 2px;
+  color: var(--txt-2);
+}
+.cm-cite-tooltip .cm-cite-file {
+  margin-top: 2px;
+  color: var(--txt-3);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+}
+.cm-cite-tooltip .cm-cite-warn {
+  margin-top: 4px;
+  color: var(--warn);
+}
+.cm-cite-tooltip .cm-cite-missing {
+  color: var(--err);
+}
+.cm-cite-tooltip .cm-cite-missing code {
+  font-family: var(--font-mono, monospace);
+}
