@@ -123,3 +123,44 @@ export function collectMissingCiteDiags(
   }
   return out;
 }
+
+/** 在已解析条目中找「首个重复 key」的条目位置（供校验汇总条点击跳首个） */
+export function firstDuplicateEntry(
+  entries: BibEntry[],
+  duplicateKeys: Set<string>,
+): { file: string; line: number } | null {
+  for (const e of entries) {
+    if (duplicateKeys.has(e.key)) return { file: e.file, line: e.line };
+  }
+  return null;
+}
+
+export interface MissingCiteSummary {
+  /** 缺失引用总数（跨所有 .tex 文件） */
+  count: number;
+  /** 首个缺失引用的位置（文档顺序，确定性取决于 files 传入顺序） */
+  first: { file: string; line: number } | null;
+}
+
+/**
+ * 汇总项目内全部 .tex 文件的「引用缺失」诊断（复用 collectMissingCiteDiags）。
+ * knownKeys = 项目 .bib 定义的所有 key（store.byKey.keys()）。
+ * files 需按确定顺序传入（建议按路径排序），保证「首个」稳定。
+ */
+export function summarizeMissingCites(
+  files: { path: string; doc: Text }[],
+  knownKeys: Set<string>,
+): MissingCiteSummary {
+  let count = 0;
+  let first: { file: string; line: number } | null = null;
+  for (const f of files) {
+    const diags = collectMissingCiteDiags(f.doc, knownKeys);
+    if (diags.length === 0) continue;
+    count += diags.length;
+    if (!first) {
+      const d = diags[0];
+      first = { file: f.path, line: f.doc.lineAt(d.from).number };
+    }
+  }
+  return { count, first };
+}

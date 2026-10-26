@@ -252,6 +252,12 @@ export function MenuBar() {
           onClick: () => useAppStore.getState().setSidebarView("math"),
         },
         {
+          // M1-14f：引用管理面板
+          label: `${sidebarVisible && sidebarView === "references" ? "✓ " : ""}引用`,
+          sc: "Ctrl+B 4",
+          onClick: () => useAppStore.getState().setSidebarView("references"),
+        },
+        {
           label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
           onClick: () => useAppStore.getState().togglePreview(),
         },
@@ -399,11 +405,18 @@ export function MenuBar() {
           useAppStore.getState().toggleSidebar();
           return;
         }
-        // M1-12a：Ctrl+B 1/2/3 直达活动栏视图（资源管理器 / 大纲 / 公式；原 4=公式已合并入 3）
-        if (e.key === "1" || e.key === "2" || e.key === "3") {
+        // M1-12a：Ctrl+B 1/2/3/4 直达活动栏视图（资源管理器 / 大纲 / 公式 / 引用）
+        if (e.key === "1" || e.key === "2" || e.key === "3" || e.key === "4") {
           e.preventDefault();
           clearChord();
-          const v = e.key === "1" ? "explorer" : e.key === "2" ? "outline" : "math";
+          const v =
+            e.key === "1"
+              ? "explorer"
+              : e.key === "2"
+                ? "outline"
+                : e.key === "3"
+                  ? "math"
+                  : "references";
           useAppStore.getState().setSidebarView(v);
           return;
         }

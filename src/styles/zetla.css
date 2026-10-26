@@ -4808,3 +4808,201 @@ body.col-resizing {
 .cm-panel.cm-lint-panel ul li:hover {
   background: var(--bg-2);
 }
+
+/* M1-14f · 引用管理面板（活动栏「引用」视图） */
+.ref-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* 校验汇总条 */
+.ref-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  flex: none;
+}
+.ref-ok {
+  font-size: 11.5px;
+  color: var(--ok, #2e9e5b);
+  font-weight: 600;
+}
+.ref-pill {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: var(--radius, 6px);
+  border: 1px solid var(--line);
+  background: var(--bg-3);
+  color: var(--txt-1);
+  cursor: pointer;
+  outline: none;
+}
+.ref-pill:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.ref-pill:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ref-pill-warn {
+  color: var(--warn);
+  border-color: color-mix(in srgb, var(--warn) 45%, var(--line));
+}
+.ref-pill-err {
+  color: var(--err);
+  border-color: color-mix(in srgb, var(--err) 45%, var(--line));
+}
+
+/* 操作区 */
+.ref-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  flex: none;
+}
+.ref-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 11.5px;
+  color: var(--txt-1);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius, 6px);
+  outline: none;
+}
+.ref-search:focus {
+  border-color: var(--accent);
+}
+.ref-search::placeholder {
+  color: var(--txt-4);
+}
+.ref-import {
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11.5px;
+  color: var(--txt-1);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius, 6px);
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+}
+.ref-import:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* 分组列表 */
+.ref-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 0 8px;
+}
+.ref-empty {
+  padding: 14px 12px;
+  font-size: 11.5px;
+  color: var(--txt-3);
+}
+.ref-group {
+  margin-bottom: 2px;
+}
+.ref-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+}
+.ref-group-head:hover {
+  background: var(--bg-3);
+}
+.ref-caret {
+  display: inline-block;
+  font-size: 9px;
+  transition: transform 0.12s ease;
+  transform: rotate(-90deg);
+  color: var(--txt-4);
+}
+.ref-caret.open {
+  transform: rotate(0deg);
+}
+.ref-group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+  text-align: left;
+}
+.ref-group-count {
+  flex: none;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--txt-4);
+}
+.ref-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 3px 12px 3px 22px;
+  font-size: 12.5px;
+  color: var(--txt-1);
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  text-align: left;
+  outline: none;
+}
+.ref-entry:hover {
+  background: var(--bg-3);
+}
+.ref-entry-dup {
+  border-left-color: var(--warn);
+}
+.ref-dup-dot {
+  flex: none;
+  font-size: 8px;
+  color: var(--warn);
+  transform: translateY(-1px);
+}
+.ref-key {
+  flex: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  color: var(--txt-1);
+}
+.ref-meta {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--txt-3);
+  font-size: 11px;
+}
+.ref-type {
+  flex: none;
+  font-size: 10px;
+  color: var(--txt-4);
+}

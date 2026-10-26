@@ -18,6 +18,8 @@ const ITEMS: Item[] = [
   { view: "outline", icon: "menu", label: "大纲", hint: "Ctrl+B 2" },
   // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库 两页签）
   { view: "math", icon: "formula", label: "公式", hint: "Ctrl+B 3" },
+  // M1-14f：引用管理面板（校验汇总 + 条目列表 + 导入 .bib）
+  { view: "references", icon: "bib", label: "引用", hint: "Ctrl+B 4" },
 ];
 
 export function ActivityBar() {

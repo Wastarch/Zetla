@@ -8,6 +8,7 @@ import { Suspense, lazy, type CSSProperties } from "react";
 import { useAppStore } from "@/core/store";
 import { ProjectTree } from "./ProjectTree";
 import { OutlinePanel } from "@/outline/OutlinePanel";
+import ReferencePanel from "@/modules/reference/ReferencePanel";
 
 const MathView = lazy(() => import("./MathView"));
 
@@ -32,6 +33,13 @@ export function Sidebar({ style }: SidebarProps) {
       ) : view === "outline" ? (
         <div className="side-view">
           <OutlinePanel />
+        </div>
+      ) : view === "references" ? (
+        <div className="side-view">
+          <div className="side-head">
+            <div className="side-title">引用</div>
+          </div>
+          <ReferencePanel />
         </div>
       ) : (
         <Suspense
