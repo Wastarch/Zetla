@@ -18,7 +18,7 @@ import { useSettingsStore } from "@/core/settings";
 import type { EffectiveTheme } from "@/types/settings";
 import { mathSlotsExtension } from "./mathSlots";
 import { bibtexLanguage, BIB_HIGHLIGHT } from "./bibtex";
-import { citeCompletionSource, citeHoverSource } from "@/modules/reference/citeSupport";
+import { citeCompletionSource, citeHoverSource, citeJumpAtCursor } from "@/modules/reference/citeSupport";
 import { extOf } from "@/project/useProject";
 
 /**
@@ -199,12 +199,18 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
               keymap.of(completionKeymap),
               hoverTooltip(citeHoverSource),
             ]),
-        // M1-4：Ctrl/⌘+点击源码行 → synctex 正向跳转（posAtCoords 取点击处行/列）
+        // M1-4：Ctrl/⌘+点击 → 优先 \cite 跳 bib 条目（M1-14d），否则回落 synctex 正向跳转
         EditorView.domEventHandlers({
           mousedown: (e, view) => {
             if (e.button !== 0 || !(e.ctrlKey || e.metaKey)) return false;
             const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
             if (pos == null) return false;
+            // M1-14d：点击落在 \cite{key} 上 → 跳 bib 条目（命中即消费，不回落 synctex）
+            if (citeJumpAtCursor(view.state.doc, pos)) {
+              e.preventDefault();
+              return true;
+            }
+            // 否则回落现有 synctex 正向跳转
             const line = view.state.doc.lineAt(pos);
             onJumpRef.current?.(line.number, pos - line.from + 1);
             e.preventDefault();

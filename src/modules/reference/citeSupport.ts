@@ -7,11 +7,14 @@ import type {
   Completion,
 } from "@codemirror/autocomplete";
 import type { EditorView, Tooltip } from "@codemirror/view";
+import type { Text } from "@codemirror/state";
 import { useReferenceStore } from "./useReferenceStore";
+import { jumpToFile } from "@/editor/jump";
 import {
   matchCitePrefix,
   citeCompletionFrom,
   findCiteKeyAt,
+  findCiteKeyForJump,
   authorYear,
   citeTooltipHtml,
 } from "./citeLogic";
@@ -68,4 +71,26 @@ export function citeHoverSource(view: EditorView, pos: number): Tooltip | null {
     create: () => ({ dom }),
     above: true,
   };
+}
+
+/**
+ * M1-14d · Ctrl+点击 \cite{key} → 跳转到 bib 条目。
+ * 命中命令且 key 在引用索引中存在 → 经 jumpToFile 打开/切到 .bib 并选中条目行，返回 true（消费事件）；
+ * 命中命令但 key 缺失（引用未定义）→ 仍消费事件（避免回落到 synctex 误导），仅控制台告警；
+ * 未命中任何 \cite → 返回 false（交还上层回落到 synctex 正向跳转）。
+ * 只读 useReferenceStore 缓存，不在点击时重解。
+ */
+export function citeJumpAtCursor(doc: Text, pos: number): boolean {
+  const found = findCiteKeyForJump(doc, pos);
+  if (!found) return false;
+
+  const ref = useReferenceStore.getState();
+  const arr = ref.byKey.get(found.key);
+  if (arr && arr.length > 0) {
+    const e = arr[0];
+    jumpToFile(e.file, e.line);
+    return true;
+  }
+  console.warn(`[cite-jump] 引用 key「${found.key}」在 .bib 中未找到，无法跳转`);
+  return true;
 }

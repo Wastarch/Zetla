@@ -14,10 +14,12 @@ export interface JumpTarget {
 
 let pending: JumpTarget | null = null;
 
-/** 日志条目点击 → 打开/切到目标文件并跳行选中（无行号/非 .tex 不呼起） */
-export function jumpToError(file: string, line: number, col?: number): void {
-  // 解析不到行号（line=0）或非 .tex（.sty/生成文件）：只展示不可跳
-  if (line <= 0 || !file.toLowerCase().endsWith(".tex")) return;
+/**
+ * 通用跳转：打开/切到目标文件并跳行选中（不限扩展名，.tex 与 .bib 等均可）。
+ * M1-14d 用于从 .tex 的 \cite{key} 跳到 bib 条目；M0-12 错误定位同样复用之。
+ */
+export function jumpToFile(file: string, line: number, col?: number): void {
+  if (line <= 0) return;
 
   const bs = useBuffersStore.getState();
   const hit = bs.buffers.find((b) => b.path.toLowerCase() === file.toLowerCase());
@@ -37,6 +39,13 @@ export function jumpToError(file: string, line: number, col?: number): void {
       if (!st.buffers.some((b) => b.path.toLowerCase() === file.toLowerCase())) pending = null;
     });
   }
+}
+
+/** 日志条目点击 → 打开/切到目标文件并跳行选中（无行号/非 .tex 不呼起） */
+export function jumpToError(file: string, line: number, col?: number): void {
+  // 解析不到行号（line=0）或非 .tex（.sty/生成文件）：只展示不可跳
+  if (line <= 0 || !file.toLowerCase().endsWith(".tex")) return;
+  jumpToFile(file, line, col);
 }
 
 /** EditorWorkspace 激活 effect 调用：目标命中才消费，否则保留 */
