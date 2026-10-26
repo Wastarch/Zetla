@@ -14,6 +14,7 @@ import { openSearchPanel } from "@codemirror/search";
 import { latex, latexCompletionSource } from "codemirror-lang-latex";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { hoverTooltip } from "@codemirror/view";
+import { linter, lintGutter } from "@codemirror/lint";
 import { useSettingsStore } from "@/core/settings";
 import type { EffectiveTheme } from "@/types/settings";
 import { mathSlotsExtension } from "./mathSlots";
@@ -26,6 +27,10 @@ import {
   citeLinkDecorations,
   ctrlHeldPlugin,
 } from "@/modules/reference/citeSupport";
+import {
+  duplicateKeyLinter,
+  missingCiteLinter,
+} from "@/modules/reference/lint";
 import { extOf } from "@/project/useProject";
 
 /**
@@ -151,21 +156,34 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     // M1-4：Ctrl/⌘+点击 → 正向 synctex 跳转（闭包经 ref 取最新回调，不触发扩展重建）
     const onJumpRef = useRef(onJumpToPdf);
     onJumpRef.current = onJumpToPdf;
+    // M1-14e：当前文档路径（经 ref 取最新值，供 linter 按文件过滤重复 key）
+    const pathRef = useRef(path);
+    pathRef.current = path;
 
     const isBib = path ? extOf(path) === "bib" : false;
     const extensions = useMemo(
       () => [
         // M1-14b：.bib 用专属词法 + 高亮，.tex 维持 LaTeX
-        isBib
-          ? bibtexLanguage
-          : // enableAutocomplete:false —— 关闭 latex() 自带的 autocompletion override，
-            // 改由下方唯一的 autocompletion({override:[latex+cite]}) 提供，避免
-            // 两个 override 配置冲突（Config merge conflict）导致编辑器崩溃白屏。
-            latex({
-              autoCloseBrackets: true,
-              autoCloseTags: true,
-              enableAutocomplete: false,
-            }),
+        ...(isBib
+          ? [
+              bibtexLanguage,
+              // M1-14e：.bib 内重复 key 告警（项目级判定，读 store 缓存定位）
+              linter(duplicateKeyLinter(() => pathRef.current), { delay: 400 }),
+              lintGutter(),
+            ]
+          : [
+              // enableAutocomplete:false —— 关闭 latex() 自带的 autocompletion override，
+              // 改由下方唯一的 autocompletion({override:[latex+cite]}) 提供，避免
+              // 两个 override 配置冲突（Config merge conflict）导致编辑器崩溃白屏。
+              latex({
+                autoCloseBrackets: true,
+                autoCloseTags: true,
+                enableAutocomplete: false,
+              }),
+              // M1-14e：.tex 内 \cite{key} 引用缺失告警（key 不在 store.byKey 即标红）
+              linter(missingCiteLinter(), { delay: 400 }),
+              lintGutter(),
+            ]),
         // 软换行：只影响显示，不向文档写入换行符
         lineWrapping ? EditorView.lineWrapping : [],
         keymap.of([

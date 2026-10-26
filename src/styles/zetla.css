@@ -4777,3 +4777,34 @@ body.col-resizing {
   margin-right: 5px;
   opacity: 0.7;
 }
+
+/* M1-14e · 校验诊断（重复 key / 引用缺失）标记样式（亮暗自适应） */
+.cm-editor .cm-lintRange-warning {
+  text-decoration: underline wavy var(--warn);
+  text-underline-offset: 2px;
+}
+.cm-editor .cm-lintRange-error {
+  text-decoration: underline wavy var(--err);
+  text-underline-offset: 2px;
+}
+.cm-editor .cm-lint-marker-warning {
+  background-color: var(--warn);
+}
+.cm-editor .cm-lint-marker-error {
+  background-color: var(--err);
+}
+.cm-editor .cm-lintPoint > .cm-lintPointMark {
+  border-bottom-color: var(--warn);
+}
+/* 诊断面板条 */
+.cm-panel.cm-lint-panel {
+  background: var(--bg-3);
+  color: var(--txt);
+  border-top: 1px solid var(--line);
+}
+.cm-panel.cm-lint-panel ul li {
+  border-bottom: 1px solid var(--line);
+}
+.cm-panel.cm-lint-panel ul li:hover {
+  background: var(--bg-2);
+}
