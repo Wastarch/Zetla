@@ -1,4 +1,5 @@
 // M1-13 · 更新检测：拉取 latest.json + semver 比较
+import { invoke } from "@tauri-apps/api/core";
 import semver from "semver";
 import { APP_VERSION } from "@/version";
 import { ENDPOINTS } from "./endpoints";
@@ -21,26 +22,24 @@ export function isMandatory(latest: LatestInfo): boolean {
 }
 
 /**
- * 依次尝试各端点拉取 latest.json；任一成功即返回。
+ * 经 Rust 侧（reqwest）依次尝试各端点拉取 latest.json —— 绕过 WebView 的 CORS 限制。
  * 全部失败（网络/404/JSON 非法）返回 null —— 调用方按「已是最新」静默处理。
  */
 export async function fetchLatest(): Promise<LatestInfo | null> {
-  for (const url of ENDPOINTS) {
-    try {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) continue;
-      const data = (await res.json()) as LatestInfo;
-      if (
-        !data?.version ||
-        !Array.isArray(data.installers) ||
-        data.installers.length === 0
-      ) {
-        continue;
-      }
-      return data;
-    } catch {
-      continue;
+  try {
+    const text = await invoke<string>("fetch_latest_json", { urls: ENDPOINTS });
+    const data = JSON.parse(text) as LatestInfo;
+    if (
+      !data?.version ||
+      !Array.isArray(data.installers) ||
+      data.installers.length === 0
+    ) {
+      return null;
     }
+    return data;
+  } catch (e) {
+    // DEV 下打印具体原因（如「所有更新源均不可用：…」），生产静默当已是最新
+    if (import.meta.env.DEV) console.warn("[update] 拉取 latest.json 失败：", e);
+    return null;
   }
-  return null;
 }

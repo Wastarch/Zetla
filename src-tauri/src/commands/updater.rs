@@ -177,6 +177,34 @@ pub fn cleanup_update_temp() {
     }
 }
 
+/// 通过 Rust 侧拉取 latest.json，绕过 WebView 的 CORS 限制
+/// （Gitee raw 不返回 Access-Control-Allow-Origin，浏览器 fetch 必被拦）。
+/// 依次尝试 urls，任一成功即返回文本；全部失败返回错误。
+#[tauri::command]
+pub async fn fetch_latest_json(urls: Vec<String>) -> Result<String, String> {
+    if urls.is_empty() {
+        return Err("没有可用的更新源".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(20))
+        .build()
+        .map_err(|e| format!("初始化 HTTP 客户端失败：{e}"))?;
+
+    let mut last_err = String::new();
+    for url in urls {
+        match client.get(&url).send().await {
+            Ok(resp) if resp.status().is_success() => match resp.text().await {
+                Ok(text) => return Ok(text),
+                Err(e) => last_err = format!("读取响应失败（{url}）：{e}"),
+            },
+            Ok(resp) => last_err = format!("HTTP {}（{url}）", resp.status()),
+            Err(e) => last_err = format!("请求失败（{url}）：{e}"),
+        }
+    }
+    Err(format!("所有更新源均不可用：{last_err}"))
+}
+
 fn emit_progress(app: &AppHandle, downloaded: u64, total: u64, source: &str) {
     let _ = app.emit(
         EV_UPDATE_PROGRESS,

@@ -64,6 +64,7 @@ pub fn run() {
             commands::watch::unwatch_project,
             // M1-13：自动更新（自下载安装包 + 拉起安装向导）
             commands::updater::download_app_update,
+            commands::updater::fetch_latest_json,
             commands::updater::launch_installer_and_exit,
             // M0-2+ 逐步注册：
             // list_templates, get_template, create_project, import_template,
