@@ -1240,6 +1240,18 @@ body {
   font-size: 12px;
 }
 
+/* 空态 logo（public/logo.svg） */
+.empty-mark {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px rgba(20, 28, 40, 0.18));
+}
+
+[data-theme='dark'] .empty-mark {
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.55));
+}
+
 /* ── CM6 配色（对齐设计稿编辑区） ──────── */
 .latex-editor {
   flex: 1;
@@ -3517,6 +3529,19 @@ body.col-resizing {
   padding: 2px 11px;
   margin-top: 7px;
   letter-spacing: 0.02em;
+}
+
+/* 关于页 logo（public/logo.svg） */
+.about-mark {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 8px rgba(20, 28, 40, 0.18));
+}
+
+[data-theme='dark'] .about-mark {
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.5));
 }
 
 .about-desc {

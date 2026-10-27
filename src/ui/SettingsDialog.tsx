@@ -743,7 +743,12 @@ export function SettingsDialog() {
             {pane === "about" && (
               <div className="set-pane about-pane" role="tabpanel">
                 <div className="about-hero">
-                  <div className="mark">Z</div>
+                  <img
+                    className="about-mark"
+                    src="/logo.svg"
+                    alt="Zetla"
+                    draggable={false}
+                  />
                   <div>
                     <h3>Zetla</h3>
                     <p className="about-ver">版本 {version}</p>

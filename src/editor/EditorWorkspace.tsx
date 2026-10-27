@@ -127,9 +127,12 @@ export function EditorWorkspace() {
       <div className="code-wrap">
         {buffers.length === 0 ? (
           <div className="empty">
-            <div className="mark" style={{ width: 40, height: 40, fontSize: 22, borderRadius: 11 }}>
-              Z
-            </div>
+            <img
+              className="empty-mark"
+              src="/logo.svg"
+              alt="Zetla"
+              draggable={false}
+            />
             <div className="big">未打开任何文档</div>
             <p>按 Ctrl+O 或「文件 → 打开文件…」选择 .tex 文档开始编辑</p>
           </div>

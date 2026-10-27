@@ -82,8 +82,8 @@
 /* 软件 logo（public/logo.svg，自带圆角徽章背景） */
 .welcome-mark {
     flex: none;
-    width: 48px;
-    height: 48px;
+    width: 56px;
+    height: 56px;
     object-fit: contain;
     user-select: none;
     align-self: stretch;
