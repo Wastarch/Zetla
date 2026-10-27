@@ -1,16 +1,16 @@
 {
-    "version": "0.1.5",
-    "notes": "参考文献全流程 · 补全 · 预览 · 跳转 · 校验 · 管理",
-    "pubDate": "2026-10-26T17:20:00+08:00",
-    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.1.5",
+    "version": "0.1.6",
+    "notes": "项目管理 · 表格编辑器 · 图片插入 · 多文件模板",
+    "pubDate": "2026-10-27T22:00:00+08:00",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.1.6",
     "installers": [
         {
-            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.1.5/Zetla_0.1.5_x64-setup.exe",
-            "sha256": "a465e9245f25477678e899361e5ee06a270f25cae401021297ef4b9145671aca"
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.1.6/Zetla_0.1.6_x64-setup.exe",
+            "sha256": "de790047d1077e1bdb2267895ae7e81f7d50a8185c419e6b7bfedeebf7e5b15d"
         },
         {
-            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.1.5/Zetla_0.1.5_x64-setup.exe",
-            "sha256": "a465e9245f25477678e899361e5ee06a270f25cae401021297ef4b9145671aca"
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.1.6/Zetla_0.1.6_x64-setup.exe",
+            "sha256": "de790047d1077e1bdb2267895ae7e81f7d50a8185c419e6b7bfedeebf7e5b15d"
         }
     ],
     "minVersion": "0.1.0",
