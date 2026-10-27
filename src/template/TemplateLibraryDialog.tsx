@@ -1,12 +1,45 @@
-// M1-15e · 模板库管理对话框
-// 浏览内置 + 用户模板（%APPDATA%/Zetla/templates）；预览 manifest 元数据；
-// 「另存当前项目为模板」「导入模板（目录 / zip）」「用此模板新建」。
+// M1-15e · 模板库管理对话框（参考 docs/dev/UI/模板库.html 三栏布局）
+// 左：分类导航（内置按 category 分组 + 用户模板）；右：搜索 + 列表 / 详情双栏。
+// 能力：浏览/预览 manifest、导入（目录 / zip）、用此模板新建；「另存当前项目为模板」由菜单以另存模式打开。
 import { useEffect, useMemo, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { templateApi } from "@/ipc/invoke";
 import { Icon } from "@/ui/Icon";
 import { notify, useProjectStore } from "@/project/useProject";
 import type { TemplateManifest, TemplateMeta } from "@/types";
+
+/** 分类展示名（内置模板 manifest 的 category → 中文标签） */
+const CAT_LABELS: Record<string, string> = {
+  article: "📄 文章 (Article)",
+  slides: "📊 幻灯片 (Slides)",
+  beamer: "📊 幻灯片 (Slides)",
+  resume: "📑 简历 (Resume)",
+  thesis: "🎓 论文 (Thesis)",
+  other: "其他",
+};
+
+function catKey(m: TemplateMeta): string {
+  return (m.category ?? "").trim().toLowerCase() || "other";
+}
+
+function catLabel(key: string): string {
+  return CAT_LABELS[key] ?? key;
+}
+
+/** 取标签前缀的 emoji（emoji 仅在 CAT_LABELS 记录一次） */
+const LEADING_EMOJI =
+  /^(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)/u;
+
+function catEmoji(key: string): string {
+  const label = CAT_LABELS[key];
+  return label?.match(LEADING_EMOJI)?.[1] ?? "";
+}
+
+/** 列表项 emoji（用户模板固定 📁，未知分类回退 📄） */
+function emojiFor(m: TemplateMeta): string {
+  if (m.isUser) return "📁";
+  return catEmoji(catKey(m)) || "📄";
+}
 
 export function TemplateLibraryDialog() {
   const open = useProjectStore((s) => s.libraryOpen);
@@ -18,11 +51,13 @@ export function TemplateLibraryDialog() {
   const [metas, setMetas] = useState<TemplateMeta[]>([]);
   const [selected, setSelected] = useState("");
   const [manifest, setManifest] = useState<TemplateManifest | null>(null);
+  const [scope, setScope] = useState<string>("all"); // all | user | cat:<key>
+  const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // 「另存当前项目为模板」内联表单
+  // 「另存当前项目为模板」表单
   const [saveMode, setSaveMode] = useState(false);
   const [saveName, setSaveName] = useState("");
 
@@ -36,19 +71,18 @@ export function TemplateLibraryDialog() {
     });
   };
 
-  // 打开时拉列表；若从菜单「另存当前项目为模板…」进入，则直接展开另存表单
+  // 打开时拉列表 + 复位筛选；另存模式直接展开表单
   useEffect(() => {
     if (!open) return;
     setErr(null);
+    setScope("all");
+    setQuery("");
     setSaveMode(librarySaveMode);
-    setSaveName(
-      librarySaveMode && root ? (root.split(/[\\/]/).pop() ?? "") : "",
-    );
+    setSaveName(librarySaveMode && root ? (root.split(/[\\/]/).pop() ?? "") : "");
     setLoading(true);
     void refresh()
       .catch((e) => setErr(String(e)))
       .finally(() => setLoading(false));
-    // refresh 为内联函数，不纳入依赖（仅在 open / saveMode / root 变化时刷新）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, librarySaveMode, root]);
 
@@ -82,13 +116,52 @@ export function TemplateLibraryDialog() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, close]);
 
-  const { builtin, user } = useMemo(
-    () => ({
-      builtin: metas.filter((m) => !m.isUser),
-      user: metas.filter((m) => m.isUser),
-    }),
-    [metas],
-  );
+  const { builtin, user, builtinCats } = useMemo(() => {
+    const b = metas.filter((m) => !m.isUser);
+    const u = metas.filter((m) => m.isUser);
+    const counts = new Map<string, number>();
+    for (const m of b) {
+      const k = catKey(m);
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return {
+      builtin: b,
+      user: u,
+      builtinCats: [...counts.entries()].sort((a, b2) =>
+        a[0].localeCompare(b2[0]),
+      ),
+    };
+  }, [metas]);
+
+  const scopeMetas = useMemo(() => {
+    if (scope === "user") return user;
+    if (scope === "all") return metas; // 全部 = 内置 + 用户
+    const key = scope.startsWith("cat:") ? scope.slice(4) : "";
+    return builtin.filter((m) => catKey(m) === key);
+  }, [scope, metas, user, builtin]);
+
+  const filtered = useMemo(() => {
+    const kw = query.trim().toLowerCase();
+    if (!kw) return scopeMetas;
+    return scopeMetas.filter(
+      (m) =>
+        m.name.toLowerCase().includes(kw) ||
+        (m.description ?? "").toLowerCase().includes(kw) ||
+        (m.category ?? "").toLowerCase().includes(kw) ||
+        m.id.toLowerCase().includes(kw) ||
+        (m.tags ?? []).some((t) => t.toLowerCase().includes(kw)),
+    );
+  }, [scopeMetas, query]);
+
+  // 过滤/切换分类后，保证选中项在可见列表内
+  useEffect(() => {
+    if (!open) return;
+    if (filtered.length === 0) {
+      setSelected("");
+      return;
+    }
+    if (!filtered.some((m) => m.id === selected)) setSelected(filtered[0].id);
+  }, [open, filtered, selected]);
 
   if (!open) return null;
 
@@ -108,12 +181,19 @@ export function TemplateLibraryDialog() {
       setErr(null);
       const meta = await templateApi.importTemplate(picked);
       await refresh(meta.id);
+      setScope(meta.isUser ? "user" : "all");
       notify(`已导入模板「${meta.name}」`, "ok");
     } catch (e) {
       setErr(String(e));
     } finally {
       setBusy(false);
     }
+  };
+
+  /** 退出另存模式（同时复位 store 标志，便于下次菜单再次打开表单） */
+  const endSaveMode = () => {
+    setSaveMode(false);
+    useProjectStore.setState({ librarySaveMode: false });
   };
 
   const doSave = async () => {
@@ -127,9 +207,10 @@ export function TemplateLibraryDialog() {
     setErr(null);
     try {
       const meta = await templateApi.saveAsTemplate(root, name);
-      setSaveMode(false);
+      endSaveMode();
       setSaveName("");
       await refresh(meta.id);
+      setScope("user");
       notify(`已另存为模板「${meta.name}」`, "ok");
     } catch (e) {
       setErr(String(e));
@@ -138,25 +219,45 @@ export function TemplateLibraryDialog() {
     }
   };
 
-  const card = (m: TemplateMeta) => (
+  const selectedMeta = metas.find((m) => m.id === selected);
+
+  const item = (m: TemplateMeta) => (
     <button
       key={m.id}
       type="button"
-      className={m.id === selected ? "tpl-card on" : "tpl-card"}
+      className={m.id === selected ? "tl-item on" : "tl-item"}
       onClick={() => setSelected(m.id)}
-      title={m.id}
+      title={m.description ?? m.id}
     >
-      <Icon name={m.isUser ? "folder" : "book"} size={18} />
-      <span className="tn">
-        {m.name}
-        {m.isUser && <span className="tpl-user">用户</span>}
+      <span className="tl-item-emoji">{emojiFor(m)}</span>
+      <span className="tl-item-info">
+        <span className="tl-item-title">
+          {m.name}
+          {m.isUser && <span className="tl-user">用户</span>}
+        </span>
+        <span className="tl-item-meta">
+          <span className="tl-tag">
+            {m.isUser ? "USER" : catKey(m).toUpperCase()}
+          </span>
+          <span className="tl-engine">
+            {m.engine || (m.isUser ? "用户模板" : m.id)}
+          </span>
+        </span>
       </span>
-      <span className="td">{m.description ?? "—"}</span>
-      <span className="tm">{m.category ?? (m.isUser ? "用户模板" : m.id)}</span>
     </button>
   );
 
-  const selectedMeta = metas.find((m) => m.id === selected);
+  const catBtn = (key: string, label: string, count: number) => (
+    <button
+      key={key}
+      type="button"
+      className={scope === key ? "tl-cat on" : "tl-cat"}
+      onClick={() => setScope(key)}
+    >
+      <span>{label}</span>
+      <span className="tl-count">{count}</span>
+    </button>
+  );
 
   return (
     <div
@@ -165,7 +266,12 @@ export function TemplateLibraryDialog() {
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="modal tpl-lib" role="dialog" aria-label="模板库">
+      <div
+        className="modal tl-modal"
+        role="dialog"
+        aria-label="模板库"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
         <div className="modal-head">
           <Icon name="book" size={18} style={{ color: "var(--accent)" }} />
           <div>
@@ -179,71 +285,56 @@ export function TemplateLibraryDialog() {
           </button>
         </div>
 
-        <div className="modal-body">
-          {err && <p className="error">{err}</p>}
-          {loading ? (
-            <p className="set-note">加载中…</p>
-          ) : (
-            <>
-              {builtin.length > 0 && (
-                <>
-                  <div className="tpl-sec">内置模板</div>
-                  <div className="tpl-grid">{builtin.map(card)}</div>
-                </>
-              )}
-
-              <div className="tpl-sec">
-                用户模板
-                {user.length === 0 && (
-                  <span className="tpl-sec-hint">
-                    暂无 —— 可用「另存当前项目为模板」或导入
-                  </span>
-                )}
-              </div>
-              {user.length > 0 && <div className="tpl-grid">{user.map(card)}</div>}
-
-              <div className="tpl-detail">
-                {manifest && selectedMeta ? (
-                  <>
-                    <div className="tpl-detail-head">
-                      <b>{manifest.name}</b>
-                      {selectedMeta.isUser && <span className="tpl-user">用户</span>}
-                      <span className="tpl-detail-id">{manifest.id}</span>
-                    </div>
-                    <p className="tpl-detail-desc">
-                      {manifest.description ?? "无描述"}
-                    </p>
-                    <div className="tpl-detail-meta">
-                      <span>
-                        引擎 <code>{manifest.build.engine}</code>
-                      </span>
-                      <span>
-                        主文件 <code>{manifest.build.mainFile}</code>
-                      </span>
-                      <span>变量 {manifest.variables?.length ?? 0}</span>
-                      <span>文件 {manifest.structure.files.length}</span>
-                      {manifest.version && <span>版本 {manifest.version}</span>}
-                    </div>
-                    {manifest.tags && manifest.tags.length > 0 && (
-                      <div className="tpl-detail-tags">
-                        {manifest.tags.map((t) => (
-                          <span key={t}>{t}</span>
-                        ))}
+        <div className="modal-body tl-body">
+          {/* 左：分类导航 */}
+            <aside className="tl-cats">
+                <div className="tl-cat-group">
+                    {catBtn("all", "全部", metas.length)}
+                    <div className="tl-cat-title">内置模板</div>
+                    {builtinCats.map(([k, n]) => catBtn(`cat:${k}`, catLabel(k), n))}
                       </div>
-                    )}
-                  </>
+                <div className="tl-cat-group">
+                    <div className="tl-cat-title">用户模板</div>
+                    {catBtn("user", "📁 我的模板", user.length)}
+                </div>
+            </aside>
+          {/* 右：搜索 + 列表/详情 */}
+          <div className="tl-content">
+            <div className="tl-search">
+              <input
+                className="tl-search-input"
+                value={query}
+                placeholder="搜索模板名称或标签…"
+                spellCheck={false}
+                onChange={(e) => setQuery(e.target.value)}
+              />
+            </div>
+
+            {err && <p className="error tl-err">{err}</p>}
+
+            <div className="tl-split">
+              <div className="tl-list">
+                {loading ? (
+                  <p className="set-note">加载中…</p>
+                ) : filtered.length === 0 ? (
+                  <p className="set-note">没有匹配的模板</p>
                 ) : (
-                  <p className="set-note">选择一个模板查看详情</p>
+                  filtered.map(item)
                 )}
               </div>
 
-              {saveMode && (
-                <div className="tpl-save">
-                  <label className="entry-label" htmlFor="tpl-save-name">
-                    模板名（将复制当前项目文件，排除 .ltex / 编译产物）
+              {saveMode ? (
+                <div className="tl-detail tl-save-panel">
+                  <h2>另存当前项目为模板</h2>
+                  <p className="tl-desc">
+                    将当前项目文件复制到用户模板目录（排除 .ltex / 编译产物 /
+                    依赖目录）。
+                  </p>
+                  <label className="entry-label" htmlFor="tl-save-name">
+                    模板名
                   </label>
                   <input
-                    id="tpl-save-name"
+                    id="tl-save-name"
                     className="entry-input"
                     value={saveName}
                     placeholder="例如：我的论文模板"
@@ -257,12 +348,8 @@ export function TemplateLibraryDialog() {
                       }
                     }}
                   />
-                  <div className="tpl-save-acts">
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => setSaveMode(false)}
-                    >
+                  <div className="tl-save-acts">
+                    <button type="button" className="btn" onClick={endSaveMode}>
                       取消
                     </button>
                     <button
@@ -275,9 +362,76 @@ export function TemplateLibraryDialog() {
                     </button>
                   </div>
                 </div>
+              ) : (
+                <div className="tl-detail">
+                  {manifest && selectedMeta ? (
+                    <>
+                      <div className="tl-detail-head">
+                        <h2>{manifest.name}</h2>
+                        {selectedMeta.isUser && (
+                          <span className="tl-user">用户</span>
+                        )}
+                      </div>
+                      <p className="tl-desc">{manifest.description ?? "无描述"}</p>
+
+                      <div className="tl-meta-grid">
+                        <div className="tl-meta">
+                          <span className="tl-meta-label">引擎 (Engine)</span>
+                          <span className="tl-meta-value">
+                            {manifest.build.engine}
+                          </span>
+                        </div>
+                        <div className="tl-meta">
+                          <span className="tl-meta-label">主文件 (Main File)</span>
+                          <span className="tl-meta-value">
+                            {manifest.build.mainFile}
+                          </span>
+                        </div>
+                        <div className="tl-meta">
+                          <span className="tl-meta-label">变量 (Variables)</span>
+                          <span className="tl-meta-value">
+                            {manifest.variables?.length ?? 0}
+                          </span>
+                        </div>
+                        <div className="tl-meta">
+                          <span className="tl-meta-label">文件数 (Files)</span>
+                          <span className="tl-meta-value">
+                            {manifest.structure.files.length}
+                          </span>
+                        </div>
+                        <div className="tl-meta">
+                          <span className="tl-meta-label">版本 (Version)</span>
+                          <span className="tl-meta-value">
+                            {manifest.version ?? "—"}
+                          </span>
+                        </div>
+                        <div className="tl-meta">
+                          <span className="tl-meta-label">ID</span>
+                          <span className="tl-meta-value">{manifest.id}</span>
+                        </div>
+                      </div>
+
+                      <div className="tl-tags">
+                        {(manifest.tags && manifest.tags.length > 0
+                          ? manifest.tags
+                          : [
+                              manifest.category ??
+                                (selectedMeta.isUser ? "用户模板" : "未分类"),
+                            ]
+                        ).map((t) => (
+                          <span key={t} className="tl-tag-plain">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="set-note">选择一个模板查看详情</p>
+                  )}
+                </div>
               )}
-            </>
-          )}
+            </div>
+          </div>
         </div>
 
         <div className="modal-foot">
@@ -308,7 +462,7 @@ export function TemplateLibraryDialog() {
             <button
               type="button"
               className="btn primary"
-              disabled={!selected}
+              disabled={!selected || saveMode || busy}
               onClick={() => {
                 const id = selected;
                 close();

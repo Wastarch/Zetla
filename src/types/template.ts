@@ -92,4 +92,6 @@ export interface TemplateMeta {
   version?: string;
   /** M1-15e：是否为用户模板（%APPDATA%/Zetla/templates） */
   isUser?: boolean;
+  /** 编译引擎（列表项展示用） */
+  engine?: string;
 }

@@ -28,6 +28,8 @@ pub struct TemplateMeta {
     pub version: Option<String>,
     /// M1-15e：是否为用户模板（%APPDATA%/Zetla/templates）
     pub is_user: bool,
+    /// 编译引擎（列表项展示，省去逐个拉 manifest）
+    pub engine: String,
 }
 
 fn meta_from(m: &TemplateManifest, is_user: bool) -> TemplateMeta {
@@ -39,6 +41,7 @@ fn meta_from(m: &TemplateManifest, is_user: bool) -> TemplateMeta {
         tags: m.tags.clone(),
         version: m.version.clone(),
         is_user,
+        engine: m.build.engine.clone(),
     }
 }
 
