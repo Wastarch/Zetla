@@ -4,7 +4,7 @@
 // 读写口径：缺文件或 JSON 损坏 → 回退默认值；越界/非法值 → 归一化；写盘 → 建目录 + 临时文件替换
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 pub const CONFIG_DIR_NAME: &str = "Zetla";
@@ -56,6 +56,8 @@ pub struct AppConfig {
     pub formula: FormulaConfig,
     /// M1-8：表格模块配置（默认线型 / 转义 / 编号 / 位置）
     pub table: TableConfig,
+    /// M1-15a：最近项目注册表（path = projectId；上限见 MAX_RECENT）
+    pub recent_projects: Vec<ProjectEntry>,
 }
 
 impl Default for AppConfig {
@@ -75,6 +77,7 @@ impl Default for AppConfig {
             modules: BTreeMap::new(),
             formula: FormulaConfig::default(),
             table: TableConfig::default(),
+            recent_projects: Vec::new(),
         }
     }
 }
@@ -121,6 +124,73 @@ pub fn normalize_session(mut session: SessionConfig) -> SessionConfig {
         .map(|a| a.trim().to_string())
         .filter(|a| !a.is_empty() && session.open_files.iter().any(|p| p == a));
     session
+}
+
+/// M1-15a：最近项目注册表条目（与 src/types/project.ts ProjectEntry 对齐；path = projectId）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProjectEntry {
+    /// 项目根绝对路径（= projectId）
+    pub path: String,
+    /// 展示名（可由 .ltex/config.json 的 name 覆盖，缺省取目录名）
+    pub name: String,
+    /// 模板 id（来自 .ltex/config.json 的 templateId；无则 null）
+    pub template_id: Option<String>,
+    /// 置顶
+    pub pinned: bool,
+    /// 归档（不移动/删除目录，仅欢迎页分组）
+    pub archived: bool,
+    /// 最近一次打开时间（ISO-8601；无则 null）
+    pub last_opened: Option<String>,
+}
+
+/// M1-15a：最近项目注册表上限（防呆；超出按最近优先截断）
+pub const MAX_RECENT: usize = 20;
+
+/// M1-15a：注册表归一化——清洗每个条目 / 按 path 去重（保留最后出现者）/
+/// 截断至上限 / 排序（未归档在前 → 置顶在前 → last_opened 倒序，None 最后）。
+/// 仅影响内存顺序与非法值，不触碰磁盘。
+pub fn normalize_recent(mut v: Vec<ProjectEntry>) -> Vec<ProjectEntry> {
+    // 1) 清洗每个条目
+    for e in &mut v {
+        e.path = e.path.trim().to_string();
+        let name = e.name.trim().to_string();
+        e.name = if name.is_empty() {
+            Path::new(&e.path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        } else {
+            name
+        };
+        e.template_id = clean_opt_str(e.template_id.take());
+        e.last_opened = clean_opt_str(e.last_opened.take());
+    }
+    // 2) 去重（按 path；保留最后出现者）
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut dedup: Vec<ProjectEntry> = Vec::new();
+    for e in v.into_iter().rev() {
+        if e.path.is_empty() || !seen.insert(e.path.clone()) {
+            continue;
+        }
+        dedup.push(e);
+    }
+    dedup.reverse();
+    // 3) 排序：未归档在前 → 同组置顶在前 → last_opened 倒序（None 最后）
+    dedup.sort_by(|a, b| {
+        a.archived
+            .cmp(&b.archived)
+            .then_with(|| b.pinned.cmp(&a.pinned))
+            .then_with(|| match (&a.last_opened, &b.last_opened) {
+                (None, None) => std::cmp::Ordering::Equal,
+                (None, Some(_)) => std::cmp::Ordering::Greater,
+                (Some(_), None) => std::cmp::Ordering::Less,
+                (Some(x), Some(y)) => y.cmp(x),
+            })
+    });
+    // 4) 截断至上限（排序后截断 → 保留最相关/最近的 20 条）
+    dedup.truncate(MAX_RECENT);
+    dedup
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -457,6 +527,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     cfg.formula = normalize_formula(cfg.formula);
     // M1-8：表格配置归一化（线型/转义白名单；位置字符集；行列上限）
     cfg.table = normalize_table(cfg.table);
+    // M1-15a：最近项目注册表归一化（去重/截断/排序）
+    cfg.recent_projects = normalize_recent(cfg.recent_projects);
     // M1-3：编译引擎白名单 + 流程步骤归一化（非法引擎回退 auto，保持「跟随项目」行为）
     if !BUILD_ENGINES.contains(&cfg.build.engine.as_str()) {
         cfg.build.engine = "auto".to_string();
@@ -1137,5 +1209,135 @@ mod tests {
         assert_eq!(c2.name, "D"); // 空白被 trim
         assert_eq!(c2.latex, "z");
         assert_eq!(c2.category, "k");
+    }
+
+    #[test]
+    fn recent_projects_normalize_dedup_sort_cap() {
+        // 空 → 空
+        assert!(normalize_recent(Vec::new()).is_empty());
+
+        // 清洗：name 空白回退目录名；空 path 丢弃；去重保留最后出现者
+        let raw = vec![
+            ProjectEntry {
+                path: "  D:/a  ".into(),
+                name: "  ".into(),
+                template_id: Some("  t1  ".into()),
+                pinned: false,
+                archived: false,
+                last_opened: Some(" 2026-01-01T00:00:00Z  ".into()),
+            },
+            ProjectEntry {
+                path: "D:/a".into(), // 与上面去重（path 去空白后相同）
+                name: "A2".into(),
+                template_id: None,
+                pinned: true,
+                archived: false,
+                last_opened: Some("2026-03-01T00:00:00Z".into()),
+            },
+            ProjectEntry {
+                path: "D:/b".into(),
+                name: "B".into(),
+                template_id: None,
+                pinned: false,
+                archived: true, // 归档应在后
+                last_opened: None,
+            },
+            ProjectEntry {
+                path: "".into(), // 空 path → 丢弃
+                name: "ghost".into(),
+                template_id: None,
+                pinned: true,
+                archived: false,
+                last_opened: None,
+            },
+        ];
+        let got = normalize_recent(raw);
+        // 去重后 D:/a 仅一条（保留「最后出现者」→ A2；template_id 随后者为 None）
+        assert_eq!(got.len(), 2);
+        assert_eq!(got[0].path, "D:/a");
+        assert_eq!(got[0].name, "A2");
+        assert_eq!(got[0].template_id, None);
+        assert!(got[0].pinned);
+        assert_eq!(got[0].last_opened.as_deref(), Some("2026-03-01T00:00:00Z"));
+        // 归档项在后
+        assert_eq!(got[1].path, "D:/b");
+        assert!(got[1].archived);
+        // 空 path 被丢弃
+
+        // 排序：未归档 + 置顶 + 最近在前
+        let raw = vec![
+            ProjectEntry {
+                path: "D:/old".into(),
+                name: "old".into(),
+                template_id: None,
+                pinned: false,
+                archived: false,
+                last_opened: Some("2026-01-01T00:00:00Z".into()),
+            },
+            ProjectEntry {
+                path: "D:/pinned".into(),
+                name: "pinned".into(),
+                template_id: None,
+                pinned: true,
+                archived: false,
+                last_opened: Some("2026-01-01T00:00:00Z".into()),
+            },
+            ProjectEntry {
+                path: "D:/new".into(),
+                name: "new".into(),
+                template_id: None,
+                pinned: false,
+                archived: false,
+                last_opened: Some("2026-05-01T00:00:00Z".into()),
+            },
+            ProjectEntry {
+                path: "D:/arch".into(),
+                name: "arch".into(),
+                template_id: None,
+                pinned: false,
+                archived: true,
+                last_opened: Some("2026-09-01T00:00:00Z".into()),
+            },
+        ];
+        let got = normalize_recent(raw);
+        let order: Vec<&str> = got.iter().map(|e| e.path.as_str()).collect();
+        // 期望：pinned（置顶）→ new（最近）→ old（较旧）→ arch（归档最后）
+        assert_eq!(order, vec!["D:/pinned", "D:/new", "D:/old", "D:/arch"]);
+
+        // 截断至上限：造 25 条，期望保留 20 条
+        let many: Vec<ProjectEntry> = (0..25)
+            .map(|i| ProjectEntry {
+                path: format!("D:/p{i}"),
+                name: format!("p{i}"),
+                template_id: None,
+                pinned: false,
+                archived: false,
+                last_opened: Some(format!("2026-12-{:02}T00:00:00Z", (i % 28) + 1)),
+            })
+            .collect();
+        assert_eq!(normalize_recent(many).len(), MAX_RECENT);
+    }
+
+    #[test]
+    fn recent_projects_camel_case_keys() {
+        let mut cfg = AppConfig::default();
+        cfg.recent_projects = vec![ProjectEntry {
+            path: "D:/x".into(),
+            name: "x".into(),
+            template_id: Some("t".into()),
+            pinned: true,
+            archived: false,
+            last_opened: Some("2026-01-01T00:00:00Z".into()),
+        }];
+        let text = serde_json::to_string(&cfg).unwrap();
+        assert!(text.contains("\"recentProjects\""));
+        assert!(text.contains("\"templateId\""));
+        assert!(text.contains("\"pinned\""));
+        assert!(text.contains("\"archived\""));
+        assert!(text.contains("\"lastOpened\""));
+        // snake_case 不应出现
+        assert!(!text.contains("recent_projects"));
+        assert!(!text.contains("template_id"));
+        assert!(!text.contains("last_opened"));
     }
 }

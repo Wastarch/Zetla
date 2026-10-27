@@ -11,6 +11,9 @@ import { ActivityBar } from "@/project/ActivityBar";
 import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
 import { TemplateWizard } from "@/template/TemplateWizard";
+import { WelcomeScreen } from "@/project/WelcomeScreen";
+import { useProjectStore } from "@/project/useProject";
+import { useBuffersStore } from "@/editor/useBuffers";
 import { ProjectSettingsDialog } from "@/ui/ProjectSettingsDialog";
 import { MenuBar } from "@/ui/MenuBar";
 import { StatusBar } from "@/ui/StatusBar";
@@ -39,6 +42,13 @@ function App() {
   const previewVisible = useAppStore((s) => s.previewVisible);
   const previewRatio = useAppStore((s) => s.previewRatio);
   const settingsPane = useAppStore((s) => s.settingsDialog);
+  // M1-15a：无活动项目且无打开文档 → 欢迎页（替换编辑区；见 WelcomeScreen）
+  // loaded 门控：设置加载完成前不显示，避免启动恢复上次项目时欢迎页闪现
+  const loaded = useSettingsStore((s) => s.loaded);
+  const root = useProjectStore((s) => s.root);
+  const restoring = useProjectStore((s) => s.restoring);
+  const bufferCount = useBuffersStore((s) => s.buffers.length);
+  const showWelcome = loaded && !restoring && root === null && bufferCount === 0;
 
   // 拖拽中读 avail 不批最新值，用 ref
   const wsRef = useRef<HTMLDivElement | null>(null);
@@ -152,19 +162,25 @@ function App() {
             />
           </>
         )}
-        <EditorWorkspace />
-        {previewVisible && (
+        {showWelcome ? (
+          <WelcomeScreen />
+        ) : (
           <>
-            <div
-              className="resizer"
-              title="拖拽调整预览宽度"
-              onMouseDown={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                startPrevResize();
-              }}
-            />
-            <PdfPreview style={{ width: previewW }} />
+            <EditorWorkspace />
+            {previewVisible && (
+              <>
+                <div
+                  className="resizer"
+                  title="拖拽调整预览宽度"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    startPrevResize();
+                  }}
+                />
+                <PdfPreview style={{ width: previewW }} />
+              </>
+            )}
           </>
         )}
       </div>

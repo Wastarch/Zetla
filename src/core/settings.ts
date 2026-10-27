@@ -14,6 +14,7 @@ import {
   type AppTheme,
   type EffectiveTheme,
 } from "@/types/settings";
+import type { ProjectEntry } from "@/types/project";
 
 const FONT_SIZE_MIN = 8;
 const FONT_SIZE_MAX = 32;
@@ -62,6 +63,12 @@ interface SettingsState {
    */
   effectiveTheme: EffectiveTheme;
   setEffectiveTheme: (t: EffectiveTheme) => void;
+  /**
+   * M1-15a：同步最近项目注册表镜像。后端 register/pin/archive 已写盘并返回最新列表，
+   * 此处同时更新 settings 与 persisted，避免后续 persist（以 persisted 为基底整写）
+   * 用旧值回写、把注册表清空。
+   */
+  setRecentProjects: (list: ProjectEntry[]) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -127,6 +134,12 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
   // 生效主题由 useSettingsEffects 统一写入（值不变时不触发订阅者重渲染）
   setEffectiveTheme: (t) => set((s) => (s.effectiveTheme === t ? s : { effectiveTheme: t })),
+  // M1-15a：注册表镜像（同时写 settings 与 persisted，防 persist 回写旧值）
+  setRecentProjects: (list) =>
+    set((s) => ({
+      settings: { ...s.settings, recentProjects: list },
+      persisted: { ...s.persisted, recentProjects: list },
+    })),
 }));
 
 /** 编辑器行列 CSS 变量同步（字号/字体族）+ 明暗主题同步，App 根部调用 */

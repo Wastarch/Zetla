@@ -121,6 +121,12 @@ export function MenuBar() {
             await useBuffersStore.getState().openFiles(paths);
           },
         },
+        {
+          label: "关闭项目",
+          enabled: hasProject,
+          hint: "未打开项目",
+          onClick: () => void useProjectStore.getState().closeProject(),
+        },
         { sep: true, label: "" },
         {
           label: "保存",

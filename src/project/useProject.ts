@@ -4,8 +4,9 @@
 import { create } from "zustand";
 import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { projectApi } from "@/ipc/invoke";
+import { configApi, projectApi } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
+import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import type { EntryKind, ProjectNode, ProjectTree } from "@/types";
 
@@ -116,9 +117,13 @@ interface ProjectState {
   wizardDir: string | null;
   /** R5：项目设置对话框（图片目录等） */
   projectSettingsOpen: boolean;
+  /** M1-15a：启动恢复上次项目进行中（欢迎页据此延后显示，避免闪现） */
+  restoring: boolean;
 
   openProjectDialog: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
+  /** M1-15a：关闭当前项目（关闭其下缓冲；脏文件取消则中止），回到欢迎页 */
+  closeProject: () => Promise<void>;
   /** silent=true 时失败不弹 toast（M0-9a 监听触发的刷新用） */
   refresh: (silent?: boolean) => Promise<void>;
   toggleDir: (path: string) => void;
@@ -164,6 +169,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   wizardOpen: false,
   wizardDir: null,
   projectSettingsOpen: false,
+  restoring: false,
 
   openProjectDialog: async () => {
     try {
@@ -234,9 +240,53 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       void projectApi.watchProject(root).catch((e) => {
         console.warn("[watch_project]", e);
       });
+      // M1-15a：写回最近项目注册表（upsert；失败不阻断打开，仅记录）
+      void configApi
+        .registerRecentProject(root)
+        .then((list) => useSettingsStore.getState().setRecentProjects(list))
+        .catch((e) => console.warn("[register_recent_project]", e));
     } catch (e) {
       notify(String(e), "err");
     }
+  },
+
+  closeProject: async () => {
+    const root = get().root;
+    if (!root) return;
+    const isUnder = (p: string) =>
+      p.startsWith(`${root}\\`) || p.startsWith(`${root}/`);
+    // 关闭属于当前项目的缓冲（脏文件弹关闭确认；取消则该文件保留）
+    const toClose = useBuffersStore
+      .getState()
+      .buffers.filter((b) => isUnder(b.path))
+      .map((b) => b.path);
+    for (const p of toClose) {
+      await useBuffersStore.getState().closeBuffer(p);
+    }
+    // 仍有属于该项目的缓冲（用户取消了关闭确认）→ 中止关闭项目
+    if (useBuffersStore.getState().buffers.some((b) => isUnder(b.path))) return;
+    void projectApi.unwatchProject().catch((e) => {
+      console.warn("[unwatch_project]", e);
+    });
+    set({
+      root: null,
+      tree: null,
+      selected: null,
+      openDirs: new Set<string>(),
+      ctx: null,
+      entryDialog: null,
+      clip: null,
+    });
+    // 项目关闭后旧的 PDF / 编译结果 / 日志都不再有效
+    useAppStore.setState({
+      previewPdf: null,
+      previewRev: 0,
+      lastResult: null,
+      compileStatus: "idle",
+      compilePct: 0,
+      compileCurrent: "",
+    });
+    useAppStore.getState().clearLog();
   },
 
   refresh: async (silent = false) => {

@@ -7,6 +7,7 @@ pub mod fsdoc;
 pub mod image;
 pub mod logparse;
 pub mod perl;
+pub mod project_mgmt;
 pub mod project;
 pub mod synctex;
 pub mod template;

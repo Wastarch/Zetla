@@ -197,30 +197,36 @@ export function useWindowMemory(): void {
       if (!cur.settings.general.restoreLastProject) return;
       const root = cur.settings.session.lastProject;
       if (!root) return;
+      // M1-15a：恢复期间抑制欢迎页（App 依此延后渲染），结束（含失败）务必复位
+      useProjectStore.setState({ restoring: true });
       try {
-        await useProjectStore.getState().openProject(root);
-      } catch (e) {
-        console.warn("[window-memory] 恢复上次项目失败", e);
-      }
-      if (useProjectStore.getState().root !== root) {
-        // 打开失败：清除坏记忆（subscription 已可能写过，这里强制置空）
-        void useSettingsStore.getState().persist({
-          session: { lastProject: null, openFiles: [], activeFile: null },
-        });
-        notify("上次项目已不可用（已清空记忆）", "err");
-        return;
-      }
-      // M0-13c：重开上次的编辑器标签页（按上次顺序；只恢复属于本项目的文件，
-      // 跨项目残留/已删除的文件自然被过滤或在打开时给出提示）
-      const { openFiles, activeFile } = cur.settings.session;
-      const under = [...new Set(openFiles)].filter(
-        (p) => p.startsWith(`${root}\\`) || p.startsWith(`${root}/`),
-      );
-      if (under.length > 0) {
-        await useBuffersStore.getState().openFiles(under);
-        if (activeFile && under.includes(activeFile)) {
-          useBuffersStore.getState().setActive(activeFile);
+        try {
+          await useProjectStore.getState().openProject(root);
+        } catch (e) {
+          console.warn("[window-memory] 恢复上次项目失败", e);
         }
+        if (useProjectStore.getState().root !== root) {
+          // 打开失败：清除坏记忆（subscription 已可能写过，这里强制置空）
+          void useSettingsStore.getState().persist({
+            session: { lastProject: null, openFiles: [], activeFile: null },
+          });
+          notify("上次项目已不可用（已清空记忆）", "err");
+          return;
+        }
+        // M0-13c：重开上次的编辑器标签页（按上次顺序；只恢复属于本项目的文件，
+        // 跨项目残留/已删除的文件自然被过滤或在打开时给出提示）
+        const { openFiles, activeFile } = cur.settings.session;
+        const under = [...new Set(openFiles)].filter(
+          (p) => p.startsWith(`${root}\\`) || p.startsWith(`${root}/`),
+        );
+        if (under.length > 0) {
+          await useBuffersStore.getState().openFiles(under);
+          if (activeFile && under.includes(activeFile)) {
+            useBuffersStore.getState().setActive(activeFile);
+          }
+        }
+      } finally {
+        useProjectStore.setState({ restoring: false });
       }
     };
     void restoreSession();

@@ -88,4 +88,31 @@ export interface ProjectConfig {
   modules?: Record<string, boolean>;
   /** 图片目录（R5 拖拽导入用，不写死 figures/） */
   imageDir?: string;
+  /** 项目显示名（默认取目录名；M1-15a） */
+  name?: string;
+  /** 项目描述（M1-15c 设置面板） */
+  description?: string;
+  /** 项目类型（M1-15c 设置面板） */
+  projectType?: "article" | "thesis" | "beamer" | "resume" | "custom";
+  /** 资源管理器树过滤（glob；M1-15c 设置面板） */
+  exclude?: string[];
+}
+
+/**
+ * 最近项目注册表条目（M1-15a，与 Rust AppConfig.recent_projects 对齐）
+ * path 即 projectId（绝对路径）
+ */
+export interface ProjectEntry {
+  /** 项目根绝对路径（= projectId） */
+  path: string;
+  /** 展示名（可由 .ltex/config.json 的 name 覆盖，缺省取目录名） */
+  name: string;
+  /** 模板 id（来自 .ltex/config.json 的 templateId；无则 null） */
+  templateId?: string | null;
+  /** 置顶 */
+  pinned: boolean;
+  /** 归档（不移动/删除目录，仅欢迎页分组） */
+  archived: boolean;
+  /** 最近一次打开时间（ISO-8601；无则 null） */
+  lastOpened?: string | null;
 }

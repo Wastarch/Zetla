@@ -56,3 +56,210 @@
 .modal-body .milestone {
   margin-bottom: 1.1em;
 }
+
+/* ── M1-15a 欢迎页（无活动项目且无打开文档时替换编辑区） ── */
+.welcome {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  overflow: auto;
+  background: var(--bg-2);
+}
+
+.welcome-inner {
+  margin: auto;
+  width: min(880px, 100%);
+  padding: 48px 40px;
+}
+
+.welcome-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 26px;
+}
+
+.welcome-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.welcome-title h1 {
+  font-size: 22px;
+  font-weight: 650;
+  color: var(--txt);
+  letter-spacing: 0.2px;
+}
+
+.welcome-title p {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--txt-2);
+}
+
+.welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 30px;
+}
+
+.welcome-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: var(--txt-2);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.welcome-link {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.welcome-link:hover {
+  text-decoration: underline;
+}
+
+.welcome-empty {
+  padding: 22px;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  color: var(--txt-3);
+  font-size: 13px;
+  text-align: center;
+}
+
+.welcome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.welcome-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+
+.welcome-card:hover {
+  border-color: var(--accent);
+  box-shadow: var(--shadow);
+}
+
+.welcome-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.welcome-card.archived {
+  opacity: 0.78;
+}
+
+.wc-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.wc-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--txt);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.wc-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--txt-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.wc-when {
+  font-size: 11px;
+  color: var(--txt-2);
+}
+
+.wc-acts {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.wc-star {
+  padding: 2px;
+  border: none;
+  background: none;
+  color: var(--txt-3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.wc-star.on {
+  color: var(--warn);
+}
+
+.wc-arch {
+  padding: 2px 4px;
+  border: none;
+  background: none;
+  color: var(--txt-2);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.wc-arch:hover {
+  color: var(--accent);
+}
+
+.welcome-sub-head {
+  margin: 22px 0 10px;
+  color: var(--txt-3);
+  font-size: 12px;
+}

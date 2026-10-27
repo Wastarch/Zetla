@@ -6,6 +6,7 @@ import type {
   EntryKind,
   FileDoc,
   ImportImageResult,
+  ProjectEntry,
   ProjectInfo,
   ProjectTree,
   SyncTexHit,
@@ -99,6 +100,14 @@ export const projectApi = {
 export const configApi = {
   loadAppConfig: () => call<AppSettings>("load_app_config"),
   saveAppConfig: (config: AppSettings) => call<void>("save_app_config", { config }),
+  // M1-15a：项目注册表（最近/置顶/归档）；均返回更新后的完整列表，供前端同步镜像
+  listRecentProjects: () => call<ProjectEntry[]>("list_recent_projects"),
+  registerRecentProject: (root: string) =>
+    call<ProjectEntry[]>("register_recent_project", { root }),
+  pinProject: (path: string, pinned: boolean) =>
+    call<ProjectEntry[]>("pin_project", { path, pinned }),
+  archiveProject: (path: string, archived: boolean) =>
+    call<ProjectEntry[]>("archive_project", { path, archived }),
 };
 
 // ── 基础设施（M0-1 验收用） ───────────────────────────────

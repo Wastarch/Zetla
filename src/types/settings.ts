@@ -1,5 +1,6 @@
 // M0-14a · 应用配置 / 偏好设置类型（与 src-tauri/src/commands/config.rs 的 AppConfig 一一对应，camelCase）
 // schema v1；M0-13 在此追加 window / session / layout
+import type { ProjectEntry } from "./project";
 
 /** 编辑器字体族白名单（非法值由 Rust 侧归一化） */
 export type EditorFontFamily = "IBM Plex Mono" | "Consolas" | "Cascadia Mono";
@@ -142,6 +143,8 @@ export interface AppSettings {
   formula: FormulaConfig;
   /** M1-8：表格模块配置（默认线型 / 转义 / 编号 / 位置 / 行列上限） */
   table: TableSettings;
+  /** M1-15a：最近项目注册表（与 Rust AppConfig.recent_projects 一一对应） */
+  recentProjects: ProjectEntry[];
 }
 
 /** M1-8：表格模块设置（与 Rust TableConfig 一一对应，camelCase） */
@@ -185,6 +188,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   perl: { installDir: null },
   modules: {},
   formula: { favorites: [], custom: [], numbered: false, inline: false },
+  /** M1-15a：最近项目注册表（缺省空；后端 register_recent_project 写回） */
+  recentProjects: [],
   table: {
     style: "booktabs",
     numbered: true,

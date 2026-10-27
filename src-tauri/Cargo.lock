@@ -5391,6 +5391,7 @@ name = "zetla"
 version = "0.1.5"
 dependencies = [
  "chardetng",
+ "chrono",
  "encoding_rs",
  "flate2",
  "hex",

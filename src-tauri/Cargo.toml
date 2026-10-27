@@ -44,6 +44,8 @@ flate2 = { version = "1", default-features = false, features = ["rust_backend"] 
 # M1-13：更新检测 —— 安装包 sha256 校验（无代码签名下的完整性保障）
 sha2 = "0.10"
 hex = "0.4"
+# M1-15a：最近项目时间戳（仅 clock，避免拉入旧 time/iana 依赖）
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

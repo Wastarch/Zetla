@@ -63,6 +63,11 @@ pub fn run() {
             commands::project::copy_entry,
             // R5 图片目录设置（M1-7）
             commands::project::save_project_config,
+            // M1-15a：项目注册表（最近/置顶/归档）
+            commands::project_mgmt::register_recent_project,
+            commands::project_mgmt::list_recent_projects,
+            commands::project_mgmt::pin_project,
+            commands::project_mgmt::archive_project,
             // R5 拖拽图片导入（M1-7）
             commands::image::import_image,
             commands::image::import_image_from_path,
