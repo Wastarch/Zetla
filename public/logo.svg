@@ -1,51 +1,77 @@
-<svg viewBox="0 0 280 280" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- 圆角方形徽章背景 -->
-  <rect x="20" y="20" width="240" height="240" rx="48" fill="url(#badgeGradientLight)" />
-  <!-- 内圈边框 -->
-  <rect x="22" y="22" width="236" height="236" rx="46" stroke="#D0D8EC" stroke-width="1.5" fill="none" opacity="0.9" />
-  <defs>
-    <linearGradient id="badgeGradientLight" x1="20" y1="20" x2="260" y2="260" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#FFFFFF" />
-      <stop offset="100%" stop-color="#EAEFF9" />
-    </linearGradient>
-    <linearGradient id="zGradientLight" x1="90" y1="70" x2="195" y2="210" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#1E2A3A" />
-      <stop offset="100%" stop-color="#3C4A62" />
-    </linearGradient>
-    <linearGradient id="pageFoldGradientLight" x1="95" y1="175" x2="130" y2="210" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#E6ECF8" />
-      <stop offset="100%" stop-color="#BCC8E0" />
-    </linearGradient>
-    <linearGradient id="braceGradientLight" x1="165" y1="115" x2="205" y2="170" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#3A7BFF" />
-      <stop offset="100%" stop-color="#1E4FBB" />
-    </linearGradient>
-    <linearGradient id="lineGradientLight" x1="90" y1="145" x2="190" y2="145" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#3A7BFF" stop-opacity="0.1" />
-      <stop offset="30%" stop-color="#3A7BFF" stop-opacity="0.85" />
-      <stop offset="70%" stop-color="#3A7BFF" stop-opacity="0.85" />
-      <stop offset="100%" stop-color="#3A7BFF" stop-opacity="0.1" />
-    </linearGradient>
-  </defs>
-  <!-- Times New Roman 字母 Z -->
-  <text x="140" y="195" font-family="'Times New Roman', Times, serif" font-size="140" font-weight="900" fill="url(#zGradientLight)" text-anchor="middle">Z</text>
-  <!-- 折角 / 页边距结构 -->
-  <g>
-    <path d="M90 202 L90 175 L118 202 L90 202 Z" fill="url(#pageFoldGradientLight)" />
-    <path d="M90 175 L90 202 L118 202" stroke="#8C9CC0" stroke-width="1.5" fill="none" opacity="0.8" />
-    <path d="M90 180 L90 202 L110 202 L90 180 Z" fill="#FFFFFF" opacity="0.4" />
-    <rect x="90" y="195" width="28" height="8" fill="#BCC8E0" opacity="0.5" rx="1" />
-  </g>
-  <!-- 代码括号 { } -->
-  <g>
-    <path d="M168 122 C168 122, 160 122, 160 130 L160 141 C160 149, 153 149, 153 149 C153 149, 160 149, 160 157 L160 168 C160 176, 168 176, 168 176" stroke="url(#braceGradientLight)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-    <path d="M192 122 C192 122, 200 122, 200 130 L200 141 C200 149, 207 149, 207 149 C207 149, 200 149, 200 157 L200 168 C200 176, 192 176, 192 176" stroke="url(#braceGradientLight)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-  </g>
-  <!-- 细蓝色横线 -->
-  <rect x="88" y="144" width="104" height="2.5" rx="1.25" fill="url(#lineGradientLight)" />
-  <!-- 页边距虚线 -->
-  <line x1="80" y1="92" x2="80" y2="198" stroke="#9AABD0" stroke-width="0.8" stroke-dasharray="2 4" opacity="0.5" />
-  <line x1="200" y1="92" x2="200" y2="198" stroke="#9AABD0" stroke-width="0.8" stroke-dasharray="2 4" opacity="0.5" />
-  <!-- 内高光 -->
-  <rect x="22" y="22" width="236" height="236" rx="46" stroke="#FFFFFF" stroke-opacity="0.7" stroke-width="2" fill="none" />
+<svg width="280" height="280" viewBox="0 0 280 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <!-- 圆角方形徽章背景 -->
+    <rect x="20" y="20" width="240" height="240" rx="48" fill="url(#badgeGradientLight)" />
+    <!-- 内圈边框 -->
+    <rect x="22" y="22" width="236" height="236" rx="46" stroke="#D0D8EC" stroke-width="1.5"
+        fill="none" opacity="0.9" />
+    <defs>
+        <linearGradient id="badgeGradientLight" x1="20" y1="20" x2="260" y2="260"
+            gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#FFFFFF" />
+            <stop offset="100%" stop-color="#EAEFF9" />
+        </linearGradient>
+        <linearGradient id="zGradientLight" x1="90" y1="70" x2="195" y2="210"
+            gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#1E2A3A" />
+            <stop offset="100%" stop-color="#3C4A62" />
+        </linearGradient>
+        <linearGradient id="pageFoldGradientLight" x1="95" y1="175" x2="130" y2="210"
+            gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#E6ECF8" />
+            <stop offset="100%" stop-color="#BCC8E0" />
+        </linearGradient>
+        <linearGradient id="braceGradientLight" x1="165" y1="115" x2="205" y2="170"
+            gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#3A7BFF" />
+            <stop offset="100%" stop-color="#1E4FBB" />
+        </linearGradient>
+        <linearGradient id="lineGradientLight" x1="90" y1="145" x2="190" y2="145"
+            gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#3A7BFF" stop-opacity="0.1" />
+            <stop offset="30%" stop-color="#3A7BFF" stop-opacity="0.85" />
+            <stop offset="70%" stop-color="#3A7BFF" stop-opacity="0.85" />
+            <stop offset="100%" stop-color="#3A7BFF" stop-opacity="0.1" />
+        </linearGradient>
+    </defs>
+
+    <!-- 内部元素 -->
+    <g transform="translate(0, -16) translate(140 140) scale(1.5) translate(-140 -140)">
+        <!-- Times New Roman 字母 Z -->
+        <text x="140" y="195" font-family="'Times New Roman', Times, serif" font-size="140"
+            font-weight="900" fill="url(#zGradientLight)" text-anchor="middle">Z</text>
+
+        <!-- 折角 / 页边距结构 -->
+        <g>
+            <path d="M90 202 L90 175 L118 202 L90 202 Z" fill="url(#pageFoldGradientLight)" />
+            <path d="M90 175 L90 202 L118 202" stroke="#8C9CC0" stroke-width="1.5" fill="none"
+                opacity="0.8" />
+            <path d="M90 180 L90 202 L110 202 L90 180 Z" fill="#FFFFFF" opacity="0.4" />
+            <rect x="90" y="195" width="28" height="8" fill="#BCC8E0" opacity="0.5" rx="1" />
+        </g>
+
+        <!-- 代码括号 { } -->
+        <g>
+            <path
+                d="M168 122 C168 122, 160 122, 160 130 L160 141 C160 149, 153 149, 153 149 C153 149, 160 149, 160 157 L160 168 C160 176, 168 176, 168 176"
+                stroke="url(#braceGradientLight)" stroke-width="5" stroke-linecap="round"
+                stroke-linejoin="round" fill="none" />
+            <path
+                d="M192 122 C192 122, 200 122, 200 130 L200 141 C200 149, 207 149, 207 149 C207 149, 200 149, 200 157 L200 168 C200 176, 192 176, 192 176"
+                stroke="url(#braceGradientLight)" stroke-width="5" stroke-linecap="round"
+                stroke-linejoin="round" fill="none" />
+        </g>
+
+        <!-- 细蓝色横线 -->
+        <rect x="88" y="144" width="104" height="2.5" rx="1.25" fill="url(#lineGradientLight)" />
+
+        <!-- 页边距虚线 -->
+        <line x1="80" y1="92" x2="80" y2="198" stroke="#9AABD0" stroke-width="0.8"
+            stroke-dasharray="2 4" opacity="0.5" />
+        <line x1="200" y1="92" x2="200" y2="198" stroke="#9AABD0" stroke-width="0.8"
+            stroke-dasharray="2 4" opacity="0.5" />
+    </g>
+
+    <!-- 内高光（边框层，不参与内部缩放和移动） -->
+    <rect x="22" y="22" width="236" height="236" rx="46" stroke="#FFFFFF" stroke-opacity="0.7"
+        stroke-width="2" fill="none" />
 </svg>

@@ -2,443 +2,476 @@
    主体 UI tokens / 控件 / 编辑面板样式见 src/styles/zetla.css（来源 docs/UI/code.html） */
 
 .milestone {
-  margin: 0 0 1em;
-  opacity: 0.65;
-  font-size: 0.9em;
+    margin: 0 0 1em;
+    opacity: 0.65;
+    font-size: 0.9em;
 }
 
 .card {
-  padding: 1em 1.5em;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  text-align: left;
-  background: var(--bg-3);
+    padding: 1em 1.5em;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    text-align: left;
+    background: var(--bg-3);
 }
 
 .card h2 {
-  margin: 0 0 0.5em;
-  font-size: 1.05em;
+    margin: 0 0 0.5em;
+    font-size: 1.05em;
 }
 
 .card code {
-  font-family: var(--font-mono);
-  font-size: 0.9em;
-  background: var(--bg-4);
-  padding: 1px 5px;
-  border-radius: 4px;
-  border: 1px solid var(--line-soft);
-  word-break: break-all;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+    background: var(--bg-4);
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid var(--line-soft);
+    word-break: break-all;
 }
 
 .card .btn {
-  margin-top: 0.6em;
+    margin-top: 0.6em;
 }
 
 .error {
-  color: var(--err);
+    color: var(--err);
 }
 
 .ok {
-  color: var(--ok);
+    color: var(--ok);
 }
 
 .meta {
-  font-size: 0.9em;
-  opacity: 0.85;
+    font-size: 0.9em;
+    opacity: 0.85;
 }
 
 /* 抽屉内的卡片铺满宽度 */
 .modal-body .card {
-  max-width: none;
-  margin: 0 0 14px;
+    max-width: none;
+    margin: 0 0 14px;
 }
 
 .modal-body .milestone {
-  margin-bottom: 1.1em;
+    margin-bottom: 1.1em;
 }
 
 /* ── M1-15a 欢迎页（无活动项目且无打开文档时替换编辑区） ── */
 .welcome {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  overflow: auto;
-  background: var(--bg-2);
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    overflow: auto;
+    background: var(--bg-2);
 }
 
 .welcome-inner {
-  margin: auto;
-  width: min(880px, 100%);
-  padding: 48px 40px;
+    margin: 0 auto;
+    width: min(900px, 100%);
+    padding: 72px 24px 48px;
 }
 
 .welcome-head {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  margin-bottom: 26px;
+    display: flex;
+    align-items: stretch;
+    gap: 16px;
+    margin-bottom: 40px;
 }
 
+/* 软件 logo（public/logo.svg，自带圆角徽章背景） */
 .welcome-mark {
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  display: grid;
-  place-items: center;
-  background: var(--accent);
-  color: #fff;
-  font-family: var(--font-mono);
-  font-size: 24px;
-  font-weight: 700;
+    flex: none;
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+    user-select: none;
+    align-self: stretch;
+    -webkit-user-drag: none;
+    /* drop-shadow 跟随 SVG 圆角轮廓（box-shadow 会露出矩形边角） */
+    filter: drop-shadow(0 4px 10px rgba(20, 28, 40, 0.18));
+}
+
+[data-theme='dark'] .welcome-mark {
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.55));
 }
 
 .welcome-title h1 {
-  font-size: 22px;
-  font-weight: 650;
-  color: var(--txt);
-  letter-spacing: 0.2px;
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--txt);
 }
 
 .welcome-title p {
-  margin-top: 3px;
-  font-size: 13px;
-  color: var(--txt-2);
+    margin-top: 4px;
+    font-size: 14px;
+    color: var(--txt-2);
 }
 
 .welcome-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 30px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 40px;
+}
+
+/* 与参考稿一致的按钮尺寸（略高于默认 .btn） */
+.welcome-actions .btn {
+    height: 34px;
+    padding: 0 18px;
+    font-size: 13px;
 }
 
 .welcome-sec-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-  color: var(--txt-2);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    padding: 0 4px;
+}
+
+.welcome-sec-title {
+    color: var(--txt-2);
+    font-size: 14px;
 }
 
 .welcome-link {
-  background: none;
-  border: none;
-  color: var(--accent);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 2px 4px;
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 12px;
+    cursor: pointer;
+    padding: 2px 4px;
 }
 
 .welcome-link:hover {
-  text-decoration: underline;
+    text-decoration: underline;
 }
 
 .welcome-empty {
-  padding: 22px;
-  border: 1px dashed var(--line);
-  border-radius: var(--r-md);
-  color: var(--txt-3);
-  font-size: 13px;
-  text-align: center;
+    padding: 22px;
+    border: 1px dashed var(--line);
+    border-radius: var(--r-md);
+    color: var(--txt-3);
+    font-size: 13px;
+    text-align: center;
 }
 
-.welcome-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 12px;
+/* 列表容器（参考稿 list-container） */
+.welcome-list {
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
 }
 
-.welcome-card {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--bg-3);
-  cursor: pointer;
-  transition: border-color 0.12s, box-shadow 0.12s;
+.welcome-list-head {
+    display: flex;
+    align-items: center;
+    padding: 12px 20px;
+    background: var(--bg-4);
+    border-bottom: 1px solid var(--line);
+    color: var(--txt-2);
+    font-size: 13px;
+    font-weight: 500;
 }
 
-.welcome-card:hover {
-  border-color: var(--accent);
-  box-shadow: var(--shadow);
+.welcome-row {
+    display: flex;
+    align-items: center;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line-soft);
+    transition: background-color 0.15s;
 }
 
-.welcome-card:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.welcome-row:last-child {
+    border-bottom: none;
 }
 
-.welcome-card.archived {
-  opacity: 0.78;
+.welcome-row:hover {
+    background: var(--bg-4);
 }
 
-.wc-top {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
+.welcome-row.archived {
+    opacity: 0.82;
 }
 
-.wc-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--txt);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.welcome-row.empty-row {
+    color: var(--txt-3);
+    font-size: 13px;
 }
 
-.wc-badge {
-  flex: none;
-  padding: 1px 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 10px;
+.welcome-list-sub {
+    padding: 10px 20px;
+    background: var(--bg-4);
+    border-bottom: 1px solid var(--line);
+    color: var(--txt-3);
+    font-size: 12px;
 }
 
-.wc-path {
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--txt-3);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* 列宽（与参考稿一致：名称 3 / 位置 5 / 时间 1.5 / 操作 1） */
+.wl-col-name,
+.wl-name {
+    flex: 3;
+    min-width: 200px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
-.wc-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 4px;
+.wl-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--txt);
+    font-size: 14px;
+    font-weight: 500;
 }
 
-.wc-when {
-  font-size: 11px;
-  color: var(--txt-2);
+.wl-tag {
+    flex: none;
+    padding: 2px 8px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 12px;
 }
 
-.wc-acts {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.wl-col-path,
+.wl-path {
+    flex: 5;
+    min-width: 0;
+    padding-right: 20px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--txt-2);
+    font-size: 13px;
 }
 
-.wc-star {
-  padding: 2px;
-  border: none;
-  background: none;
-  color: var(--txt-3);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
+.wl-col-time,
+.wl-time {
+    flex: 1.5;
+    color: var(--txt-3);
+    font-size: 13px;
 }
 
-.wc-star.on {
-  color: var(--warn);
+.wl-col-acts,
+.wl-acts {
+    flex: 1;
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
 }
 
-.wc-arch {
-  padding: 2px 4px;
-  border: none;
-  background: none;
-  color: var(--txt-2);
-  font-size: 11px;
-  cursor: pointer;
+.wl-acts .btn.primary {
+    height: 28px;
+    padding: 0 14px;
+    font-size: 12.5px;
 }
 
-.wc-arch:hover {
-  color: var(--accent);
+.wl-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    border: none;
+    border-radius: 4px;
+    background: none;
+    color: var(--txt-3);
+    font-size: 16px;
+    cursor: pointer;
 }
 
-/* 卡片「⋯」菜单（M1-15d 生命周期） */
-.wc-menu-btn {
-  padding: 2px 5px;
-  border: none;
-  background: none;
-  color: var(--txt-2);
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
+.wl-icon:hover {
+    background: var(--bg);
+    color: var(--txt);
 }
 
-.wc-menu-btn:hover,
-.wc-menu-btn.on {
-  color: var(--accent);
+.wl-icon.on {
+    color: var(--warn);
 }
 
+.wl-none {
+    color: var(--txt-3);
+}
+
+/* 「⋯」菜单（fixed 定位，避免列表 overflow 裁剪） */
 .wc-menu {
-  position: absolute;
-  right: 8px;
-  bottom: 38px;
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  min-width: 150px;
-  padding: 4px;
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow);
+    z-index: 1200;
+    display: flex;
+    flex-direction: column;
+    min-width: 158px;
+    padding: 4px;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow);
 }
 
 .wc-menu button {
-  padding: 6px 10px;
-  border: none;
-  border-radius: var(--r-sm);
-  background: none;
-  color: var(--txt);
-  font-size: 12px;
-  text-align: left;
-  cursor: pointer;
+    padding: 6px 10px;
+    border: none;
+    border-radius: var(--r-sm);
+    background: none;
+    color: var(--txt);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
 }
 
 .wc-menu button:hover {
-  background: var(--bg-4);
+    background: var(--bg-4);
 }
 
 .wc-menu button.danger {
-  color: var(--err);
+    color: var(--err);
 }
 
 .wc-menu-sep {
-  height: 1px;
-  margin: 4px 6px;
-  background: var(--line);
+    height: 1px;
+    margin: 4px 6px;
+    background: var(--line);
 }
 
-.welcome-sub-head {
-  margin: 22px 0 10px;
-  color: var(--txt-3);
-  font-size: 12px;
+/* 窄窗口：隐藏位置 / 最近打开列（参考稿响应式） */
+@media (max-width: 768px) {
+    .wl-col-path,
+    .wl-path,
+    .wl-col-time,
+    .wl-time {
+        display: none;
+    }
+
+    .wl-col-acts,
+    .wl-acts {
+        flex: 2;
+    }
 }
 
 /* ── M1-15b 项目切换器（命令面板式浮层；Ctrl+R） ── */
 .switcher-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 1200;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding-top: 110px;
-  background: rgba(0, 0, 0, 0.35);
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding-top: 110px;
+    background: rgba(0, 0, 0, 0.35);
 }
 
 .switcher {
-  display: flex;
-  flex-direction: column;
-  width: min(560px, calc(100vw - 80px));
-  max-height: min(60vh, 520px);
-  overflow: hidden;
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  box-shadow: var(--shadow);
+    display: flex;
+    flex-direction: column;
+    width: min(560px, calc(100vw - 80px));
+    max-height: min(60vh, 520px);
+    overflow: hidden;
+    background: var(--bg-3);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    box-shadow: var(--shadow);
 }
 
 .switcher-input {
-  padding: 12px 14px;
-  border: none;
-  border-bottom: 1px solid var(--line-soft);
-  outline: none;
-  background: var(--bg-3);
-  color: var(--txt);
-  font-size: 14px;
+    padding: 12px 14px;
+    border: none;
+    border-bottom: 1px solid var(--line-soft);
+    outline: none;
+    background: var(--bg-3);
+    color: var(--txt);
+    font-size: 14px;
 }
 
 .switcher-input::placeholder {
-  color: var(--txt-3);
+    color: var(--txt-3);
 }
 
 .switcher-list {
-  overflow: auto;
-  padding: 4px 0;
+    overflow: auto;
+    padding: 4px 0;
 }
 
 .switcher-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    cursor: pointer;
 }
 
 .switcher-item.on {
-  background: var(--accent-soft);
+    background: var(--accent-soft);
 }
 
 .switcher-item.current .switcher-name {
-  color: var(--accent);
+    color: var(--accent);
 }
 
 .switcher-star {
-  flex: none;
-  width: 14px;
-  color: var(--warn);
-  font-size: 12px;
+    flex: none;
+    width: 14px;
+    color: var(--warn);
+    font-size: 12px;
 }
 
 .switcher-name {
-  flex: none;
-  max-width: 40%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--txt);
-  font-size: 13px;
-  font-weight: 600;
+    flex: none;
+    max-width: 40%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--txt);
+    font-size: 13px;
+    font-weight: 600;
 }
 
 .switcher-badge {
-  flex: none;
-  padding: 1px 6px;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 10px;
+    flex: none;
+    padding: 1px 6px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 10px;
 }
 
 .switcher-path {
-  min-width: 0;
-  margin-left: auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--txt-3);
-  font-family: var(--font-mono);
-  font-size: 11px;
+    min-width: 0;
+    margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--txt-3);
+    font-family: var(--font-mono);
+    font-size: 11px;
 }
 
 .switcher-empty {
-  padding: 16px 14px;
-  color: var(--txt-3);
-  font-size: 13px;
+    padding: 16px 14px;
+    color: var(--txt-3);
+    font-size: 13px;
 }
 
 .switcher-hint {
-  padding: 6px 14px 12px;
-  color: var(--txt-3);
-  font-size: 11px;
+    padding: 6px 14px 12px;
+    color: var(--txt-3);
+    font-size: 11px;
 }
 
 .switcher-open-folder .switcher-name {
-  color: var(--txt-2);
-  font-weight: 500;
+    color: var(--txt-2);
+    font-weight: 500;
 }
 
 .switcher-foot {
-  padding: 8px 14px;
-  border-top: 1px solid var(--line-soft);
-  color: var(--txt-3);
-  font-size: 11px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--line-soft);
+    color: var(--txt-3);
+    font-size: 11px;
 }
