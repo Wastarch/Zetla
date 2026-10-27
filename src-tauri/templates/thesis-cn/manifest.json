@@ -1,0 +1,32 @@
+{
+  "schemaVersion": "1.0",
+  "id": "thesis-cn",
+  "name": "中文毕业论文",
+  "description": "多文件中文毕业论文骨架（ctexbook + 章节拆分 + 参考文献）",
+  "category": "thesis",
+  "tags": ["论文", "ctex", "多文件"],
+  "version": "1.0",
+  "build": { "engine": "xelatex", "mainFile": "main.tex", "outputDir": "build", "synctex": true },
+  "dependencies": { "packages": ["ctex"], "assets": [] },
+  "variables": [
+    { "key": "title", "label": "论文标题", "type": "text", "required": true, "group": "基本信息", "placeholder": "基于 XXX 的研究" },
+    { "key": "author", "label": "作者姓名", "type": "string", "required": true, "group": "基本信息" },
+    { "key": "school", "label": "培养单位", "type": "string", "required": true, "group": "基本信息", "default": "某某大学" },
+    { "key": "degree", "label": "学位层次", "type": "select", "options": ["学士", "硕士", "博士"], "default": "硕士", "group": "基本信息" },
+    { "key": "major", "label": "学科专业", "type": "string", "required": true, "group": "基本信息" },
+    { "key": "advisor", "label": "指导教师", "type": "string", "required": true, "group": "基本信息" },
+    { "key": "date", "label": "提交日期", "type": "date", "group": "基本信息", "default": "2026-06" },
+    { "key": "keywords", "label": "关键词（逗号分隔）", "type": "text", "group": "基本信息", "placeholder": "关键词1, 关键词2" },
+    { "key": "year", "label": "毕业年份", "type": "number", "group": "基本信息", "default": 2026 }
+  ],
+  "structure": {
+    "dirs": ["chapters", "figures"],
+    "files": [
+      { "target": "main.tex", "source": "main.tex.tmpl", "render": true },
+      { "target": "chapters/intro.tex", "source": "chapters/intro.tex.tmpl", "render": true },
+      { "target": "chapters/related.tex", "source": "chapters/related.tex.tmpl", "render": true },
+      { "target": "chapters/method.tex", "source": "chapters/method.tex.tmpl", "render": true },
+      { "target": "chapters/conclusion.tex", "source": "chapters/conclusion.tex.tmpl", "render": true }
+    ]
+  }
+}

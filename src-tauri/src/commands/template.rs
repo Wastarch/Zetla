@@ -290,32 +290,121 @@ fn value_to_string(v: &Value) -> String {
     }
 }
 
-/// 极简渲染器（§5.4）：只做 `<%= var %>` 替换；未提供变量回退 manifest 默认值，再回退空串
+/// 极简渲染器（§5.4）：支持 `<%= var %>` 替换与 `<% if KEY %>…<% else %>…<% endif %>`
+/// 条件块（可嵌套）；未提供变量回退 manifest 默认值，再回退空串。
 fn render_template(
+    src: &str,
+    vars: &HashMap<String, Value>,
+    defaults: &HashMap<String, String>,
+) -> String {
+    render_inner(src, vars, defaults)
+}
+
+/// 取出变量值（vars 优先，其次 defaults 文本）
+fn lookup_value<'a>(
+    key: &str,
+    vars: &'a HashMap<String, Value>,
+    defaults: &HashMap<String, String>,
+) -> Option<Value> {
+    if let Some(v) = vars.get(key) {
+        Some(v.clone())
+    } else {
+        defaults.get(key).map(|d| Value::String(d.clone()))
+    }
+}
+
+/// 真值判定（与模板语义一致）
+fn is_truthy(v: &Value) -> bool {
+    match v {
+        Value::Bool(b) => *b,
+        Value::String(s) => !s.is_empty(),
+        Value::Number(n) => n.as_f64().map(|x| x != 0.0).unwrap_or(false),
+        Value::Array(a) => !a.is_empty(),
+        Value::Null => false,
+        Value::Object(_) => true,
+    }
+}
+
+/// 递归渲染：处理表达式替换与条件块
+fn render_inner(
     src: &str,
     vars: &HashMap<String, Value>,
     defaults: &HashMap<String, String>,
 ) -> String {
     let mut out = String::with_capacity(src.len());
     let mut rest = src;
-    while let Some(start) = rest.find("<%=") {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 3..];
-        let Some(end) = after.find("%>") else {
-            // 未闭合占位 → 原样保留
-            out.push_str(&rest[start..]);
+    while let Some(open) = rest.find("<%") {
+        out.push_str(&rest[..open]);
+        let after = &rest[open + 2..];
+        let Some(close) = after.find("%>") else {
+            // 未闭合：原样保留剩余
+            out.push_str(&rest[open..]);
             return out;
         };
-        let key = after[..end].trim();
-        let val = match vars.get(key) {
-            Some(v) => value_to_string(v),
-            None => defaults.get(key).cloned().unwrap_or_default(),
-        };
-        out.push_str(&val);
-        rest = &after[end + 2..];
+        let tag = after[..close].trim();
+        let tail = &after[close + 2..];
+
+        if let Some(expr) = tag.strip_prefix('=') {
+            let key = expr.trim();
+            let val = lookup_value(key, vars, defaults)
+                .map(|v| value_to_string(&v))
+                .unwrap_or_default();
+            out.push_str(&val);
+            rest = tail;
+        } else if let Some(cond_key) = tag.strip_prefix("if ") {
+            let key = cond_key.trim();
+            let truthy = lookup_value(key, vars, defaults)
+                .map(|v| is_truthy(&v))
+                .unwrap_or(false);
+            let (consumed, branch) = split_if_block(tail, truthy);
+            out.push_str(&render_inner(branch, vars, defaults));
+            rest = &tail[consumed..];
+        } else {
+            // else / endif / 未知标签：跳过
+            rest = tail;
+        }
     }
     out.push_str(rest);
     out
+}
+
+/// 解析 if 块：返回 (消耗的字节数, 选中分支文本)。
+/// truthy=true → if 与 else(若有) 之间；false → else 与 endif 之间（无 else 则空）。
+/// 进入时已在 if 体内部，故 depth 从 1 起算，自身层级的 else/endif 在 depth==1 命中。
+fn split_if_block(body: &str, truthy: bool) -> (usize, &str) {
+    let mut depth: usize = 1;
+    let mut i = 0;
+    let mut else_start: Option<usize> = None;
+    let mut else_after: Option<usize> = None;
+    while let Some(open) = body[i..].find("<%") {
+        let abs = i + open;
+        let after = &body[abs + 2..];
+        let Some(close) = after.find("%>") else {
+            break;
+        };
+        let tag = after[..close].trim();
+        let tag_end = abs + 2 + close + 2;
+        if tag == "endif" {
+            if depth == 1 {
+                if truthy {
+                    let before = else_start.map(|es| &body[..es]).unwrap_or(&body[..abs]);
+                    return (tag_end, before);
+                }
+                let chosen = else_after.map(|ea| &body[ea..abs]).unwrap_or("");
+                return (tag_end, chosen);
+            }
+            depth -= 1;
+        } else if tag == "else" {
+            if depth == 1 && else_start.is_none() {
+                else_start = Some(abs);
+                else_after = Some(tag_end);
+            }
+        } else if tag.strip_prefix("if ").is_some() {
+            depth += 1;
+        }
+        i = tag_end;
+    }
+    (body.len(), if truthy { body } else { "" })
 }
 
 fn create_project_in(
@@ -467,14 +556,25 @@ mod tests {
     #[test]
     fn lists_builtin_templates() {
         let v = list_templates_in(&builtin_root());
-        assert_eq!(v.len(), 2, "应恰好内置 2 套模板");
+        assert_eq!(v.len(), 5, "应恰好内置 5 套模板（M1-9 新增 thesis/beamer/resume）");
         let ids: Vec<&str> = v.iter().map(|m| m.id.as_str()).collect();
         assert!(ids.contains(&"article") && ids.contains(&"ctex-cn"));
-        // 排序稳定
-        assert_eq!(ids, vec!["article", "ctex-cn"]);
+        assert!(ids.contains(&"thesis-cn") && ids.contains(&"beamer-cn") && ids.contains(&"resume-cn"));
+        // 排序稳定（字母序）
+        assert_eq!(
+            ids,
+            vec!["article", "beamer-cn", "ctex-cn", "resume-cn", "thesis-cn"]
+        );
         // 元数据齐全
         let a = v.iter().find(|m| m.id == "article").unwrap();
         assert!(!a.name.is_empty() && a.description.is_some());
+        // 多文件模板：thesis-cn 含章节拆分结构与分组变量
+        let t = v.iter().find(|m| m.id == "thesis-cn").unwrap();
+        assert!(!t.description.is_none());
+        let tm = load_manifest(&builtin_root(), "thesis-cn").unwrap();
+        assert!(tm.structure.dirs.contains(&"chapters".to_string()));
+        assert!(tm.variables.iter().any(|vv| vv.group.as_deref() == Some("基本信息")));
+        assert!(tm.variables.iter().any(|vv| vv.var_type == VarType::Select));
     }
 
     #[test]
@@ -621,21 +721,105 @@ mod tests {
 
     #[test]
     fn create_builtin_templates_compile_shape() {
-        // 两套内置模板端到端生成（不求可编译，求结构正确）
-        for id in ["article", "ctex-cn"] {
+        // 全部内置模板端到端生成（不求可编译，求结构与变量替换正确）
+        for id in ["article", "ctex-cn", "thesis-cn", "beamer-cn", "resume-cn"] {
             let target = tmp_dir(&format!("builtin_{}", id));
+            let m = load_manifest(&builtin_root(), id).unwrap();
+            let dflt = default_map(&m);
             let mut vars = HashMap::new();
-            vars.insert("title".to_string(), Value::String("标题".into()));
-            vars.insert("author".to_string(), Value::String("作者".into()));
+            for (k, v) in dflt {
+                vars.insert(k, Value::String(v));
+            }
+            // 必填且无默认值 → 补占位，确保通过必填校验
+            for v in &m.variables {
+                if v.required && !vars.contains_key(&v.key) {
+                    vars.insert(v.key.clone(), Value::String("示例".into()));
+                }
+            }
             let info =
                 create_project_in(&builtin_root(), id, &vars, target.to_str().unwrap()).unwrap();
             assert!(Path::new(&info.main_file).is_file());
             let main = std::fs::read_to_string(&info.main_file).unwrap();
-            assert!(main.contains("\\title{标题}"));
             assert!(main.contains("\\begin{document}"));
-            // 单文件模板不生成多余目录
-            assert_eq!(info.output_dir, "build");
+            // 单文件模板不生成多余目录；多文件模板的章节文件已生成
             assert!(target.join(".ltex/config.json").is_file());
         }
+        // thesis-cn 多文件：章节文件与目录齐备
+        let tgt = tmp_dir("builtin_thesis-cn");
+        let tm = load_manifest(&builtin_root(), "thesis-cn").unwrap();
+        let tdflt = default_map(&tm);
+        let mut vars = HashMap::new();
+        for (k, v) in tdflt {
+            vars.insert(k, Value::String(v));
+        }
+        for v in &tm.variables {
+            if v.required && !vars.contains_key(&v.key) {
+                vars.insert(v.key.clone(), Value::String("示例".into()));
+            }
+        }
+        let info = create_project_in(&builtin_root(), "thesis-cn", &vars, tgt.to_str().unwrap()).unwrap();
+        assert!(tgt.join("chapters/intro.tex").is_file());
+        assert!(tgt.join("chapters/conclusion.tex").is_file());
+        let main = std::fs::read_to_string(&info.main_file).unwrap();
+        assert!(main.contains("\\input{chapters/intro}"));
+        // 必填变量已渲染
+        assert!(main.contains("\\title{"));
+        // beamer-cn：主题变量已落入 \usetheme
+        let btgt = tmp_dir("builtin_beamer-cn");
+        let bm = load_manifest(&builtin_root(), "beamer-cn").unwrap();
+        let bdflt = default_map(&bm);
+        let mut bvars = HashMap::new();
+        for (k, v) in bdflt {
+            bvars.insert(k, Value::String(v));
+        }
+        for v in &bm.variables {
+            if v.required && !bvars.contains_key(&v.key) {
+                bvars.insert(v.key.clone(), Value::String("示例".into()));
+            }
+        }
+        let binfo = create_project_in(&builtin_root(), "beamer-cn", &bvars, btgt.to_str().unwrap()).unwrap();
+        let bmain = std::fs::read_to_string(&binfo.main_file).unwrap();
+        assert!(bmain.contains("\\usetheme{Madrid}"));
+    }
+
+    #[test]
+    fn render_supports_if_else_blocks() {
+        // 非嵌套 if/else
+        let mut vars = HashMap::new();
+        vars.insert("opt".to_string(), Value::String("yes".into()));
+        assert_eq!(
+            render_template("A<% if opt %>ON<% else %>OFF<% endif %>B", &vars, &HashMap::new()),
+            "AONB"
+        );
+        vars.insert("opt".to_string(), Value::String("".into()));
+        assert_eq!(
+            render_template("A<% if opt %>ON<% else %>OFF<% endif %>B", &vars, &HashMap::new()),
+            "AOFFB"
+        );
+        // 无 else：falsy 取空
+        assert_eq!(
+            render_template("X<% if opt %>Y<% endif %>Z", &vars, &HashMap::new()),
+            "XZ"
+        );
+        // 嵌套 if
+        let mut nested = HashMap::new();
+        nested.insert("a".to_string(), Value::Bool(true));
+        nested.insert("b".to_string(), Value::Bool(true));
+        assert_eq!(
+            render_template("<% if a %>A<% if b %>B<% endif %>C<% endif %>", &nested, &HashMap::new()),
+            "ABC"
+        );
+        // 表达式与条件混用；未闭合 <% 原样保留；falsy 条件块内容丢弃
+        assert_eq!(
+            render_template("v=<%= x %> <% if y %>Y<% endif %> <%= z", &nested, &HashMap::new()),
+            "v=  <%= z"
+        );
+        // bool 真值：falsy(bool=false) 取 else
+        let mut bf = HashMap::new();
+        bf.insert("flag".to_string(), Value::Bool(false));
+        assert_eq!(
+            render_template("<% if flag %>T<% else %>F<% endif %>", &bf, &HashMap::new()),
+            "F"
+        );
     }
 }

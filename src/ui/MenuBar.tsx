@@ -20,6 +20,7 @@ import { useUpdateStore, selectHasUpdate } from "@/modules/updater/updateStore";
 import { useModuleViews } from "@/modules/useModuleList";
 import { moduleRegistry } from "@/core/moduleRegistry";
 import { importImageFromPaths } from "@/editor/image/importImage";
+import { projectApi } from "@/ipc/invoke";
 
 /** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
 interface MenuItemDef {
@@ -248,7 +249,31 @@ export function MenuBar() {
           onClick: () => void cancelCompile(),
         },
         { sep: true, label: "" },
-        { label: "清理辅助文件", enabled: false, hint: "M1" },
+        {
+          // M1-9：清理 LaTeX 辅助文件（.aux/.log/.bbl/.blg/.toc/.out/.synctex.gz 等）
+          label: "清理辅助文件",
+          enabled: hasProject,
+          hint: "未打开项目",
+          onClick: async () => {
+            const root = useProjectStore.getState().root;
+            if (!root) return;
+            try {
+              const res = await projectApi.cleanAux(root);
+              // 清理绕过 store，notify 刷新有时序延迟/编译态丢弃风险 → 先主动刷新资源树
+              if (res.removed > 0) {
+                await useProjectStore.getState().refresh(true);
+              }
+              notify(
+                res.removed > 0
+                  ? `已清理 ${res.removed} 个辅助文件`
+                  : "没有需要清理的辅助文件",
+                "ok",
+              );
+            } catch (e) {
+              notify(String(e), "err");
+            }
+          },
+        },
         {
           label: "编译并查看 PDF",
           enabled: hasMain && !running,

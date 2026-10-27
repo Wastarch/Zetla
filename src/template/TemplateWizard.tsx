@@ -1,6 +1,6 @@
-// M0-7 · 「从模板新建」向导（开发文档 §5.6 流程 · MVP 极简版）
-// 选模板 → 填变量（manifest.variables 中 string/text 类型，MVP 仅标题/作者）→ 选位置
-// → create_project 生成 main.tex + .ltex/config.json → 自动打开项目并把主文件开到标签
+// M1-9 · 「从模板新建」向导（开发文档 §5.6 · 多文件模板 + 动态变量表单）
+// 选模板 → 按 manifest.variables 动态渲染表单（string/text/number/select/bool/date/multiselect，
+// 支持分组 group、必填 required、placeholder/help）→ 选位置 → create_project 生成项目并打开。
 import { useEffect, useMemo, useState } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { templateApi } from "@/ipc/invoke";
@@ -9,9 +9,51 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { base, notify, useProjectStore } from "@/project/useProject";
 import type { TemplateManifest, TemplateMeta, TemplateVar } from "@/types";
 
-/** MVP 只渲染单行文本变量；select/bool/多行 → M1 复杂表单 */
-function isFormField(v: TemplateVar): boolean {
-  return v.type === "string" || v.type === "text";
+/** 变量默认值（按类型 + manifest default 初始化） */
+function defaultValue(v: TemplateVar): unknown {
+  if (v.default != null) return v.default;
+  switch (v.type) {
+    case "bool":
+      return false;
+    case "multiselect":
+      return [];
+    case "select":
+      return v.options?.[0] ?? "";
+    default:
+      return "";
+  }
+}
+
+/** 分组后的变量（保持首次出现顺序） */
+function groupVars(vars: TemplateVar[]): { group: string; items: TemplateVar[] }[] {
+  const order: string[] = [];
+  const map = new Map<string, TemplateVar[]>();
+  for (const v of vars) {
+    const g = v.group ?? "基本信息";
+    if (!map.has(g)) {
+      map.set(g, []);
+      order.push(g);
+    }
+    map.get(g)!.push(v);
+  }
+  return order.map((g) => ({ group: g, items: map.get(g)! }));
+}
+
+/** 必填校验：返回缺失的 label 列表 */
+function missingRequired(vars: TemplateVar[], values: Record<string, unknown>): string[] {
+  const miss: string[] = [];
+  for (const v of vars) {
+    if (!v.required) continue;
+    const val = values[v.key];
+    if (v.type === "multiselect") {
+      if (!Array.isArray(val) || val.length === 0) miss.push(v.label);
+    } else if (v.type === "bool") {
+      /* 布尔必有默认值，无需校验 */
+    } else if (val == null || String(val).trim() === "") {
+      miss.push(v.label);
+    }
+  }
+  return miss;
 }
 
 export function TemplateWizard() {
@@ -22,7 +64,7 @@ export function TemplateWizard() {
   const [metas, setMetas] = useState<TemplateMeta[]>([]);
   const [selected, setSelected] = useState("");
   const [manifest, setManifest] = useState<TemplateManifest | null>(null);
-  const [values, setValues] = useState<Record<string, string>>({});
+  const [values, setValues] = useState<Record<string, unknown>>({});
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -48,9 +90,9 @@ export function TemplateWizard() {
       .getTemplate(selected)
       .then((m) => {
         setManifest(m);
-        const init: Record<string, string> = {};
+        const init: Record<string, unknown> = {};
         for (const v of m.variables ?? []) {
-          init[v.key] = v.default != null ? String(v.default) : "";
+          init[v.key] = defaultValue(v);
         }
         setValues(init);
       })
@@ -67,10 +109,13 @@ export function TemplateWizard() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, closeWizard]);
 
-  const formVars = useMemo(
-    () => (manifest?.variables ?? []).filter(isFormField),
+  const groups = useMemo(
+    () => groupVars(manifest?.variables ?? []),
     [manifest],
   );
+
+  const setVal = (key: string, val: unknown) =>
+    setValues((s) => ({ ...s, [key]: val }));
 
   async function pickDir() {
     try {
@@ -87,6 +132,11 @@ export function TemplateWizard() {
 
   async function submit() {
     if (!manifest || !target.trim()) return;
+    const miss = missingRequired(manifest.variables ?? [], values);
+    if (miss.length > 0) {
+      setErr(`请填写必填项：${miss.join("、")}`);
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {
@@ -114,7 +164,7 @@ export function TemplateWizard() {
       >
         <div className="modal-head">
           <h2>从模板新建</h2>
-          <span className="sub">M0-7 · 内置 {metas.length} 套</span>
+          <span className="sub">M1-9 · 内置 {metas.length} 套</span>
           <button
             type="button"
             className="ibtn x"
@@ -148,23 +198,104 @@ export function TemplateWizard() {
             ))}
           </div>
 
-          {formVars.map((v) => (
-            <div className="fw-field" key={v.key}>
-              <label className="entry-label" htmlFor={`tpl-var-${v.key}`}>
-                {v.label}
-                {v.required ? " *" : ""}
-              </label>
-              <input
-                id={`tpl-var-${v.key}`}
-                className="entry-input"
-                value={values[v.key] ?? ""}
-                placeholder={v.placeholder}
-                spellCheck={false}
-                onChange={(e) =>
-                  setValues((s) => ({ ...s, [v.key]: e.target.value }))
-                }
-              />
-            </div>
+          {/* 动态变量表单（全类型 + 分组） */}
+          {groups.map((g) => (
+            <fieldset className="fw-group" key={g.group}>
+              <legend>{g.group}</legend>
+              {g.items.map((v) => (
+                <div className="fw-field" key={v.key}>
+                  <label className="entry-label" htmlFor={`tpl-var-${v.key}`}>
+                    {v.label}
+                    {v.required ? " *" : ""}
+                  </label>
+                  {v.type === "text" ? (
+                    <textarea
+                      id={`tpl-var-${v.key}`}
+                      className="entry-input fw-textarea"
+                      value={String(values[v.key] ?? "")}
+                      placeholder={v.placeholder}
+                      onChange={(e) => setVal(v.key, e.target.value)}
+                    />
+                  ) : v.type === "select" ? (
+                    <select
+                      id={`tpl-var-${v.key}`}
+                      className="entry-input"
+                      value={String(values[v.key] ?? "")}
+                      onChange={(e) => setVal(v.key, e.target.value)}
+                    >
+                      {(v.options ?? []).map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  ) : v.type === "bool" ? (
+                    <label className="fw-check">
+                      <input
+                        type="checkbox"
+                        checked={Boolean(values[v.key])}
+                        onChange={(e) => setVal(v.key, e.target.checked)}
+                      />
+                      <span>{v.placeholder ?? "启用"}</span>
+                    </label>
+                  ) : v.type === "multiselect" ? (
+                    <div className="fw-checks">
+                      {(v.options ?? []).map((opt) => {
+                        const arr = Array.isArray(values[v.key])
+                          ? (values[v.key] as string[])
+                          : [];
+                        const checked = arr.includes(opt);
+                        return (
+                          <label className="fw-check" key={opt}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) =>
+                                setVal(
+                                  v.key,
+                                  e.target.checked
+                                    ? [...arr, opt]
+                                    : arr.filter((x) => x !== opt),
+                                )
+                              }
+                            />
+                            <span>{opt}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : v.type === "date" ? (
+                    <input
+                      id={`tpl-var-${v.key}`}
+                      type="date"
+                      className="entry-input"
+                      value={String(values[v.key] ?? "")}
+                      onChange={(e) => setVal(v.key, e.target.value)}
+                    />
+                  ) : (
+                    <input
+                      id={`tpl-var-${v.key}`}
+                      type={v.type === "number" ? "number" : "text"}
+                      className="entry-input"
+                      value={String(values[v.key] ?? "")}
+                      placeholder={v.placeholder}
+                      spellCheck={false}
+                      onChange={(e) =>
+                        setVal(
+                          v.key,
+                          v.type === "number"
+                            ? e.target.value === ""
+                              ? ""
+                              : Number(e.target.value)
+                            : e.target.value,
+                        )
+                      }
+                    />
+                  )}
+                  {v.help && <p className="entry-hint">{v.help}</p>}
+                </div>
+              ))}
+            </fieldset>
           ))}
 
           <div className="fw-field">
@@ -185,7 +316,7 @@ export function TemplateWizard() {
               </button>
             </div>
             <p className="entry-hint">
-              将生成 main.tex 与 .ltex/config.json，并自动打开该项目、把主文件开到编辑器
+              将生成主文件与配套结构，并自动打开项目、把主文件开到编辑器
             </p>
           </div>
         </div>

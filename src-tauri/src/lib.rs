@@ -35,6 +35,8 @@ pub fn run() {
             commands::fsdoc::read_file,
             commands::fsdoc::write_file,
             commands::fsdoc::revert_file,
+            // M1-9：清理 LaTeX 辅助文件
+            commands::fsdoc::clean_aux,
             // 编译引擎（M0-3a）
             commands::compile::detect_tex_distribution,
             // TeX 自动安装（M0-15b/c）
@@ -73,7 +75,8 @@ pub fn run() {
             commands::updater::launch_installer_and_exit,
             // M0-2+ 逐步注册：
             // list_templates, get_template, create_project, import_template,
-            // scan_project, read_file, write_file, revert_file, clean_aux
+            // scan_project, read_file, write_file, revert_file
+            // — clean_aux 已于 M1-9 注册
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

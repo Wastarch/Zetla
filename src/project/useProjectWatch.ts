@@ -6,12 +6,14 @@ import { useEffect } from "react";
 import { RustEvents, onKernelEvent } from "@/ipc/events";
 import { useAppStore } from "@/core/store";
 import { useProjectStore } from "./useProject";
-import type { ProjectChanged } from "@/types";
+import { useBuffersStore } from "@/editor/useBuffers";
+import { projectApi } from "@/ipc/invoke";
+import type { FileChanged, ProjectChanged } from "@/types";
 
 export function useProjectWatch(): void {
   useEffect(() => {
     let alive = true;
-    let unlisten: (() => void) | null = null;
+    const unlisteners: Array<() => void> = [];
     let refreshing = false;
     let pending = false;
 
@@ -42,13 +44,38 @@ export function useProjectWatch(): void {
     void onKernelEvent<ProjectChanged>(RustEvents.projectChanged, (e) => {
       if (alive) void run(e.root);
     }).then((un) => {
-      if (alive) unlisten = un;
+      if (alive) unlisteners.push(un);
+      else un();
+    });
+
+    // M1-9：文件被外部修改 → 与内存内容比对，不一致则提示重载
+    // （自身保存回显时文件与内存 content 一致，不会误报）
+    void onKernelEvent<FileChanged>(RustEvents.fileChanged, (e) => {
+      if (!alive) return;
+      const cur = useBuffersStore
+        .getState()
+        .buffers.find((b) => b.path === e.path && b.kind === "text");
+      if (!cur) return;
+      void projectApi
+        .readFile(e.path)
+        .then((d) => {
+          const now = useBuffersStore
+            .getState()
+            .buffers.find((b) => b.path === e.path);
+          if (!now) return;
+          useBuffersStore.getState().setExternalChanged(e.path, d.content !== now.content);
+        })
+        .catch(() => {
+          /* 读取失败（文件已删等）→ 交给树刷新/打开逻辑处理 */
+        });
+    }).then((un) => {
+      if (alive) unlisteners.push(un);
       else un();
     });
 
     return () => {
       alive = false;
-      unlisten?.();
+      unlisteners.forEach((u) => u());
     };
   }, []);
 }

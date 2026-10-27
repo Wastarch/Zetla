@@ -102,9 +102,36 @@ export function EditorWorkspace() {
     if (activePath) handles.current[activePath]?.openFind();
   }, [activePath]);
 
+  // M1-9：活动文本缓冲被外部修改时的提示条
+  const activeExternal = buffers.find(
+    (b) => b.path === activePath && b.externallyChanged,
+  )?.externallyChanged;
+
+  const reloadExternal = useCallback(() => {
+    if (activePath) void useBuffersStore.getState().revertBuffer(activePath);
+  }, [activePath]);
+
+  const ignoreExternal = useCallback(() => {
+    if (activePath) useBuffersStore.getState().dismissExternal(activePath);
+  }, [activePath]);
+
   return (
     <section className="center">
       <TabBar onFind={doFind} />
+
+      {activeExternal && (
+        <div className="ext-changed-bar">
+          <span>
+            此文件已在编辑器外部被修改，是否重新加载？（未保存的本地修改将丢失）
+          </span>
+          <button type="button" className="btn primary" onClick={reloadExternal}>
+            重新加载
+          </button>
+          <button type="button" className="btn" onClick={ignoreExternal}>
+            忽略
+          </button>
+        </div>
+      )}
 
       <div className="code-wrap">
         {buffers.length === 0 ? (

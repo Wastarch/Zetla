@@ -34,6 +34,14 @@ export interface ProjectChanged {
   root: string;
 }
 
+/** 文件外部改动事件负载（M1-9，notify 发现文件被修改后推送） */
+export interface FileChanged {
+  /** 被修改的文件绝对路径 */
+  path: string;
+  /** 改动类型（当前仅 "modified"） */
+  kind: string;
+}
+
 /** 项目扫描结果 */
 export interface ProjectTree {
   /** 项目根目录 */

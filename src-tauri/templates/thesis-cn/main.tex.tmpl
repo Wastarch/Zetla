@@ -1,0 +1,27 @@
+% 中文毕业论文模板（由 Zetla 生成 · thesis-cn）
+\documentclass{ctexbook}
+
+\title{<%= title %>}
+\author{<%= author %>}
+\date{<%= date %>}
+
+\begin{document}
+
+\maketitle
+
+\begin{center}
+<%= school %> \quad <%= major %> \quad <%= degree %>学位论文\\
+指导教师：<%= advisor %>
+\end{center}
+
+\tableofcontents
+
+\input{chapters/intro}
+\input{chapters/related}
+\input{chapters/method}
+\input{chapters/conclusion}
+
+\chapter*{关键词}
+<%= keywords %>
+
+\end{document}

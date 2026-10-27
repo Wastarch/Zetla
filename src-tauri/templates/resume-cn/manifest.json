@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "id": "resume-cn",
+  "name": "中文简历",
+  "description": "单文件中文简历骨架（ctexart + 联系方式 + 分段落）",
+  "category": "resume",
+  "tags": ["简历", "求职", "ctex"],
+  "version": "1.0",
+  "build": { "engine": "xelatex", "mainFile": "main.tex", "outputDir": "build", "synctex": true },
+  "dependencies": { "packages": ["ctex"], "assets": [] },
+  "variables": [
+    { "key": "name", "label": "姓名", "type": "string", "required": true, "group": "联系方式" },
+    { "key": "jobtitle", "label": "求职意向 / 头衔", "type": "string", "group": "联系方式" },
+    { "key": "phone", "label": "电话", "type": "string", "group": "联系方式" },
+    { "key": "email", "label": "邮箱", "type": "string", "group": "联系方式" },
+    { "key": "address", "label": "所在地", "type": "string", "group": "联系方式" },
+    { "key": "education", "label": "教育背景", "type": "text", "group": "正文", "placeholder": "2019–2023 某某大学 本科 …" },
+    { "key": "experience", "label": "工作 / 项目经历", "type": "text", "group": "正文", "placeholder": "每行一段经历" },
+    { "key": "skills", "label": "技能", "type": "text", "group": "正文", "placeholder": "编程语言、工具、语言能力等" }
+  ],
+  "structure": {
+    "dirs": ["figures"],
+    "files": [
+      { "target": "main.tex", "source": "main.tex.tmpl", "render": true }
+    ]
+  }
+}

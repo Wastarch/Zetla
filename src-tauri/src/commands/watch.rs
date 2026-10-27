@@ -22,6 +22,19 @@ pub struct ProjectChanged {
     pub root: String,
 }
 
+/// 事件名（外部改动提示重载，M1-9；与 events.ts RustEvents.fileChanged 一致）
+pub const EV_FILE_CHANGED: &str = "file_changed";
+
+/// 事件负载（与 src/types/project.ts FileChanged 对齐）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileChanged {
+    /// 被修改的文件绝对路径
+    pub path: String,
+    /// 改动类型（当前仅 "modified"）
+    pub kind: String,
+}
+
 /// 全局监听状态：同一时刻只监听一个项目根
 #[derive(Default)]
 pub struct WatchState {
@@ -58,6 +71,8 @@ pub fn watch_project(
     let (tx, rx) = mpsc::channel::<()>();
     let emit_root = root.clone();
     let emit_app = app.clone();
+    // 外部改动（Modify）通知用独立发射器（与树刷新防抖线程解耦）
+    let emit_file = app.clone();
 
     // 防抖线程：收到首个事件后，持续吸走事件直到静默 DEBOUNCE_MS，再推一次
     std::thread::spawn(move || {
@@ -82,13 +97,32 @@ pub fn watch_project(
     let filter_root = root_path.clone();
     let handler = move |res: notify::Result<Event>| {
         let Ok(ev) = res else { return };
-        if !is_tree_event(&ev.kind) {
+        if is_tree_event(&ev.kind) {
+            if ev.paths.iter().all(|p| is_ignored_path(&filter_root, p)) {
+                return;
+            }
+            let _ = tx.send(());
             return;
         }
-        if ev.paths.iter().all(|p| is_ignored_path(&filter_root, p)) {
-            return;
+        // M1-9：文件被外部修改（非自身保存回显）→ 推送 file_changed 提示重载
+        if matches!(ev.kind, EventKind::Modify(_)) {
+            for p in &ev.paths {
+                if is_ignored_path(&filter_root, p) {
+                    continue;
+                }
+                // 仅文件有意义（目录元数据变更忽略）
+                if p.is_dir() {
+                    continue;
+                }
+                let _ = emit_file.emit(
+                    EV_FILE_CHANGED,
+                    FileChanged {
+                        path: p.to_string_lossy().into_owned(),
+                        kind: "modified".into(),
+                    },
+                );
+            }
         }
-        let _ = tx.send(());
     };
 
     let mut watcher =

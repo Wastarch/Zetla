@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0",
+  "id": "beamer-cn",
+  "name": "中文幻灯片",
+  "description": "Beamer 中文幻灯片骨架（beamer + ctex + 多节拆分）",
+  "category": "slides",
+  "tags": ["幻灯片", "beamer", "汇报"],
+  "version": "1.0",
+  "build": { "engine": "xelatex", "mainFile": "main.tex", "outputDir": "build", "synctex": true },
+  "dependencies": { "packages": ["beamer", "ctex"], "assets": [] },
+  "variables": [
+    { "key": "title", "label": "演示标题", "type": "text", "required": true, "group": "基本信息", "placeholder": "我的汇报" },
+    { "key": "author", "label": "演讲者", "type": "string", "required": true, "group": "基本信息" },
+    { "key": "institute", "label": "单位/机构", "type": "string", "group": "基本信息", "default": "某某实验室" },
+    { "key": "date", "label": "日期", "type": "date", "group": "基本信息", "default": "2026-06-01" },
+    { "key": "theme", "label": "主题风格", "type": "select", "options": ["default", "Madrid", "Warsaw", "AnnArbor", "CambridgeUS"], "default": "Madrid", "group": "外观" },
+    { "key": "withNotes", "label": "包含演讲备注页", "type": "bool", "default": false, "group": "外观" }
+  ],
+  "structure": {
+    "dirs": ["sections", "figures"],
+    "files": [
+      { "target": "main.tex", "source": "main.tex.tmpl", "render": true },
+      { "target": "sections/sec1.tex", "source": "sections/sec1.tex.tmpl", "render": true },
+      { "target": "sections/sec2.tex", "source": "sections/sec2.tex.tmpl", "render": true }
+    ]
+  }
+}

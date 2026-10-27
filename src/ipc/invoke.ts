@@ -89,7 +89,7 @@ export const projectApi = {
   writeFile: (path: string, content: string, options?: WriteOptions) =>
     call<void>("write_file", { path, content, options }),
   revertFile: (path: string) => call<FileDoc>("revert_file", { path }),
-  cleanAux: (path: string) => call<void>("clean_aux", { path }),
+  cleanAux: (path: string) => call<{ removed: number; paths: string[] }>("clean_aux", { root: path }),
   /** M0-9a：监听项目根的文件增减（重复调用即换根） */
   watchProject: (root: string) => call<void>("watch_project", { root }),
   unwatchProject: () => call<void>("unwatch_project"),

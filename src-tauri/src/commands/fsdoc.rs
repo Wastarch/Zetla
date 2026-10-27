@@ -186,10 +186,79 @@ pub fn write_file(
     Ok(())
 }
 
+// ── 清理辅助文件（M1-9）──────────────────────────────────
+// 删 LaTeX 编译产物（.aux/.log/.bbl/.blg/.toc/.out/.synctex.gz/.lof/.lot/.idx/.ilg/.ind/.fls/.fdb_latexmk），
+// 递归、不碰源（.tex/.bib/.cls/.sty）与产物 PDF。
+
+/// 清理结果（返回删除数与清单，供前端 toast）
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanAuxResult {
+    pub removed: usize,
+    pub paths: Vec<String>,
+}
+
+/// 视为辅助文件的扩展名（小写；`.synctex.gz` 单独按后缀处理）
+const AUX_EXT: &[&str] = &[
+    "aux", "log", "bbl", "blg", "toc", "out", "lof", "lot", "idx", "ilg", "ind", "fls",
+    "fdb_latexmk",
+];
+
+/// 该路径是否为 LaTeX 辅助文件（递归删除用）
+fn is_aux_file(path: &Path) -> bool {
+    let name = path
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    if name.ends_with(".synctex.gz") {
+        return true;
+    }
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) => AUX_EXT.iter().any(|a| a.eq_ignore_ascii_case(ext)),
+        None => false,
+    }
+}
+
+/// 递归删除 root 下所有辅助文件（root 须为目录）
+fn clean_aux_in(root: &Path) -> Result<CleanAuxResult, String> {
+    if !root.is_dir() {
+        return Err(format!("不是有效目录: {}", root.display()));
+    }
+    let mut removed = 0usize;
+    let mut paths: Vec<String> = Vec::new();
+
+    fn walk(dir: &Path, removed: &mut usize, paths: &mut Vec<String>) -> std::io::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let p = entry.path();
+            let ft = entry.file_type()?;
+            if ft.is_dir() {
+                walk(&p, removed, paths)?;
+            } else if ft.is_file() && is_aux_file(&p) {
+                if std::fs::remove_file(&p).is_ok() {
+                    *removed += 1;
+                    paths.push(p.to_string_lossy().into_owned());
+                }
+            }
+        }
+        Ok(())
+    }
+
+    walk(root, &mut removed, &mut paths).map_err(|e| format!("清理失败 {}: {}", root.display(), e))?;
+    Ok(CleanAuxResult { removed, paths })
+}
+
+/// 清理辅助文件（Tauri command）：传入项目根目录
+#[tauri::command]
+pub fn clean_aux(root: String) -> Result<CleanAuxResult, String> {
+    clean_aux_in(Path::new(&root))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use encoding_rs::GBK;
+    use std::path::PathBuf;
 
     fn tmp_path(name: &str) -> String {
         let dir = std::env::temp_dir().join("zetla_fsdoc_test");
@@ -286,5 +355,51 @@ mod tests {
         assert!(write_file(bad, "x".into(), None).is_err());
         assert!(!dir_parent.exists());
         assert_eq!(read_bytes(&path), b"keep me");
+    }
+
+    #[test]
+    fn clean_aux_removes_only_aux_files() {
+        let dir: PathBuf = PathBuf::from(tmp_path("clean_aux"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("main.aux"), "x").unwrap();
+        std::fs::write(dir.join("main.log"), "x").unwrap();
+        std::fs::write(dir.join("main.synctex.gz"), "x").unwrap();
+        std::fs::write(dir.join("main.fdb_latexmk"), "x").unwrap();
+        std::fs::write(dir.join("main.pdf"), "KEEP").unwrap();
+        std::fs::write(dir.join("main.tex"), "KEEP").unwrap();
+        std::fs::write(dir.join("refs.bib"), "KEEP").unwrap();
+        std::fs::create_dir_all(dir.join("chapters")).unwrap();
+        std::fs::write(dir.join("chapters/ch.aux"), "x").unwrap();
+        std::fs::write(dir.join("chapters/ch.tex"), "KEEP").unwrap();
+
+        let res = clean_aux_in(&dir).unwrap();
+        assert_eq!(res.removed, 5);
+
+        // 源 / PDF 必须保留
+        assert_eq!(std::fs::read_to_string(dir.join("main.pdf")).unwrap(), "KEEP");
+        assert_eq!(std::fs::read_to_string(dir.join("main.tex")).unwrap(), "KEEP");
+        assert_eq!(std::fs::read_to_string(dir.join("refs.bib")).unwrap(), "KEEP");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("chapters/ch.tex")).unwrap(),
+            "KEEP"
+        );
+        // 辅助文件已删
+        assert!(!dir.join("main.aux").exists());
+        assert!(!dir.join("main.log").exists());
+        assert!(!dir.join("main.synctex.gz").exists());
+        assert!(!dir.join("main.fdb_latexmk").exists());
+        assert!(!dir.join("chapters/ch.aux").exists());
+
+        // 二次清理：无残留
+        let res2 = clean_aux_in(&dir).unwrap();
+        assert_eq!(res2.removed, 0);
+    }
+
+    #[test]
+    fn clean_aux_rejects_non_dir() {
+        let f = tmp_path("not_a_dir.tex");
+        std::fs::write(&f, "x").unwrap();
+        assert!(clean_aux_in(Path::new(&f)).is_err());
     }
 }
