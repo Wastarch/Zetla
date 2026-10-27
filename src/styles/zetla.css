@@ -1106,6 +1106,20 @@ body {
   color: #fff;
 }
 
+/* M1-15d：危险操作按钮（删除项目） */
+.btn.danger {
+  background: var(--err);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 500;
+}
+
+.btn.danger:hover {
+  background: var(--err);
+  color: #fff;
+  filter: brightness(1.06);
+}
+
 /* ── 编辑区 ─────────────────────────────── */
 .code-wrap {
   flex: 1;

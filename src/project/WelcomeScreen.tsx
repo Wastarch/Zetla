@@ -3,7 +3,7 @@
 // 入口：从模板新建、打开项目文件夹。
 // 数据源：useSettingsStore.settings.recentProjects（与 Rust AppConfig.recent_projects 对齐）；
 // 置顶/归档经 configApi 写盘并返回最新列表，同步回本地镜像。
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { configApi } from "@/ipc/invoke";
 import { useSettingsStore } from "@/core/settings";
 import { notify, useProjectStore } from "@/project/useProject";
@@ -33,8 +33,23 @@ export function WelcomeScreen() {
   const openProject = useProjectStore((s) => s.openProject);
   const openProjectDialog = useProjectStore((s) => s.openProjectDialog);
   const openWizard = useProjectStore((s) => s.openWizard);
+  const openProjectAction = useProjectStore((s) => s.openProjectAction);
+  const exportProject = useProjectStore((s) => s.exportProject);
   const [showArchived, setShowArchived] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // 卡片「⋯」菜单：点击菜单外关闭
+  useEffect(() => {
+    if (!menuFor) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current?.contains(e.target as Node)) return;
+      setMenuFor(null);
+    };
+    window.addEventListener("mousedown", onDown);
+    return () => window.removeEventListener("mousedown", onDown);
+  }, [menuFor]);
 
   // 挂载时刷新（settings.load 已带 recentProjects；此处兜底设置未加载 / 外部改动）
   useEffect(() => {
@@ -83,7 +98,10 @@ export function WelcomeScreen() {
       tabIndex={0}
       onClick={() => void openProject(e.path)}
       onKeyDown={(ev) => {
-        if (ev.key === "Enter") void openProject(e.path);
+        // 仅当焦点在卡片本身时回车打开；避免卡片内按钮的回车冒泡误触发
+        if (ev.target === ev.currentTarget && ev.key === "Enter") {
+          void openProject(e.path);
+        }
       }}
     >
       <div className="wc-top">
@@ -110,12 +128,12 @@ export function WelcomeScreen() {
           </button>
           <button
             type="button"
-            className="wc-arch"
-            title={e.archived ? "取消归档" : "归档"}
-            disabled={busy === e.path}
-            onClick={() => void toggleArchive(e)}
+            className={menuFor === e.path ? "wc-menu-btn on" : "wc-menu-btn"}
+            title="更多操作"
+            aria-label="更多操作"
+            onClick={() => setMenuFor((v) => (v === e.path ? null : e.path))}
           >
-            {e.archived ? "还原" : "归档"}
+            ⋯
           </button>
           <button
             type="button"
@@ -127,6 +145,54 @@ export function WelcomeScreen() {
           </button>
         </div>
       </div>
+
+      {menuFor === e.path && (
+        <div
+          className="wc-menu"
+          ref={menuRef}
+          onMouseDown={(ev) => ev.stopPropagation()}
+          onClick={(ev) => ev.stopPropagation()}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setMenuFor(null);
+              openProjectAction({ kind: "rename", path: e.path, name: e.name });
+            }}
+          >
+            重命名项目…
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMenuFor(null);
+              void exportProject(e.path);
+            }}
+          >
+            导出为 zip…
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMenuFor(null);
+              void toggleArchive(e);
+            }}
+          >
+            {e.archived ? "取消归档" : "归档"}
+          </button>
+          <div className="wc-menu-sep" />
+          <button
+            type="button"
+            className="danger"
+            onClick={() => {
+              setMenuFor(null);
+              openProjectAction({ kind: "delete", path: e.path, name: e.name });
+            }}
+          >
+            删除项目…
+          </button>
+        </div>
+      )}
     </div>
   );
 

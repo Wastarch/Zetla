@@ -66,6 +66,10 @@ pub fn run() {
             // M1-15c：项目配置读写（可视化设置面板）
             commands::project::get_project_config,
             commands::project::update_project_config,
+            // M1-15d：项目生命周期（重命名 / 删除 / 导出 zip）
+            commands::project::rename_project,
+            commands::project::delete_project,
+            commands::project::export_project,
             // M1-15a：项目注册表（最近/置顶/归档）
             commands::project_mgmt::register_recent_project,
             commands::project_mgmt::list_recent_projects,

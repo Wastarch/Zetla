@@ -6,6 +6,10 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
+use crate::commands::config::{
+    config_path, normalize, read_config, write_config, AppConfig, ProjectEntry,
+};
+
 use serde_json::Map;
 
 /// 树节点（与 src/types/project.ts ProjectNode 对齐）
@@ -478,6 +482,241 @@ fn glob_match(pattern: &str, text: &str) -> bool {
     let p: Vec<char> = pattern.chars().collect();
     let t: Vec<char> = text.chars().collect();
     rec(&p, &t)
+}
+
+// ── M1-15d · 项目生命周期（重命名 / 删除 / 导出 zip） ────────────────
+
+/// 项目目录安全校验：非空、有目录名（拒绝盘符根）、必须是目录
+fn guard_project_dir(path: &str) -> Result<PathBuf, String> {
+    if path.trim().is_empty() {
+        return Err("项目路径为空".into());
+    }
+    let p = PathBuf::from(path);
+    if p.file_name().is_none() {
+        return Err(format!("危险路径，已拒绝: {}", path));
+    }
+    if !p.is_dir() {
+        return Err(format!("项目目录不存在: {}", path));
+    }
+    Ok(p)
+}
+
+/// 两个路径是否指向同一目录（优先 canonicalize；失败时忽略大小写字符串比较）
+fn same_path(a: &str, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a.eq_ignore_ascii_case(&b.to_string_lossy()),
+    }
+}
+
+fn is_active(active_root: &Option<String>, dir: &Path) -> bool {
+    active_root
+        .as_deref()
+        .map(|a| same_path(a, dir))
+        .unwrap_or(false)
+}
+
+/// 项目目录名合法性（名称级校验；路径级由 guard 兜底）
+fn validate_project_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("项目名不能为空".into());
+    }
+    if name == "." || name == ".." {
+        return Err("项目名不合法".into());
+    }
+    if name
+        .chars()
+        .any(|c| matches!(c, '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|'))
+    {
+        return Err("项目名不能包含 \\ / : * ? \" < > |".into());
+    }
+    if name.ends_with('.') || name.ends_with(' ') {
+        return Err("项目名不能以空格或点结尾".into());
+    }
+    Ok(name.to_string())
+}
+
+/// 重命名项目目录（更新注册表 path / 展示名；拒绝活动 root）
+fn rename_project_inner(
+    src: &Path,
+    new_name: &str,
+    active_root: &Option<String>,
+    cfg_path: &Path,
+) -> Result<Vec<ProjectEntry>, String> {
+    if is_active(active_root, src) {
+        return Err("该项目正在打开中，无法重命名；请先关闭项目".into());
+    }
+    let name = validate_project_name(new_name)?;
+    let parent = src
+        .parent()
+        .ok_or_else(|| "无法解析项目父目录".to_string())?;
+    let dst = parent.join(&name);
+    if dst.exists() {
+        return Err(format!("目标已存在: {}", dst.display()));
+    }
+
+    let mut cfg: AppConfig = read_config(cfg_path);
+    let idx = cfg.recent_projects.iter().position(|e| same_path(&e.path, src));
+    let session_hit = cfg
+        .session
+        .last_project
+        .as_deref()
+        .map(|lp| same_path(lp, src) || lp.eq_ignore_ascii_case(&src.to_string_lossy()))
+        .unwrap_or(false);
+
+    std::fs::rename(src, &dst).map_err(|e| format!("重命名失败: {}", e))?;
+    let new_path = dst.to_string_lossy().into_owned();
+
+    // 展示名：优先项目配置里的显式 name，否则用新目录名
+    let explicit_name = read_project_obj(&dst)
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    if let Some(i) = idx {
+        let e = &mut cfg.recent_projects[i];
+        e.path = new_path.clone();
+        e.name = explicit_name.unwrap_or_else(|| name.clone());
+    }
+    if session_hit {
+        cfg.session.last_project = Some(new_path);
+    }
+    let cfg = normalize(cfg);
+    write_config(cfg_path, &cfg)?;
+    Ok(cfg.recent_projects)
+}
+
+/// 删除项目目录（清理注册表；拒绝活动 root）
+fn delete_project_inner(
+    dir: &Path,
+    active_root: &Option<String>,
+    cfg_path: &Path,
+) -> Result<Vec<ProjectEntry>, String> {
+    if is_active(active_root, dir) {
+        return Err("该项目正在打开中，无法删除；请先关闭项目".into());
+    }
+    let mut cfg: AppConfig = read_config(cfg_path);
+    // 删除前先记录命中的注册表条目（删除后无法 canonicalize）
+    let matched: std::collections::HashSet<String> = cfg
+        .recent_projects
+        .iter()
+        .filter(|e| same_path(&e.path, dir))
+        .map(|e| e.path.clone())
+        .collect();
+    let session_hit = cfg
+        .session
+        .last_project
+        .as_deref()
+        .map(|lp| same_path(lp, dir) || lp.eq_ignore_ascii_case(&dir.to_string_lossy()))
+        .unwrap_or(false);
+
+    std::fs::remove_dir_all(dir).map_err(|e| format!("删除失败: {}", e))?;
+
+    cfg.recent_projects.retain(|e| !matched.contains(&e.path));
+    if session_hit {
+        cfg.session.last_project = None;
+    }
+    let cfg = normalize(cfg);
+    write_config(cfg_path, &cfg)?;
+    Ok(cfg.recent_projects)
+}
+
+/// 需要从导出 zip 中跳过的目录名
+const EXPORT_SKIP_DIRS: [&str; 4] = ["node_modules", "target", "dist", ".git"];
+
+/// 是否为 LaTeX 编译辅助文件（导出时跳过）
+fn is_aux_file(name: &str) -> bool {
+    const SUFFIXES: [&str; 17] = [
+        ".aux", ".log", ".bbl", ".blg", ".toc", ".out", ".lof", ".lot", ".idx", ".ilg",
+        ".ind", ".fls", ".fdb_latexmk", ".synctex.gz", ".nav", ".snm", ".vrb",
+    ];
+    let n = name.to_ascii_lowercase();
+    SUFFIXES.iter().any(|s| n.ends_with(s))
+}
+
+/// 导出项目为 zip（排除辅助文件与 node_modules/target/dist/.git；保留 .ltex/源/PDF）；返回文件数
+fn export_project_inner(root: &Path, dest: &Path) -> Result<u32, String> {
+    if let Some(parent) = dest.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建导出目录失败: {}", e))?;
+        }
+    }
+    let file = std::fs::File::create(dest).map_err(|e| format!("创建 zip 失败: {}", e))?;
+    let mut zw = zip::ZipWriter::new(file);
+    let dest_canon = std::fs::canonicalize(dest).ok();
+    let mut count: u32 = 0;
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            e.depth() == 0 || !EXPORT_SKIP_DIRS.iter().any(|d| name.eq_ignore_ascii_case(d))
+        })
+    {
+        let Ok(e) = entry else { continue };
+        if e.depth() == 0 || e.file_type().is_dir() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy();
+        if is_aux_file(&name) {
+            continue;
+        }
+        let abs = e.path();
+        // 跳过导出目标 zip 自身（若落在项目内）
+        if let (Some(dc), Ok(ac)) = (dest_canon.as_ref(), std::fs::canonicalize(abs)) {
+            if &ac == dc {
+                continue;
+            }
+        }
+        let rel = abs
+            .strip_prefix(root)
+            .map_err(|_| format!("无法计算相对路径: {}", abs.display()))?
+            .to_string_lossy()
+            .replace('\\', "/");
+        let opts = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o644);
+        zw.start_file(rel, opts)
+            .map_err(|e| format!("写入 zip 失败: {}", e))?;
+        let mut f = std::fs::File::open(abs).map_err(|e| format!("读取文件失败: {}", e))?;
+        std::io::copy(&mut f, &mut zw).map_err(|e| format!("写入 zip 失败: {}", e))?;
+        count += 1;
+    }
+    zw.finish().map_err(|e| format!("完成 zip 失败: {}", e))?;
+    Ok(count)
+}
+
+#[tauri::command]
+pub fn rename_project(
+    app: tauri::AppHandle,
+    path: String,
+    new_name: String,
+    active_root: Option<String>,
+) -> Result<Vec<ProjectEntry>, String> {
+    let src = guard_project_dir(&path)?;
+    let cfg_path = config_path(&app)?;
+    rename_project_inner(&src, &new_name, &active_root, &cfg_path)
+}
+
+#[tauri::command]
+pub fn delete_project(
+    app: tauri::AppHandle,
+    path: String,
+    active_root: Option<String>,
+) -> Result<Vec<ProjectEntry>, String> {
+    let dir = guard_project_dir(&path)?;
+    let cfg_path = config_path(&app)?;
+    delete_project_inner(&dir, &active_root, &cfg_path)
+}
+
+#[tauri::command]
+pub fn export_project(root: String, dest_zip: String) -> Result<u32, String> {
+    let root_path = guard_project_dir(&root)?;
+    if dest_zip.trim().is_empty() {
+        return Err("导出路径为空".into());
+    }
+    export_project_inner(&root_path, Path::new(&dest_zip))
 }
 
 /// 主文件识别：根 main.tex → 按(深度, 名称)第一个含 \documentclass 的 .tex → 第一个 .tex
@@ -1183,5 +1422,117 @@ mod tests {
         assert!(v.get("exclude").is_none());
         // 仍未管理键保留
         assert_eq!(v["templateId"], "article-basic");
+    }
+
+    // ── M1-15d 生命周期 ──
+
+    fn seed_registry(cfg_path: &Path, path: &Path, name: &str) {
+        let mut cfg = AppConfig::default();
+        cfg.recent_projects = vec![ProjectEntry {
+            path: path.to_string_lossy().into_owned(),
+            name: name.into(),
+            template_id: None,
+            pinned: false,
+            archived: false,
+            last_opened: Some("2026-01-01T00:00:00Z".into()),
+        }];
+        write_config(cfg_path, &cfg).unwrap();
+    }
+
+    #[test]
+    fn rename_project_updates_registry_and_guards_active() {
+        let base = tmp_root("proj_rename_mgmt");
+        let proj = base.join("OldName");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::write(proj.join("main.tex"), "x").unwrap();
+        let cfg_path = base.join("config.json");
+        seed_registry(&cfg_path, &proj, "OldName");
+
+        // 活动 root → 拒绝
+        let active = Some(proj.to_string_lossy().into_owned());
+        assert!(rename_project_inner(&proj, "NewName", &active, &cfg_path).is_err());
+        assert!(proj.is_dir(), "被拒时目录不应改动");
+
+        // 正常重命名：目录改名 + 注册表 path/name 更新
+        let list = rename_project_inner(&proj, "NewName", &None, &cfg_path).unwrap();
+        let renamed = base.join("NewName");
+        assert!(renamed.is_dir());
+        assert!(!proj.exists());
+        assert_eq!(list.len(), 1);
+        assert_eq!(
+            std::fs::canonicalize(&list[0].path).unwrap(),
+            std::fs::canonicalize(&renamed).unwrap()
+        );
+        assert_eq!(list[0].name, "NewName");
+
+        // 目标已存在 → 拒绝
+        std::fs::create_dir_all(base.join("Taken")).unwrap();
+        assert!(rename_project_inner(&renamed, "Taken", &None, &cfg_path).is_err());
+        // 非法名称 → 拒绝
+        assert!(rename_project_inner(&renamed, "a/b", &None, &cfg_path).is_err());
+        assert!(rename_project_inner(&renamed, "  ", &None, &cfg_path).is_err());
+    }
+
+    #[test]
+    fn delete_project_guards_active_and_cleans_registry() {
+        let base = tmp_root("proj_delete_mgmt");
+        let proj = base.join("ToDelete");
+        std::fs::create_dir_all(&proj).unwrap();
+        let cfg_path = base.join("config.json");
+        seed_registry(&cfg_path, &proj, "ToDelete");
+
+        // 活动 root → 拒绝
+        let active = Some(proj.to_string_lossy().into_owned());
+        assert!(delete_project_inner(&proj, &active, &cfg_path).is_err());
+        assert!(proj.is_dir());
+
+        // 正常删除：目录不存在 + 注册表清空
+        let list = delete_project_inner(&proj, &None, &cfg_path).unwrap();
+        assert!(!proj.exists());
+        assert!(list.is_empty());
+
+        // 重复删除（目录已不在）→ guard 拒绝
+        assert!(delete_project_inner(&proj, &None, &cfg_path).is_err());
+    }
+
+    #[test]
+    fn export_project_skips_aux_and_heavy_dirs() {
+        let base = tmp_root("proj_export");
+        let proj = base.join("Proj");
+        std::fs::create_dir_all(proj.join("chapters")).unwrap();
+        std::fs::create_dir_all(proj.join("node_modules/x")).unwrap();
+        std::fs::create_dir_all(proj.join(".git")).unwrap();
+        std::fs::write(proj.join("main.tex"), "\\documentclass{article}").unwrap();
+        std::fs::write(proj.join("main.aux"), "aux").unwrap();
+        std::fs::write(proj.join("main.log"), "log").unwrap();
+        std::fs::write(proj.join("chapters/intro.tex"), "intro").unwrap();
+        std::fs::write(proj.join("node_modules/x/a.tex"), "skip").unwrap();
+        std::fs::write(proj.join(".git/config"), "skip").unwrap();
+        std::fs::write(proj.join("doc.pdf"), "%PDF").unwrap();
+
+        let dest = base.join("out.zip");
+        let n = export_project_inner(&proj, &dest).unwrap();
+        assert!(dest.is_file());
+        // 应导出：main.tex / chapters/intro.tex / doc.pdf
+        assert_eq!(n, 3, "应导出 3 个文件（排除 aux/log/node_modules/.git）");
+
+        let file = std::fs::File::open(&dest).unwrap();
+        let mut z = zip::ZipArchive::new(file).unwrap();
+        let names: Vec<String> = (0..z.len())
+            .map(|i| {
+                z.by_index(i)
+                    .unwrap()
+                    .name()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert!(names.iter().any(|x| x == "main.tex"));
+        assert!(names.iter().any(|x| x == "chapters/intro.tex"));
+        assert!(names.iter().any(|x| x == "doc.pdf"));
+        assert!(!names.iter().any(|x| x.ends_with(".aux")));
+        assert!(!names.iter().any(|x| x.ends_with(".log")));
+        assert!(!names.iter().any(|x| x.starts_with("node_modules/")));
+        assert!(!names.iter().any(|x| x.starts_with(".git/")));
     }
 }

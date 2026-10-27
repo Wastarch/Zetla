@@ -11,6 +11,8 @@ import { ActivityBar } from "@/project/ActivityBar";
 import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
 import { ProjectSwitcher } from "@/project/ProjectSwitcher";
+import { ProjectActionDialog } from "@/project/ProjectActionDialog";
+import { ToastHost } from "@/ui/ToastHost";
 import { TemplateWizard } from "@/template/TemplateWizard";
 import { WelcomeScreen } from "@/project/WelcomeScreen";
 import { useProjectStore } from "@/project/useProject";
@@ -187,9 +189,11 @@ function App() {
       </div>
       <LogPanel />
       <StatusBar />
+      <ToastHost />
       <CtxMenu />
       <EntryDialog />
       <ProjectSwitcher />
+      <ProjectActionDialog />
       <TemplateWizard />
       <ProjectSettingsDialog />
       {settingsPane !== null && <SettingsDialog />}

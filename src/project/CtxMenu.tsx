@@ -146,6 +146,11 @@ export function CtxMenu() {
       pasteItem(root),
       { label: "", icon: "", onClick: () => {} },
       { label: "刷新", icon: "refresh", onClick: () => void refresh() },
+      {
+        label: "导出为 zip…",
+        icon: "external",
+        onClick: () => void useProjectStore.getState().exportProject(root),
+      },
     ];
   }
 

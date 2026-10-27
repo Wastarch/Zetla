@@ -92,6 +92,15 @@ export const projectApi = {
   /** M1-15c：写回项目可视化配置（保留 templateId/modules 等未管理键） */
   updateProjectConfig: (root: string, config: ProjectConfig) =>
     call<void>("update_project_config", { root, config }),
+  /** M1-15d：重命名项目目录（拒绝活动 root）；返回更新后的注册表 */
+  renameProject: (path: string, newName: string, activeRoot: string | null) =>
+    call<ProjectEntry[]>("rename_project", { path, newName, activeRoot }),
+  /** M1-15d：删除项目目录（拒绝活动 root）；返回更新后的注册表 */
+  deleteProject: (path: string, activeRoot: string | null) =>
+    call<ProjectEntry[]>("delete_project", { path, activeRoot }),
+  /** M1-15d：导出项目为 zip（排除 aux 与重型目录）；返回文件数 */
+  exportProject: (root: string, destZip: string) =>
+    call<number>("export_project", { root, destZip }),
   readFile: (path: string) => call<FileDoc>("read_file", { path }),
   writeFile: (path: string, content: string, options?: WriteOptions) =>
     call<void>("write_file", { path, content, options }),

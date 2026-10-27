@@ -17,12 +17,10 @@ import { useSettingsStore } from "@/core/settings";
 export function EditorWorkspace() {
   const buffers = useBuffersStore((s) => s.buffers);
   const activePath = useBuffersStore((s) => s.activePath);
-  const notice = useBuffersStore((s) => s.notice);
   const openFiles = useBuffersStore((s) => s.openFiles);
   const updateContent = useBuffersStore((s) => s.updateContent);
   const saveBuffer = useBuffersStore((s) => s.saveBuffer);
   const markMounted = useBuffersStore((s) => s.markMounted);
-  const clearNotice = useBuffersStore((s) => s.clearNotice);
   const setCursor = useBuffersStore((s) => s.setCursor);
   // M0-14a：自动换行来自偏好设置（LaTeXEditor Compartment 热生效）
   const settings = useSettingsStore((s) => s.settings);
@@ -90,13 +88,6 @@ export function EditorWorkspace() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [openDialog, saveBuffer]);
-
-  // 反馈 toast 自动消失
-  useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(() => clearNotice(), 4500);
-    return () => clearTimeout(t);
-  }, [notice, clearNotice]);
 
   const doFind = useCallback(() => {
     if (activePath) handles.current[activePath]?.openFind();
@@ -176,12 +167,6 @@ export function EditorWorkspace() {
           ))
         )}
       </div>
-
-      {notice && (
-        <div className="toast-wrap">
-          <div className={`toast ${notice.kind}`}>{notice.text}</div>
-        </div>
-      )}
     </section>
   );
 }

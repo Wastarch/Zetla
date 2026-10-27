@@ -2,7 +2,7 @@
 // 职责：打开/刷新项目、树展开与选中、右键菜单与新建/重命名/删除、资源管理器定位
 // 反馈复用编辑域 toast（EditorWorkspace 渲染 useBuffersStore.notice）
 import { create } from "zustand";
-import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, open as openFileDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { configApi, projectApi } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
@@ -32,6 +32,11 @@ export interface Clip {
   mode: "copy" | "cut";
   paths: string[];
 }
+
+/** M1-15d：项目生命周期动作（自建确认/输入对话框；不用 prompt） */
+export type ProjectAction =
+  | { kind: "rename"; path: string; name: string }
+  | { kind: "delete"; path: string; name: string };
 
 /** 在树节点中递归查找（键盘粘贴需要判断选中是文件还是目录） */
 export function findNode(
@@ -124,6 +129,17 @@ interface ProjectState {
   openSwitcher: () => void;
   closeSwitcher: () => void;
 
+  /** M1-15d：项目生命周期（重命名/删除）确认对话框 */
+  projectAction: ProjectAction | null;
+  openProjectAction: (a: ProjectAction) => void;
+  closeProjectAction: () => void;
+  /** M1-15d：重命名项目目录（拒绝活动 root）；成功后同步注册表 */
+  renameProject: (path: string, newName: string) => Promise<void>;
+  /** M1-15d：删除项目目录（拒绝活动 root）；成功后同步注册表 */
+  deleteProject: (path: string) => Promise<void>;
+  /** M1-15d：导出项目为 zip（保存对话框 + 排除 aux） */
+  exportProject: (path: string) => Promise<void>;
+
   openProjectDialog: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
   /** M1-15a：关闭当前项目（关闭其下缓冲；脏文件取消则中止），回到欢迎页 */
@@ -175,6 +191,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   projectSettingsOpen: false,
   restoring: false,
   switcherOpen: false,
+  projectAction: null,
 
   openProjectDialog: async () => {
     try {
@@ -489,4 +506,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   // M1-15b：项目切换器（命令面板式浮层；Ctrl+R / 文件→切换项目）
   openSwitcher: () => set({ switcherOpen: true, ctx: null }),
   closeSwitcher: () => set({ switcherOpen: false }),
+
+  // ── M1-15d：项目生命周期（重命名 / 删除 / 导出） ──
+  openProjectAction: (a) => set({ projectAction: a, ctx: null, switcherOpen: false }),
+  closeProjectAction: () => set({ projectAction: null }),
+
+  renameProject: async (path, newName) => {
+    try {
+      const list = await projectApi.renameProject(path, newName, get().root);
+      useSettingsStore.getState().setRecentProjects(list);
+      set({ projectAction: null });
+      notify(`已重命名为 ${newName.trim()}`, "ok");
+    } catch (e) {
+      notify(String(e), "err");
+    }
+  },
+
+  deleteProject: async (path) => {
+    try {
+      const list = await projectApi.deleteProject(path, get().root);
+      useSettingsStore.getState().setRecentProjects(list);
+      set({ projectAction: null });
+      notify("已删除项目", "ok");
+    } catch (e) {
+      notify(String(e), "err");
+    }
+  },
+
+  exportProject: async (path) => {
+    try {
+      // 默认导出到项目同级目录：<项目>.zip
+      const basePath = path.replace(/[\\/]+$/, "");
+      const dest = await saveDialog({
+        defaultPath: `${basePath}.zip`,
+        filters: [{ name: "Zip 压缩包", extensions: ["zip"] }],
+      });
+      if (typeof dest !== "string" || !dest) return; // 用户取消
+      const n = await projectApi.exportProject(path, dest);
+      notify(`已导出 ${n} 个文件到 ${dest}`, "ok");
+    } catch (e) {
+      notify(String(e), "err");
+    }
+  },
 }));

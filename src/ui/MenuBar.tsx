@@ -132,6 +132,15 @@ export function MenuBar() {
           hint: "未打开项目",
           onClick: () => void useProjectStore.getState().closeProject(),
         },
+        {
+          label: "导出当前项目为 zip…",
+          enabled: hasProject,
+          hint: "未打开项目",
+          onClick: () => {
+            const r = useProjectStore.getState().root;
+            if (r) void useProjectStore.getState().exportProject(r);
+          },
+        },
         { sep: true, label: "" },
         {
           label: "保存",
