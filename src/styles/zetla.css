@@ -1603,6 +1603,41 @@ body {
   color: #f26a60;
 }
 
+/* M1-15c：项目设置面板（对齐偏好设置 .fld 行式布局）——通栏多行行（排除规则 textarea） */
+.fld-block {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 9px;
+}
+
+.fld-block .fld-area {
+  width: 100%;
+  min-height: 88px;
+  padding: 8px 10px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  outline: none;
+  resize: vertical;
+}
+
+.fld-block .fld-area:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.set-pane .set-note code {
+  font-family: var(--font-mono);
+  background: var(--bg-4);
+  padding: 1px 5px;
+  border-radius: var(--r-sm);
+  font-size: 10.5px;
+}
+
 .modal-foot {
   flex: none;
   display: flex;

@@ -1,7 +1,7 @@
 // 项目管理（开发文档 §3.2）—— M0-6 交付
 // scan_project: walkdir 扫树 + 主文件启发式（.ltex/config.json 权威读取 → M0-8）
 // create_entry / remove_entry / rename_entry: 项目树右键文件操作
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
@@ -83,15 +83,27 @@ fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
         return Err(format!("不是有效目录: {}", root));
     }
 
-    // 1) 收集（跳过隐藏/重型目录，条目上限保护，单条目错误跳过）
+    // 1) 收集（跳过隐藏/重型目录 + .ltex/config.json 的 exclude globs；条目上限保护，单条目错误跳过）
+    let excludes = load_exclude(root_path);
     let mut entries: Vec<(PathBuf, bool)> = Vec::new();
     for item in WalkDir::new(root_path)
         .follow_links(false)
         .max_depth(MAX_DEPTH)
         .into_iter()
         .filter_entry(|e| {
+            if e.depth() == 0 {
+                return true;
+            }
             let name = e.file_name().to_string_lossy();
-            e.depth() == 0 || !skip_name(&name)
+            if skip_name(&name) {
+                return false;
+            }
+            let rel = e
+                .path()
+                .strip_prefix(root_path)
+                .map(|r| r.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_default();
+            !should_exclude(&rel, &excludes)
         })
     {
         if entries.len() >= MAX_ENTRIES {
@@ -210,6 +222,262 @@ pub fn save_project_config(root: String, image_dir: String) -> Result<(), String
         .map_err(|e| format!("序列化配置失败: {}", e))?;
     std::fs::write(&cfg_path, out).map_err(|e| format!("写入配置失败: {}", e))?;
     Ok(())
+}
+
+// ── M1-15c · 项目配置读写（.ltex/config.json 可视化设置） ────────────────
+
+/// .ltex/config.json 的可视化字段（与 src/types/project.ts ProjectConfig 对齐；缺省/空=未设置）
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProjectConfigDoc {
+    pub engine: Option<String>,
+    pub main_file: Option<String>,
+    pub output_dir: Option<String>,
+    pub image_dir: Option<String>,
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub project_type: Option<String>,
+    pub exclude: Option<Vec<String>>,
+}
+
+fn project_json_path(root: &Path) -> PathBuf {
+    root.join(".ltex").join("config.json")
+}
+
+/// 读 .ltex/config.json 为 JSON 对象（缺失/损坏返回空 Map）
+fn read_project_obj(root: &Path) -> Map<String, serde_json::Value> {
+    match std::fs::read_to_string(project_json_path(root)) {
+        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|_| Map::new()),
+        Err(_) => Map::new(),
+    }
+}
+
+/// 读取项目可视化配置（设置面板回填用）
+#[tauri::command]
+pub fn get_project_config(root: String) -> Result<ProjectConfigDoc, String> {
+    let root_path = Path::new(&root);
+    if !root_path.is_dir() {
+        return Err(format!("项目根不存在: {}", root));
+    }
+    let obj = read_project_obj(root_path);
+    let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
+    Ok(ProjectConfigDoc {
+        engine: s("engine"),
+        main_file: s("mainFile"),
+        output_dir: s("outputDir"),
+        image_dir: s("imageDir"),
+        name: s("name"),
+        description: s("description"),
+        project_type: s("projectType"),
+        exclude: obj.get("exclude").and_then(|v| v.as_array()).map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str())
+                .map(str::to_string)
+                .collect()
+        }),
+    })
+}
+
+/// 合法编译引擎（与前端下拉一致）
+const PROJECT_ENGINES: [&str; 4] = ["xelatex", "pdflatex", "lualatex", "latexmk"];
+/// 合法项目类型
+const PROJECT_TYPES: [&str; 5] = ["article", "thesis", "beamer", "resume", "custom"];
+
+/// 相对路径校验：空 → None；绝对路径 / .. 穿越 → Err
+fn clean_rel(field: &str, s: Option<String>) -> Result<Option<String>, String> {
+    let Some(v) = s else { return Ok(None) };
+    let v = v.trim().to_string();
+    if v.is_empty() {
+        return Ok(None);
+    }
+    if v.starts_with('/') || v.starts_with('\\') || v.contains("..") {
+        return Err(format!(
+            "{} 必须为相对项目根的路径（不允许绝对路径或 .. 穿越）",
+            field
+        ));
+    }
+    Ok(Some(v))
+}
+
+fn set_or_remove(obj: &mut Map<String, serde_json::Value>, key: &str, v: Option<String>) {
+    match v {
+        Some(x) => {
+            obj.insert(key.to_string(), serde_json::Value::String(x));
+        }
+        None => {
+            obj.remove(key);
+        }
+    }
+}
+
+/// 写回项目可视化配置（保留 templateId/modules 等未管理键；空值删除对应键）
+#[tauri::command]
+pub fn update_project_config(root: String, config: ProjectConfigDoc) -> Result<(), String> {
+    let root_path = Path::new(&root);
+    if !root_path.is_dir() {
+        return Err(format!("项目根不存在: {}", root));
+    }
+
+    // 引擎白名单（空=删除，回落默认 xelatex）
+    let engine = match config.engine.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        None => None,
+        Some(e) => {
+            if !PROJECT_ENGINES.contains(&e) {
+                return Err(format!("未知编译引擎: {}", e));
+            }
+            Some(e.to_string())
+        }
+    };
+    // 项目类型白名单
+    let project_type = match config
+        .project_type
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        None => None,
+        Some(t) => {
+            if !PROJECT_TYPES.contains(&t) {
+                return Err(format!("未知项目类型: {}", t));
+            }
+            Some(t.to_string())
+        }
+    };
+    // 相对路径字段
+    let main_file = clean_rel("主文件", config.main_file)?;
+    if let Some(mf) = &main_file {
+        if !root_path.join(mf).is_file() {
+            return Err(format!("主文件不存在或不在项目内: {}", mf));
+        }
+    }
+    let output_dir = clean_rel("输出目录", config.output_dir)?;
+    let image_dir = clean_rel("图片目录", config.image_dir)?;
+    // 排除规则：相对 glob，逐条校验
+    let exclude = match config.exclude {
+        None => None,
+        Some(list) => {
+            let mut out: Vec<String> = Vec::new();
+            for raw in list {
+                let pat = raw.trim().trim_start_matches("./").to_string();
+                if pat.is_empty() {
+                    continue;
+                }
+                if pat.starts_with('/')
+                    || pat.starts_with('\\')
+                    || pat.split(['/', '\\']).any(|seg| seg == "..")
+                {
+                    return Err(format!("排除规则必须为相对 glob: {}", pat));
+                }
+                out.push(pat);
+            }
+            if out.is_empty() {
+                None
+            } else {
+                Some(out)
+            }
+        }
+    };
+    let name = config
+        .name
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+    let description = config
+        .description
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty());
+
+    // 读改写（保留未管理键）
+    let mut obj = read_project_obj(root_path);
+    set_or_remove(&mut obj, "engine", engine);
+    set_or_remove(&mut obj, "mainFile", main_file);
+    set_or_remove(&mut obj, "outputDir", output_dir);
+    set_or_remove(&mut obj, "imageDir", image_dir);
+    set_or_remove(&mut obj, "name", name);
+    set_or_remove(&mut obj, "description", description);
+    set_or_remove(&mut obj, "projectType", project_type);
+    match exclude {
+        Some(list) => {
+            obj.insert(
+                "exclude".to_string(),
+                serde_json::Value::Array(
+                    list.into_iter().map(serde_json::Value::String).collect(),
+                ),
+            );
+        }
+        None => {
+            obj.remove("exclude");
+        }
+    }
+
+    let cfg_path = project_json_path(root_path);
+    if let Some(parent) = cfg_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("创建 .ltex 失败: {}", e))?;
+    }
+    let out = serde_json::to_string_pretty(&obj).map_err(|e| format!("序列化配置失败: {}", e))?;
+    std::fs::write(&cfg_path, out).map_err(|e| format!("写入配置失败: {}", e))?;
+    Ok(())
+}
+
+/// 读取 exclude globs（.ltex/config.json 的 exclude 数组；非法项忽略）
+fn load_exclude(root: &Path) -> Vec<String> {
+    read_project_obj(root)
+        .get("exclude")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|x| x.as_str())
+                .map(|s| s.trim().trim_start_matches("./").replace('\\', "/"))
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn should_exclude(rel: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|p| glob_match(p, rel))
+}
+
+/// 极简 glob（`*` 不跨 `/`，`**` 跨 `/`，`**/` 可匹配 0 个目录，`?` 单字符）
+fn glob_match(pattern: &str, text: &str) -> bool {
+    fn rec(p: &[char], t: &[char]) -> bool {
+        if p.is_empty() {
+            return t.is_empty();
+        }
+        // **/ 可匹配 0 个或多个目录
+        if p.len() >= 3 && p[0] == '*' && p[1] == '*' && p[2] == '/' {
+            if rec(&p[3..], t) {
+                return true;
+            }
+            return (0..t.len()).any(|k| t[k] == '/' && rec(&p[3..], &t[k + 1..]));
+        }
+        match p[0] {
+            '*' => {
+                if p.len() >= 2 && p[1] == '*' {
+                    let mut i = 0;
+                    while i < p.len() && p[i] == '*' {
+                        i += 1;
+                    }
+                    (0..=t.len()).any(|k| rec(&p[i..], &t[k..]))
+                } else {
+                    let mut k = 0;
+                    loop {
+                        if rec(&p[1..], &t[k..]) {
+                            return true;
+                        }
+                        if k >= t.len() || t[k] == '/' {
+                            return false;
+                        }
+                        k += 1;
+                    }
+                }
+            }
+            '?' => !t.is_empty() && t[0] != '/' && rec(&p[1..], &t[1..]),
+            c => !t.is_empty() && t[0] == c && rec(&p[1..], &t[1..]),
+        }
+    }
+    let p: Vec<char> = pattern.chars().collect();
+    let t: Vec<char> = text.chars().collect();
+    rec(&p, &t)
 }
 
 /// 主文件识别：根 main.tex → 按(深度, 名称)第一个含 \documentclass 的 .tex → 第一个 .tex
@@ -773,5 +1041,147 @@ mod tests {
         .unwrap();
         let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
         assert_eq!(tree.engine, "xelatex");
+    }
+
+    #[test]
+    fn glob_match_basics() {
+        // 单 * 不跨分隔符
+        assert!(glob_match("*.aux", "main.aux"));
+        assert!(!glob_match("*.aux", "sub/main.aux"));
+        // ** 跨分隔符；**/ 可匹配 0 个目录
+        assert!(glob_match("**/*.aux", "main.aux"));
+        assert!(glob_match("**/*.aux", "a/b/c.aux"));
+        // 目录名精确匹配（供 filter_entry 剪枝）
+        assert!(glob_match("build", "build"));
+        assert!(!glob_match("build", "build2"));
+        // ? 单字符且不跨分隔符
+        assert!(glob_match("a?c.tex", "abc.tex"));
+        assert!(!glob_match("a?c.tex", "a/c.tex"));
+        // 精确
+        assert!(glob_match("chapters/*", "chapters/intro.tex"));
+        assert!(!glob_match("chapters/*", "chapters/sub/intro.tex"));
+    }
+
+    #[test]
+    fn scan_project_applies_exclude_globs() {
+        let root = tmp_root("exclude");
+        std::fs::create_dir_all(root.join("build")).unwrap();
+        std::fs::create_dir_all(root.join("chapters")).unwrap();
+        std::fs::write(root.join("main.tex"), "\\documentclass{article}").unwrap();
+        std::fs::write(root.join("scratch.tex"), "x").unwrap();
+        std::fs::write(root.join("build/generated.tex"), "x").unwrap();
+        std::fs::write(root.join("chapters/notes.aux"), "x").unwrap();
+        let ltex = root.join(".ltex");
+        std::fs::create_dir_all(&ltex).unwrap();
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"exclude":["build","**/*.aux","scratch.tex"]}"#,
+        )
+        .unwrap();
+
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        let names: Vec<&str> = tree.nodes.iter().map(|n| n.name.as_str()).collect();
+        assert!(names.contains(&"main.tex"));
+        assert!(names.contains(&"chapters"));
+        assert!(!names.contains(&"build"), "排除目录应隐藏");
+        assert!(!names.contains(&"scratch.tex"), "排除文件应隐藏");
+        // chapters 下的 .aux 被隐藏，目录保留
+        let chapters = tree.nodes.iter().find(|n| n.name == "chapters").unwrap();
+        let kids: Vec<&str> = chapters
+            .children
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|n| n.name.as_str())
+            .collect();
+        assert!(kids.is_empty(), "chapters 下仅 .aux，应被隐藏: {:?}", kids);
+    }
+
+    #[test]
+    fn update_project_config_validates_and_preserves_unknown_keys() {
+        let root = tmp_root("proj_cfg_update");
+        std::fs::write(root.join("main.tex"), "\\documentclass{article}").unwrap();
+        std::fs::write(root.join("chapter.tex"), "x").unwrap();
+        let ltex = root.join(".ltex");
+        std::fs::create_dir_all(&ltex).unwrap();
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"templateId":"article-basic","modules":{"table":true}}"#,
+        )
+        .unwrap();
+
+        // 正常写入：保存 name/engine/mainFile/exclude/imageDir
+        update_project_config(
+            root.to_str().unwrap().to_string(),
+            ProjectConfigDoc {
+                engine: Some("pdflatex".into()),
+                main_file: Some("main.tex".into()),
+                output_dir: Some("out".into()),
+                image_dir: Some("figure".into()),
+                name: Some("  我的论文  ".into()),
+                description: Some("desc".into()),
+                project_type: Some("article".into()),
+                exclude: Some(vec!["build".into(), "**/*.aux".into()]),
+            },
+        )
+        .unwrap();
+
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(ltex.join("config.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(v["engine"], "pdflatex");
+        assert_eq!(v["mainFile"], "main.tex");
+        assert_eq!(v["outputDir"], "out");
+        assert_eq!(v["imageDir"], "figure");
+        assert_eq!(v["name"], "我的论文"); // trim
+        assert_eq!(v["description"], "desc");
+        assert_eq!(v["projectType"], "article");
+        assert_eq!(v["exclude"][0], "build");
+        // 未管理键保留
+        assert_eq!(v["templateId"], "article-basic");
+        assert_eq!(v["modules"]["table"], true);
+
+        // 校验失败：非法引擎 / 主文件穿越 / 不存在主文件 / 非法 exclude
+        let bad = |doc: ProjectConfigDoc| {
+            update_project_config(root.to_str().unwrap().to_string(), doc).is_err()
+        };
+        assert!(bad(ProjectConfigDoc {
+            engine: Some("tectonic".into()),
+            ..Default::default()
+        }));
+        assert!(bad(ProjectConfigDoc {
+            main_file: Some("../evil.tex".into()),
+            ..Default::default()
+        }));
+        assert!(bad(ProjectConfigDoc {
+            main_file: Some("missing.tex".into()),
+            ..Default::default()
+        }));
+        assert!(bad(ProjectConfigDoc {
+            exclude: Some(vec!["/abs".into()]),
+            ..Default::default()
+        }));
+
+        // 清空：空串/空数组应删除对应键
+        update_project_config(
+            root.to_str().unwrap().to_string(),
+            ProjectConfigDoc {
+                engine: Some("  ".into()),
+                main_file: Some("".into()),
+                exclude: Some(vec![]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let v: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(ltex.join("config.json")).unwrap(),
+        )
+        .unwrap();
+        assert!(v.get("engine").is_none());
+        assert!(v.get("mainFile").is_none());
+        assert!(v.get("exclude").is_none());
+        // 仍未管理键保留
+        assert_eq!(v["templateId"], "article-basic");
     }
 }

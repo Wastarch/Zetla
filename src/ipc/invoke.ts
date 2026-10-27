@@ -6,6 +6,7 @@ import type {
   EntryKind,
   FileDoc,
   ImportImageResult,
+  ProjectConfig,
   ProjectEntry,
   ProjectInfo,
   ProjectTree,
@@ -86,6 +87,11 @@ export const projectApi = {
   /** R5 项目设置：写回 .ltex/config.json 的 imageDir */
   saveProjectConfig: (root: string, imageDir: string) =>
     call<void>("save_project_config", { root, imageDir }),
+  /** M1-15c：读取项目可视化配置（设置面板回填） */
+  getProjectConfig: (root: string) => call<ProjectConfig>("get_project_config", { root }),
+  /** M1-15c：写回项目可视化配置（保留 templateId/modules 等未管理键） */
+  updateProjectConfig: (root: string, config: ProjectConfig) =>
+    call<void>("update_project_config", { root, config }),
   readFile: (path: string) => call<FileDoc>("read_file", { path }),
   writeFile: (path: string, content: string, options?: WriteOptions) =>
     call<void>("write_file", { path, content, options }),

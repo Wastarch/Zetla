@@ -63,6 +63,9 @@ pub fn run() {
             commands::project::copy_entry,
             // R5 图片目录设置（M1-7）
             commands::project::save_project_config,
+            // M1-15c：项目配置读写（可视化设置面板）
+            commands::project::get_project_config,
+            commands::project::update_project_config,
             // M1-15a：项目注册表（最近/置顶/归档）
             commands::project_mgmt::register_recent_project,
             commands::project_mgmt::list_recent_projects,
