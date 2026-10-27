@@ -119,6 +119,10 @@ interface ProjectState {
   projectSettingsOpen: boolean;
   /** M1-15a：启动恢复上次项目进行中（欢迎页据此延后显示，避免闪现） */
   restoring: boolean;
+  /** M1-15b：项目切换器（Ctrl+R / 文件→切换项目） */
+  switcherOpen: boolean;
+  openSwitcher: () => void;
+  closeSwitcher: () => void;
 
   openProjectDialog: () => Promise<void>;
   openProject: (root: string) => Promise<void>;
@@ -170,6 +174,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   wizardDir: null,
   projectSettingsOpen: false,
   restoring: false,
+  switcherOpen: false,
 
   openProjectDialog: async () => {
     try {
@@ -480,4 +485,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   openProjectSettings: () => set({ projectSettingsOpen: true }),
   closeProjectSettings: () => set({ projectSettingsOpen: false }),
+
+  // M1-15b：项目切换器（命令面板式浮层；Ctrl+R / 文件→切换项目）
+  openSwitcher: () => set({ switcherOpen: true, ctx: null }),
+  closeSwitcher: () => set({ switcherOpen: false }),
 }));

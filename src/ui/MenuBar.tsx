@@ -105,6 +105,11 @@ export function MenuBar() {
           onClick: () => void useProjectStore.getState().openProjectDialog(),
         },
         {
+          label: "切换项目…",
+          sc: "Ctrl+R",
+          onClick: () => useProjectStore.getState().openSwitcher(),
+        },
+        {
           label: "打开图片 / PDF…",
           onClick: async () => {
             const picked = await openFileDialog({
@@ -524,6 +529,14 @@ export function MenuBar() {
           e.preventDefault();
           void useBuffersStore.getState().saveAllBuffers();
         }
+        return;
+      }
+      if (k === "r") {
+        // M1-15b：项目切换器（Ctrl+R 开关；阻止 WebView 默认刷新）
+        e.preventDefault();
+        const st = useProjectStore.getState();
+        if (st.switcherOpen) st.closeSwitcher();
+        else st.openSwitcher();
         return;
       }
       if (k === "b") {

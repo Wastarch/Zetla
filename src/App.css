@@ -263,3 +263,125 @@
   color: var(--txt-3);
   font-size: 12px;
 }
+
+/* ── M1-15b 项目切换器（命令面板式浮层；Ctrl+R） ── */
+.switcher-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 110px;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.switcher {
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100vw - 80px));
+  max-height: min(60vh, 520px);
+  overflow: hidden;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow);
+}
+
+.switcher-input {
+  padding: 12px 14px;
+  border: none;
+  border-bottom: 1px solid var(--line-soft);
+  outline: none;
+  background: var(--bg-3);
+  color: var(--txt);
+  font-size: 14px;
+}
+
+.switcher-input::placeholder {
+  color: var(--txt-3);
+}
+
+.switcher-list {
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.switcher-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.switcher-item.on {
+  background: var(--accent-soft);
+}
+
+.switcher-item.current .switcher-name {
+  color: var(--accent);
+}
+
+.switcher-star {
+  flex: none;
+  width: 14px;
+  color: var(--warn);
+  font-size: 12px;
+}
+
+.switcher-name {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--txt);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.switcher-badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10px;
+}
+
+.switcher-path {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--txt-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.switcher-empty {
+  padding: 16px 14px;
+  color: var(--txt-3);
+  font-size: 13px;
+}
+
+.switcher-hint {
+  padding: 6px 14px 12px;
+  color: var(--txt-3);
+  font-size: 11px;
+}
+
+.switcher-open-folder .switcher-name {
+  color: var(--txt-2);
+  font-weight: 500;
+}
+
+.switcher-foot {
+  padding: 8px 14px;
+  border-top: 1px solid var(--line-soft);
+  color: var(--txt-3);
+  font-size: 11px;
+}

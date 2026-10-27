@@ -10,6 +10,7 @@ import { Sidebar } from "@/project/Sidebar";
 import { ActivityBar } from "@/project/ActivityBar";
 import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
+import { ProjectSwitcher } from "@/project/ProjectSwitcher";
 import { TemplateWizard } from "@/template/TemplateWizard";
 import { WelcomeScreen } from "@/project/WelcomeScreen";
 import { useProjectStore } from "@/project/useProject";
@@ -188,6 +189,7 @@ function App() {
       <StatusBar />
       <CtxMenu />
       <EntryDialog />
+      <ProjectSwitcher />
       <TemplateWizard />
       <ProjectSettingsDialog />
       {settingsPane !== null && <SettingsDialog />}
