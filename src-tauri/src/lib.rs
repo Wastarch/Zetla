@@ -58,6 +58,7 @@ pub fn run() {
             // M1-15e：模板库管理（另存为 / 导入）
             commands::template::save_as_template,
             commands::template::import_template,
+            commands::template::delete_template,
             // 项目管理（M0-6）
             commands::project::scan_project,
             commands::project::create_entry,

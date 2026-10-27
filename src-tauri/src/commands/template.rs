@@ -801,6 +801,19 @@ fn save_as_template_in(
     Ok(meta_from(&manifest, true))
 }
 
+/// 删除用户模板（拒绝内置 id 与不存在；仅动用户模板目录）
+fn delete_template_in(id: &str, user_dir: &Path, builtin_dir: &Path) -> Result<(), String> {
+    guard_id(id)?;
+    if builtin_dir.join(id).join("manifest.json").is_file() {
+        return Err(format!("内置模板不可删除: {}", id));
+    }
+    let pkg = user_dir.join(id);
+    if !pkg.join("manifest.json").is_file() {
+        return Err(format!("用户模板不存在: {}", id));
+    }
+    std::fs::remove_dir_all(&pkg).map_err(|e| format!("删除模板失败: {}", e))
+}
+
 /// 导入模板（目录或 .zip）：校验 manifest → 复制到用户模板目录
 fn import_template_in(
     src: &Path,
@@ -849,12 +862,12 @@ fn import_template_in(
 
 // ── Tauri 命令 ────────────────────────────────────────────
 
-#[tauri::command]
-pub fn list_templates(app: tauri::AppHandle) -> Result<Vec<TemplateMeta>, String> {
-    let builtin = list_templates_in(&resolve_templates_dir(&app));
-    let user_dir = user_templates_dir(&app)?;
+/// 合并内置 + 用户模板（用户同 id 覆盖内置）
+fn all_templates(app: &tauri::AppHandle) -> Result<Vec<TemplateMeta>, String> {
+    let builtin_dir = resolve_templates_dir(app);
+    let user_dir = user_templates_dir(app)?;
+    let builtin = list_templates_in(&builtin_dir);
     let user = list_templates_in_src(&user_dir, true);
-    // 用户模板同名 id 覆盖内置（正常路径不会冲突；手工放置时以用户为准）
     let user_ids: HashSet<&str> = user.iter().map(|m| m.id.as_str()).collect();
     let mut out: Vec<TemplateMeta> = builtin
         .into_iter()
@@ -863,6 +876,19 @@ pub fn list_templates(app: tauri::AppHandle) -> Result<Vec<TemplateMeta>, String
     out.extend(user);
     out.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(out)
+}
+
+#[tauri::command]
+pub fn list_templates(app: tauri::AppHandle) -> Result<Vec<TemplateMeta>, String> {
+    all_templates(&app)
+}
+
+/// M1-15e：删除用户模板（内置模板拒绝）
+#[tauri::command]
+pub fn delete_template(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let user_dir = user_templates_dir(&app)?;
+    let builtin = resolve_templates_dir(&app);
+    delete_template_in(&id, &user_dir, &builtin)
 }
 
 #[tauri::command]
@@ -1330,5 +1356,25 @@ mod tests {
         )
         .unwrap();
         assert!(import_template_in(&conflict, &user_dir, &builtin).is_err());
+    }
+
+    #[test]
+    fn delete_user_template_only() {
+        let user_dir = tmp_dir("user_tpl_del");
+        make_pkg(
+            &user_dir,
+            "u1",
+            r#"{"id":"u1","name":"U1","structure":{"files":[]}}"#,
+            "x",
+        );
+        let builtin = builtin_root();
+        delete_template_in("u1", &user_dir, &builtin).unwrap();
+        assert!(!user_dir.join("u1").exists());
+        // 已不存在 → 拒绝
+        assert!(delete_template_in("u1", &user_dir, &builtin).is_err());
+        // 内置 id → 拒绝
+        assert!(delete_template_in("article", &user_dir, &builtin).is_err());
+        // 非法 id → 拒绝
+        assert!(delete_template_in("../x", &user_dir, &builtin).is_err());
     }
 }

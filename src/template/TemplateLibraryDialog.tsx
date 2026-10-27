@@ -2,7 +2,7 @@
 // 左：分类导航（内置按 category 分组 + 用户模板）；右：搜索 + 列表 / 详情双栏。
 // 能力：浏览/预览 manifest、导入（目录 / zip）、用此模板新建；「另存当前项目为模板」由菜单以另存模式打开。
 import { useEffect, useMemo, useState } from "react";
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { templateApi } from "@/ipc/invoke";
 import { Icon } from "@/ui/Icon";
 import { notify, useProjectStore } from "@/project/useProject";
@@ -221,6 +221,28 @@ export function TemplateLibraryDialog() {
 
   const selectedMeta = metas.find((m) => m.id === selected);
 
+  /** 删除用户模板（内置模板按钮不显示；后端也会拒绝） */
+  const doDelete = async () => {
+    if (!selectedMeta?.isUser) return;
+    const name = selectedMeta.name;
+    const ok = await confirm(
+      `确定删除模板「${name}」？\n将从用户模板目录移除，且不可恢复。`,
+      { title: "删除模板", kind: "warning", okLabel: "删除", cancelLabel: "取消" },
+    );
+    if (!ok) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await templateApi.deleteTemplate(selectedMeta.id);
+      await refresh();
+      notify(`已删除模板「${name}」`, "ok");
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const item = (m: TemplateMeta) => (
     <button
       key={m.id}
@@ -424,6 +446,19 @@ export function TemplateLibraryDialog() {
                           </span>
                         ))}
                       </div>
+
+                      {selectedMeta.isUser && (
+                        <div className="tl-danger-row">
+                          <button
+                            type="button"
+                            className="btn danger"
+                            disabled={busy}
+                            onClick={() => void doDelete()}
+                          >
+                            删除模板
+                          </button>
+                        </div>
+                      )}
                     </>
                   ) : (
                     <p className="set-note">选择一个模板查看详情</p>

@@ -2007,6 +2007,13 @@ body {
   font-size: 11px;
 }
 
+/* 用户模板删除（详情区右下） */
+.tl-danger-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
 .tl-save-panel h2 {
   margin-bottom: 8px;
   color: var(--txt);

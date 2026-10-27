@@ -77,6 +77,8 @@ export const templateApi = {
       category: category ?? null,
     }),
   importTemplate: (src: string) => call<TemplateMeta>("import_template", { src }),
+  /** M1-15e：删除用户模板（内置模板会拒绝） */
+  deleteTemplate: (id: string) => call<void>("delete_template", { id }),
 };
 
 // ── 项目/文档 ─────────────────────────────────────────────
