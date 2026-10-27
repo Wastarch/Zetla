@@ -3,9 +3,13 @@
 // 渲染器只做 <%= var %> 替换（刻意避开 LaTeX 的 {{}}），condition/用户模板/多文件模板 → M1/M3。
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use tauri::Manager;
+use walkdir::WalkDir;
+
+use crate::commands::config::CONFIG_DIR_NAME;
+use crate::commands::project::{is_aux_file, EXPORT_SKIP_DIRS};
 
 // ── 类型（与 src/types/template.ts 对齐，manifest JSON 为 camelCase） ──
 
@@ -22,18 +26,19 @@ pub struct TemplateMeta {
     pub tags: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
+    /// M1-15e：是否为用户模板（%APPDATA%/Zetla/templates）
+    pub is_user: bool,
 }
 
-impl From<&TemplateManifest> for TemplateMeta {
-    fn from(m: &TemplateManifest) -> Self {
-        Self {
-            id: m.id.clone(),
-            name: m.name.clone(),
-            description: m.description.clone(),
-            category: m.category.clone(),
-            tags: m.tags.clone(),
-            version: m.version.clone(),
-        }
+fn meta_from(m: &TemplateManifest, is_user: bool) -> TemplateMeta {
+    TemplateMeta {
+        id: m.id.clone(),
+        name: m.name.clone(),
+        description: m.description.clone(),
+        category: m.category.clone(),
+        tags: m.tags.clone(),
+        version: m.version.clone(),
+        is_user,
     }
 }
 
@@ -201,6 +206,27 @@ fn resolve_templates_dir(app: &tauri::AppHandle) -> PathBuf {
     cwd.join("templates")
 }
 
+/// M1-15e：用户模板目录（%APPDATA%/Zetla/templates；不存在则创建）
+fn user_templates_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| format!("解析配置目录失败: {}", e))?
+        .join(CONFIG_DIR_NAME)
+        .join("templates");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("创建用户模板目录失败: {}", e))?;
+    Ok(dir)
+}
+
+/// 按 id 解析模板包所在根目录（用户模板优先；返回包含 `<id>/manifest.json` 的父目录）
+fn resolve_template_root(app: &tauri::AppHandle, id: &str) -> Result<PathBuf, String> {
+    let user_dir = user_templates_dir(app)?;
+    if user_dir.join(id).join("manifest.json").is_file() {
+        return Ok(user_dir);
+    }
+    Ok(resolve_templates_dir(app))
+}
+
 // ── 引擎核心（可测试：全部以 tpl_root 为参数） ────────────
 
 /// 模板 id 白名单校验（防路径穿越）
@@ -227,6 +253,10 @@ fn safe_join(base: &Path, rel: &str) -> Result<PathBuf, String> {
 }
 
 fn list_templates_in(tpl_root: &Path) -> Vec<TemplateMeta> {
+    list_templates_in_src(tpl_root, false)
+}
+
+fn list_templates_in_src(tpl_root: &Path, is_user: bool) -> Vec<TemplateMeta> {
     let mut out = Vec::new();
     if let Ok(rd) = std::fs::read_dir(tpl_root) {
         for entry in rd.flatten() {
@@ -247,7 +277,7 @@ fn list_templates_in(tpl_root: &Path) -> Vec<TemplateMeta> {
             if guard_id(&m.id).is_err() || m.id != dir_name {
                 continue;
             }
-            out.push(TemplateMeta::from(&m));
+            out.push(meta_from(&m, is_user));
         }
     }
     out.sort_by(|a, b| a.id.cmp(&b.id));
@@ -502,16 +532,340 @@ fn create_project_in(
     })
 }
 
+// ── M1-15e · 模板库管理（用户模板：另存为 / 导入） ──────────
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// 名称 → 模板 id slug（ASCII 字母数字，其他折叠为 `-`；空则 `template`）
+fn slugify(name: &str) -> String {
+    let mut s = String::new();
+    let mut dash = false;
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            s.push(c.to_ascii_lowercase());
+            dash = false;
+        } else if !dash {
+            s.push('-');
+            dash = true;
+        }
+    }
+    let trimmed = s.trim_matches('-').to_string();
+    if trimmed.is_empty() {
+        "template".into()
+    } else {
+        trimmed
+    }
+}
+
+/// 生成唯一 id：`<slug>-<秒级时间戳>`，冲突追加序号
+fn unique_template_id(user_dir: &Path, base: &str) -> String {
+    let mut id = format!("{}-{}", base, now_secs());
+    let mut n = 1u32;
+    while user_dir.join(&id).exists() {
+        id = format!("{}-{}-{}", base, now_secs(), n);
+        n += 1;
+    }
+    id
+}
+
+/// 另存模板时跳过的目录（编译产物/隐藏/重型）
+fn skip_project_dir(name: &str) -> bool {
+    name == ".ltex"
+        || name.eq_ignore_ascii_case("build")
+        || name.eq_ignore_ascii_case("out")
+        || EXPORT_SKIP_DIRS.iter().any(|d| name.eq_ignore_ascii_case(d))
+}
+
+fn is_tex_path(p: &Path) -> bool {
+    p.extension()
+        .map(|e| e.to_string_lossy().eq_ignore_ascii_case("tex"))
+        .unwrap_or(false)
+}
+
+/// 选主文件：config 指定（需存在）→ main.tex → 首个 .tex → "main.tex"
+fn pick_main_tex(root: &Path, configured: &str) -> String {
+    if !configured.trim().is_empty() && root.join(configured).is_file() {
+        return configured.to_string();
+    }
+    if root.join("main.tex").is_file() {
+        return "main.tex".into();
+    }
+    for entry in WalkDir::new(root).follow_links(false) {
+        let Ok(e) = entry else { continue };
+        if e.depth() == 0 || e.file_type().is_dir() || !is_tex_path(e.path()) {
+            continue;
+        }
+        if let Ok(rel) = e.path().strip_prefix(root) {
+            return rel.to_string_lossy().replace('\\', "/");
+        }
+    }
+    "main.tex".into()
+}
+
+/// 读项目 `.ltex/config.json` 的 (engine, mainFile, outputDir)
+fn read_project_build(root: &Path) -> (String, String, String) {
+    let mut engine = "xelatex".to_string();
+    let mut main = String::new();
+    let mut output = "build".to_string();
+    if let Ok(text) = std::fs::read_to_string(root.join(".ltex").join("config.json")) {
+        if let Ok(v) = serde_json::from_str::<Value>(&text) {
+            if let Some(e) = v.get("engine").and_then(|x| x.as_str()) {
+                if matches!(e, "xelatex" | "pdflatex" | "lualatex" | "latexmk") {
+                    engine = e.to_string();
+                }
+            }
+            if let Some(m) = v.get("mainFile").and_then(|x| x.as_str()) {
+                main = m.to_string();
+            }
+            if let Some(o) = v.get("outputDir").and_then(|x| x.as_str()) {
+                output = o.to_string();
+            }
+        }
+    }
+    let main = pick_main_tex(root, &main);
+    (engine, main, output)
+}
+
+/// 收集项目文件（跳过 .ltex/编译产物/重型目录/辅助文件），返回 (绝对路径, 相对路径正斜杠)
+fn collect_project_files(root: &Path) -> Vec<(PathBuf, String)> {
+    let mut out = Vec::new();
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|e| {
+            let name = e.file_name().to_string_lossy();
+            e.depth() == 0 || !skip_project_dir(&name)
+        })
+    {
+        let Ok(e) = entry else { continue };
+        if e.depth() == 0 || e.file_type().is_dir() {
+            continue;
+        }
+        let name = e.file_name().to_string_lossy();
+        if is_aux_file(&name) {
+            continue;
+        }
+        let Ok(rel) = e.path().strip_prefix(root) else {
+            continue;
+        };
+        out.push((e.path().to_path_buf(), rel.to_string_lossy().replace('\\', "/")));
+    }
+    out.sort_by(|a, b| a.1.cmp(&b.1));
+    out
+}
+
+/// 递归复制目录（用于导入模板）
+fn copy_tree(src: &Path, dst: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| format!("创建目录失败: {}", e))?;
+    for entry in WalkDir::new(src).follow_links(false) {
+        let e = entry.map_err(|e| format!("遍历失败: {}", e))?;
+        let Ok(rel) = e.path().strip_prefix(src) else {
+            continue;
+        };
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+        let target = dst.join(rel);
+        if e.file_type().is_dir() {
+            std::fs::create_dir_all(&target).map_err(|e| format!("创建目录失败: {}", e))?;
+        } else {
+            if let Some(parent) = target.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+            }
+            std::fs::copy(e.path(), &target).map_err(|e| format!("复制失败: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+/// 解压 zip 到 dst（用 enclosed_name 防路径穿越）
+fn extract_zip(src: &Path, dst: &Path) -> Result<(), String> {
+    let file = std::fs::File::open(src).map_err(|e| format!("打开压缩包失败: {}", e))?;
+    let mut z = zip::ZipArchive::new(file).map_err(|e| format!("读取压缩包失败: {}", e))?;
+    for i in 0..z.len() {
+        let mut f = z
+            .by_index(i)
+            .map_err(|e| format!("读取压缩包条目失败: {}", e))?;
+        let Some(rel) = f.enclosed_name() else {
+            continue; // 路径穿越条目跳过
+        };
+        let out = dst.join(&rel);
+        if f.is_dir() {
+            std::fs::create_dir_all(&out).map_err(|e| format!("创建目录失败: {}", e))?;
+        } else {
+            if let Some(parent) = out.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+            }
+            let mut w = std::fs::File::create(&out).map_err(|e| format!("写入失败: {}", e))?;
+            std::io::copy(&mut f, &mut w).map_err(|e| format!("解压写入失败: {}", e))?;
+        }
+    }
+    Ok(())
+}
+
+/// 在解压/导入根中定位包含 manifest.json 的模板包目录（根或唯一一层子目录）
+fn find_pkg_root(dir: &Path) -> Result<PathBuf, String> {
+    if dir.join("manifest.json").is_file() {
+        return Ok(dir.to_path_buf());
+    }
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() && p.join("manifest.json").is_file() {
+                candidates.push(p);
+            }
+        }
+    }
+    if candidates.len() == 1 {
+        Ok(candidates.remove(0))
+    } else {
+        Err("未找到 manifest.json（模板包需包含清单）".into())
+    }
+}
+
+/// 另存当前项目为用户模板：复制源文件（原样，不渲染）+ 写 manifest（build 取项目配置）
+fn save_as_template_in(
+    root: &Path,
+    name: &str,
+    description: Option<String>,
+    category: Option<String>,
+    user_dir: &Path,
+) -> Result<TemplateMeta, String> {
+    if !root.is_dir() {
+        return Err(format!("项目目录不存在: {}", root.display()));
+    }
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("模板名不能为空".into());
+    }
+    std::fs::create_dir_all(user_dir).map_err(|e| format!("创建用户模板目录失败: {}", e))?;
+    let files = collect_project_files(root);
+    if files.is_empty() {
+        return Err("项目为空，无法另存为模板".into());
+    }
+
+    let id = unique_template_id(user_dir, &slugify(name));
+    let pkg = user_dir.join(&id);
+    std::fs::create_dir_all(&pkg).map_err(|e| format!("创建模板目录失败: {}", e))?;
+
+    let mut specs: Vec<FileSpec> = Vec::new();
+    for (abs, rel) in &files {
+        let dst = pkg.join(rel);
+        if let Some(parent) = dst.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+        }
+        std::fs::copy(abs, &dst).map_err(|e| format!("复制失败 {}: {}", rel, e))?;
+        specs.push(FileSpec {
+            target: rel.clone(),
+            source: rel.clone(),
+            render: false,
+            condition: None,
+        });
+    }
+
+    let (engine, main_file, output_dir) = read_project_build(root);
+    let manifest = TemplateManifest {
+        schema_version: "1.0".into(),
+        id: id.clone(),
+        name: name.to_string(),
+        description: description.filter(|s| !s.trim().is_empty()),
+        category: category.filter(|s| !s.trim().is_empty()),
+        tags: Vec::new(),
+        version: Some("1.0.0".into()),
+        build: BuildConfig {
+            engine,
+            main_file,
+            output_dir,
+            synctex: true,
+        },
+        dependencies: Dependencies::default(),
+        variables: Vec::new(),
+        structure: Structure {
+            dirs: Vec::new(),
+            files: specs,
+        },
+    };
+    let json = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| format!("序列化模板清单失败: {}", e))?;
+    std::fs::write(pkg.join("manifest.json"), json)
+        .map_err(|e| format!("写入模板清单失败: {}", e))?;
+    Ok(meta_from(&manifest, true))
+}
+
+/// 导入模板（目录或 .zip）：校验 manifest → 复制到用户模板目录
+fn import_template_in(
+    src: &Path,
+    user_dir: &Path,
+    builtin_dir: &Path,
+) -> Result<TemplateMeta, String> {
+    if !src.exists() {
+        return Err(format!("导入源不存在: {}", src.display()));
+    }
+    std::fs::create_dir_all(user_dir).map_err(|e| format!("创建用户模板目录失败: {}", e))?;
+
+    // 解压 zip 到临时目录（目录则直接使用）
+    let mut tmp_holder: Option<PathBuf> = None;
+    let result = (|| -> Result<TemplateMeta, String> {
+        let pkg_root = if src.is_dir() {
+            find_pkg_root(src)?
+        } else {
+            let tmp = user_dir.join(format!(".import-{}", now_secs()));
+            let _ = std::fs::remove_dir_all(&tmp);
+            std::fs::create_dir_all(&tmp).map_err(|e| format!("创建临时目录失败: {}", e))?;
+            tmp_holder = Some(tmp.clone());
+            extract_zip(src, &tmp)?;
+            find_pkg_root(&tmp)?
+        };
+        let text = std::fs::read_to_string(pkg_root.join("manifest.json"))
+            .map_err(|e| format!("读取模板清单失败: {}", e))?;
+        let manifest: TemplateManifest =
+            serde_json::from_str(&text).map_err(|e| format!("模板清单解析失败: {}", e))?;
+        guard_id(&manifest.id)?;
+        if builtin_dir.join(&manifest.id).join("manifest.json").is_file() {
+            return Err(format!("模板 id 与内置模板冲突: {}", manifest.id));
+        }
+        let dest = user_dir.join(&manifest.id);
+        if dest.exists() {
+            return Err(format!("模板已存在: {}", manifest.id));
+        }
+        copy_tree(&pkg_root, &dest)?;
+        Ok(meta_from(&manifest, true))
+    })();
+
+    if let Some(tmp) = tmp_holder {
+        let _ = std::fs::remove_dir_all(tmp);
+    }
+    result
+}
+
 // ── Tauri 命令 ────────────────────────────────────────────
 
 #[tauri::command]
 pub fn list_templates(app: tauri::AppHandle) -> Result<Vec<TemplateMeta>, String> {
-    Ok(list_templates_in(&resolve_templates_dir(&app)))
+    let builtin = list_templates_in(&resolve_templates_dir(&app));
+    let user_dir = user_templates_dir(&app)?;
+    let user = list_templates_in_src(&user_dir, true);
+    // 用户模板同名 id 覆盖内置（正常路径不会冲突；手工放置时以用户为准）
+    let user_ids: HashSet<&str> = user.iter().map(|m| m.id.as_str()).collect();
+    let mut out: Vec<TemplateMeta> = builtin
+        .into_iter()
+        .filter(|m| !user_ids.contains(m.id.as_str()))
+        .collect();
+    out.extend(user);
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
 }
 
 #[tauri::command]
 pub fn get_template(app: tauri::AppHandle, id: String) -> Result<TemplateManifest, String> {
-    load_manifest(&resolve_templates_dir(&app), &id)
+    let root = resolve_template_root(&app, &id)?;
+    load_manifest(&root, &id)
 }
 
 #[tauri::command]
@@ -521,12 +875,29 @@ pub fn create_project(
     variables: HashMap<String, Value>,
     target_path: String,
 ) -> Result<ProjectInfo, String> {
-    create_project_in(
-        &resolve_templates_dir(&app),
-        &template_id,
-        &variables,
-        &target_path,
-    )
+    let root = resolve_template_root(&app, &template_id)?;
+    create_project_in(&root, &template_id, &variables, &target_path)
+}
+
+/// M1-15e：把当前项目另存为用户模板
+#[tauri::command]
+pub fn save_as_template(
+    app: tauri::AppHandle,
+    root: String,
+    name: String,
+    description: Option<String>,
+    category: Option<String>,
+) -> Result<TemplateMeta, String> {
+    let user_dir = user_templates_dir(&app)?;
+    save_as_template_in(Path::new(&root), &name, description, category, &user_dir)
+}
+
+/// M1-15e：导入自定义模板（目录或 .zip）
+#[tauri::command]
+pub fn import_template(app: tauri::AppHandle, src: String) -> Result<TemplateMeta, String> {
+    let user_dir = user_templates_dir(&app)?;
+    let builtin = resolve_templates_dir(&app);
+    import_template_in(Path::new(&src), &user_dir, &builtin)
 }
 
 #[cfg(test)]
@@ -821,5 +1192,140 @@ mod tests {
             render_template("<% if flag %>T<% else %>F<% endif %>", &bf, &HashMap::new()),
             "F"
         );
+    }
+
+    // ── M1-15e 模板库管理 ──
+
+    #[test]
+    fn list_marks_user_templates() {
+        let user_dir = tmp_dir("user_tpl_list");
+        make_pkg(
+            &user_dir,
+            "u1",
+            r#"{"id":"u1","name":"U1","structure":{"files":[]}}"#,
+            "x",
+        );
+        let v = list_templates_in_src(&user_dir, true);
+        assert_eq!(v.len(), 1);
+        assert!(v[0].is_user);
+        // 内置列表默认非用户
+        assert!(list_templates_in(&builtin_root()).iter().all(|m| !m.is_user));
+    }
+
+    #[test]
+    fn save_as_template_roundtrip() {
+        let proj = tmp_dir("proj_save_tpl").join("MyProject");
+        std::fs::create_dir_all(proj.join("chapters")).unwrap();
+        std::fs::create_dir_all(proj.join(".ltex")).unwrap();
+        std::fs::create_dir_all(proj.join("build")).unwrap();
+        std::fs::write(
+            proj.join("main.tex"),
+            "\\documentclass{article}\\begin{document}hi\\end{document}",
+        )
+        .unwrap();
+        std::fs::write(proj.join("chapters/intro.tex"), "intro").unwrap();
+        std::fs::write(proj.join("main.aux"), "aux").unwrap();
+        std::fs::write(proj.join("build/x.pdf"), "%PDF").unwrap();
+        std::fs::write(
+            proj.join(".ltex/config.json"),
+            r#"{"engine":"pdflatex","mainFile":"main.tex","outputDir":"build"}"#,
+        )
+        .unwrap();
+
+        let user_dir = tmp_dir("user_tpl_save");
+        let meta = save_as_template_in(
+            &proj,
+            "我的模板",
+            Some("desc".into()),
+            Some("article".into()),
+            &user_dir,
+        )
+        .unwrap();
+        assert!(meta.is_user);
+        let pkg = user_dir.join(&meta.id);
+        assert!(pkg.join("manifest.json").is_file());
+        assert!(pkg.join("main.tex").is_file());
+        assert!(pkg.join("chapters/intro.tex").is_file());
+        // 辅助文件 / .ltex / build 不应进模板
+        assert!(!pkg.join("main.aux").exists());
+        assert!(!pkg.join(".ltex").exists());
+        assert!(!pkg.join("build").exists());
+
+        // 生成的模板可被 create_project 使用
+        let m = load_manifest(&user_dir, &meta.id).unwrap();
+        assert_eq!(m.build.engine, "pdflatex");
+        assert_eq!(m.build.main_file, "main.tex");
+        assert_eq!(m.variables.len(), 0);
+
+        let target = tmp_dir("proj_from_saved_tpl").join("out");
+        let info =
+            create_project_in(&user_dir, &meta.id, &HashMap::new(), target.to_str().unwrap())
+                .unwrap();
+        assert!(Path::new(&info.main_file).is_file());
+        assert!(target.join("chapters/intro.tex").is_file());
+        let cfg: Value = serde_json::from_str(
+            &std::fs::read_to_string(target.join(".ltex/config.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(cfg["templateId"], meta.id);
+    }
+
+    #[test]
+    fn import_template_from_dir_and_zip() {
+        let user_dir = tmp_dir("user_tpl_import");
+        let builtin = builtin_root();
+
+        // 目录导入
+        let src = tmp_dir("tpl_src_dir").join("my-tpl");
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::write(
+            src.join("manifest.json"),
+            r#"{"id":"my-tpl","name":"导入模板","structure":{"files":[{"target":"main.tex","source":"main.tex.tmpl","render":true}]}}"#,
+        )
+        .unwrap();
+        std::fs::write(src.join("main.tex.tmpl"), "\\documentclass{article}").unwrap();
+        let meta = import_template_in(&src, &user_dir, &builtin).unwrap();
+        assert_eq!(meta.id, "my-tpl");
+        assert!(meta.is_user);
+        assert!(user_dir.join("my-tpl/manifest.json").is_file());
+        // 重复导入 → 拒绝
+        assert!(import_template_in(&src, &user_dir, &builtin).is_err());
+
+        // zip 导入（根含 manifest）
+        let zip_root = tmp_dir("tpl_src_zip");
+        let pkg = zip_root.join("ziptpl");
+        std::fs::create_dir_all(&pkg).unwrap();
+        std::fs::write(
+            pkg.join("manifest.json"),
+            r#"{"id":"ziptpl","name":"Zip 模板","structure":{"files":[{"target":"main.tex","source":"main.tex.tmpl","render":true}]}}"#,
+        )
+        .unwrap();
+        std::fs::write(pkg.join("main.tex.tmpl"), "zip body").unwrap();
+        let zip_path = zip_root.join("tpl.zip");
+        {
+            let f = std::fs::File::create(&zip_path).unwrap();
+            let mut zw = zip::ZipWriter::new(f);
+            for name in ["manifest.json", "main.tex.tmpl"] {
+                let opts = zip::write::SimpleFileOptions::default();
+                zw.start_file(name, opts).unwrap();
+                let mut file = std::fs::File::open(pkg.join(name)).unwrap();
+                std::io::copy(&mut file, &mut zw).unwrap();
+            }
+            zw.finish().unwrap();
+        }
+        let meta2 = import_template_in(&zip_path, &user_dir, &builtin).unwrap();
+        assert_eq!(meta2.id, "ziptpl");
+        assert!(user_dir.join("ziptpl/manifest.json").is_file());
+        assert!(user_dir.join("ziptpl/main.tex.tmpl").is_file());
+
+        // 与内置 id 冲突 → 拒绝
+        let conflict = tmp_dir("tpl_src_conflict").join("article");
+        std::fs::create_dir_all(&conflict).unwrap();
+        std::fs::write(
+            conflict.join("manifest.json"),
+            r#"{"id":"article","name":"x","structure":{"files":[]}}"#,
+        )
+        .unwrap();
+        assert!(import_template_in(&conflict, &user_dir, &builtin).is_err());
     }
 }

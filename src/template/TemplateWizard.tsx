@@ -60,6 +60,7 @@ export function TemplateWizard() {
   const open = useProjectStore((s) => s.wizardOpen);
   const closeWizard = useProjectStore((s) => s.closeWizard);
   const wizardDir = useProjectStore((s) => s.wizardDir);
+  const wizardTemplateId = useProjectStore((s) => s.wizardTemplateId);
 
   const [metas, setMetas] = useState<TemplateMeta[]>([]);
   const [selected, setSelected] = useState("");
@@ -77,11 +78,17 @@ export function TemplateWizard() {
       .listTemplates()
       .then((ms) => {
         setMetas(ms);
-        setSelected((s) => (s && ms.some((m) => m.id === s) ? s : (ms[0]?.id ?? "")));
+        setSelected((s) => {
+          // M1-15e：模板库「用此模板新建」优先生效
+          if (wizardTemplateId && ms.some((m) => m.id === wizardTemplateId)) {
+            return wizardTemplateId;
+          }
+          return s && ms.some((m) => m.id === s) ? s : (ms[0]?.id ?? "");
+        });
       })
       .catch((e) => setErr(String(e)));
     setTarget((t) => t || wizardDir || "");
-  }, [open, wizardDir]);
+  }, [open, wizardDir, wizardTemplateId]);
 
   // 选中模板 → 拉清单并按默认值初始化表单
   useEffect(() => {

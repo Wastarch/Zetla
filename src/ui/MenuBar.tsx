@@ -42,7 +42,9 @@ interface MenuDef {
 }
 
 /** 有活动编辑器时才可执行编辑类命令 */
-function withView(fn: (view: NonNullable<ReturnType<typeof getActiveView>>) => void) {
+function withView(
+  fn: (view: NonNullable<ReturnType<typeof getActiveView>>) => void,
+) {
   const v = getActiveView();
   if (v) fn(v);
 }
@@ -307,7 +309,7 @@ export function MenuBar() {
       ],
     },
     {
-      label: "视图",
+      label: "查看",
       items: [
         {
           label: `${sidebarVisible ? "隐藏" : "显示"}侧栏`,
@@ -361,7 +363,11 @@ export function MenuBar() {
           onClick: () => {
             const bs = useBuffersStore.getState();
             if (!bs.activePath) return;
-            void jumpToPdfFromSource(bs.activePath, bs.cursor.line, bs.cursor.col);
+            void jumpToPdfFromSource(
+              bs.activePath,
+              bs.cursor.line,
+              bs.cursor.col,
+            );
           },
         },
         { sep: true, label: "" },
@@ -379,22 +385,37 @@ export function MenuBar() {
         },
         {
           // 切换项按生效主题取反：auto 时点击 = 固定为当前外观（退出跟随）
-          label: effectiveTheme === "dark" ? "切换到亮色主题" : "切换到暗色主题",
-          hint: themeSetting === "auto" ? "当前跟随系统，点击后固定外观" : undefined,
+          label:
+            effectiveTheme === "dark" ? "切换到亮色主题" : "切换到暗色主题",
+          hint:
+            themeSetting === "auto"
+              ? "当前跟随系统，点击后固定外观"
+              : undefined,
           onClick: () =>
-            useSettingsStore.getState().setTheme(effectiveTheme === "dark" ? "light" : "dark"),
+            useSettingsStore
+              .getState()
+              .setTheme(effectiveTheme === "dark" ? "light" : "dark"),
         },
       ],
     },
     {
       label: "模板",
       items: [
+        // {
+        //   label: "从模板新建…",
+        //   onClick: () => useProjectStore.getState().openWizard(),
+        // },
         {
-          label: "从模板新建…",
-          onClick: () => useProjectStore.getState().openWizard(),
+          label: "模板库",
+          onClick: () => useProjectStore.getState().openLibrary(),
+          },
+        { sep: true, label: "" },
+        {
+          label: "另存当前项目为模板…",
+          enabled: hasProject,
+          hint: "未打开项目",
+          onClick: () => useProjectStore.getState().openLibrary(true),
         },
-        { label: "管理本地模板", enabled: false, hint: "用户模板目录 M1" },
-        { label: "导入模板包…", enabled: false, hint: "模板导入 M1" },
       ],
     },
     {
@@ -442,14 +463,19 @@ export function MenuBar() {
         {
           label: "查看日志文件",
           enabled: !!logPath,
-          hint: logPath ? "用默认程序打开本次编译的 .log" : "尚无编译日志（先编译一次）",
+          hint: logPath
+            ? "用默认程序打开本次编译的 .log"
+            : "尚无编译日志（先编译一次）",
           onClick: () => {
             if (!logPath) return;
             void openPath(logPath).catch((e) => notify(String(e), "err"));
           },
         },
         { sep: true, label: "" },
-        { label: "关于 Zetla", onClick: () => useAppStore.getState().openSettings("about") },
+        {
+          label: "关于 Zetla",
+          onClick: () => useAppStore.getState().openSettings("about"),
+        },
       ],
     },
   ];

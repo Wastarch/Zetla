@@ -90,4 +90,6 @@ export interface TemplateMeta {
   category?: string;
   tags?: string[];
   version?: string;
+  /** M1-15e：是否为用户模板（%APPDATA%/Zetla/templates） */
+  isUser?: boolean;
 }

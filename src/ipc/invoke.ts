@@ -63,8 +63,20 @@ export const templateApi = {
   getTemplate: (id: string) => call<TemplateManifest>("get_template", { id }),
   createProject: (templateId: string, vars: Record<string, unknown>, targetPath: string) =>
     call<ProjectInfo>("create_project", { templateId, variables: vars, targetPath }),
-  // M1（MVP 不做）：
-  // importTemplate: (path: string) => call<TemplateMeta>("import_template", { path }),
+  // M1-15e：把当前项目另存为用户模板 / 导入自定义模板（目录或 .zip）
+  saveAsTemplate: (
+    root: string,
+    name: string,
+    description?: string,
+    category?: string,
+  ) =>
+    call<TemplateMeta>("save_as_template", {
+      root,
+      name,
+      description: description ?? null,
+      category: category ?? null,
+    }),
+  importTemplate: (src: string) => call<TemplateMeta>("import_template", { src }),
 };
 
 // ── 项目/文档 ─────────────────────────────────────────────

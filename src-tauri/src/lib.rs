@@ -55,6 +55,9 @@ pub fn run() {
             commands::template::list_templates,
             commands::template::get_template,
             commands::template::create_project,
+            // M1-15e：模板库管理（另存为 / 导入）
+            commands::template::save_as_template,
+            commands::template::import_template,
             // 项目管理（M0-6）
             commands::project::scan_project,
             commands::project::create_entry,

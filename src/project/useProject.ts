@@ -120,6 +120,14 @@ interface ProjectState {
   wizardOpen: boolean;
   /** 向导目标目录默认值（右键目录进入时指定） */
   wizardDir: string | null;
+  /** M1-15e：向导预选模板 id（模板库「用此模板新建」传入） */
+  wizardTemplateId: string | null;
+  /** M1-15e：模板库对话框 */
+  libraryOpen: boolean;
+  /** 模板库打开时直接进入「另存当前项目为模板」表单（菜单入口用） */
+  librarySaveMode: boolean;
+  openLibrary: (saveMode?: boolean) => void;
+  closeLibrary: () => void;
   /** R5：项目设置对话框（图片目录等） */
   projectSettingsOpen: boolean;
   /** M1-15a：启动恢复上次项目进行中（欢迎页据此延后显示，避免闪现） */
@@ -170,8 +178,8 @@ interface ProjectState {
   /** 粘贴到目标目录（冲突报错中止；剪切成功后清空剪贴板） */
   pasteInto: (targetDir: string) => Promise<void>;
 
-  /** 打开/关闭「从模板新建」向导（dir 缺省用项目根） */
-  openWizard: (dir?: string) => void;
+  /** 打开/关闭「从模板新建」向导（dir 缺省用项目根；templateId 预选模板） */
+  openWizard: (dir?: string, templateId?: string) => void;
   closeWizard: () => void;
   /** R5：打开/关闭项目设置对话框 */
   openProjectSettings: () => void;
@@ -188,6 +196,9 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   clip: null,
   wizardOpen: false,
   wizardDir: null,
+  wizardTemplateId: null,
+  libraryOpen: false,
+  librarySaveMode: false,
   projectSettingsOpen: false,
   restoring: false,
   switcherOpen: false,
@@ -497,8 +508,19 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  openWizard: (dir) => set({ wizardOpen: true, wizardDir: dir ?? get().root ?? null }),
-  closeWizard: () => set({ wizardOpen: false, wizardDir: null }),
+  openWizard: (dir, templateId) =>
+    set({
+      wizardOpen: true,
+      wizardDir: dir ?? get().root ?? null,
+      wizardTemplateId: templateId ?? null,
+    }),
+  closeWizard: () =>
+    set({ wizardOpen: false, wizardDir: null, wizardTemplateId: null }),
+
+  // M1-15e：模板库（入口见 菜单栏「模板」/ 欢迎页）
+  openLibrary: (saveMode = false) =>
+    set({ libraryOpen: true, librarySaveMode: saveMode, ctx: null, switcherOpen: false }),
+  closeLibrary: () => set({ libraryOpen: false, librarySaveMode: false }),
 
   openProjectSettings: () => set({ projectSettingsOpen: true }),
   closeProjectSettings: () => set({ projectSettingsOpen: false }),

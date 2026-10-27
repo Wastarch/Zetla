@@ -622,11 +622,11 @@ fn delete_project_inner(
     Ok(cfg.recent_projects)
 }
 
-/// 需要从导出 zip 中跳过的目录名
-const EXPORT_SKIP_DIRS: [&str; 4] = ["node_modules", "target", "dist", ".git"];
+/// 需要从导出/另存模板中跳过的目录名
+pub(crate) const EXPORT_SKIP_DIRS: [&str; 4] = ["node_modules", "target", "dist", ".git"];
 
-/// 是否为 LaTeX 编译辅助文件（导出时跳过）
-fn is_aux_file(name: &str) -> bool {
+/// 是否为 LaTeX 编译辅助文件（导出/另存模板时跳过）
+pub(crate) fn is_aux_file(name: &str) -> bool {
     const SUFFIXES: [&str; 17] = [
         ".aux", ".log", ".bbl", ".blg", ".toc", ".out", ".lof", ".lot", ".idx", ".ilg",
         ".ind", ".fls", ".fdb_latexmk", ".synctex.gz", ".nav", ".snm", ".vrb",
