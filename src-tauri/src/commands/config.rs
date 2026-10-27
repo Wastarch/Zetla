@@ -54,6 +54,8 @@ pub struct AppConfig {
     pub modules: BTreeMap<String, bool>,
     /// M1-10：公式模块配置（收藏 / 自定义 / 插入行为）
     pub formula: FormulaConfig,
+    /// M1-8：表格模块配置（默认线型 / 转义 / 编号 / 位置）
+    pub table: TableConfig,
 }
 
 impl Default for AppConfig {
@@ -72,6 +74,7 @@ impl Default for AppConfig {
             perl: PerlConfig::default(),
             modules: BTreeMap::new(),
             formula: FormulaConfig::default(),
+            table: TableConfig::default(),
         }
     }
 }
@@ -364,6 +367,71 @@ impl Default for PdfConfig {
     }
 }
 
+/// M1-8 · 表格模块配置（与前端 AppSettings.table 一一对应）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TableConfig {
+    /// 线型：booktabs（三线表）/ grid（全框线）/ plain（无线）
+    pub style: String,
+    /// 是否带编号（false → table*，不进入表格目录）
+    pub numbered: bool,
+    /// 浮动位置参数（默认 htbp）
+    pub placement: String,
+    /// label 前缀（默认 "tab:"）
+    pub label_prefix: String,
+    /// 单元格转义：smart（保留 $..$ 与命令）/ full / off
+    pub escape: String,
+    /// 新表默认带表头
+    pub header_row: bool,
+    /// 面板「＋行」上限（模型硬上限仍为 100）
+    pub max_rows: u32,
+    /// 面板「＋列」上限（模型硬上限仍为 20）
+    pub max_cols: u32,
+}
+
+impl Default for TableConfig {
+    fn default() -> Self {
+        TableConfig {
+            style: "booktabs".to_string(),
+            numbered: true,
+            placement: "htbp".to_string(),
+            label_prefix: "tab:".to_string(),
+            escape: "smart".to_string(),
+            header_row: true,
+            max_rows: 100,
+            max_cols: 20,
+        }
+    }
+}
+
+/// 表格配置归一化：白名单 + 位置上界 + 行列上限钳制
+pub fn normalize_table(mut t: TableConfig) -> TableConfig {
+    const STYLES: [&str; 3] = ["booktabs", "grid", "plain"];
+    const ESCAPES: [&str; 3] = ["smart", "full", "off"];
+    if !STYLES.contains(&t.style.as_str()) {
+        t.style = "booktabs".to_string();
+    }
+    if !ESCAPES.contains(&t.escape.as_str()) {
+        t.escape = "smart".to_string();
+    }
+    // placement 仅允许字母与 '!'（如 htbp / H / !htbp）；空或含非法字符回退默认
+    t.placement = t.placement.trim().to_string();
+    if t.placement.is_empty()
+        || !t
+            .placement
+            .chars()
+            .all(|c| c.is_ascii_alphabetic() || c == '!')
+    {
+        t.placement = "htbp".to_string();
+    }
+    if t.label_prefix.chars().count() > 24 {
+        t.label_prefix = "tab:".to_string();
+    }
+    t.max_rows = t.max_rows.clamp(1, 100);
+    t.max_cols = t.max_cols.clamp(1, 20);
+    t
+}
+
 /// 越界/非法值归一化（读盘与写盘统一走此入口）
 pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     if !FONT_FAMILIES.contains(&cfg.editor.font_family.as_str()) {
@@ -387,6 +455,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     cfg.session = normalize_session(cfg.session);
     // M1-10：公式配置归一化（收藏去重/截断；自定义校验/去重/截断）
     cfg.formula = normalize_formula(cfg.formula);
+    // M1-8：表格配置归一化（线型/转义白名单；位置字符集；行列上限）
+    cfg.table = normalize_table(cfg.table);
     // M1-3：编译引擎白名单 + 流程步骤归一化（非法引擎回退 auto，保持「跟随项目」行为）
     if !BUILD_ENGINES.contains(&cfg.build.engine.as_str()) {
         cfg.build.engine = "auto".to_string();
@@ -605,10 +675,43 @@ mod tests {
         // M1-3 字段（精确到值，避免与 tex.engineBinDir 混淆）
         assert!(text.contains("\"engine\":\"auto\""));
         assert!(text.contains("\"steps\":[]"));
+        // M1-8 字段（表格模块）
+        assert!(text.contains("\"table\""));
+        assert!(text.contains("\"labelPrefix\":\"tab:\""));
+        assert!(text.contains("\"headerRow\":true"));
+        assert!(text.contains("\"maxRows\":100"));
+        assert!(text.contains("\"style\":\"booktabs\""));
         // snake_case 不应出现
         assert!(!text.contains("font_family"));
         assert!(!text.contains("interval_seconds"));
         assert!(!text.contains("last_project"));
+        assert!(!text.contains("label_prefix"));
+        assert!(!text.contains("header_row"));
+    }
+
+    #[test]
+    fn normalize_table_clamps_invalid_values() {
+        let mut t = TableConfig {
+            style: "fancy".to_string(),
+            numbered: false,
+            placement: " htbp ".to_string(),
+            label_prefix: "tab:".to_string(),
+            escape: "raw".to_string(),
+            header_row: false,
+            max_rows: 9999,
+            max_cols: 0,
+        };
+        t = normalize_table(t);
+        assert_eq!(t.style, "booktabs");
+        assert_eq!(t.escape, "smart");
+        assert_eq!(t.placement, "htbp"); // 去空白后合法
+        assert_eq!(t.max_rows, 100);
+        assert_eq!(t.max_cols, 1);
+
+        let mut bad = TableConfig::default();
+        bad.placement = "htbp; rm -rf".to_string();
+        assert_eq!(normalize_table(bad).placement, "htbp");
+        assert_eq!(normalize_table(TableConfig::default()).placement, "htbp");
     }
 
     #[test]

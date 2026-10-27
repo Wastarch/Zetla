@@ -4,8 +4,12 @@
 // 快捷工具/公式模板 两页签；整体随「公式」模块启停）。
 // M1-12b：MathView 整体懒加载——其内部含 katex（编写区可视化 + 输出区预览），
 //          经此 lazy 使 katex 只在首开公式侧栏时进网络，explorer/outline 视图不受影响。
-import { Suspense, lazy, type CSSProperties } from "react";
-import { useAppStore } from "@/core/store";
+// M1-8：模块自带视图（LatexModule.view，如表格）走动态分支——侧栏不再为每个模块加硬编码，
+//       模块停用/未注册时回退 explorer，避免留下指向空组件的死视图。
+import { Suspense, lazy, useEffect, type CSSProperties, type ComponentType, type LazyExoticComponent } from "react";
+import { BUILTIN_SIDEBAR_VIEWS, useAppStore } from "@/core/store";
+import { useModuleViews } from "@/modules/useModuleList";
+import type { LatexModule, ModuleViewDecl } from "@/types/module";
 import { ProjectTree } from "./ProjectTree";
 import { OutlinePanel } from "@/outline/OutlinePanel";
 import ReferencePanel from "@/modules/reference/ReferencePanel";
@@ -17,8 +21,38 @@ export interface SidebarProps {
   style?: CSSProperties;
 }
 
+/** 模块视图宿主：标题栏 + 懒加载组件（模块自带视图的统一外壳） */
+function ModuleViewHost({
+  view: decl,
+  component: Comp,
+}: {
+  view: ModuleViewDecl;
+  component: LazyExoticComponent<ComponentType>;
+}) {
+  return (
+    <div className="side-view">
+      <div className="side-head">
+        <div className="side-title">{decl.label}</div>
+      </div>
+      <Suspense fallback={<div className="side-loading">加载中…</div>}>
+        <Comp />
+      </Suspense>
+    </div>
+  );
+}
+
 export function Sidebar({ style }: SidebarProps) {
   const view = useAppStore((s) => s.sidebarView);
+  const moduleViews = useModuleViews();
+  const modEntry = moduleViews.find((mv) => mv.view.id === view) as
+    | { module: LatexModule; view: ModuleViewDecl }
+    | undefined;
+
+  // 视图失效（提供该视图的模块被停用/卸载）→ 回退资源管理器
+  const known = (BUILTIN_SIDEBAR_VIEWS as readonly string[]).includes(view) || !!modEntry;
+  useEffect(() => {
+    if (!known) useAppStore.getState().setSidebarView("explorer");
+  }, [known]);
 
   return (
     <aside className="sidebar" style={style}>
@@ -41,7 +75,7 @@ export function Sidebar({ style }: SidebarProps) {
           </div>
           <ReferencePanel />
         </div>
-      ) : (
+      ) : view === "math" ? (
         <Suspense
           fallback={
             <div className="side-view">
@@ -51,6 +85,19 @@ export function Sidebar({ style }: SidebarProps) {
         >
           <MathView />
         </Suspense>
+      ) : modEntry?.module.component ? (
+        <ModuleViewHost view={modEntry.view} component={modEntry.module.component} />
+      ) : (
+        <div className="side-empty">
+          <div>该视图不可用（提供它的模块可能已停用）</div>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => useAppStore.getState().openSettings("modules")}
+          >
+            去设置启用
+          </button>
+        </div>
       )}
     </aside>
   );

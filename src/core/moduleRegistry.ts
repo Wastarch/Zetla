@@ -6,7 +6,12 @@ import type { EditorView } from "@codemirror/view";
 import { bus } from "./bus";
 import { BusEvents } from "@/ipc/events";
 import { getActiveView } from "@/editor/activeView";
-import type { LatexModule, ModuleContext, ModuleEntryView } from "@/types/module";
+import type {
+  LatexModule,
+  ModuleContext,
+  ModuleEntryView,
+  ModuleViewDecl,
+} from "@/types/module";
 
 interface RegistryEntry {
   mod: LatexModule;
@@ -102,6 +107,30 @@ export class ModuleRegistry {
       .sort((a, b) => a.seq - b.seq)
       .filter((e) => e.enabled && e.mod.slot === slot && !!e.mod.component)
       .map((e) => e.mod);
+  }
+
+  /**
+   * M1-8：全部「已启用且声明了自带视图」的模块视图（活动栏 / 视图菜单 / 侧栏渲染消费）。
+   * 排序：先按 view.order（缺省排在内置视图之后），再按注册序，保证确定性。
+   */
+  listViews(): Array<{ module: LatexModule; view: ModuleViewDecl }> {
+    return [...this.entries.values()]
+      .sort((a, b) => a.seq - b.seq)
+      .filter((e) => e.enabled && !!e.mod.view)
+      .map((e) => ({ module: e.mod, view: e.mod.view as ModuleViewDecl }))
+      .sort((a, b) => {
+        const oa = a.view.order ?? Number.MAX_SAFE_INTEGER;
+        const ob = b.view.order ?? Number.MAX_SAFE_INTEGER;
+        return oa === ob ? 0 : oa - ob;
+      });
+  }
+
+  /** 按视图 id 反查提供该视图的已启用模块（侧栏渲染用；null = 无模块提供） */
+  viewModule(viewId: string): LatexModule | null {
+    for (const e of this.entries.values()) {
+      if (e.enabled && e.mod.view?.id === viewId) return e.mod;
+    }
+    return null;
   }
 
   // ── 启停 ──

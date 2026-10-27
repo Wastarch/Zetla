@@ -7,6 +7,24 @@ import type { CompileResult } from "./compile";
 /** 模块 UI 挂载槽位（M1-1 仅接通 sidebar：侧栏底部；后续按需扩展） */
 export type ModuleSlot = "sidebar";
 
+/**
+ * 模块自带侧栏视图声明（M1-8 协议扩展，向后兼容）。
+ * 声明后：活动栏出现对应图标、菜单「视图」出现同名项、`Ctrl+B <n>` 可直达；
+ * 视图 id 与内置视图共用同一命名空间（explorer/outline/math/references）。
+ */
+export interface ModuleViewDecl {
+  /** 视图 id（建议与模块 id 同名，如 "table"） */
+  id: string;
+  /** 活动栏图标（index.html sprite 名，不含 "i-" 前缀） */
+  icon: string;
+  /** 活动栏 tooltip / 侧栏标题 */
+  label: string;
+  /** 快捷键提示，如 "Ctrl+B 5"（仅展示，不参与绑定） */
+  hint?: string;
+  /** 活动栏排序位次（同数字按注册序；缺省排在全部内置视图之后） */
+  order?: number;
+}
+
 /** 模块运行上下文 —— 内核经 hooks 传给模块的能力集合 */
 export interface ModuleContext {
   /** 向当前活动编辑器插入代码（替换当前选区）；无活动编辑器时返回 false */
@@ -49,6 +67,8 @@ export interface LatexModule {
   component?: LazyExoticComponent<ComponentType>;
   /** UI 挂载槽位（无 component = 纯钩子模块，不出现在界面） */
   slot?: ModuleSlot;
+  /** 自带侧栏视图（M1-8）；声明后活动栏/视图菜单/快捷键自动接入，无需改内核硬编码 */
+  view?: ModuleViewDecl;
 }
 
 /** 设置页/模块面板消费的运行时视图（registry.list() 产出） */

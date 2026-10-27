@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { bus } from "@/core/bus";
 import { BusEvents } from "@/ipc/events";
 import { moduleRegistry } from "@/core/moduleRegistry";
-import type { LatexModule, ModuleEntryView } from "@/types/module";
+import type { LatexModule, ModuleEntryView, ModuleViewDecl } from "@/types/module";
 
 export function useModuleList(): ModuleEntryView[] {
   const [, setRev] = useState(0);
@@ -34,4 +34,22 @@ export function useSlotModules(slot: LatexModule["slot"]): LatexModule[] {
     };
   }, []);
   return moduleRegistry.listSlot(slot);
+}
+
+/**
+ * M1-8：已启用模块自带视图列表（活动栏 + 侧栏渲染消费）。
+ * 与 useModuleList 同一套总线订阅：模块启停即刷新，视图项出现/消失。
+ */
+export function useModuleViews(): Array<{ module: LatexModule; view: ModuleViewDecl }> {
+  const [, setRev] = useState(0);
+  useEffect(() => {
+    const bump = () => setRev((r) => r + 1);
+    const off1 = bus.on(BusEvents.moduleEnabled, bump);
+    const off2 = bus.on(BusEvents.moduleDisabled, bump);
+    return () => {
+      off1();
+      off2();
+    };
+  }, []);
+  return moduleRegistry.listViews();
 }

@@ -1867,6 +1867,286 @@ body.col-resizing {
   font-size: 11px;
 }
 
+/* M1-8：表格模块视图（网格编辑器；容器撑满侧栏，内部网格独立滚动） */
+.table-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 10px;
+  overflow: hidden;
+}
+
+.table-panel-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--txt-2);
+}
+
+.table-panel-hint {
+  font-size: 11px;
+  line-height: 1.75;
+  color: var(--txt-3);
+  flex: none;
+}
+
+/* ── 工具条 ── */
+.tbl-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+
+.tbl-sep {
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--line-soft);
+}
+
+.tbtn {
+  height: 22px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-family: inherit;
+  font-size: 10.5px;
+  color: var(--txt-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tbtn:hover:not(:disabled) {
+  color: var(--txt);
+  border-color: var(--line);
+}
+
+.tbtn.on {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.tbtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.tbl-sel {
+  height: 22px;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 10.5px;
+  color: var(--txt-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  outline: none;
+}
+
+/* ── 网格 ── */
+.tbl-grid-wrap {
+  flex: 1 1 auto;
+  min-height: 96px;
+  overflow: auto;
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.tbl-grid {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 11px;
+  table-layout: fixed;
+}
+
+.tbl-grid th,
+.tbl-grid td {
+  border-right: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  padding: 0;
+}
+
+.tbl-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  width: 26px;
+  min-width: 26px;
+  height: 20px;
+  background: var(--bg-2);
+}
+
+.tbl-colhead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-width: 62px;
+  height: 20px;
+  font-weight: 500;
+  color: var(--txt-3);
+  background: var(--bg-2);
+}
+
+.tbl-rowhead {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 26px;
+  min-width: 26px;
+  height: 23px;
+  font-weight: 500;
+  color: var(--txt-3);
+  background: var(--bg-2);
+}
+
+.tbl-colhead.on,
+.tbl-rowhead.on {
+  color: var(--accent);
+}
+
+.tbl-cell {
+  height: 23px;
+  min-width: 62px;
+  background: transparent;
+}
+
+.tbl-cell.sel {
+  background: var(--accent-soft);
+}
+
+.tbl-cell.covered {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--bg-2) 0 4px,
+    var(--bg) 4px 8px
+  );
+}
+
+.tbl-inp {
+  width: 100%;
+  height: 22px;
+  padding: 0 5px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--txt);
+  background: transparent;
+  border: 0;
+  outline: none;
+}
+
+.tbl-inp.range {
+  background: transparent;
+}
+
+.tbl-inp.sel,
+.tbl-inp:focus {
+  background: var(--bg-3);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* ── 字段 / 代码预览 / 动作 ── */
+.tbl-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: none;
+}
+
+.tbl-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.tbl-field > span {
+  width: 28px;
+  flex: none;
+}
+
+.tbl-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 22px;
+  padding: 0 6px;
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--txt);
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 4px;
+  outline: none;
+}
+
+.tbl-input:focus {
+  border-color: var(--accent);
+}
+
+.tbl-code {
+  flex: none;
+}
+
+.tbl-code summary {
+  font-size: 10.5px;
+  color: var(--txt-3);
+  cursor: pointer;
+}
+
+.tbl-code pre {
+  margin: 6px 0 0;
+  padding: 8px;
+  max-height: 170px;
+  overflow: auto;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  line-height: 1.5;
+  color: var(--txt-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  white-space: pre;
+}
+
+.tbl-actions {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+/* 宏包缺失提示（非阻断，仅提示 + 一键补导言区） */
+.tbl-warn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 5px 7px;
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--warn);
+  background: var(--bg-2);
+  border-left: 2px solid var(--warn);
+  border-radius: 4px;
+}
+
+.tbtn.primary {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
 /* ── 项目树 ─────────────────────────────── */
 .tree {
   flex: 1 1 0;

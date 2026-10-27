@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { moduleRegistry, bindModuleBus, KERNEL_CAPABILITIES } from "./moduleRegistry";
 import { useSettingsStore } from "./settings";
 import { registerMathModule } from "@/modules/formula/mathModule";
+import { registerTableModule } from "@/modules/table/tableModule";
 
 export function useModuleRuntime(): void {
   useEffect(() => {
@@ -14,6 +15,10 @@ export function useModuleRuntime(): void {
     // M1-12a · 公式模块（合并原符号面板 + 公式库）：侧栏「公式」单视图的统一开关。
     // DEV+release 均注册，默认启用；设置页覆盖值经 setOverrides 落地实现「即时启停」。
     registerMathModule();
+
+    // M1-8 · 表格模块（R6）：自带侧栏视图（LatexModule.view），活动栏/视图菜单/
+    // Ctrl+B 5 由模块协议自动接入，停用即从界面消失。
+    registerTableModule();
 
     // 设置页覆盖值 → 注册表：
     // - 配置未加载完成前传 null（各模块走 defaultEnabled）

@@ -140,6 +140,28 @@ export interface AppSettings {
   modules: Record<string, boolean>;
   /** M1-10：公式模块配置（收藏 / 自定义 / 插入行为） */
   formula: FormulaConfig;
+  /** M1-8：表格模块配置（默认线型 / 转义 / 编号 / 位置 / 行列上限） */
+  table: TableSettings;
+}
+
+/** M1-8：表格模块设置（与 Rust TableConfig 一一对应，camelCase） */
+export interface TableSettings {
+  /** 线型：booktabs 三线表 / grid 全框线 / plain 无线 */
+  style: "booktabs" | "grid" | "plain";
+  /** 是否带编号（false → table*） */
+  numbered: boolean;
+  /** 浮动位置参数 */
+  placement: string;
+  /** label 前缀（默认 "tab:"） */
+  labelPrefix: string;
+  /** 单元格转义：smart 保留 $..$ 与命令 / full 全转义 / off 不转义 */
+  escape: "smart" | "full" | "off";
+  /** 新表默认带表头 */
+  headerRow: boolean;
+  /** 面板「＋行」上限（模型硬上限 100） */
+  maxRows: number;
+  /** 面板「＋列」上限（模型硬上限 20） */
+  maxCols: number;
 }
 
 /** 前端兜底默认值（与 Rust Default 一致；正常路径以 load_app_config 返回为准） */
@@ -163,6 +185,16 @@ export const DEFAULT_SETTINGS: AppSettings = {
   perl: { installDir: null },
   modules: {},
   formula: { favorites: [], custom: [], numbered: false, inline: false },
+  table: {
+    style: "booktabs",
+    numbered: true,
+    placement: "htbp",
+    labelPrefix: "tab:",
+    escape: "smart",
+    headerRow: true,
+    maxRows: 100,
+    maxCols: 20,
+  },
 };
 
 /** 字体族 → CSS font-family 栈（应用到 --editor-ff，仅影响编辑器代码区） */

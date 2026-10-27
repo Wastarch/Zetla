@@ -664,6 +664,79 @@ export function SettingsDialog() {
                 <p className="set-note">
                   开关即时启停（保存后写入配置文件）；被其他模块依赖的模块无法停用。
                 </p>
+
+                <h4>表格（M1-8）</h4>
+                <Fld label="默认线型" hint="新建表格时的表格线风格">
+                  <select
+                    value={draft.table.style}
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        table: {
+                          ...d.table,
+                          style: e.target.value as typeof d.table.style,
+                        },
+                      }))
+                    }
+                  >
+                    <option value="booktabs">三线表（booktabs）</option>
+                    <option value="grid">全框线</option>
+                    <option value="plain">无线</option>
+                  </select>
+                </Fld>
+                <Fld label="默认转义" hint="智能：保留 $..$ 与命令，仅转义 & % # _">
+                  <select
+                    value={draft.table.escape}
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        table: {
+                          ...d.table,
+                          escape: e.target.value as typeof d.table.escape,
+                        },
+                      }))
+                    }
+                  >
+                    <option value="smart">智能转义</option>
+                    <option value="full">全转义</option>
+                    <option value="off">不转义</option>
+                  </select>
+                </Fld>
+                <Fld label="默认带表头" hint="首行加粗并在其后插入 \midrule">
+                  <Switch
+                    checked={draft.table.headerRow}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, table: { ...d.table, headerRow: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld label="带编号" hint="关闭后用 table*（不进入表格目录）">
+                  <Switch
+                    checked={draft.table.numbered}
+                    onChange={(v) => update((d) => ({ ...d, table: { ...d.table, numbered: v } }))}
+                  />
+                </Fld>
+                <Fld label="浮动位置" hint="如 htbp / H / !htbp（字母与 ! 组成）">
+                  <input
+                    className="txt-in"
+                    value={draft.table.placement}
+                    onChange={(e) =>
+                      update((d) => ({ ...d, table: { ...d.table, placement: e.target.value } }))
+                    }
+                  />
+                </Fld>
+                <Fld label="标签前缀" hint="标签留空时按「前缀 + 标题 slug」生成">
+                  <input
+                    className="txt-in"
+                    value={draft.table.labelPrefix}
+                    onChange={(e) =>
+                      update((d) => ({ ...d, table: { ...d.table, labelPrefix: e.target.value } }))
+                    }
+                  />
+                </Fld>
+                <p className="set-note">
+                  新建表格按上述默认值初始化；已插入的表格不受影响。行列上限（100×20）为模型硬上限。
+                </p>
               </div>
             )}
 

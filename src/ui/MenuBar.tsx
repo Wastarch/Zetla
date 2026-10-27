@@ -17,6 +17,8 @@ import { cancelCompile, startCompile } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
 import { jumpToPdfFromSource } from "@/preview/syncTex";
 import { useUpdateStore, selectHasUpdate } from "@/modules/updater/updateStore";
+import { useModuleViews } from "@/modules/useModuleList";
+import { moduleRegistry } from "@/core/moduleRegistry";
 import { importImageFromPaths } from "@/editor/image/importImage";
 
 /** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
@@ -84,6 +86,8 @@ export function MenuBar() {
   const canEditText = activeKind === "text";
   // M1-13：有可用更新时，帮助菜单按钮显示红点
   const hasUpdate = useUpdateStore(selectHasUpdate);
+  // M1-8：模块自带视图（视图菜单动态项，Ctrl+B 5/6/7… 与其顺序对应）
+  const moduleViews = useModuleViews();
 
   const menus: MenuDef[] = [
     {
@@ -215,6 +219,14 @@ export function MenuBar() {
             await importImageFromPaths(paths);
           },
         },
+        {
+          // M1-8：表格编辑器（打开侧栏「表格」视图；模块停用时置灰）
+          label: "表格编辑器…",
+          sc: "Ctrl+B 5",
+          enabled: moduleViews.some((mv) => mv.view.id === "table"),
+          hint: "表格模块已停用（设置 → 模块）",
+          onClick: () => useAppStore.getState().setSidebarView("table"),
+        },
       ],
     },
     {
@@ -280,6 +292,12 @@ export function MenuBar() {
           sc: "Ctrl+B 4",
           onClick: () => useAppStore.getState().setSidebarView("references"),
         },
+        // M1-8：模块自带视图动态项（表格等）；编号 5 起与 Ctrl+B 5/6/7… 顺序一致
+        ...moduleViews.map((mv, i) => ({
+          label: `${sidebarVisible && sidebarView === mv.view.id ? "✓ " : ""}${mv.view.label}`,
+          sc: `Ctrl+B ${5 + i}`,
+          onClick: () => useAppStore.getState().setSidebarView(mv.view.id),
+        })),
         {
           label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
           onClick: () => useAppStore.getState().togglePreview(),
@@ -448,6 +466,16 @@ export function MenuBar() {
                   : "references";
           useAppStore.getState().setSidebarView(v);
           return;
+        }
+        // M1-8：Ctrl+B 5/6/7… 直达模块自带视图（顺序与「视图」菜单动态项一致）
+        if (e.key >= "5" && e.key <= "9") {
+          const mv = moduleRegistry.listViews()[Number(e.key) - 5];
+          if (mv) {
+            e.preventDefault();
+            clearChord();
+            useAppStore.getState().setSidebarView(mv.view.id);
+            return;
+          }
         }
         // 其它键：取消 chord，继续按普通快捷键处理
         clearChord();
