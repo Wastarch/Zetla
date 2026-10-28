@@ -1,7 +1,7 @@
 {
     "version": "0.2.0",
-    "notes": "项目管理 · 表格编辑器 · 图片插入 · 多文件模板",
-    "pubDate": "2026-10-28T17:00:00+08:00",
+    "notes": "语言档位 · 小地图 · 任意后缀新建 · 清理清单 · 安装体验",
+    "pubDate": "2026-10-28T00:00:00+08:00",
     "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.0",
     "installers": [
         {
