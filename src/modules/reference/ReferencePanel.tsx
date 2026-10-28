@@ -44,6 +44,8 @@ export default function ReferencePanel() {
 
   const [q, setQ] = useState("");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  /** 手动刷新中（重扫项目 + 重建索引） */
+  const [refreshing, setRefreshing] = useState(false);
   /** 右键菜单：命中的条目、屏幕坐标、以及「查看反向引用」用的浮窗锚点 */
   const [menu, setMenu] = useState<{
     entry: BibEntry;
@@ -217,6 +219,30 @@ export default function ReferencePanel() {
     });
   };
 
+  /** 手动刷新：重新扫描项目目录 + 重建引用索引（检测新增/改名/外部改动的 .bib / .tex） */
+  const onRefresh = useCallback(async () => {
+    const { root } = useProjectStore.getState();
+    if (!root) {
+      notify("请先打开项目", "err");
+      return;
+    }
+    setRefreshing(true);
+    try {
+      // 1) 重扫目录，确保新增/改名/外部加入的 .bib 进入项目树
+      const tree = await projectApi.scanProject(root);
+      useProjectStore.setState({ tree });
+      // 2) 清反向引用缓存并重索引（重读全部 .tex / .bib，已打开走 buffer）
+      useReferenceStore.getState().invalidateCitations();
+      await useReferenceStore.getState().reindex();
+      const n = useReferenceStore.getState().entries.length;
+      notify(`已重新扫描项目内 .bib 文献，共 ${n} 条`);
+    } catch (e) {
+      notify(`刷新失败：${String(e)}`, "err");
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
+
   const allClear = dupSummary.count === 0 && missing.count === 0;
 
   return (
@@ -261,6 +287,15 @@ export default function ReferencePanel() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
         />
+        <button
+          type="button"
+          className="ref-import"
+          onClick={() => void onRefresh()}
+          disabled={refreshing}
+          title="重新扫描项目内 .bib 文献"
+        >
+          {refreshing ? "刷新中…" : "↻ 刷新"}
+        </button>
         <button type="button" className="ref-import" onClick={() => void onImport()}>
           + 导入…
         </button>
