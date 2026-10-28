@@ -1285,6 +1285,15 @@ body {
   background: var(--accent-soft);
 }
 
+/* M1 · 编辑器右侧缩略图（@replit/codemirror-minimap） */
+.latex-editor .cm-minimap-gutter {
+  border-left: 1px solid var(--line);
+  background: var(--editor-bg);
+}
+.latex-editor .cm-minimap-gutter .cm-minimap-inner {
+  background: transparent;
+}
+
 .latex-editor .cm-scroller {
   font-family: inherit;
   font-size: inherit;

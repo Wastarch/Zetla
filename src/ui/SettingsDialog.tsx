@@ -516,12 +516,17 @@ export function SettingsDialog() {
                   />
                 </Fld>
                 <Fld label="显示小地图" hint="编辑器右侧缩略图" tip="小地图 M1 接通">
-                  <Switch checked={false} disabled />
+                  <Switch
+                    checked={draft.editor.minimap ?? true}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, editor: { ...d.editor, minimap: v } }))
+                    }
+                  />
                 </Fld>
                 <Fld
                   label="括号匹配 / 代码折叠"
                   hint="CodeMirror 6 语法特性"
-                  tip="括号匹配固定开启；代码折叠 MVP 不做（M1）"
+                  tip="括号匹配固定开启；代码折叠"
                 >
                   <Switch checked disabled />
                 </Fld>
@@ -665,7 +670,7 @@ export function SettingsDialog() {
                   开关即时启停（保存后写入配置文件）；被其他模块依赖的模块无法停用。
                 </p>
 
-                <h4>表格（M1-8）</h4>
+                <h4>表格</h4>
                 <Fld label="默认线型" hint="新建表格时的表格线风格">
                   <select
                     value={draft.table.style}

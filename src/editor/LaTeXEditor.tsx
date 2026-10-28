@@ -36,6 +36,32 @@ import {
   missingCiteLinter,
 } from "@/modules/reference/lint";
 import { importAndInsert, isImageFile } from "./image/importImage";
+import { showMinimap, Scale, type MinimapConfig } from "@replit/codemirror-minimap";
+
+// M1 · 缩略图最大宽度：经 patch 暴露包的 Scale 后，此处一处可调（默认 100px；拐点 = MaxWidth×6 = 600px）
+const MINIMAP_MAX_WIDTH = 80;
+Scale.MaxWidth = MINIMAP_MAX_WIDTH;
+
+/**
+ * M1 · 编辑器右侧缩略图（@replit/codemirror-minimap）。
+ * 包内读取 .cm-content 的 computed style 取颜色/字体，故亮/暗主题自动跟随；
+ * showMinimap 为 Facet，其 enables 会自动挂载渲染插件，传 null 即不显示。
+ * 点击缩略图按纵向比例滚动编辑器（标准 minimap 交互）。
+ */
+const MINIMAP_CONFIG: MinimapConfig = {
+  create: () => ({ dom: document.createElement("div") }),
+  showOverlay: "always",
+  displayText: "characters",
+  eventHandlers: {
+    mousedown: (e, view) => {
+      const dom = e.currentTarget as HTMLElement;
+      const rect = dom.getBoundingClientRect();
+      const ratio = (e.clientY - rect.top) / rect.height;
+      const max = view.scrollDOM.scrollHeight - view.scrollDOM.clientHeight;
+      view.scrollDOM.scrollTop = Math.max(0, Math.min(1, ratio)) * max;
+    },
+  },
+};
 
 /**
  * M1-2：LaTeX 语法高亮配色。
@@ -221,8 +247,12 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     // M1-14j：状态栏手动指定的语言优先于扩展名自动识别（缺省按扩展名，未收录 → 纯文本）
     const langOverride = useLangOverride((s) => (path ? s.byPath[path] : undefined));
     const lang = langOverride ?? (path ? langOf(path) : "latex");
+    // M1 · 右侧缩略图开关（设置 → 编辑器；缺省开，兼容旧配置无此字段）
+    const minimapOn = editor.minimap ?? true;
     const extensions = useMemo(
       () => [
+        // M1 · 右侧缩略图（null = 关闭；Facet 自动挂载渲染插件，主题色取自编辑器自身）
+        showMinimap.of(minimapOn ? MINIMAP_CONFIG : null),
         // M1-14i/j：按档位装配词法（bib/bst/log 专属；plain 不挂语言；latex 含全部 LaTeX 方言）
         ...langSupport(lang, () => pathRef.current),
         // 软换行：只影响显示，不向文档写入换行符
@@ -324,7 +354,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           },
         }),
       ],
-      [lineWrapping, theme, lang],
+      [lineWrapping, theme, lang, minimapOn],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置

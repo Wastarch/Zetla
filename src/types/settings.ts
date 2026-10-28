@@ -68,6 +68,8 @@ export interface AppSettings {
     lineWrapping: boolean;
     /** Ctrl+滚轮缩放编辑器字体（M0-14a 用户追加，默认开） */
     mouseWheelZoom: boolean;
+    /** 编辑器右侧缩略图（M1 小地图） */
+    minimap: boolean;
   };
   autosave: {
     enabled: boolean;
@@ -170,7 +172,7 @@ export interface TableSettings {
 /** 前端兜底默认值（与 Rust Default 一致；正常路径以 load_app_config 返回为准） */
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
-  editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true },
+  editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true, minimap: true },
   autosave: { enabled: true, intervalSeconds: 30, pauseWhileCompiling: true },
   build: { saveBeforeCompile: true, engine: "auto", steps: [], compileOnSave: false },
   pdf: { defaultZoom: "fit-width" },

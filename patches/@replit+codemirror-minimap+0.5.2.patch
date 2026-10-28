@@ -1,0 +1,30 @@
+diff --git a/node_modules/@replit/codemirror-minimap/dist/index.d.ts b/node_modules/@replit/codemirror-minimap/dist/index.d.ts
+index 393a113..efd2bcd 100644
+--- a/node_modules/@replit/codemirror-minimap/dist/index.d.ts
++++ b/node_modules/@replit/codemirror-minimap/dist/index.d.ts
+@@ -47,4 +47,9 @@ interface MinimapConfig extends Omit<Options, "enabled"> {
+  */
+ declare const showMinimap: Facet<MinimapConfig | null, MinimapConfig | null>;
+ 
+-export { MinimapConfig, showMinimap };
++declare const Scale: {
++    PixelMultiplier: number;
++    SizeRatio: number;
++    MaxWidth: number;
++};
++export { MinimapConfig, showMinimap, Scale };
+diff --git a/node_modules/@replit/codemirror-minimap/dist/index.js b/node_modules/@replit/codemirror-minimap/dist/index.js
+index c7c9a04..423303e 100644
+--- a/node_modules/@replit/codemirror-minimap/dist/index.js
++++ b/node_modules/@replit/codemirror-minimap/dist/index.js
+@@ -44,8 +44,9 @@ const Scale = {
+     // Downscale the editor contents by this ratio
+     SizeRatio: 4,
+     // Maximum width of the minimap in pixels
+-    MaxWidth: 120,
++    MaxWidth: 100,
+ };
++export { Scale };
+ 
+ const Theme$1 = /*@__PURE__*/EditorView.theme({
+     ".cm-minimap-overlay-container": {
