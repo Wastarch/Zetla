@@ -45,7 +45,8 @@ SetupIconFile=..\..\icons\icon.ico
 SolidCompression=yes
 WizardStyle=modern
 ; 未签名：SmartScreen 会提示「更多信息 → 仍要运行」。
-; WebView2 不随包分发，依赖系统已有 Runtime（Win10/11 通常内置）。
+; WebView2 不在安装包内嵌（零体积增量）：安装时若系统缺失，则用系统 PowerShell
+; 即时下载引导器并静默安装（缺 Runtime 的老 Win10 需要联网；已内置的用户无任何开销）。
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -71,6 +72,8 @@ Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChang
 const
   TexLedgerSubPath = '\Zetla\tex-install.txt';
   TexMarkerName = '.zetla-tex';
+  WebView2RegKey = 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}';
+  WebView2BootstrapperUrl = 'https://go.microsoft.com/fwlink/p/?LinkId=2124703';
 
 function GetTexLedgerPath: String;
 begin
@@ -104,6 +107,67 @@ function IsSafeTexDir(const Dir: String): Boolean;
 begin
   { 只接受绝对路径，且拒绝空路径与盘符根（如 C:\）。 }
   Result := (Length(Dir) > 3) and (Pos(':\', Dir) = 2);
+end;
+
+{ WebView2 运行时是否已安装（同时查 64 位原生视图与 32 位兼容视图）。 }
+function IsWebView2Installed: Boolean;
+var
+  V: String;
+begin
+  Result :=
+    (RegQueryStringValue(HKLM64, WebView2RegKey, 'pv', V) and (V <> '')) or
+    (RegQueryStringValue(HKLM32, WebView2RegKey, 'pv', V) and (V <> ''));
+end;
+
+{ 安装时若系统缺少 WebView2：用系统 PowerShell 即时下载引导器并静默安装，
+  不把引导器打进安装包（零体积增量）。安装时需联网；失败则提示手动安装。 }
+procedure EnsureWebView2Runtime;
+var
+  TmpExe, PSFile, PSScript: String;
+  ResultCode: Integer;
+begin
+  if IsWebView2Installed then
+    Exit;
+
+  TmpExe := ExpandConstant('{tmp}') + '\MicrosoftEdgeWebview2Setup.exe';
+  PSFile := ExpandConstant('{tmp}') + '\get_webview2.ps1';
+  PSScript :=
+    '$ErrorActionPreference="Stop";' +
+    'Invoke-WebRequest -Uri "' + WebView2BootstrapperUrl + '" -OutFile "' + TmpExe + '" -UseBasicParsing -MaximumRedirection 20;' +
+    'Start-Process -FilePath "' + TmpExe + '" -ArgumentList "/silent" -Wait;';
+  SaveStringToFile(PSFile, PSScript, False);
+
+  if Exec('powershell.exe',
+          '-NoProfile -ExecutionPolicy Bypass -File "' + PSFile + '"',
+          '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  begin
+    if (ResultCode <> 0) or (not IsWebView2Installed) then
+    begin
+      if not WizardSilent then
+        MsgBox('未能自动安装 WebView2 运行时（可能需要联网）。' + #13#10 +
+               '请手动从以下地址安装后重新运行本安装程序：' + #13#10 +
+               'https://developer.microsoft.com/microsoft-edge/webview2/',
+               mbInformation, MB_OK);
+    end;
+  end
+  else
+  begin
+    if not WizardSilent then
+      MsgBox('未能启动下载以安装 WebView2 运行时。' + #13#10 +
+             '请手动从以下地址安装后重新运行本安装程序：' + #13#10 +
+             'https://developer.microsoft.com/microsoft-edge/webview2/',
+             mbInformation, MB_OK);
+  end;
+
+  DeleteFile(PSFile);
+  DeleteFile(TmpExe);
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  { 文件落盘后、启动应用前，确保 WebView2 就绪；已安装则无任何开销。 }
+  if CurStep = ssPostInstall then
+    EnsureWebView2Runtime;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);

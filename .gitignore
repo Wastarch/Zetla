@@ -31,8 +31,10 @@ build/compiler output folder/
 build/installer/
 
 # dev
-
 docs/dev
 
 AGENTS.md
 .workbuddy
+
+src-tauri/windows/inno/deps/
+
