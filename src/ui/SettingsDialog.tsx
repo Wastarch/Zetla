@@ -17,7 +17,7 @@ import { useUpdateStore } from "@/modules/updater/updateStore";
 import type { UpdateProgress } from "@/modules/updater/types";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Icon } from "@/ui/Icon";
-import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel } from "@/types/settings";
+import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel, DEFAULT_AUX_EXTENSIONS } from "@/types/settings";
 import type {
   AppSettings,
   AppTheme,
@@ -139,6 +139,48 @@ export function SettingsDialog() {
     },
     [setSettings],
   );
+
+  // M1-9c：自定义清理辅助文件的后缀编辑
+  const [auxInput, setAuxInput] = useState("");
+  // 受保护后缀：即便被加入自定义列表也不删（防误删源/产物/资源），Rust 侧同步兜底
+  const PROTECTED_AUX = new Set([
+    ".tex", ".bib", ".cls", ".sty", ".bst", ".pdf", ".png", ".jpg", ".jpeg", ".gif",
+    ".tif", ".tiff", ".bmp", ".eps", ".svg", ".md", ".txt", ".json", ".yaml", ".yml",
+    ".toml", ".cfg", ".def", ".dtx", ".ins", ".ltx",
+  ]);
+  const normalizeAuxExt = (raw: string): string | null => {
+    const s = raw.trim().toLowerCase().replace(/^\.+/, "");
+    return s ? "." + s : null;
+  };
+  const addAuxExt = () => {
+    const norm = normalizeAuxExt(auxInput);
+    setAuxInput("");
+    if (!norm) return;
+    if (PROTECTED_AUX.has(norm)) {
+      notify(`「${norm}」受保护，不会删除源/产物文件`, "err");
+      return;
+    }
+    update((d) => {
+      if (d.build.cleanAuxExtensions.some((e) => e.toLowerCase() === norm)) return d; // 去重
+      return {
+        ...d,
+        build: { ...d.build, cleanAuxExtensions: [...d.build.cleanAuxExtensions, norm] },
+      };
+    });
+  };
+  const removeAuxExt = (i: number) =>
+    update((d) => ({
+      ...d,
+      build: {
+        ...d.build,
+        cleanAuxExtensions: d.build.cleanAuxExtensions.filter((_, j) => j !== i),
+      },
+    }));
+  const resetAuxDefaults = () =>
+    update((d) => ({
+      ...d,
+      build: { ...d.build, cleanAuxExtensions: [...DEFAULT_AUX_EXTENSIONS] },
+    }));
 
   const cancel = useCallback(() => {
     // 未保存的预览改动回滚到打开时快照
@@ -455,9 +497,60 @@ export function SettingsDialog() {
                 <Fld
                   label="编译完成后清理辅助文件"
                   hint=".aux / .log / .out 等"
-                  tip="清理辅助文件 M1 接通"
                 >
-                  <Switch checked={false} disabled />
+                  <Switch
+                    checked={!!draft.build.cleanAuxAfterCompile}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, build: { ...d.build, cleanAuxAfterCompile: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld
+                  label="自定义清理的辅助文件"
+                  hint="按此后缀白名单删除；空 = 内置默认清单"
+                >
+                  <div className="aux-editor">
+                    {draft.build.cleanAuxExtensions.length === 0 && (
+                      <div className="set-note" style={{ margin: "0 0 6px" }}>
+                        （空）将使用内置默认清单：{DEFAULT_AUX_EXTENSIONS.join(" ")}
+                      </div>
+                    )}
+                    <div className="aux-chips">
+                      {draft.build.cleanAuxExtensions.map((ext, i) => (
+                        <span className="aux-chip" key={`${ext}-${i}`}>
+                          {ext}
+                          <button
+                            type="button"
+                            className="aux-x"
+                            title="移除"
+                            onClick={() => removeAuxExt(i)}
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="aux-add-row">
+                      <input
+                        className="txt-in aux-input"
+                        placeholder="如 .nav 或 .synctex.gz"
+                        value={auxInput}
+                        onChange={(e) => setAuxInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            addAuxExt();
+                          }
+                        }}
+                      />
+                      <button type="button" className="btn" onClick={addAuxExt}>
+                        添加
+                      </button>
+                      <button type="button" className="btn" onClick={resetAuxDefaults}>
+                        恢复默认
+                      </button>
+                    </div>
+                  </div>
                 </Fld>
               </div>
             )}

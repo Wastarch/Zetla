@@ -280,7 +280,10 @@ export function MenuBar() {
             const root = useProjectStore.getState().root;
             if (!root) return;
             try {
-              const res = await projectApi.cleanAux(root);
+              const res = await projectApi.cleanAux(
+                root,
+                useSettingsStore.getState().settings.build.cleanAuxExtensions,
+              );
               // 清理绕过 store，notify 刷新有时序延迟/编译态丢弃风险 → 先主动刷新资源树
               if (res.removed > 0) {
                 await useProjectStore.getState().refresh(true);

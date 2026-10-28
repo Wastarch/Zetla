@@ -8,6 +8,7 @@ import { create } from "zustand";
 import { configApi } from "@/ipc/invoke";
 import {
   DEFAULT_SETTINGS,
+  DEFAULT_AUX_EXTENSIONS,
   FONT_STACKS,
   cloneSettings,
   type AppSettings,
@@ -80,6 +81,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     try {
       const cfg = await configApi.loadAppConfig();
       const next = { ...DEFAULT_SETTINGS, ...cfg };
+      // M1-9c：空列表 = 使用内置默认清单（语义统一）；旧配置缺字段时回退默认，UI 不显示空白列表
+      if (
+        !Array.isArray(next.build.cleanAuxExtensions) ||
+        next.build.cleanAuxExtensions.length === 0
+      ) {
+        next.build.cleanAuxExtensions = [...DEFAULT_AUX_EXTENSIONS];
+      }
       set({ settings: next, persisted: cloneSettings(next), loaded: true });
     } catch (e) {
       console.warn("[settings] 读取配置失败，使用默认值", e);

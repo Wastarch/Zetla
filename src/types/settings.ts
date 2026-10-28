@@ -87,6 +87,13 @@ export interface AppSettings {
      * 一个 .tex 文件成功后触发编译；自动保存到旧内容不触发，避免频繁编译。
      */
     compileOnSave: boolean;
+    /** M1-9b：编译成功完成后自动清理 LaTeX 辅助文件（.aux/.log/.out 等） */
+    cleanAuxAfterCompile: boolean;
+    /**
+     * M1-9c：自定义清理辅助文件的后缀白名单（含点，如 ".aux" / ".synctex.gz"）。
+     * 空数组 = 使用内置默认清单；前端清理与菜单手动清理都按此列表执行，Rust 侧兜底防呆。
+     */
+    cleanAuxExtensions: string[];
   };
   pdf: {
     defaultZoom: PdfDefaultZoom;
@@ -169,12 +176,21 @@ export interface TableSettings {
   maxCols: number;
 }
 
+/**
+ * M1-9c：内置默认清理清单（后缀含点）。作为 cleanAuxExtensions 的前端默认值，
+ * 用户可在此基础增删；与 Rust DEFAULT_AUX_SUFFIXES 保持一致。
+ */
+export const DEFAULT_AUX_EXTENSIONS: string[] = [
+  ".aux", ".log", ".bbl", ".blg", ".toc", ".out", ".lof", ".lot",
+  ".idx", ".ilg", ".ind", ".fls", ".fdb_latexmk", ".synctex.gz",
+];
+
 /** 前端兜底默认值（与 Rust Default 一致；正常路径以 load_app_config 返回为准） */
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
   editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true, minimap: true },
   autosave: { enabled: true, intervalSeconds: 30, pauseWhileCompiling: true },
-  build: { saveBeforeCompile: true, engine: "auto", steps: [], compileOnSave: false },
+  build: { saveBeforeCompile: true, engine: "auto", steps: [], compileOnSave: false, cleanAuxAfterCompile: false, cleanAuxExtensions: DEFAULT_AUX_EXTENSIONS },
   pdf: { defaultZoom: "fit-width" },
   window: { width: null, height: null, x: null, y: null, maximized: false },
   session: { lastProject: null, openFiles: [], activeFile: null },

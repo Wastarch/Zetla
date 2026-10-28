@@ -382,6 +382,12 @@ pub struct BuildConfig {
     pub steps: Vec<String>,
     /// 保存时自动编译：手动保存 .tex 成功后触发编译（不含自动保存，避免频繁编译）
     pub compile_on_save: bool,
+    /// M1-9b：编译成功完成后自动清理 LaTeX 辅助文件（.aux/.log/.out 等）
+    pub clean_aux_after_compile: bool,
+    /// M1-9c：清理辅助文件使用的后缀白名单（含点，如 ".aux"/".synctex.gz"）；
+    /// 空=使用内置默认清单（见 fsdoc::DEFAULT_AUX_SUFFIXES）
+    #[serde(default)]
+    pub clean_aux_extensions: Vec<String>,
 }
 
 impl Default for BuildConfig {
@@ -391,6 +397,8 @@ impl Default for BuildConfig {
             engine: "auto".to_string(),
             steps: Vec::new(),
             compile_on_save: false,
+            clean_aux_after_compile: false,
+            clean_aux_extensions: Vec::new(),
         }
     }
 }
@@ -682,6 +690,7 @@ mod tests {
         cfg.autosave.interval_seconds = 60;
         cfg.build.save_before_compile = false;
         cfg.build.compile_on_save = true;
+        cfg.build.clean_aux_after_compile = true;
         cfg.pdf.default_zoom = "125".to_string();
         cfg.window = WindowConfig {
             width: Some(1440),

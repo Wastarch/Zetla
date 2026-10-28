@@ -3,7 +3,7 @@
 //      暴露 startCompile() / cancelCompile() 给按钮、菜单、快捷键共用。
 import { useEffect } from "react";
 import { RustEvents, onKernelEvent } from "@/ipc/events";
-import { compileApi } from "@/ipc/invoke";
+import { compileApi, projectApi } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -145,6 +145,24 @@ export function useCompileBridge(): void {
       if (r.status === "error") {
         // M0-12 之前：至少把失败这件事说清楚
         notify("编译失败，详情见下方日志", "err");
+      } else if (r.status === "ok") {
+        // M1-9b：编译成功且开启「编译完成后清理辅助文件」→ 自动 clean_aux；
+        // 清理绕过 store（参考 MenuBar 菜单项），故清理后再刷一次资源树
+        if (useSettingsStore.getState().settings.build.cleanAuxAfterCompile) {
+          const root = useProjectStore.getState().root;
+          if (root) {
+            projectApi
+              .cleanAux(root, useSettingsStore.getState().settings.build.cleanAuxExtensions)
+              .then((res) => {
+                if (res.removed > 0) {
+                  useAppStore.getState().appendLog([`— 已清理 ${res.removed} 个辅助文件 —`]);
+                  notify(`已清理 ${res.removed} 个辅助文件`, "ok");
+                  void useProjectStore.getState().refresh(true);
+                }
+              })
+              .catch((e) => notify(`清理辅助文件失败：${e}`, "err"));
+          }
+        }
       }
     }).then((un) => {
       if (alive) unlisteners.push(un);

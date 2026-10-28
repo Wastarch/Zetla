@@ -3509,6 +3509,82 @@ body.col-resizing {
   cursor: not-allowed;
 }
 
+/* M1-9c：自定义清理辅助文件后缀编辑器（设置页「编译设置」） */
+.aux-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 2px;
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+
+.aux-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.aux-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px 2px 9px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--txt);
+}
+
+.aux-chip .aux-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 99px;
+  background: var(--bg-4);
+  color: var(--txt-3);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.aux-chip .aux-x:hover {
+  background: var(--danger, #c0392b);
+  color: #fff;
+}
+
+.aux-add-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.aux-add-row .aux-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  color: var(--txt);
+  border-radius: var(--r-sm);
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  outline: none;
+}
+
+.aux-add-row .aux-input:focus {
+  border-color: var(--accent, #4a90d9);
+}
+
 /* 拨杆开关 */
 .switch {
   width: 38px;

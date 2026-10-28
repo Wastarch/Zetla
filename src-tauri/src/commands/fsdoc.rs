@@ -189,6 +189,7 @@ pub fn write_file(
 // ── 清理辅助文件（M1-9）──────────────────────────────────
 // 删 LaTeX 编译产物（.aux/.log/.bbl/.blg/.toc/.out/.synctex.gz/.lof/.lot/.idx/.ilg/.ind/.fls/.fdb_latexmk），
 // 递归、不碰源（.tex/.bib/.cls/.sty）与产物 PDF。
+// M1-9c：后缀白名单可由前端 cleanAuxExtensions 自定义；空列表回退到内置默认。
 
 /// 清理结果（返回删除数与清单，供前端 toast）
 #[derive(Debug, Serialize)]
@@ -198,43 +199,54 @@ pub struct CleanAuxResult {
     pub paths: Vec<String>,
 }
 
-/// 视为辅助文件的扩展名（小写；`.synctex.gz` 单独按后缀处理）
-const AUX_EXT: &[&str] = &[
-    "aux", "log", "bbl", "blg", "toc", "out", "lof", "lot", "idx", "ilg", "ind", "fls",
-    "fdb_latexmk",
+/// 内置默认辅助文件后缀（含点；与前端 DEFAULT_AUX_EXTENSIONS 保持一致）
+const DEFAULT_AUX_SUFFIXES: &[&str] = &[
+    ".aux", ".log", ".bbl", ".blg", ".toc", ".out", ".lof", ".lot", ".idx", ".ilg", ".ind",
+    ".fls", ".fdb_latexmk", ".synctex.gz",
 ];
 
-/// 该路径是否为 LaTeX 辅助文件（递归删除用）
-fn is_aux_file(path: &Path) -> bool {
+/// 安全网：绝不删除的源 / 产物 / 资源后缀（即便被加入自定义列表也忽略），防误删
+const PROTECTED_SUFFIXES: &[&str] = &[
+    ".tex", ".bib", ".cls", ".sty", ".bst", ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".tif",
+    ".tiff", ".bmp", ".eps", ".svg", ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".cfg",
+    ".def", ".dtx", ".ins", ".ltx",
+];
+
+/// 该路径是否匹配任一辅助文件后缀（不区分大小写；root 须为目录）
+/// - `suffixes` 为空 → 回退内置默认清单
+/// - 命中 PROTECTED_SUFFIXES 的一律不删（防呆）
+fn is_aux_file(path: &Path, suffixes: &[String]) -> bool {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    if name.ends_with(".synctex.gz") {
-        return true;
+    if PROTECTED_SUFFIXES.iter().any(|s| name.ends_with(*s)) {
+        return false;
     }
-    match path.extension().and_then(|e| e.to_str()) {
-        Some(ext) => AUX_EXT.iter().any(|a| a.eq_ignore_ascii_case(ext)),
-        None => false,
-    }
+    let list: Vec<String> = if suffixes.is_empty() {
+        DEFAULT_AUX_SUFFIXES.iter().map(|s| s.to_string()).collect()
+    } else {
+        suffixes.to_vec()
+    };
+    list.iter().any(|s| name.ends_with(&s.to_lowercase()))
 }
 
 /// 递归删除 root 下所有辅助文件（root 须为目录）
-fn clean_aux_in(root: &Path) -> Result<CleanAuxResult, String> {
+fn clean_aux_in(root: &Path, suffixes: &[String]) -> Result<CleanAuxResult, String> {
     if !root.is_dir() {
         return Err(format!("不是有效目录: {}", root.display()));
     }
     let mut removed = 0usize;
     let mut paths: Vec<String> = Vec::new();
 
-    fn walk(dir: &Path, removed: &mut usize, paths: &mut Vec<String>) -> std::io::Result<()> {
+    fn walk(dir: &Path, suffixes: &[String], removed: &mut usize, paths: &mut Vec<String>) -> std::io::Result<()> {
         for entry in std::fs::read_dir(dir)? {
             let entry = entry?;
             let p = entry.path();
             let ft = entry.file_type()?;
             if ft.is_dir() {
-                walk(&p, removed, paths)?;
-            } else if ft.is_file() && is_aux_file(&p) {
+                walk(&p, suffixes, removed, paths)?;
+            } else if ft.is_file() && is_aux_file(&p, suffixes) {
                 if std::fs::remove_file(&p).is_ok() {
                     *removed += 1;
                     paths.push(p.to_string_lossy().into_owned());
@@ -244,14 +256,16 @@ fn clean_aux_in(root: &Path) -> Result<CleanAuxResult, String> {
         Ok(())
     }
 
-    walk(root, &mut removed, &mut paths).map_err(|e| format!("清理失败 {}: {}", root.display(), e))?;
+    walk(root, suffixes, &mut removed, &mut paths)
+        .map_err(|e| format!("清理失败 {}: {}", root.display(), e))?;
     Ok(CleanAuxResult { removed, paths })
 }
 
-/// 清理辅助文件（Tauri command）：传入项目根目录
+/// 清理辅助文件（Tauri command）：传入项目根目录 + 自定义后缀白名单
+/// `extensions` 为空 → 使用内置默认清单；命中 PROTECTED_SUFFIXES 的不会被删。
 #[tauri::command]
-pub fn clean_aux(root: String) -> Result<CleanAuxResult, String> {
-    clean_aux_in(Path::new(&root))
+pub fn clean_aux(root: String, extensions: Vec<String>) -> Result<CleanAuxResult, String> {
+    clean_aux_in(Path::new(&root), &extensions)
 }
 
 #[cfg(test)]
@@ -373,7 +387,8 @@ mod tests {
         std::fs::write(dir.join("chapters/ch.aux"), "x").unwrap();
         std::fs::write(dir.join("chapters/ch.tex"), "KEEP").unwrap();
 
-        let res = clean_aux_in(&dir).unwrap();
+        // 空列表 → 回退内置默认清单
+        let res = clean_aux_in(&dir, &Vec::new()).unwrap();
         assert_eq!(res.removed, 5);
 
         // 源 / PDF 必须保留
@@ -392,14 +407,34 @@ mod tests {
         assert!(!dir.join("chapters/ch.aux").exists());
 
         // 二次清理：无残留
-        let res2 = clean_aux_in(&dir).unwrap();
+        let res2 = clean_aux_in(&dir, &Vec::new()).unwrap();
         assert_eq!(res2.removed, 0);
+    }
+
+    #[test]
+    fn clean_aux_custom_extensions() {
+        let dir: PathBuf = PathBuf::from(tmp_path("clean_aux_custom"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.aux"), "x").unwrap(); // 自定义列表不含 .aux → 保留
+        std::fs::write(dir.join("b.nav"), "x").unwrap(); // 自定义列表含 .nav → 删
+        std::fs::write(dir.join("c.synctex.gz"), "x").unwrap(); // 自定义列表含 .synctex.gz → 删
+        std::fs::write(dir.join("d.tex"), "KEEP").unwrap(); // 受保护 → 永远保留
+
+        // 仅按用户给的 .nav / .synctex.gz 删
+        let exts = vec![".nav".to_string(), ".synctex.gz".to_string()];
+        let res = clean_aux_in(&dir, &exts).unwrap();
+        assert_eq!(res.removed, 2);
+        assert!(!dir.join("b.nav").exists());
+        assert!(!dir.join("c.synctex.gz").exists());
+        assert!(dir.join("a.aux").exists()); // 默认清单的 .aux 不在自定义列表 → 保留
+        assert_eq!(std::fs::read_to_string(dir.join("d.tex")).unwrap(), "KEEP"); // 防呆
     }
 
     #[test]
     fn clean_aux_rejects_non_dir() {
         let f = tmp_path("not_a_dir.tex");
         std::fs::write(&f, "x").unwrap();
-        assert!(clean_aux_in(Path::new(&f)).is_err());
+        assert!(clean_aux_in(Path::new(&f), &Vec::new()).is_err());
     }
 }
