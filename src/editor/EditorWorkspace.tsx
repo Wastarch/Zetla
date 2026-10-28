@@ -61,7 +61,16 @@ export function EditorWorkspace() {
     try {
       const picked = await openFileDialog({
         multiple: true,
-        filters: [{ name: "LaTeX 源文件", extensions: ["tex", "ltx", "cls", "sty"] }],
+        filters: [
+          { name: "LaTeX 源文件", extensions: ["tex", "ltx", "cls", "sty"] },
+          { name: "BibTeX 文献", extensions: ["bib"] },
+          { name: "BibTeX 样式", extensions: ["bst"] },
+          {
+            name: "BibLaTeX / docTeX / ConTeXt",
+            extensions: ["bbx", "cbx", "lbx", "dtx", "ins", "ctx"],
+          },
+          { name: "编译日志", extensions: ["log"] },
+        ],
       });
       if (!picked) return; // 用户取消
       await openFiles(typeof picked === "string" ? [picked] : picked);

@@ -4,13 +4,18 @@
 // M0-13 前移：光标位置从编辑器内部状态行上提到此处；移除设置/主题按钮（设置 M1 · 主题 M3）
 // M0-9：编译文案按钮触发编译/取消、日志按钮开合面板、引擎 chip 显示生效引擎
 // M1-3：引擎 chip 显示「设置页显式值 ?? 项目 config」的生效引擎，点击打开设置→编译设置切换
+// M1-14j：文档语言 chip 不再写死 LaTeX——按扩展名识别（langByExt），点击可手动切换/恢复自动
+import { useState } from "react";
 import { Icon } from "@/ui/Icon";
+import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
 import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
-import { base, useProjectStore } from "@/project/useProject";
+import { base, extOf, useProjectStore } from "@/project/useProject";
 import { cancelCompile, effectiveEngine, engineLabel, startCompile } from "@/compile/useCompile";
 import { openEnvGuide } from "@/env/useEnvCheck";
 import { useSettingsStore } from "@/core/settings";
+import { LANG_META, LANG_ORDER, isKnownExt, langLabel, langOf } from "@/editor/langByExt";
+import { useLangOverride } from "@/editor/langOverride";
 
 const DOT_CLASS: Record<string, string> = {
   running: "run",
@@ -45,6 +50,25 @@ export function StatusBar() {
             ? "编译失败"
             : "已取消";
   const dirty = !!active && active.content !== active.savedContent;
+
+  // M1-14j：文档语言 = 手动指定 ?? 按扩展名识别；点击 chip 切换/恢复自动
+  const [langMenu, setLangMenu] = useState<{ x: number; y: number } | null>(null);
+  const setLang = useLangOverride((s) => s.setLang);
+  const langOverride = useLangOverride((s) => (active ? s.byPath[active.path] ?? null : null));
+  const detected = active ? langOf(active.path) : "latex";
+  const lang = langOverride ?? detected;
+  const ext = active ? extOf(active.path) : "";
+  const langTitle = active
+    ? [
+        langLabel(lang),
+        langOverride ? "手动指定" : "按扩展名自动识别",
+        ext ? `.${ext}` : "无扩展名",
+        isKnownExt(active.path) ? "" : "该扩展名未收录，按纯文本渲染",
+        "点击切换文档语言",
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   return (
     <footer className="statusbar">
@@ -117,9 +141,17 @@ export function StatusBar() {
           <div className="sbtn right caret-info" title="光标位置">
             行 {cursor.line}，列 {cursor.col}
           </div>
-          <span className="sbtn" title="文档语言">
-            LaTeX
-          </span>
+          <button
+            type="button"
+            className={langOverride ? "sbtn on" : "sbtn"}
+            title={langTitle}
+            onClick={(e) => {
+              const r = e.currentTarget.getBoundingClientRect();
+              setLangMenu({ x: r.left, y: r.top });
+            }}
+          >
+            {langLabel(lang)}
+          </button>
           <span className="divider" />
           <button
             type="button"
@@ -137,6 +169,33 @@ export function StatusBar() {
             {active.eol === "crlf" ? "CRLF" : "LF"}
           </button>
         </>
+      )}
+      {/* M1-14j：文档语言切换菜单（复用项目树右键菜单样式；视口夹取由 InsertCtxMenu 负责） */}
+      {langMenu && active && (
+        <InsertCtxMenu
+          x={langMenu.x}
+          y={langMenu.y}
+          onClose={() => setLangMenu(null)}
+          actions={[
+            ...LANG_ORDER.map<CtxAction>((id) => ({
+              label:
+                id === detected ? `${LANG_META[id].label}（自动识别）` : LANG_META[id].label,
+              hint: LANG_META[id].desc,
+              primary: id === lang,
+              // 选中「自动识别」即清除手动覆盖，避免与扩展名冲突
+              onClick: () => setLang(active.path, id === detected ? null : id),
+            })),
+            ...(langOverride
+              ? [
+                  {
+                    label: "恢复自动识别",
+                    hint: `清除手动指定，按 ${ext ? `.${ext}` : "扩展名"} 重新识别`,
+                    onClick: () => setLang(active.path, null),
+                  },
+                ]
+              : []),
+          ]}
+        />
       )}
       {/* M0-14a：偏好设置入口（mockup 状态栏右端「设置」按钮） */}
       <button

@@ -19,6 +19,10 @@ import { useSettingsStore } from "@/core/settings";
 import type { EffectiveTheme } from "@/types/settings";
 import { mathSlotsExtension } from "./mathSlots";
 import { bibtexLanguage, BIB_HIGHLIGHT } from "./bibtex";
+import { bstLanguage, BST_HIGHLIGHT } from "./bst";
+import { logLanguage, LOG_HIGHLIGHT } from "./log";
+import { langOf, type EditorLang } from "./langByExt";
+import { useLangOverride } from "./langOverride";
 import {
   citeCompletionSource,
   citeHoverSource,
@@ -31,7 +35,6 @@ import {
   duplicateKeyLinter,
   missingCiteLinter,
 } from "@/modules/reference/lint";
-import { extOf } from "@/project/useProject";
 import { importAndInsert, isImageFile } from "./image/importImage";
 
 /**
@@ -124,6 +127,60 @@ export interface LaTeXEditorProps {
   path?: string;
 }
 
+/**
+ * M1-14j：按语言档位装配「词法 + 诊断」扩展。
+ * plain 不挂任何语言（交给 basicSetup 的默认高亮 fallback = 不染色），即纯文本渲染。
+ */
+function langSupport(lang: EditorLang, getPath: () => string | undefined) {
+  switch (lang) {
+    case "bib":
+      return [
+        bibtexLanguage,
+        // M1-14e：.bib 内重复 key 告警（项目级判定，读 store 缓存定位）
+        linter(duplicateKeyLinter(getPath), { delay: 400 }),
+        lintGutter(),
+      ];
+    case "bst":
+      return [bstLanguage];
+    case "log":
+      return [logLanguage];
+    case "plain":
+      return [];
+    case "latex":
+    default:
+      return [
+        // enableAutocomplete:false —— 关闭 latex() 自带的 autocompletion override，
+        // 改由下方唯一的 autocompletion({override:[latex+cite]}) 提供，避免
+        // 两个 override 配置冲突（Config merge conflict）导致编辑器崩溃白屏。
+        latex({
+          autoCloseBrackets: true,
+          autoCloseTags: true,
+          enableAutocomplete: false,
+        }),
+        // M1-14e：.tex 内 \cite{key} 引用缺失告警（key 不在 store.byKey 即标红）
+        linter(missingCiteLinter(), { delay: 400 }),
+        lintGutter(),
+      ];
+  }
+}
+
+/** M1-14j：按语言档位装配配色；plain 返回空数组（无语言 → basicSetup 默认高亮不生效） */
+function langHighlight(lang: EditorLang, theme: EffectiveTheme) {
+  switch (lang) {
+    case "bib":
+      return syntaxHighlighting(BIB_HIGHLIGHT[theme]);
+    case "bst":
+      return syntaxHighlighting(BST_HIGHLIGHT[theme]);
+    case "log":
+      return syntaxHighlighting(LOG_HIGHLIGHT[theme]);
+    case "plain":
+      return [];
+    case "latex":
+    default:
+      return syntaxHighlighting(LATEX_HIGHLIGHT[theme]);
+  }
+}
+
 export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
   function LaTeXEditor(
     {
@@ -161,30 +218,13 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const pathRef = useRef(path);
     pathRef.current = path;
 
-    const isBib = path ? extOf(path) === "bib" : false;
+    // M1-14j：状态栏手动指定的语言优先于扩展名自动识别（缺省按扩展名，未收录 → 纯文本）
+    const langOverride = useLangOverride((s) => (path ? s.byPath[path] : undefined));
+    const lang = langOverride ?? (path ? langOf(path) : "latex");
     const extensions = useMemo(
       () => [
-        // M1-14b：.bib 用专属词法 + 高亮，.tex 维持 LaTeX
-        ...(isBib
-          ? [
-              bibtexLanguage,
-              // M1-14e：.bib 内重复 key 告警（项目级判定，读 store 缓存定位）
-              linter(duplicateKeyLinter(() => pathRef.current), { delay: 400 }),
-              lintGutter(),
-            ]
-          : [
-              // enableAutocomplete:false —— 关闭 latex() 自带的 autocompletion override，
-              // 改由下方唯一的 autocompletion({override:[latex+cite]}) 提供，避免
-              // 两个 override 配置冲突（Config merge conflict）导致编辑器崩溃白屏。
-              latex({
-                autoCloseBrackets: true,
-                autoCloseTags: true,
-                enableAutocomplete: false,
-              }),
-              // M1-14e：.tex 内 \cite{key} 引用缺失告警（key 不在 store.byKey 即标红）
-              linter(missingCiteLinter(), { delay: 400 }),
-              lintGutter(),
-            ]),
+        // M1-14i/j：按档位装配词法（bib/bst/log 专属；plain 不挂语言；latex 含全部 LaTeX 方言）
+        ...langSupport(lang, () => pathRef.current),
         // 软换行：只影响显示，不向文档写入换行符
         lineWrapping ? EditorView.lineWrapping : [],
         keymap.of([
@@ -204,18 +244,15 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
             onCursorRef.current?.(line.number, head - line.from + 1);
           }
         }),
-        // 语法高亮配色（亮/暗双份，随主题切换；CM6 基础主题由 theme prop 接管）
-        isBib
-          ? syntaxHighlighting(BIB_HIGHLIGHT[theme])
-          : syntaxHighlighting(LATEX_HIGHLIGHT[theme]),
-        // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转），仅 .tex 启用
-        ...(isBib ? [] : mathSlotsExtension),
+        // 语法高亮配色（亮/暗双份，随主题切换；plain 不染色）
+        langHighlight(lang, theme),
+        // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转），仅 LaTeX 文档启用
+        ...(lang === "latex" ? mathSlotsExtension : []),
         // M1-14c：.tex 内 \cite{ 补全 + 悬浮预览。
         // 唯一的 autocompletion override（合并 LaTeX 命令补全 + 引用补全），
         // 因 latex() 已设 enableAutocomplete:false，此处不会再有第二个 override 冲突。
-        ...(isBib
-          ? []
-          : [
+        ...(lang === "latex"
+          ? [
               autocompletion({
                 override: [latexCompletionSource(true), citeCompletionSource],
                 defaultKeymap: true,
@@ -228,7 +265,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
               citeLinkDecorations,
               ctrlHeldPlugin,
               hoverTooltip(citeJumpHint),
-            ]),
+            ]
+          : []),
         // M1-4：Ctrl/⌘+点击 → 优先 \cite 跳 bib 条目（M1-14d），否则回落 synctex 正向跳转
         EditorView.domEventHandlers({
           mousedown: (e, view) => {
@@ -286,7 +324,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           },
         }),
       ],
-      [lineWrapping, theme, isBib],
+      [lineWrapping, theme, lang],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置
