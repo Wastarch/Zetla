@@ -22,6 +22,13 @@ import { useBuffersStore, type BuffersState } from "@/editor/useBuffers";
 import { notify, useProjectStore } from "@/project/useProject";
 import type { AppSettings } from "@/types/settings";
 
+/**
+ * 窗口最小尺寸（逻辑像素）——与 `src-tauri/tauri.conf.json` 的 `minWidth/minHeight` 保持一致。
+ * 恢复几何时兜底钳制：历史记忆里可能存着更小的尺寸（或窗口管理器未按约束收敛），
+ * 否则排版会被挤坏（活动栏 + 侧栏 258 + 编辑区 + 预览 300 的下限）。
+ */
+export const MIN_WINDOW_SIZE = { width: 1024, height: 640 } as const;
+
 /** 防抖写盘（布局/窗口频繁变动时不逐帧写文件） */
 function debounce<F extends () => void>(ms: number, fn: F) {
   let t: number | undefined;
@@ -104,7 +111,13 @@ export function useWindowMemory(): void {
       void (async () => {
         try {
           if (w.width != null && w.height != null) {
-            await win.setSize(new LogicalSize(w.width, w.height));
+            // 最小尺寸兜底：小于下限的记忆值按下限恢复（见 MIN_WINDOW_SIZE）
+            await win.setSize(
+              new LogicalSize(
+                Math.max(MIN_WINDOW_SIZE.width, w.width),
+                Math.max(MIN_WINDOW_SIZE.height, w.height),
+              ),
+            );
           }
           if (w.x != null && w.y != null && (await positionVisible())) {
             await win.setPosition(new LogicalPosition(w.x, w.y));
