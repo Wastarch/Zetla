@@ -1,16 +1,16 @@
 {
-    "version": "0.1.6",
+    "version": "0.2.0",
     "notes": "项目管理 · 表格编辑器 · 图片插入 · 多文件模板",
-    "pubDate": "2026-10-27T22:00:00+08:00",
-    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.1.6",
+    "pubDate": "2026-10-28T17:00:00+08:00",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.0",
     "installers": [
         {
-            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.1.6/Zetla_0.1.6_x64-setup.exe",
-            "sha256": "de790047d1077e1bdb2267895ae7e81f7d50a8185c419e6b7bfedeebf7e5b15d"
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.0/Zetla_0.2.0_x64-setup.exe",
+            "sha256": "5e86e098fcaeed198d4dfe8d3cfef65d335680a509faf262781668e7bb6e3f41"
         },
         {
-            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.1.6/Zetla_0.1.6_x64-setup.exe",
-            "sha256": "de790047d1077e1bdb2267895ae7e81f7d50a8185c419e6b7bfedeebf7e5b15d"
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.0/Zetla_0.2.0_x64-setup.exe",
+            "sha256": "5e86e098fcaeed198d4dfe8d3cfef65d335680a509faf262781668e7bb6e3f41"
         }
     ],
     "minVersion": "0.1.0",
