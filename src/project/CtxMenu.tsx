@@ -95,9 +95,10 @@ export function CtxMenu() {
     const d = ctx.path;
     items = [
       {
-        label: "新建 .tex 文件",
+        label: "新建文件",
         icon: "file-plus",
-        onClick: () => openEntryDialog({ mode: "create", kind: "tex", dir: d, initial: "untitled" }),
+        onClick: () =>
+          openEntryDialog({ mode: "create", kind: "file", dir: d, initial: "untitled", ext: ".tex" }),
       },
       {
         label: "新建文件夹",
@@ -126,10 +127,16 @@ export function CtxMenu() {
   } else if (root) {
     items = [
       {
-        label: "新建 .tex 文件",
+        label: "新建文件",
         icon: "file-plus",
         onClick: () =>
-          openEntryDialog({ mode: "create", kind: "tex", dir: root, initial: "untitled" }),
+          openEntryDialog({
+            mode: "create",
+            kind: "file",
+            dir: root,
+            initial: "untitled",
+            ext: ".tex",
+          }),
       },
       {
         label: "新建文件夹",

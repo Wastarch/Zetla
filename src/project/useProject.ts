@@ -24,8 +24,27 @@ export interface CtxState {
 }
 
 export type EntryDialog =
-  | { mode: "create"; kind: "tex" | "dir"; dir: string; initial: string }
+  | {
+      mode: "create";
+      /** tex = 旧 .tex 专用（自动补后缀）；file = 任意文件（后缀由 ext 决定）；dir = 目录 */
+      kind: "tex" | "file" | "dir";
+      dir: string;
+      initial: string;
+      /** M0-6b：新建文件的后缀（".tex" / ".bib" / "" 表无后缀）；缺省视为 ".tex" */
+      ext?: string;
+    }
   | { mode: "rename"; from: string; initial: string };
+
+/** 输入名是否已带后缀（`a.md` → true；`a` / `a.` / `a.b/c` → false） */
+export function hasExt(name: string): boolean {
+  return /\.[^./\\]+$/.test(name);
+}
+
+/** 合并后缀：已带后缀以输入为准，否则拼接（ext 为空串 = 无后缀） */
+export function withExt(name: string, ext?: string): string {
+  if (!ext || hasExt(name)) return name;
+  return `${name}${ext.startsWith(".") ? ext : `.${ext}`}`;
+}
 
 /** 树剪贴板（会话级内存，不进系统剪贴板、不持久化） */
 export interface Clip {
@@ -166,7 +185,8 @@ interface ProjectState {
 
   /** 树/右键点击文件：tex 系打开到标签，PDF/图片给出查看器提示 */
   openFromTree: (path: string) => void;
-  createEntry: (dir: string, kind: EntryKind, name: string) => Promise<void>;
+  /** M0-6b：新建条目（kind=file 时按 ext 合并后缀；文本类建完自动开标签，图片/PDF 只建不打开） */
+  createEntry: (dir: string, kind: EntryKind, name: string, ext?: string) => Promise<void>;
   renameEntry: (from: string, name: string) => Promise<void>;
   removeEntry: (path: string) => Promise<void>;
   revealInExplorer: (path: string) => Promise<void>;
@@ -360,19 +380,26 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     void useBuffersStore.getState().openFiles([path]);
   },
 
-  createEntry: async (dir, kind, name) => {
+  createEntry: async (dir, kind, name, ext) => {
     const clean = name.trim();
     const bad = validateName(clean);
     if (bad) {
       notify(bad, "err");
       return;
     }
+    // M0-6b：文件后缀在前端合并（Rust 侧统一用 kind=file，不再依赖其 .tex 补全逻辑）
+    const effExt = ext ?? (kind === "tex" ? ".tex" : undefined);
+    const finalName = kind === "dir" ? clean : withExt(clean, effExt);
     try {
-      const created = await projectApi.createEntry(joinPath(dir, clean), kind);
+      const created = await projectApi.createEntry(
+        joinPath(dir, finalName),
+        kind === "dir" ? "dir" : "file",
+      );
       set({ entryDialog: null });
       await get().refresh();
-      if (kind === "tex") {
-        // 新建文档直接打开到标签
+      // 文本类（含无后缀）建完直接开标签；图片/PDF 只建不打开
+      const ext2 = extOf(created);
+      if (kind !== "dir" && ext2 !== "pdf" && !EXT_IMG.has(ext2)) {
         await useBuffersStore.getState().openFiles([created]);
       }
       set({ selected: created });

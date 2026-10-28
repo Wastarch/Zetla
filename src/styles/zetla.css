@@ -1598,6 +1598,53 @@ body {
   line-height: 1.7;
 }
 
+/* M0-6b · 新建文件类型快选 + 最终文件名预览 */
+.entry-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 10px;
+}
+
+.entry-chip {
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  background: transparent;
+  color: var(--txt-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.entry-chip:hover {
+  border-color: var(--txt-3);
+  color: var(--txt);
+  background: var(--bg-4);
+}
+
+.entry-chip.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.entry-preview {
+  margin-top: 9px;
+  font-size: 10.5px;
+  color: var(--txt-3);
+  word-break: break-all;
+}
+
+.entry-preview b {
+  color: var(--txt);
+  font-weight: 500;
+  font-family: var(--font-mono);
+}
+
 /* R5 项目设置对话框（M1-7） */
 .proj-set-field {
   display: flex;

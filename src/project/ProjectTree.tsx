@@ -71,8 +71,10 @@ export function ProjectTree() {
   }
 
   /** 新建条目（VSCode 语义：空文档 / 空目录，模板向导仍走菜单与右键） */
-  function createEntry(kind: "tex" | "dir", dir: string) {
-    useProjectStore.getState().openEntryDialog({ mode: "create", kind, dir, initial: "" });
+  function createEntry(kind: "file" | "dir", dir: string) {
+    useProjectStore
+      .getState()
+      .openEntryDialog({ mode: "create", kind, dir, initial: "", ext: kind === "file" ? ".tex" : undefined });
   }
 
   function renderNodes(list: ProjectNode[], depth: number): ReactNode {
@@ -179,7 +181,7 @@ export function ProjectTree() {
                 title="新建文件"
                 onClick={(e) => {
                   e.stopPropagation();
-                  createEntry("tex", root);
+                  createEntry("file", root);
                 }}
               >
                 <Icon name="file-plus" size={14} />
