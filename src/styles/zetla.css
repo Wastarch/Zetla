@@ -5706,14 +5706,15 @@ body.col-resizing {
 
 /* 操作区 */
 .ref-actions {
-  display: flex;
-  gap: 6px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--line-soft);
-  flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line-soft);
+    flex: none;
 }
 .ref-search {
-  flex: 1 1 auto;
+  flex: 1 1 100%;
   min-width: 0;
   height: 26px;
   padding: 0 8px;
