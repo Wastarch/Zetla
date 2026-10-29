@@ -17,6 +17,7 @@ import { useUpdateStore } from "@/modules/updater/updateStore";
 import type { UpdateProgress } from "@/modules/updater/types";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Icon } from "@/ui/Icon";
+import { SyntaxHighlightDialog } from "@/ui/SyntaxHighlightDialog";
 import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel, DEFAULT_AUX_EXTENSIONS } from "@/types/settings";
 import type {
   AppSettings,
@@ -142,6 +143,8 @@ export function SettingsDialog() {
 
   // M1-9c：自定义清理辅助文件的后缀编辑
   const [auxInput, setAuxInput] = useState("");
+  // M1-17：语法高亮配色对话框开关（设置页「外观与保存 → 语法高亮」打开）
+  const [showHighlight, setShowHighlight] = useState(false);
   // 受保护后缀：即便被加入自定义列表也不删（防误删源/产物/资源），Rust 侧同步兜底
   const PROTECTED_AUX = new Set([
     ".tex", ".bib", ".cls", ".sty", ".bst", ".pdf", ".png", ".jpg", ".jpeg", ".gif",
@@ -221,12 +224,13 @@ export function SettingsDialog() {
   if (pane === null) return null;
 
   return (
-    <div
-      className="modal-layer"
-      role="dialog"
-      aria-label="偏好设置"
-      onMouseDown={cancel}
-    >
+    <>
+      <div
+        className="modal-layer"
+        role="dialog"
+        aria-label="偏好设置"
+        onMouseDown={cancel}
+      >
       <div
         className="modal settings"
         style={{ width: "min(820px, 92vw)" }}
@@ -686,6 +690,15 @@ export function SettingsDialog() {
                     <option value="auto">跟随系统</option>
                   </select>
                 </Fld>
+                <Fld
+                  label="LaTeX 语法高亮"
+                  hint="自定义控制序列 / 环境名 / 章节 / 数学符号等语义分组的配色（亮暗双份）"
+                  tip="与编辑器语法着色同源；改动即时预览，保存后写入本地配置"
+                >
+                  <button type="button" className="btn" onClick={() => setShowHighlight(true)}>
+                    自定义配色…
+                  </button>
+                </Fld>
                 <Fld label="自动保存" hint="定时把未保存的修改写回磁盘">
                   <Switch
                     checked={draft.autosave.enabled}
@@ -882,6 +895,8 @@ export function SettingsDialog() {
         </div>
       </div>
     </div>
+    {showHighlight && <SyntaxHighlightDialog onClose={() => setShowHighlight(false)} />}
+    </>
   );
 }
 

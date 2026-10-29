@@ -3517,6 +3517,68 @@ body.row-resizing {
   cursor: not-allowed;
 }
 
+/* M1-17：语法高亮配色对话框（设置页「外观与保存 → 语法高亮」） */
+.syntax-hl .modal-body {
+  padding: 16px 18px;
+}
+.hl-head,
+.hl-row {
+  display: flex;
+  align-items: center;
+}
+.hl-head {
+  padding: 0 6px 8px;
+  border-bottom: 1px solid var(--line);
+  color: var(--txt-3);
+  font-size: 12px;
+}
+.hl-head .hl-label,
+.hl-row .hl-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hl-head .hl-cols,
+.hl-row .hl-cols {
+  display: flex;
+  gap: 14px;
+  flex: 0 0 auto;
+}
+.hl-head .hl-cols > span {
+  width: 132px;
+  text-align: center;
+}
+.hl-list {
+  max-height: 52vh;
+  overflow-y: auto;
+}
+.hl-row {
+  padding: 9px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.hl-row .hl-cols .hl-theme {
+  width: 132px;
+}
+.hl-theme {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.hl-theme input[type="color"] {
+  width: 34px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+.hl-theme .hl-hex {
+  width: 88px;
+}
+
 /* M1-3：编译流程步骤编辑器（设置页「编译流程 → 自定义」） */
 .steps-editor {
   display: flex;

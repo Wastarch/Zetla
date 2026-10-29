@@ -62,6 +62,8 @@ pub struct AppConfig {
     pub table: TableConfig,
     /// M1-15a：最近项目注册表（path = projectId；上限见 MAX_RECENT）
     pub recent_projects: Vec<ProjectEntry>,
+    /// M1-17：LaTeX 语法高亮配色（数据驱动；设置页「外观与保存 → 语法高亮」编辑）
+    pub highlight: HighlightConfig,
 }
 
 impl Default for AppConfig {
@@ -82,6 +84,7 @@ impl Default for AppConfig {
             formula: FormulaConfig::default(),
             table: TableConfig::default(),
             recent_projects: Vec::new(),
+            highlight: HighlightConfig::default(),
         }
     }
 }
@@ -517,6 +520,62 @@ pub fn normalize_table(mut t: TableConfig) -> TableConfig {
     t
 }
 
+/// M1-17：LaTeX 语法高亮配色（数据驱动，与前端 settings.highlight.latex 对应；camelCase）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HighlightConfig {
+    /// 高亮分组（有序；顺序决定优先级：靠后更高）
+    pub latex: Vec<HighlightGroupConfig>,
+}
+
+/// M1-17：单个高亮分组的亮/暗配色（id 为固定枚举，label 为展示名；camelCase）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct HighlightGroupConfig {
+    pub id: String,
+    pub label: String,
+    pub light: String,
+    pub dark: String,
+}
+
+/// M1-17：LaTeX 语法高亮默认配色（与前端 DEFAULT_LATEX_HIGHLIGHT 一致；id 顺序即优先级）
+fn default_highlight() -> Vec<HighlightGroupConfig> {
+    vec![
+        HighlightGroupConfig { id: "meta".into(), label: "verbatim 内容 / 正文".into(), light: "#7a828c".into(), dark: "#7e8794".into() },
+        HighlightGroupConfig { id: "comment".into(), label: "注释".into(), light: "#8d959e".into(), dark: "#6b7480".into() },
+        HighlightGroupConfig { id: "string".into(), label: "字面参数 / 数字".into(), light: "#9a5b0d".into(), dark: "#e0b169".into() },
+        HighlightGroupConfig { id: "keyword".into(), label: "控制序列（\\cmd / \\begin / \\end）".into(), light: "#2b62cf".into(), dark: "#7fb0ff".into() },
+        HighlightGroupConfig { id: "heading".into(), label: "章节命令".into(), light: "#1e4fae".into(), dark: "#7fb0ff".into() },
+        HighlightGroupConfig { id: "operator".into(), label: "数学符号 / $".into(), light: "#9a5b0d".into(), dark: "#e0b169".into() },
+        HighlightGroupConfig { id: "bracket".into(), label: "括号".into(), light: "#7a828c".into(), dark: "#7e8794".into() },
+        HighlightGroupConfig { id: "class".into(), label: "环境名 / \\label / \\ref / \\cite".into(), light: "#0d7a6e".into(), dark: "#6fd3c4".into() },
+        HighlightGroupConfig { id: "strong".into(), label: "加粗文本".into(), light: "#1b1f24".into(), dark: "#e8eaed".into() },
+        HighlightGroupConfig { id: "emphasis".into(), label: "斜体文本".into(), light: "#1b1f24".into(), dark: "#e8eaed".into() },
+        HighlightGroupConfig { id: "monospace".into(), label: "等宽文本".into(), light: "#1b1f24".into(), dark: "#e8eaed".into() },
+        HighlightGroupConfig { id: "invalid".into(), label: "非法字符".into(), light: "#c2382f".into(), dark: "#f26a60".into() },
+    ]
+}
+
+/// M1-17：高亮配色归一化——以默认 12 组为蓝本，用已保存颜色覆盖对应 id；
+/// 已保存分组缺失时回落默认。保证编辑器始终拿到完整、有序、合法的 12 组配色。
+pub fn normalize_highlight(h: HighlightConfig) -> HighlightConfig {
+    let saved: std::collections::HashMap<&str, &HighlightGroupConfig> =
+        h.latex.iter().map(|g| (g.id.as_str(), g)).collect();
+    let latex = default_highlight()
+        .iter()
+        .map(|d| match saved.get(d.id.as_str()) {
+            Some(s) => HighlightGroupConfig {
+                id: d.id.clone(),
+                label: d.label.clone(),
+                light: s.light.clone(),
+                dark: s.dark.clone(),
+            },
+            None => d.clone(),
+        })
+        .collect();
+    HighlightConfig { latex }
+}
+
 /// 越界/非法值归一化（读盘与写盘统一走此入口）
 pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     if !FONT_FAMILIES.contains(&cfg.editor.font_family.as_str()) {
@@ -564,6 +623,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     }
     // M1-16：日志面板高度钳制（拖拽已限幅，此处兜底手改配置）
     cfg.layout.log_height = cfg.layout.log_height.clamp(LOG_H_MIN, LOG_H_MAX);
+    // M1-17：LaTeX 语法高亮配色归一化（以默认 12 组为蓝本，覆盖已保存颜色）
+    cfg.highlight = normalize_highlight(cfg.highlight);
     // M0-15a：tex 代装记录归一化（先去空白再校验 distro 白名单）
     // distro 非法 → 清空；distro 为 null 允许保留目录（「手动指定引擎目录」场景）
     cfg.tex.distro = clean_opt_str(cfg.tex.distro);
@@ -1360,5 +1421,59 @@ mod tests {
         assert!(!text.contains("recent_projects"));
         assert!(!text.contains("template_id"));
         assert!(!text.contains("last_opened"));
+    }
+
+    #[test]
+    fn highlight_default_camel_case_and_roundtrip() {
+        // M1-17：缺 highlight 字段 → serde default（空 latex）→ normalize 补全 12 组默认配色
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        let norm = normalize(parsed);
+        assert_eq!(norm.highlight.latex.len(), 12);
+        assert_eq!(norm.highlight.latex[3].id, "keyword");
+        // 默认 keyword 亮色 = 前端 DEFAULT_LATEX_HIGHLIGHT 一致
+        assert_eq!(norm.highlight.latex[3].light, "#2b62cf");
+
+        // camelCase 键名
+        let text = serde_json::to_string(&norm).unwrap();
+        assert!(text.contains("\"highlight\""));
+        assert!(text.contains("\"latex\""));
+        assert!(text.contains("\"light\""));
+        assert!(text.contains("\"dark\""));
+
+        // 自定义颜色往返保留（只改 keyword 的亮色）
+        // 注意：AppConfig::default() 的 highlight.latex 为空，须经 normalize 补全 12 组后再改
+        let mut cfg = normalize(AppConfig::default());
+        cfg.highlight.latex[3].light = "#ff0000".to_string();
+        let text = serde_json::to_string(&cfg).unwrap();
+        let back = serde_json::from_str::<AppConfig>(&text).unwrap();
+        assert_eq!(normalize(back).highlight.latex[3].light, "#ff0000");
+    }
+
+    #[test]
+    fn highlight_normalize_fills_missing_groups() {
+        // 仅提供 1 个分组 → normalize 以默认 12 组为蓝本，补齐全部分组
+        let raw = json!({
+            "highlight": {
+                "latex": [ { "id": "keyword", "label": "K", "light": "#123456", "dark": "#654321" } ]
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        let norm = normalize(parsed);
+        assert_eq!(norm.highlight.latex.len(), 12);
+        // 已提供分组用其颜色
+        assert_eq!(norm.highlight.latex[3].light, "#123456");
+        assert_eq!(norm.highlight.latex[3].dark, "#654321");
+        // 缺失分组回落默认
+        assert_eq!(norm.highlight.latex[0].id, "meta");
+        assert_eq!(norm.highlight.latex[0].light, "#7a828c");
+        // 缺省 label 被默认 label 补齐
+        assert_eq!(norm.highlight.latex[3].label, "控制序列（\\cmd / \\begin / \\end）");
     }
 }

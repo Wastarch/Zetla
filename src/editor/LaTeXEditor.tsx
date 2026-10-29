@@ -8,21 +8,21 @@ import CodeMirror, {
   keymap,
   type ReactCodeMirrorRef,
 } from "@uiw/react-codemirror";
-import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
+import { syntaxHighlighting } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
 import { latex, latexCompletionSource } from "codemirror-lang-latex";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { hoverTooltip } from "@codemirror/view";
 import { linter, lintGutter } from "@codemirror/lint";
 import { useSettingsStore } from "@/core/settings";
-import type { EffectiveTheme } from "@/types/settings";
+import type { EffectiveTheme, HighlightGroup } from "@/types/settings";
 import { mathSlotsExtension } from "./mathSlots";
 import { bibtexLanguage, BIB_HIGHLIGHT } from "./bibtex";
 import { bstLanguage, BST_HIGHLIGHT } from "./bst";
 import { logLanguage, LOG_HIGHLIGHT } from "./log";
 import { langOf, type EditorLang } from "./langByExt";
 import { useLangOverride } from "./langOverride";
+import { buildLatexHighlight } from "./highlightConfig";
 import {
   citeCompletionSource,
   citeHoverSource,
@@ -64,46 +64,14 @@ const MINIMAP_CONFIG: MinimapConfig = {
 };
 
 /**
- * M1-2：LaTeX 语法高亮配色。
- * CM6 不内置语法色（@uiw 也不挂 defaultHighlightStyle），此前编辑器处于无配色状态；
- * 配色与 zetla.css 主题 token 同源，亮/暗双份（TS 单一来源，避免读 CSS 变量的时序竞争）。
- * tag 映射依据 codemirror-lang-latex 的 styleTags：keyword=控制序列/\begin/\end、
- * operator=控制符号与 & ~、variableName/processingInstruction=数学字符与 $、
- * className=环境名、heading=章节命令、labelName=\label/\ref、quote=\cite、
- * bracket=各类括号、string=字面参数、meta=verbatim 内容、strong/emphasis/monospace=文本样式命令。
- * 注意：TagStyle 列表中越靠后的规则优先级越高（meta 等宽泛 tag 放前面）。
- * M1-2b：键为生效主题（light/dark；"auto" 设置值已在 store 层解析，见 resolveTheme）。
+ * M1-2 / M1-17：LaTeX 语法高亮配色。
+ * 配色改为数据驱动：颜色来自设置 settings.highlight.latex（亮/暗各一份），
+ * 由 src/editor/highlightConfig.ts 的 buildLatexHighlight 按「分组 → lezer tag」构建 HighlightStyle。
+ * 默认配色见 src/types/settings.ts 的 DEFAULT_LATEX_HIGHLIGHT；设置页「外观与保存 → 语法高亮」可改。
+ * tag 语义（keyword=控制序列/\begin/\end、className=环境名、heading=章节、operator=数学符号与 $ 等）
+ * 由 codemirror-lang-latex 的 styleTags 决定，本项目不改词法。
+ * 注意：HighlightStyle 列表中越靠后的规则优先级越高（meta 等宽泛 tag 放前面）。
  */
-const LATEX_HIGHLIGHT: Record<EffectiveTheme, HighlightStyle> = {
-  light: HighlightStyle.define([
-    { tag: [t.meta, t.content], color: "#7a828c" },
-    { tag: t.comment, color: "#8d959e" },
-    { tag: [t.string, t.number], color: "#9a5b0d" },
-    { tag: [t.keyword, t.definitionKeyword], color: "#2b62cf" },
-    { tag: t.heading, color: "#1e4fae", fontWeight: "600" },
-    { tag: [t.operator, t.variableName, t.processingInstruction], color: "#9a5b0d" },
-    { tag: t.bracket, color: "#7a828c" },
-    { tag: [t.className, t.labelName, t.quote], color: "#0d7a6e" },
-    { tag: t.strong, fontWeight: "600" },
-    { tag: t.emphasis, fontStyle: "italic" },
-    { tag: t.monospace, fontFamily: "var(--font-mono, monospace)" },
-    { tag: t.invalid, color: "#c2382f" },
-  ]),
-  dark: HighlightStyle.define([
-    { tag: [t.meta, t.content], color: "#7e8794" },
-    { tag: t.comment, color: "#6b7480" },
-    { tag: [t.string, t.number], color: "#e0b169" },
-    { tag: [t.keyword, t.definitionKeyword], color: "#7fb0ff" },
-    { tag: t.heading, color: "#7fb0ff", fontWeight: "600" },
-    { tag: [t.operator, t.variableName, t.processingInstruction], color: "#e0b169" },
-    { tag: t.bracket, color: "#7e8794" },
-    { tag: [t.className, t.labelName, t.quote], color: "#6fd3c4" },
-    { tag: t.strong, fontWeight: "600" },
-    { tag: t.emphasis, fontStyle: "italic" },
-    { tag: t.monospace, fontFamily: "var(--font-mono, monospace)" },
-    { tag: t.invalid, color: "#f26a60" },
-  ]),
-};
 
 export interface CursorPos {
   /** 1-based 行 */
@@ -190,8 +158,13 @@ function langSupport(lang: EditorLang, getPath: () => string | undefined) {
   }
 }
 
-/** M1-14j：按语言档位装配配色；plain 返回空数组（无语言 → basicSetup 默认高亮不生效） */
-function langHighlight(lang: EditorLang, theme: EffectiveTheme) {
+/** M1-14j / M1-17：按语言档位装配配色；plain 返回空数组（无语言 → basicSetup 默认高亮不生效）。
+ * LaTeX 配色由设置驱动（latexGroups），其余语言沿用各自的固定 HighlightStyle。 */
+function langHighlight(
+  lang: EditorLang,
+  theme: EffectiveTheme,
+  latexGroups: HighlightGroup[],
+) {
   switch (lang) {
     case "bib":
       return syntaxHighlighting(BIB_HIGHLIGHT[theme]);
@@ -203,7 +176,7 @@ function langHighlight(lang: EditorLang, theme: EffectiveTheme) {
       return [];
     case "latex":
     default:
-      return syntaxHighlighting(LATEX_HIGHLIGHT[theme]);
+      return syntaxHighlighting(buildLatexHighlight(latexGroups, theme));
   }
 }
 
@@ -228,6 +201,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const editor = useSettingsStore((s) => s.settings.editor);
     // M1-2b：生效主题（驱动 CM6 基础主题与语法高亮配色；"auto" 跟随系统，见 store resolveTheme）
     const theme = useSettingsStore((s) => s.effectiveTheme);
+    // M1-17：LaTeX 语法高亮配色（数据驱动；设置页「外观与保存 → 语法高亮」编辑，即时预览）
+    const latexGroups = useSettingsStore((s) => s.settings.highlight.latex);
     // Ctrl+滚轮缩放字号（M0-14a 用户追加）
     const wrapRef = useRef<HTMLDivElement | null>(null);
     const wheelAccRef = useRef(0);
@@ -274,8 +249,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
             onCursorRef.current?.(line.number, head - line.from + 1);
           }
         }),
-        // 语法高亮配色（亮/暗双份，随主题切换；plain 不染色）
-        langHighlight(lang, theme),
+        // 语法高亮配色（亮/暗双份，随主题切换；plain 不染色；LaTeX 由设置驱动）
+        langHighlight(lang, theme, latexGroups),
         // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转），仅 LaTeX 文档启用
         ...(lang === "latex" ? mathSlotsExtension : []),
         // M1-14c：.tex 内 \cite{ 补全 + 悬浮预览。
@@ -354,7 +329,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           },
         }),
       ],
-      [lineWrapping, theme, lang, minimapOn],
+      [lineWrapping, theme, lang, minimapOn, latexGroups],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置

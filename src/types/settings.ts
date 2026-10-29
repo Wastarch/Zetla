@@ -156,6 +156,8 @@ export interface AppSettings {
   table: TableSettings;
   /** M1-15a：最近项目注册表（与 Rust AppConfig.recent_projects 一一对应） */
   recentProjects: ProjectEntry[];
+  /** M1-17：LaTeX 语法高亮配色（数据驱动；设置页「外观与保存 → 语法高亮」编辑） */
+  highlight: HighlightSettings;
 }
 
 /** M1-8：表格模块设置（与 Rust TableConfig 一一对应，camelCase） */
@@ -177,6 +179,58 @@ export interface TableSettings {
   /** 面板「＋列」上限（模型硬上限 20） */
   maxCols: number;
 }
+
+/**
+ * M1-17：LaTeX 语法高亮配色（数据驱动，取代 LaTeXEditor.tsx 内硬编码的 LATEX_HIGHLIGHT）。
+ * 每个 HighlightGroup 对应一组 lezer tag（见 src/editor/highlightConfig.ts 的 GROUP_TAGS），
+ * 亮/暗各一份颜色；设置页「外观与保存 → 语法高亮」可改。
+ * id 为固定枚举（与 GROUP_TAGS 的键一一对应），label 为设置页展示名。
+ */
+export type HighlightGroupId =
+  | "meta"
+  | "comment"
+  | "string"
+  | "keyword"
+  | "heading"
+  | "operator"
+  | "bracket"
+  | "class"
+  | "strong"
+  | "emphasis"
+  | "monospace"
+  | "invalid";
+
+export interface HighlightGroup {
+  /** 固定分组 id（与 GROUP_TAGS 键一致，不可随意增删） */
+  id: HighlightGroupId;
+  /** 设置页展示名 */
+  label: string;
+  /** 亮色主题下的颜色（hex） */
+  light: string;
+  /** 暗色主题下的颜色（hex） */
+  dark: string;
+}
+
+export interface HighlightSettings {
+  /** LaTeX 文档语法高亮配色组（有序，顺序决定 HighlightStyle 优先级：靠后更高） */
+  latex: HighlightGroup[];
+}
+
+/** M1-17：LaTeX 语法高亮默认配色（亮/暗双份；与 codemirror-lang-latex 的 styleTags 对齐） */
+export const DEFAULT_LATEX_HIGHLIGHT: HighlightGroup[] = [
+  { id: "meta", label: "verbatim 内容 / 正文", light: "#7a828c", dark: "#7e8794" },
+  { id: "comment", label: "注释", light: "#8d959e", dark: "#6b7480" },
+  { id: "string", label: "字面参数 / 数字", light: "#9a5b0d", dark: "#e0b169" },
+  { id: "keyword", label: "控制序列（\\cmd / \\begin / \\end）", light: "#2b62cf", dark: "#7fb0ff" },
+  { id: "heading", label: "章节命令", light: "#1e4fae", dark: "#7fb0ff" },
+  { id: "operator", label: "数学符号 / $", light: "#9a5b0d", dark: "#e0b169" },
+  { id: "bracket", label: "括号", light: "#7a828c", dark: "#7e8794" },
+  { id: "class", label: "环境名 / \\label / \\ref / \\cite", light: "#0d7a6e", dark: "#6fd3c4" },
+  { id: "strong", label: "加粗文本", light: "#1b1f24", dark: "#e8eaed" },
+  { id: "emphasis", label: "斜体文本", light: "#1b1f24", dark: "#e8eaed" },
+  { id: "monospace", label: "等宽文本", light: "#1b1f24", dark: "#e8eaed" },
+  { id: "invalid", label: "非法字符", light: "#c2382f", dark: "#f26a60" },
+];
 
 /**
  * M1-9c：内置默认清理清单（后缀含点）。作为 cleanAuxExtensions 的前端默认值，
@@ -221,6 +275,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     maxRows: 100,
     maxCols: 20,
   },
+  /** M1-17：LaTeX 语法高亮默认配色（与 Rust DEFAULT_HIGHLIGHT 一致） */
+  highlight: { latex: DEFAULT_LATEX_HIGHLIGHT },
 };
 
 /** 字体族 → CSS font-family 栈（应用到 --editor-ff，仅影响编辑器代码区） */
