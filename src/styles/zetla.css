@@ -3521,6 +3521,22 @@ body.row-resizing {
 .syntax-hl .modal-body {
   padding: 16px 18px;
 }
+.hl-presets {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 6px 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+.hl-presets .hl-label {
+  color: var(--txt-3);
+  font-size: 12px;
+}
+.hl-presets .txt-in {
+  min-width: 168px;
+}
 .hl-head,
 .hl-row {
   display: flex;

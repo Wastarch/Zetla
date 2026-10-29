@@ -182,29 +182,18 @@ export interface TableSettings {
 
 /**
  * M1-17：LaTeX 语法高亮配色（数据驱动，取代 LaTeXEditor.tsx 内硬编码的 LATEX_HIGHLIGHT）。
- * 每个 HighlightGroup 对应一组 lezer tag（见 src/editor/highlightConfig.ts 的 GROUP_TAGS），
- * 亮/暗各一份颜色；设置页「外观与保存 → 语法高亮」可改。
- * id 为固定枚举（与 GROUP_TAGS 的键一一对应），label 为设置页展示名。
+ * 分组**可扩展、数量不限**：每个 HighlightGroup 自带它要着色的 lezer 标签名（tags），
+ * 构建时由 src/editor/highlightConfig.ts 的 resolveTags 解析为 lezer Tag；
+ * 未知标签名安全跳过。亮/暗各一份颜色；设置页「外观与保存 → 语法高亮」可改、可应用主题预设、可导出/导入。
+ * id 仅用于设置层去重/对齐（不同预设可复用相同 id），不是固定枚举。
  */
-export type HighlightGroupId =
-  | "meta"
-  | "comment"
-  | "string"
-  | "keyword"
-  | "heading"
-  | "operator"
-  | "bracket"
-  | "class"
-  | "strong"
-  | "emphasis"
-  | "monospace"
-  | "invalid";
-
 export interface HighlightGroup {
-  /** 固定分组 id（与 GROUP_TAGS 键一致，不可随意增删） */
-  id: HighlightGroupId;
+  /** 稳定 id（设置层去重/对齐用；不同预设可复用相同 id） */
+  id: string;
   /** 设置页展示名 */
   label: string;
+  /** 该组着色的 lezer 标签名（如 "keyword"、"variableName"）；见 @lezer/highlight 的 tags 命名空间 */
+  tags: string[];
   /** 亮色主题下的颜色（hex） */
   light: string;
   /** 暗色主题下的颜色（hex） */
@@ -212,24 +201,24 @@ export interface HighlightGroup {
 }
 
 export interface HighlightSettings {
-  /** LaTeX 文档语法高亮配色组（有序，顺序决定 HighlightStyle 优先级：靠后更高） */
+  /** LaTeX 文档语法高亮配色组（有序，顺序决定 HighlightStyle 优先级：靠后更高；长度可变） */
   latex: HighlightGroup[];
 }
 
-/** M1-17：LaTeX 语法高亮默认配色（亮/暗双份；与 codemirror-lang-latex 的 styleTags 对齐） */
+/** M1-17：LaTeX 语法高亮默认配色（亮/暗双份；与 codemirror-lang-latex 的 styleTags 对齐；可扩展分组） */
 export const DEFAULT_LATEX_HIGHLIGHT: HighlightGroup[] = [
-  { id: "meta", label: "verbatim 内容 / 正文", light: "#7a828c", dark: "#7e8794" },
-  { id: "comment", label: "注释", light: "#8d959e", dark: "#6b7480" },
-  { id: "string", label: "字面参数 / 数字", light: "#9a5b0d", dark: "#e0b169" },
-  { id: "keyword", label: "控制序列（\\cmd / \\begin / \\end）", light: "#2b62cf", dark: "#7fb0ff" },
-  { id: "heading", label: "章节命令", light: "#1e4fae", dark: "#7fb0ff" },
-  { id: "operator", label: "数学符号 / $", light: "#9a5b0d", dark: "#e0b169" },
-  { id: "bracket", label: "括号", light: "#7a828c", dark: "#7e8794" },
-  { id: "class", label: "环境名 / \\label / \\ref / \\cite", light: "#0d7a6e", dark: "#6fd3c4" },
-  { id: "strong", label: "加粗文本", light: "#1b1f24", dark: "#e8eaed" },
-  { id: "emphasis", label: "斜体文本", light: "#1b1f24", dark: "#e8eaed" },
-  { id: "monospace", label: "等宽文本", light: "#1b1f24", dark: "#e8eaed" },
-  { id: "invalid", label: "非法字符", light: "#c2382f", dark: "#f26a60" },
+  { id: "meta", label: "verbatim 内容 / 正文", tags: ["meta", "content"], light: "#7a828c", dark: "#7e8794" },
+  { id: "comment", label: "注释", tags: ["comment"], light: "#8d959e", dark: "#6b7480" },
+  { id: "string", label: "字面参数 / 数字", tags: ["string", "number"], light: "#9a5b0d", dark: "#e0b169" },
+  { id: "keyword", label: "控制序列（\\cmd / \\begin / \\end）", tags: ["keyword", "definitionKeyword"], light: "#2b62cf", dark: "#7fb0ff" },
+  { id: "heading", label: "章节命令", tags: ["heading"], light: "#1e4fae", dark: "#7fb0ff" },
+  { id: "operator", label: "数学符号 / $", tags: ["operator", "variableName", "processingInstruction"], light: "#9a5b0d", dark: "#e0b169" },
+  { id: "bracket", label: "括号", tags: ["bracket"], light: "#7a828c", dark: "#7e8794" },
+  { id: "class", label: "环境名 / \\label / \\ref / \\cite", tags: ["className", "labelName", "quote"], light: "#0d7a6e", dark: "#6fd3c4" },
+  { id: "strong", label: "加粗文本", tags: ["strong"], light: "#1b1f24", dark: "#e8eaed" },
+  { id: "emphasis", label: "斜体文本", tags: ["emphasis"], light: "#1b1f24", dark: "#e8eaed" },
+  { id: "monospace", label: "等宽文本", tags: ["monospace"], light: "#1b1f24", dark: "#e8eaed" },
+  { id: "invalid", label: "非法字符", tags: ["invalid"], light: "#c2382f", dark: "#f26a60" },
 ];
 
 /**

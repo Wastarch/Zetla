@@ -1,10 +1,16 @@
 // M1-17 · 语法高亮配色对话框（设置页「外观与保存 → 语法高亮」入口打开）
 // 编辑 LaTeX 各语义分组的亮/暗配色；改动即时写入设置草稿（store.settings），
 // 编辑器订阅同一份设置即时预览；点「取消」由 SettingsDialog 回滚快照。
-import { useCallback } from "react";
+import { useCallback, useRef, type ChangeEvent } from "react";
 import { useSettingsStore } from "@/core/settings";
 import { cloneSettings, DEFAULT_LATEX_HIGHLIGHT, type HighlightGroup } from "@/types/settings";
 import { Icon } from "@/ui/Icon";
+import {
+  BUILTIN_HIGHLIGHT_PRESETS,
+  cloneGroups,
+  findPreset,
+  matchPresetId,
+} from "@/editor/highlightPresets";
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -56,6 +62,65 @@ export function SyntaxHighlightDialog({ onClose }: { onClose: () => void }) {
 
   const resetDefaults = () => commit(DEFAULT_LATEX_HIGHLIGHT);
 
+  // 当前分组是否完全命中某个预设（用于在下拉里回显「自定义」）
+  const activePreset = matchPresetId(groups);
+
+  const applyPreset = (id: string) => {
+    const p = findPreset(id);
+    if (p) commit(cloneGroups(p.groups));
+  };
+
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    const payload = {
+      app: "zetla",
+      type: "highlight-v1",
+      name: "LaTeX 语法高亮配色",
+      groups,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "zetla-highlight.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // 允许重复选择同一文件
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(String(reader.result));
+        const arr: unknown = Array.isArray(parsed) ? parsed : (parsed as { groups?: unknown }).groups;
+        if (!Array.isArray(arr)) throw new Error("文件缺少 groups 数组");
+        const next: HighlightGroup[] = (arr as Record<string, unknown>[]).map((g) => ({
+          id: String(g.id),
+          label: String(g.label ?? g.id),
+          tags: Array.isArray(g.tags) ? (g.tags as unknown[]).map(String) : [],
+          light: String(g.light ?? "#000000"),
+          dark: String(g.dark ?? "#000000"),
+        }));
+        for (const g of next) {
+          if (!HEX_RE.test(g.light) || !HEX_RE.test(g.dark)) {
+            throw new Error(`分组「${g.label}」颜色非法，须为 #RRGGBB`);
+          }
+          if (g.tags.length === 0) {
+            throw new Error(`分组「${g.label}」缺少 tags（lezer 标签名）`);
+          }
+        }
+        commit(next);
+      } catch (err) {
+        alert("导入失败：" + (err instanceof Error ? err.message : String(err)));
+      }
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="modal-layer" role="dialog" aria-label="语法高亮配色" onMouseDown={onClose}>
       <div
@@ -75,6 +140,38 @@ export function SyntaxHighlightDialog({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="modal-body">
+          <div className="hl-presets">
+            <span className="hl-label">主题方案</span>
+            <select
+              className="txt-in"
+              value={activePreset ?? ""}
+              onChange={(e) => applyPreset(e.target.value)}
+            >
+              <option value="">自定义（当前）</option>
+              {BUILTIN_HIGHLIGHT_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <button type="button" className="btn" onClick={handleExport}>
+              导出
+            </button>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => fileRef.current?.click()}
+            >
+              导入
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".json,application/json"
+              hidden
+              onChange={handleImport}
+            />
+          </div>
           <div className="hl-head">
             <span className="hl-label">语义分组</span>
             <span className="hl-cols">

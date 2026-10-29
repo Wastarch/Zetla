@@ -528,12 +528,15 @@ pub struct HighlightConfig {
     pub latex: Vec<HighlightGroupConfig>,
 }
 
-/// M1-17：单个高亮分组的亮/暗配色（id 为固定枚举，label 为展示名；camelCase）
+/// M1-17：单个高亮分组（可扩展：数量不限，tags 为 lezer 标签名；camelCase）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase", default)]
 pub struct HighlightGroupConfig {
     pub id: String,
     pub label: String,
+    /// 该组着色的 lezer 标签名（如 "keyword"、"variableName"）；缺省时由默认同名组补齐
+    #[serde(default)]
+    pub tags: Vec<String>,
     pub light: String,
     pub dark: String,
 }
@@ -541,38 +544,68 @@ pub struct HighlightGroupConfig {
 /// M1-17：LaTeX 语法高亮默认配色（与前端 DEFAULT_LATEX_HIGHLIGHT 一致；id 顺序即优先级）
 fn default_highlight() -> Vec<HighlightGroupConfig> {
     vec![
-        HighlightGroupConfig { id: "meta".into(), label: "verbatim 内容 / 正文".into(), light: "#7a828c".into(), dark: "#7e8794".into() },
-        HighlightGroupConfig { id: "comment".into(), label: "注释".into(), light: "#8d959e".into(), dark: "#6b7480".into() },
-        HighlightGroupConfig { id: "string".into(), label: "字面参数 / 数字".into(), light: "#9a5b0d".into(), dark: "#e0b169".into() },
-        HighlightGroupConfig { id: "keyword".into(), label: "控制序列（\\cmd / \\begin / \\end）".into(), light: "#2b62cf".into(), dark: "#7fb0ff".into() },
-        HighlightGroupConfig { id: "heading".into(), label: "章节命令".into(), light: "#1e4fae".into(), dark: "#7fb0ff".into() },
-        HighlightGroupConfig { id: "operator".into(), label: "数学符号 / $".into(), light: "#9a5b0d".into(), dark: "#e0b169".into() },
-        HighlightGroupConfig { id: "bracket".into(), label: "括号".into(), light: "#7a828c".into(), dark: "#7e8794".into() },
-        HighlightGroupConfig { id: "class".into(), label: "环境名 / \\label / \\ref / \\cite".into(), light: "#0d7a6e".into(), dark: "#6fd3c4".into() },
-        HighlightGroupConfig { id: "strong".into(), label: "加粗文本".into(), light: "#1b1f24".into(), dark: "#e8eaed".into() },
-        HighlightGroupConfig { id: "emphasis".into(), label: "斜体文本".into(), light: "#1b1f24".into(), dark: "#e8eaed".into() },
-        HighlightGroupConfig { id: "monospace".into(), label: "等宽文本".into(), light: "#1b1f24".into(), dark: "#e8eaed".into() },
-        HighlightGroupConfig { id: "invalid".into(), label: "非法字符".into(), light: "#c2382f".into(), dark: "#f26a60".into() },
+        HighlightGroupConfig { id: "meta".into(), label: "verbatim 内容 / 正文".into(), tags: vec!["meta".into(), "content".into()], light: "#7a828c".into(), dark: "#7e8794".into() },
+        HighlightGroupConfig { id: "comment".into(), label: "注释".into(), tags: vec!["comment".into()], light: "#8d959e".into(), dark: "#6b7480".into() },
+        HighlightGroupConfig { id: "string".into(), label: "字面参数 / 数字".into(), tags: vec!["string".into(), "number".into()], light: "#9a5b0d".into(), dark: "#e0b169".into() },
+        HighlightGroupConfig { id: "keyword".into(), label: "控制序列（\\cmd / \\begin / \\end）".into(), tags: vec!["keyword".into(), "definitionKeyword".into()], light: "#2b62cf".into(), dark: "#7fb0ff".into() },
+        HighlightGroupConfig { id: "heading".into(), label: "章节命令".into(), tags: vec!["heading".into()], light: "#1e4fae".into(), dark: "#7fb0ff".into() },
+        HighlightGroupConfig { id: "operator".into(), label: "数学符号 / $".into(), tags: vec!["operator".into(), "variableName".into(), "processingInstruction".into()], light: "#9a5b0d".into(), dark: "#e0b169".into() },
+        HighlightGroupConfig { id: "bracket".into(), label: "括号".into(), tags: vec!["bracket".into()], light: "#7a828c".into(), dark: "#7e8794".into() },
+        HighlightGroupConfig { id: "class".into(), label: "环境名 / \\label / \\ref / \\cite".into(), tags: vec!["className".into(), "labelName".into(), "quote".into()], light: "#0d7a6e".into(), dark: "#6fd3c4".into() },
+        HighlightGroupConfig { id: "strong".into(), label: "加粗文本".into(), tags: vec!["strong".into()], light: "#1b1f24".into(), dark: "#e8eaed".into() },
+        HighlightGroupConfig { id: "emphasis".into(), label: "斜体文本".into(), tags: vec!["emphasis".into()], light: "#1b1f24".into(), dark: "#e8eaed".into() },
+        HighlightGroupConfig { id: "monospace".into(), label: "等宽文本".into(), tags: vec!["monospace".into()], light: "#1b1f24".into(), dark: "#e8eaed".into() },
+        HighlightGroupConfig { id: "invalid".into(), label: "非法字符".into(), tags: vec!["invalid".into()], light: "#c2382f".into(), dark: "#f26a60".into() },
     ]
 }
 
-/// M1-17：高亮配色归一化——以默认 12 组为蓝本，用已保存颜色覆盖对应 id；
-/// 已保存分组缺失时回落默认。保证编辑器始终拿到完整、有序、合法的 12 组配色。
+/// M1-17：高亮配色归一化（可扩展分组版）。
+/// - 已保存列表为空 → 用默认 12 组。
+/// - 否则保留已保存分组（覆盖默认），并补齐默认里「已保存缺失」的组（前向兼容，保证默认组不丢失）；
+/// - 已保存分组若 tags 为空，用默认同名组的 tags 兜底。
+/// 这样主题预设（可含 >12 组）能完整保留，同时未来新增的默认组会自动补入。
 pub fn normalize_highlight(h: HighlightConfig) -> HighlightConfig {
-    let saved: std::collections::HashMap<&str, &HighlightGroupConfig> =
-        h.latex.iter().map(|g| (g.id.as_str(), g)).collect();
-    let latex = default_highlight()
-        .iter()
-        .map(|d| match saved.get(d.id.as_str()) {
+    if h.latex.is_empty() {
+        return HighlightConfig { latex: default_highlight() };
+    }
+    let defaults = default_highlight();
+    // 以已保存分组建索引（按 id）；tags 为空时用默认同名组的 tags 兜底
+    let saved: std::collections::HashMap<String, HighlightGroupConfig> =
+        h.latex.into_iter().map(|g| (g.id.clone(), g)).collect();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut latex: Vec<HighlightGroupConfig> = Vec::new();
+    // 1) 先按默认 12 组顺序输出（用已保存颜色/tags 覆盖），保证稳定优先级与索引
+    for d in defaults {
+        let g = match saved.get(&d.id) {
             Some(s) => HighlightGroupConfig {
                 id: d.id.clone(),
                 label: d.label.clone(),
+                tags: if s.tags.is_empty() {
+                    d.tags.clone()
+                } else {
+                    s.tags.clone()
+                },
                 light: s.light.clone(),
                 dark: s.dark.clone(),
             },
-            None => d.clone(),
-        })
-        .collect();
+            None => d,
+        };
+        seen.insert(g.id.clone());
+        latex.push(g);
+    }
+    // 2) 再追加默认里没有的「额外分组」（来自主题预设，如更多 lezer 标签）
+    for s in saved.values() {
+        if seen.contains(&s.id) {
+            continue;
+        }
+        latex.push(HighlightGroupConfig {
+            id: s.id.clone(),
+            label: s.label.clone(),
+            tags: s.tags.clone(),
+            light: s.light.clone(),
+            dark: s.dark.clone(),
+        });
+    }
     HighlightConfig { latex }
 }
 
@@ -1475,5 +1508,27 @@ mod tests {
         assert_eq!(norm.highlight.latex[0].light, "#7a828c");
         // 缺省 label 被默认 label 补齐
         assert_eq!(norm.highlight.latex[3].label, "控制序列（\\cmd / \\begin / \\end）");
+        // 缺省 tags 被默认同名组的 tags 补齐（keyword 应有 ["keyword","definitionKeyword"]）
+        assert!(norm.highlight.latex[3].tags.contains(&"keyword".to_string()));
+        assert!(norm.highlight.latex[3].tags.contains(&"definitionKeyword".to_string()));
+    }
+
+    #[test]
+    fn highlight_normalize_preserves_extra_preset_groups() {
+        // M1-17 扩展：主题预设可含默认之外的分组（如 propertyName），归一化后应保留
+        let raw = json!({
+            "highlight": {
+                "latex": [
+                    { "id": "keyword", "label": "K", "tags": ["keyword"], "light": "#111111", "dark": "#222222" },
+                    { "id": "propertyName", "label": "属性名", "tags": ["propertyName"], "light": "#333333", "dark": "#444444" }
+                ]
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        let norm = normalize(parsed);
+        // 默认 12 组 + 1 个额外分组（propertyName）
+        assert_eq!(norm.highlight.latex.len(), 13);
+        let extra = norm.highlight.latex.iter().find(|g| g.id == "propertyName").unwrap();
+        assert_eq!(extra.light, "#333333");
     }
 }
