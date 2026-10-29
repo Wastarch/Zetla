@@ -7,7 +7,7 @@ import { templateApi } from "@/ipc/invoke";
 import { Icon } from "@/ui/Icon";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { base, notify, useProjectStore } from "@/project/useProject";
-import type { TemplateManifest, TemplateMeta, TemplateVar } from "@/types";
+import type { TemplateManifest, TemplateVar } from "@/types";
 
 /** 变量默认值（按类型 + manifest default 初始化） */
 function defaultValue(v: TemplateVar): unknown {
@@ -59,10 +59,10 @@ function missingRequired(vars: TemplateVar[], values: Record<string, unknown>): 
 export function TemplateWizard() {
   const open = useProjectStore((s) => s.wizardOpen);
   const closeWizard = useProjectStore((s) => s.closeWizard);
+  const openLibrary = useProjectStore((s) => s.openLibrary);
   const wizardDir = useProjectStore((s) => s.wizardDir);
   const wizardTemplateId = useProjectStore((s) => s.wizardTemplateId);
 
-  const [metas, setMetas] = useState<TemplateMeta[]>([]);
   const [selected, setSelected] = useState("");
   const [manifest, setManifest] = useState<TemplateManifest | null>(null);
   const [values, setValues] = useState<Record<string, unknown>>({});
@@ -70,14 +70,13 @@ export function TemplateWizard() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // 打开时拉模板列表 + 默认位置
+  // 打开时拉模板列表（仅用于确定当前选中的模板）+ 默认位置
   useEffect(() => {
     if (!open) return;
     setErr(null);
     templateApi
       .listTemplates()
       .then((ms) => {
-        setMetas(ms);
         setSelected((s) => {
           // M1-15e：模板库「用此模板新建」优先生效
           if (wizardTemplateId && ms.some((m) => m.id === wizardTemplateId)) {
@@ -161,6 +160,13 @@ export function TemplateWizard() {
 
   if (!open) return null;
 
+  /** 退回模板库（带回当前模板，保持选中态） */
+  const backToLibrary = () => {
+    const keep = selected || undefined;
+    closeWizard();
+    openLibrary(false, keep);
+  };
+
   return (
     <div className="modal-layer" onMouseDown={closeWizard}>
       <div
@@ -170,8 +176,20 @@ export function TemplateWizard() {
         aria-label="从模板新建"
       >
         <div className="modal-head">
+          <button
+            type="button"
+            className="ibtn wiz-back"
+            title="返回模板库"
+            aria-label="返回模板库"
+            onClick={backToLibrary}
+          >
+            <Icon name="chev" />
+          </button>
           <h2>从模板新建</h2>
-          <span className="sub">M1-9 · 内置 {metas.length} 套</span>
+          <span className="wiz-tpl" title="当前选择的模板">
+            <Icon name="book" size={13} />
+            {manifest?.name ?? (selected ? "加载中…" : "未选择模板")}
+          </span>
           <button
             type="button"
             className="ibtn x"
@@ -185,150 +203,135 @@ export function TemplateWizard() {
         <div className="modal-body">
           {err && <p className="error">{err}</p>}
 
-          <label className="entry-label">模板</label>
-          <div className="tpl-grid">
-            {metas.length === 0 && !err && (
-              <p className="entry-hint">正在加载模板…</p>
-            )}
-            {metas.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                className={m.id === selected ? "tpl-card on" : "tpl-card"}
-                onClick={() => setSelected(m.id)}
-              >
-                <Icon name="book" size={18} />
-                <span className="tn">{m.name}</span>
-                <span className="td">{m.description}</span>
-                <span className="tm">{m.category ?? m.id}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* 动态变量表单（全类型 + 分组） */}
-          {groups.map((g) => (
-            <fieldset className="fw-group" key={g.group}>
-              <legend>{g.group}</legend>
-              {g.items.map((v) => (
-                <div className="fw-field" key={v.key}>
-                  <label className="entry-label" htmlFor={`tpl-var-${v.key}`}>
-                    {v.label}
-                    {v.required ? " *" : ""}
-                  </label>
-                  {v.type === "text" ? (
-                    <textarea
-                      id={`tpl-var-${v.key}`}
-                      className="entry-input fw-textarea"
-                      value={String(values[v.key] ?? "")}
-                      placeholder={v.placeholder}
-                      onChange={(e) => setVal(v.key, e.target.value)}
-                    />
-                  ) : v.type === "select" ? (
-                    <select
-                      id={`tpl-var-${v.key}`}
-                      className="entry-input"
-                      value={String(values[v.key] ?? "")}
-                      onChange={(e) => setVal(v.key, e.target.value)}
-                    >
-                      {(v.options ?? []).map((opt) => (
-                        <option key={opt} value={opt}>
-                          {opt}
-                        </option>
-                      ))}
-                    </select>
-                  ) : v.type === "bool" ? (
-                    <label className="fw-check">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(values[v.key])}
-                        onChange={(e) => setVal(v.key, e.target.checked)}
-                      />
-                      <span>{v.placeholder ?? "启用"}</span>
+          <div className="wiz-form">
+            {/* 动态变量表单（全类型 + 分组，宽屏两列） */}
+            {groups.map((g) => (
+              <fieldset className="fw-group" key={g.group}>
+                <legend>{g.group}</legend>
+                {g.items.map((v) => (
+                  <div className="fw-field" key={v.key}>
+                    <label className="entry-label" htmlFor={`tpl-var-${v.key}`}>
+                      {v.label}
+                      {v.required ? " *" : ""}
                     </label>
-                  ) : v.type === "multiselect" ? (
-                    <div className="fw-checks">
-                      {(v.options ?? []).map((opt) => {
-                        const arr = Array.isArray(values[v.key])
-                          ? (values[v.key] as string[])
-                          : [];
-                        const checked = arr.includes(opt);
-                        return (
-                          <label className="fw-check" key={opt}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) =>
-                                setVal(
-                                  v.key,
-                                  e.target.checked
-                                    ? [...arr, opt]
-                                    : arr.filter((x) => x !== opt),
-                                )
-                              }
-                            />
-                            <span>{opt}</span>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  ) : v.type === "date" ? (
-                    <input
-                      id={`tpl-var-${v.key}`}
-                      type="date"
-                      className="entry-input"
-                      value={String(values[v.key] ?? "")}
-                      onChange={(e) => setVal(v.key, e.target.value)}
-                    />
-                  ) : (
-                    <input
-                      id={`tpl-var-${v.key}`}
-                      type={v.type === "number" ? "number" : "text"}
-                      className="entry-input"
-                      value={String(values[v.key] ?? "")}
-                      placeholder={v.placeholder}
-                      spellCheck={false}
-                      onChange={(e) =>
-                        setVal(
-                          v.key,
-                          v.type === "number"
-                            ? e.target.value === ""
-                              ? ""
-                              : Number(e.target.value)
-                            : e.target.value,
-                        )
-                      }
-                    />
-                  )}
-                  {v.help && <p className="entry-hint">{v.help}</p>}
-                </div>
-              ))}
-            </fieldset>
-          ))}
+                    {v.type === "text" ? (
+                      <textarea
+                        id={`tpl-var-${v.key}`}
+                        className="entry-input fw-textarea"
+                        value={String(values[v.key] ?? "")}
+                        placeholder={v.placeholder}
+                        onChange={(e) => setVal(v.key, e.target.value)}
+                      />
+                    ) : v.type === "select" ? (
+                      <select
+                        id={`tpl-var-${v.key}`}
+                        className="entry-input"
+                        value={String(values[v.key] ?? "")}
+                        onChange={(e) => setVal(v.key, e.target.value)}
+                      >
+                        {(v.options ?? []).map((opt) => (
+                          <option key={opt} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    ) : v.type === "bool" ? (
+                      <label className="fw-check">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(values[v.key])}
+                          onChange={(e) => setVal(v.key, e.target.checked)}
+                        />
+                        <span>{v.placeholder ?? "启用"}</span>
+                      </label>
+                    ) : v.type === "multiselect" ? (
+                      <div className="fw-checks">
+                        {(v.options ?? []).map((opt) => {
+                          const arr = Array.isArray(values[v.key])
+                            ? (values[v.key] as string[])
+                            : [];
+                          const checked = arr.includes(opt);
+                          return (
+                            <label className="fw-check" key={opt}>
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) =>
+                                  setVal(
+                                    v.key,
+                                    e.target.checked
+                                      ? [...arr, opt]
+                                      : arr.filter((x) => x !== opt),
+                                  )
+                                }
+                              />
+                              <span>{opt}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : v.type === "date" ? (
+                      <input
+                        id={`tpl-var-${v.key}`}
+                        type="date"
+                        className="entry-input"
+                        value={String(values[v.key] ?? "")}
+                        onChange={(e) => setVal(v.key, e.target.value)}
+                      />
+                    ) : (
+                      <input
+                        id={`tpl-var-${v.key}`}
+                        type={v.type === "number" ? "number" : "text"}
+                        className="entry-input"
+                        value={String(values[v.key] ?? "")}
+                        placeholder={v.placeholder}
+                        spellCheck={false}
+                        onChange={(e) =>
+                          setVal(
+                            v.key,
+                            v.type === "number"
+                              ? e.target.value === ""
+                                ? ""
+                                : Number(e.target.value)
+                              : e.target.value,
+                          )
+                        }
+                      />
+                    )}
+                    {v.help && <p className="entry-hint">{v.help}</p>}
+                  </div>
+                ))}
+              </fieldset>
+            ))}
 
-          <div className="fw-field">
-            <label className="entry-label" htmlFor="tpl-target">
-              位置（项目文件夹）
-            </label>
-            <div className="fw-row">
-              <input
-                id="tpl-target"
-                className="entry-input"
-                value={target}
-                placeholder="选择或输入一个空文件夹路径…"
-                spellCheck={false}
-                onChange={(e) => setTarget(e.target.value)}
-              />
-              <button type="button" className="btn" onClick={() => void pickDir()}>
-                选择…
-              </button>
+            <div className="fw-field wiz-col-full">
+              <label className="entry-label" htmlFor="tpl-target">
+                位置（项目文件夹）
+              </label>
+              <div className="fw-row">
+                <input
+                  id="tpl-target"
+                  className="entry-input"
+                  value={target}
+                  placeholder="选择或输入一个空文件夹路径…"
+                  spellCheck={false}
+                  onChange={(e) => setTarget(e.target.value)}
+                />
+                <button type="button" className="btn" onClick={() => void pickDir()}>
+                  选择…
+                </button>
+              </div>
+              <p className="entry-hint">
+                将生成主文件与配套结构，并自动打开项目、把主文件开到编辑器
+              </p>
             </div>
-            <p className="entry-hint">
-              将生成主文件与配套结构，并自动打开项目、把主文件开到编辑器
-            </p>
           </div>
         </div>
 
         <div className="modal-foot">
+          <button type="button" className="btn wiz-foot-back" onClick={backToLibrary}>
+            返回模板库
+          </button>
           <button type="button" className="btn" onClick={closeWizard}>
             取消
           </button>

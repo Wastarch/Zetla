@@ -44,6 +44,7 @@ function emojiFor(m: TemplateMeta): string {
 export function TemplateLibraryDialog() {
   const open = useProjectStore((s) => s.libraryOpen);
   const librarySaveMode = useProjectStore((s) => s.librarySaveMode);
+  const libraryInitialId = useProjectStore((s) => s.libraryInitialId);
   const close = useProjectStore((s) => s.closeLibrary);
   const root = useProjectStore((s) => s.root);
   const openWizard = useProjectStore((s) => s.openWizard);
@@ -80,11 +81,12 @@ export function TemplateLibraryDialog() {
     setSaveMode(librarySaveMode);
     setSaveName(librarySaveMode && root ? (root.split(/[\\/]/).pop() ?? "") : "");
     setLoading(true);
-    void refresh()
+    // 向导「返回模板库」会带上当前模板 id，回填选中态
+    void refresh(libraryInitialId ?? undefined)
       .catch((e) => setErr(String(e)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, librarySaveMode, root]);
+  }, [open, librarySaveMode, libraryInitialId, root]);
 
   // 选中模板 → 拉清单详情
   useEffect(() => {

@@ -6,9 +6,23 @@
   "category": "thesis",
   "tags": ["论文", "学位论文", "宁夏大学", "nxuthesis"],
   "version": "1.0",
-  "build": { "engine": "xelatex", "mainFile": "main.tex", "outputDir": "build", "synctex": true },
+  "build": {
+    "engine": "xelatex",
+    "mainFile": "main.tex",
+    "outputDir": "build",
+    "synctex": true
+  },
   "dependencies": {
-    "packages": ["nxuthesis", "ctex", "natbib", "hyperref", "threeparttable", "algorithm", "siunitx", "bicaption"],
+    "packages": [
+      "nxuthesis",
+      "ctex",
+      "natbib",
+      "hyperref",
+      "threeparttable",
+      "algorithm",
+      "siunitx",
+      "bicaption"
+    ],
     "assets": [
       "nxuthesis.cls",
       "nxuthesis-author-year.bst",
@@ -20,43 +34,224 @@
     ]
   },
   "variables": [
-    { "key": "degree", "label": "学位层次", "type": "select", "options": ["master", "doctor"], "default": "master", "group": "基本信息" },
-    { "key": "title", "label": "论文中文标题", "type": "text", "required": true, "group": "基本信息", "default": "宁夏大学研究生学位论文 LaTeX 模板使用示例文档" },
-    { "key": "titleEn", "label": "论文英文标题", "type": "text", "group": "基本信息", "default": "An Introduction to LaTeX Thesis Template of Ningxia University" },
-    { "key": "degreeCategory", "label": "学科门类", "type": "string", "group": "基本信息", "default": "工学硕士" },
-    { "key": "department", "label": "培养单位（中文）", "type": "string", "required": true, "group": "基本信息", "default": "土木与水利工程学院" },
-    { "key": "departmentEn", "label": "培养单位（英文）", "type": "string", "group": "基本信息", "default": "School of Civil and Hydraulic Engineering" },
-    { "key": "discipline", "label": "学科专业", "type": "string", "required": true, "group": "基本信息", "default": "水利工程" },
-    { "key": "author", "label": "作者姓名", "type": "string", "required": true, "group": "基本信息", "default": "某某某" },
-    { "key": "authorEn", "label": "作者姓名（拼音）", "type": "string", "group": "基本信息", "default": "Zhang San" },
-    { "key": "studentId", "label": "学号", "type": "string", "group": "基本信息", "default": "12022000000" },
-    { "key": "supervisor", "label": "指导教师（姓名, 职称）", "type": "string", "required": true, "group": "基本信息", "default": "某某某, 教授" },
-    { "key": "supervisorEn", "label": "指导教师（英文）", "type": "string", "group": "基本信息", "default": "Prof. Li Si" },
-    { "key": "coSupervisor", "label": "联合指导教师（可选）", "type": "string", "group": "基本信息" },
-    { "key": "field", "label": "研究方向", "type": "string", "group": "基本信息", "default": "水力学及河流动力学" },
-    { "key": "date", "label": "提交日期", "type": "date", "group": "基本信息", "default": "2026-06-01" },
-    { "key": "clc", "label": "分类号", "type": "string", "group": "基本信息", "default": "TV143" },
-    { "key": "secretLevel", "label": "密级", "type": "string", "group": "基本信息", "default": "公开" },
-    { "key": "secretYear", "label": "保密年限（可选）", "type": "string", "group": "基本信息", "default": "" },
-    { "key": "code", "label": "单位代码", "type": "string", "group": "基本信息", "default": "10749" },
-    { "key": "output", "label": "输出格式", "type": "select", "options": ["electronic", "print"], "default": "electronic", "group": "外观" },
-    { "key": "blindReview", "label": "盲审版封面", "type": "bool", "default": false, "group": "外观" },
-    { "key": "includeSpine", "label": "生成书脊", "type": "bool", "default": false, "group": "外观" },
-    { "key": "mathFont", "label": "数学字体", "type": "select", "options": ["xits", "stix", "libertinus"], "default": "xits", "group": "外观" }
+    {
+      "key": "degree",
+      "label": "学位层次",
+      "type": "select",
+      "options": ["master", "doctor"],
+      "default": "master",
+      "group": "基本信息"
+    },
+    {
+      "key": "title",
+      "label": "论文中文标题",
+      "type": "text",
+      "required": true,
+      "group": "基本信息",
+      "default": "宁夏大学研究生学位论文 LaTeX 模板使用示例文档"
+    },
+    {
+      "key": "titleEn",
+      "label": "论文英文标题",
+      "type": "text",
+      "group": "基本信息",
+      "default": "An Introduction to LaTeX Thesis Template of Ningxia University"
+    },
+    {
+      "key": "degreeCategory",
+      "label": "学科门类",
+      "type": "string",
+      "group": "基本信息",
+      "default": "理学硕士"
+    },
+    {
+      "key": "department",
+      "label": "培养单位（中文）",
+      "type": "string",
+      "required": true,
+      "group": "基本信息",
+      "default": "物理学院"
+    },
+    {
+      "key": "departmentEn",
+      "label": "培养单位（英文）",
+      "type": "string",
+      "group": "基本信息",
+      "default": "School of Physics"
+    },
+    {
+      "key": "discipline",
+      "label": "学科专业",
+      "type": "string",
+      "required": true,
+      "group": "基本信息",
+      "default": "物理学"
+    },
+    {
+      "key": "author",
+      "label": "作者姓名",
+      "type": "string",
+      "required": true,
+      "group": "基本信息",
+      "default": "某某某"
+    },
+    {
+      "key": "authorEn",
+      "label": "作者姓名（拼音）",
+      "type": "string",
+      "group": "基本信息",
+      "default": "Zhang San"
+    },
+    {
+      "key": "studentId",
+      "label": "学号",
+      "type": "string",
+      "group": "基本信息",
+      "default": "12022000000"
+    },
+    {
+      "key": "supervisor",
+      "label": "指导教师（姓名, 职称）",
+      "type": "string",
+      "required": true,
+      "group": "基本信息",
+      "default": "某某某, 教授"
+    },
+    {
+      "key": "supervisorEn",
+      "label": "指导教师（英文）",
+      "type": "string",
+      "group": "基本信息",
+      "default": "Prof. Li Si"
+    },
+    {
+      "key": "coSupervisor",
+      "label": "联合指导教师（可选）",
+      "type": "string",
+      "group": "基本信息"
+    },
+    {
+      "key": "field",
+      "label": "研究方向",
+      "type": "string",
+      "group": "基本信息",
+      "default": "物理学"
+    },
+    {
+      "key": "date",
+      "label": "提交日期",
+      "type": "date",
+      "group": "基本信息",
+      "default": "2026-06-01"
+    },
+    {
+      "key": "clc",
+      "label": "分类号",
+      "type": "string",
+      "group": "基本信息",
+      "default": "TV143"
+    },
+    {
+      "key": "secretLevel",
+      "label": "密级",
+      "type": "string",
+      "group": "基本信息",
+      "default": "公开"
+    },
+    {
+      "key": "secretYear",
+      "label": "保密年限（可选）",
+      "type": "string",
+      "group": "基本信息",
+      "default": ""
+    },
+    {
+      "key": "code",
+      "label": "单位代码",
+      "type": "string",
+      "group": "基本信息",
+      "default": "10749"
+    },
+    {
+      "key": "output",
+      "label": "输出格式",
+      "type": "select",
+      "options": ["electronic", "print"],
+      "default": "electronic",
+      "group": "外观"
+    },
+    {
+      "key": "blindReview",
+      "label": "盲审版封面",
+      "type": "bool",
+      "default": false,
+      "group": "外观"
+    },
+    {
+      "key": "includeSpine",
+      "label": "生成书脊",
+      "type": "bool",
+      "default": false,
+      "group": "外观"
+    },
+    {
+      "key": "mathFont",
+      "label": "数学字体",
+      "type": "select",
+      "options": ["xits", "stix", "libertinus"],
+      "default": "xits",
+      "group": "外观"
+    }
   ],
   "structure": {
     "dirs": ["chapter", "figures", "ref"],
     "files": [
       { "target": "main.tex", "source": "main.tex.tmpl", "render": true },
-      { "target": "nxusetup.tex", "source": "nxusetup.tex.tmpl", "render": true },
-      { "target": "chapter/abstract.tex", "source": "chapter/abstract.tex", "render": false },
-      { "target": "chapter/acknowledgements.tex", "source": "chapter/acknowledgements.tex", "render": false },
-      { "target": "chapter/appendix.tex", "source": "chapter/appendix.tex", "render": false },
-      { "target": "chapter/chap01.tex", "source": "chapter/chap01.tex", "render": false },
-      { "target": "chapter/chap02.tex", "source": "chapter/chap02.tex", "render": false },
-      { "target": "chapter/chap03.tex", "source": "chapter/chap03.tex", "render": false },
-      { "target": "chapter/chap04.tex", "source": "chapter/chap04.tex", "render": false },
-      { "target": "chapter/resume.tex", "source": "chapter/resume.tex", "render": false }
+      {
+        "target": "nxusetup.tex",
+        "source": "nxusetup.tex.tmpl",
+        "render": true
+      },
+      {
+        "target": "chapter/abstract.tex",
+        "source": "chapter/abstract.tex",
+        "render": false
+      },
+      {
+        "target": "chapter/acknowledgements.tex",
+        "source": "chapter/acknowledgements.tex",
+        "render": false
+      },
+      {
+        "target": "chapter/appendix.tex",
+        "source": "chapter/appendix.tex",
+        "render": false
+      },
+      {
+        "target": "chapter/chap01.tex",
+        "source": "chapter/chap01.tex",
+        "render": false
+      },
+      {
+        "target": "chapter/chap02.tex",
+        "source": "chapter/chap02.tex",
+        "render": false
+      },
+      {
+        "target": "chapter/chap03.tex",
+        "source": "chapter/chap03.tex",
+        "render": false
+      },
+      {
+        "target": "chapter/chap04.tex",
+        "source": "chapter/chap04.tex",
+        "render": false
+      },
+      {
+        "target": "chapter/resume.tex",
+        "source": "chapter/resume.tex",
+        "render": false
+      }
     ]
   }
 }

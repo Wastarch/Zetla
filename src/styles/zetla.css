@@ -1748,71 +1748,77 @@ body {
   background: var(--bg-2);
 }
 
-/* ── 从模板新建向导（M0-7） ─────────────── */
+/* ── 从模板新建向导（M0-7；M1-9 三栏模板库口径：同尺寸 + 单模板 + 可返回） ─────── */
 .modal.wizard {
-  width: min(560px, 92vw);
+  /* 与 .modal.tl-modal 保持同一尺寸，避免从模板库跳转时窗口跳动 */
+  width: min(1000px, 94vw);
+  height: min(650px, 88vh);
+  max-height: 88vh;
 }
 
 .modal.wizard .modal-body {
   padding: 16px 18px 14px;
 }
 
-.tpl-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-  margin-bottom: 14px;
+/* 头部：返回模板库箭头 + 当前模板名 */
+.wiz-back {
+  flex: none;
+  margin: 0 2px 0 -4px;
 }
 
-.tpl-card {
-  display: grid;
-  justify-items: start;
-  gap: 5px;
-  padding: 12px 13px;
+/* chev 默认朝右，旋转 180° 得到「返回」箭头 */
+.wiz-back .ic {
+  transform: rotate(180deg);
+}
+
+.wiz-tpl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 52%;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  color: var(--txt-2);
   background: var(--bg-3);
   border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  cursor: pointer;
-  text-align: left;
-  font-family: var(--font-ui);
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.tpl-card .ic {
-  color: var(--accent);
-}
-
-.tpl-card .tn {
-  font-size: 12.5px;
-  font-weight: 500;
-  color: var(--txt);
-}
-
-.tpl-card .td {
-  font-size: 11px;
-  color: var(--txt-3);
-  line-height: 1.6;
-}
-
-.tpl-card .tm {
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--accent);
-  background: var(--accent-soft);
-  padding: 2px 6px;
   border-radius: 99px;
-  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.tpl-card:hover {
-  border-color: var(--txt-3);
+.wiz-tpl .ic {
+  color: var(--accent);
+  flex: none;
 }
 
-.tpl-card.on {
-  border-color: var(--accent);
-  background: var(--accent-soft);
+/* 表单两列布局（宽屏）；窄屏回落单列 */
+.wiz-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 20px;
+  align-items: start;
 }
+
+.wiz-form > .fw-group {
+  margin: 0;
+}
+
+.wiz-col-full {
+  grid-column: 1 / -1;
+}
+
+.wiz-foot-back {
+  margin-right: auto;
+}
+
+@media (max-width: 860px) {
+  .wiz-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 注：向导不再内嵌模板卡片（模板由模板库选择），原 .tpl-grid/.tpl-card 样式已移除 */
 
 /* ── M1-15e 模板库对话框（参考 模板库.html：三栏布局） ── */
 .modal.tl-modal {

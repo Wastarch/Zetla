@@ -48,8 +48,8 @@
   % 指导教师（中文姓名和职称之间以英文逗号“,”分开）
   %
   supervisor  = {<%= supervisor %>},
-  supervisor* = {<%= supervisorEn %>},
-<% if coSupervisor %>  %
+  supervisor* = {<%= supervisorEn %>},<% if coSupervisor %>
+  %
   % 联合指导教师
   %
   co-supervisor  = {<%= coSupervisor %>},<% endif %>

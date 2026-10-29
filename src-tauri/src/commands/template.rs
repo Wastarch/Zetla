@@ -1180,6 +1180,31 @@ mod tests {
         let binfo = create_project_in(&builtin_root(), "beamer-cn", &bvars, btgt.to_str().unwrap()).unwrap();
         let bmain = std::fs::read_to_string(&binfo.main_file).unwrap();
         assert!(bmain.contains("\\usetheme{Madrid}"));
+
+        // nxuthesis：联合导师条件块留空时，\nxusetup{} 内不得出现空行
+        // （keyval 参数块遇空行会报 "Paragraph ended before \kv@processor@default was complete"）
+        let ntgt = tmp_dir("builtin_nxuthesis");
+        let nm = load_manifest(&builtin_root(), "nxuthesis").unwrap();
+        let mut nvars = HashMap::new();
+        for (k, v) in default_map(&nm) {
+            nvars.insert(k, Value::String(v));
+        }
+        for v in &nm.variables {
+            if v.required && !nvars.contains_key(&v.key) {
+                nvars.insert(v.key.clone(), Value::String("示例".into()));
+            }
+        }
+        nvars.remove("coSupervisor"); // 模拟未填写联合导师
+        create_project_in(&builtin_root(), "nxuthesis", &nvars, ntgt.to_str().unwrap()).unwrap();
+        let setup = std::fs::read_to_string(ntgt.join("nxusetup.tex")).unwrap();
+        let start = setup.find("\\nxusetup{").expect("nxusetup.tex 应含 \\nxusetup");
+        let body = &setup[start..];
+        let end = body.find("\n}\n").expect("\\nxusetup 应有闭合行");
+        assert!(
+            !body[..end].contains("\n\n"),
+            "\\nxusetup 内出现空行（条件块渲染缺陷），片段：\n{}",
+            &body[..end]
+        );
     }
 
     #[test]
