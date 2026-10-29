@@ -39,7 +39,6 @@ export function WelcomeScreen() {
     const setRecent = useSettingsStore((s) => s.setRecentProjects);
     const openProject = useProjectStore((s) => s.openProject);
     const openProjectDialog = useProjectStore((s) => s.openProjectDialog);
-  const openWizard = useProjectStore((s) => s.openWizard);
   const openLibrary = useProjectStore((s) => s.openLibrary);
   const openProjectAction = useProjectStore((s) => s.openProjectAction);
     const exportProject = useProjectStore((s) => s.exportProject);
@@ -184,16 +183,13 @@ export function WelcomeScreen() {
                 </header>
 
                 <div className="welcome-actions">
-                    <button type="button" className="btn primary" onClick={() => openWizard()}>
+                    <button type="button" className="btn primary" onClick={() => openLibrary()}>
                         从模板新建
                     </button>
-          <button type="button" className="btn" onClick={() => void openProjectDialog()}>
-            打开项目文件夹…
-          </button>
-          <button type="button" className="btn" onClick={() => openLibrary()}>
-            模板库
-          </button>
-        </div>
+                    <button type="button" className="btn" onClick={() => void openProjectDialog()}>
+                        打开项目文件夹…
+                    </button>
+                </div>
 
                 <section className="welcome-recent">
                     <div className="welcome-sec-head">
