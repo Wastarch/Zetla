@@ -1,0 +1,51 @@
+% 宁夏大学学位论文模板（由 Zetla 生成 · nxuthesis）
+\documentclass[degree=<%= degree %>]{nxuthesis}
+	% 学位 degree: master（硕士） | doctor（博士）
+	% 学位类型 degree-type: academic（学术学位，默认）| professional（专业学位）
+	% 语言 language: chinese（默认）| english
+	% 字体库 fontset: windows | mac | fandol | ubuntu（默认 fandol，跨平台；建议终版用 windows 字体）
+
+% 论文基本配置，加载宏包等全局配置
+\input{nxusetup}
+
+\begin{document}
+
+% 生成封面页
+\maketitle
+
+% 使用授权的说明
+\copyrightpage
+% 将签字扫描后授权文件 scan-copyright.pdf 替换原始页面
+% \copyrightpage[file=scan-copyright.pdf]
+
+\frontmatter
+% 摘要
+\input{chapter/abstract}
+
+% 目录
+\tableofcontents
+
+% 正文部分
+\mainmatter
+\input{chapter/chap01}
+\input{chapter/chap02}
+\input{chapter/chap03}
+\input{chapter/chap04}
+
+% 其他部分
+\backmatter
+
+% 参考文献
+\bibliography{ref/refs}
+
+% 附录
+\appendix
+\input{chapter/appendix}
+
+% 致谢
+\input{chapter/acknowledgements}
+
+% 攻读学位期间发表的相关学术成果
+\input{chapter/resume}
+
+\end{document}

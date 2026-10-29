@@ -1,0 +1,138 @@
+
+% 论文基本信息配置
+
+\nxusetup{
+  %******************************
+  % 注意：
+  %   1. 配置里面不要出现空行
+  %   2. 不需要的配置信息可以删除
+  %******************************
+  %
+  % 输出格式
+  %   选择打印版（print）或用于提交的电子版（electronic），前者会插入空白页以便直接双面打印
+  %
+  output = <%= output %>,
+  %
+  % 是否生成盲审版中英文封面（默认 false）
+  %
+  blind-review = <%= blindReview %>,
+  %
+  % 标题
+  %   可使用“\\”命令手动控制换行
+  %
+  title  = {<%= title %>},
+  title* = {<%= titleEn %>},
+  %
+  % 学科门类（如：工学硕士 / 理学博士）
+  %
+  degree-category  = {<%= degreeCategory %>},
+  %
+  % 培养单位（院系全名）
+  %
+  department = {<%= department %>},
+  department* = {<%= departmentEn %>},
+  %
+  % 学科专业
+  %
+  discipline  = {<%= discipline %>},
+  %
+  % 姓名
+  %
+  author  = {<%= author %>},
+  author* = {<%= authorEn %>},
+  %
+  % 学号
+  %
+  student-id = {<%= studentId %>},
+  %
+  % 指导教师（中文姓名和职称之间以英文逗号“,”分开）
+  %
+  supervisor  = {<%= supervisor %>},
+  supervisor* = {<%= supervisorEn %>},
+<% if coSupervisor %>  %
+  % 联合指导教师
+  %
+  co-supervisor  = {<%= coSupervisor %>},<% endif %>
+  %
+  % 研究方向
+  %
+  field  = {<%= field %>},
+  %
+  % 日期（ISO 格式：年-月-日，默认当前时间）
+  %
+  date = {<%= date %>},
+  %
+  % 是否在中文封面后的空白页生成书脊（默认 false）
+  %
+  include-spine = <%= includeSpine %>,
+  %
+  % 分类号
+  %
+  clc  =  {<%= clc %>},
+  %
+  % 密级和年限（秘密 / 机密 / 绝密）
+  %
+  secret-level = {<%= secretLevel %>},
+  secret-year  = {<%= secretYear %>},
+  %
+  % 单位代码
+  %
+  code = {<%= code %>}
+}
+
+% 载入所需的宏包
+
+% 定理类环境宏包
+\usepackage{amsthm}
+
+\nxusetup{
+  %
+  % 数学字体
+  % math-font = xits,  % stix | xits | libertinus
+  %
+  math-font  = <%= mathFont %>,
+}
+
+% 表格加脚注
+\usepackage{threeparttable}
+
+% 表格中支持跨行
+\usepackage{multirow}
+
+% 跨页表格
+\usepackage{longtable}
+
+% 算法
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+% 量和单位
+\usepackage{siunitx}
+
+% 参考文献使用 BibTeX + natbib 宏包（顺序编码制）
+\usepackage[sort]{natbib}
+\bibliographystyle{nxuthesis-numeric}
+
+% 定义所有的图片文件在 figures 子目录下
+\graphicspath{{figures/}}
+
+% 数学命令
+\makeatletter
+\newcommand\dif{%  % 微分符号
+  \mathop{}\!%
+  \ifnxu@math@style@TeX
+    d%
+  \else
+    \mathrm{d}%
+  \fi
+}
+\makeatother
+
+% 版权页复选框宏包
+\usepackage{stmaryrd}
+
+% 图名、表名中英文显示
+\usepackage{bicaption}
+
+% hyperref 宏包在最后调用
+\usepackage{hyperref}

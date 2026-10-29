@@ -956,14 +956,14 @@ mod tests {
     #[test]
     fn lists_builtin_templates() {
         let v = list_templates_in(&builtin_root());
-        assert_eq!(v.len(), 5, "应恰好内置 5 套模板（M1-9 新增 thesis/beamer/resume）");
+        assert_eq!(v.len(), 6, "应恰好内置 6 套模板（M0 article/ctex-cn + M1-9 thesis/beamer/resume + nxuthesis）");
         let ids: Vec<&str> = v.iter().map(|m| m.id.as_str()).collect();
         assert!(ids.contains(&"article") && ids.contains(&"ctex-cn"));
         assert!(ids.contains(&"thesis-cn") && ids.contains(&"beamer-cn") && ids.contains(&"resume-cn"));
         // 排序稳定（字母序）
         assert_eq!(
             ids,
-            vec!["article", "beamer-cn", "ctex-cn", "resume-cn", "thesis-cn"]
+            vec!["article", "beamer-cn", "ctex-cn", "nxuthesis", "resume-cn", "thesis-cn"]
         );
         // 元数据齐全
         let a = v.iter().find(|m| m.id == "article").unwrap();
@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     fn create_builtin_templates_compile_shape() {
         // 全部内置模板端到端生成（不求可编译，求结构与变量替换正确）
-        for id in ["article", "ctex-cn", "thesis-cn", "beamer-cn", "resume-cn"] {
+        for id in ["article", "ctex-cn", "thesis-cn", "beamer-cn", "resume-cn", "nxuthesis"] {
             let target = tmp_dir(&format!("builtin_{}", id));
             let m = load_manifest(&builtin_root(), id).unwrap();
             let dflt = default_map(&m);
