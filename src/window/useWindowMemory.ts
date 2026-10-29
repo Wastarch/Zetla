@@ -79,6 +79,7 @@ export function useWindowMemory(): void {
         previewVisible: st.settings.layout.previewVisible,
         previewRatio: st.settings.layout.previewRatio,
         pvSideWidth: st.settings.layout.pvSideWidth,
+        logHeight: st.settings.layout.logHeight ?? 212,
       });
     }
 
@@ -147,7 +148,7 @@ export function useWindowMemory(): void {
 
     // 3) 布局变化 → 防抖旁路写盘（restoreLayout 关闭时不写，遵守用户设置）
     const layoutKey = (s: AppState): string =>
-      `${s.sidebarVisible}|${s.sidebarWidth}|${s.previewVisible}|${s.previewRatio}|${s.pvSideWidth}`;
+      `${s.sidebarVisible}|${s.sidebarWidth}|${s.previewVisible}|${s.previewRatio}|${s.pvSideWidth}|${s.logHeight}`;
     const debouncedLayoutSave = debounce(500, () => {
       const s = useAppStore.getState();
       void useSettingsStore.getState().persist({
@@ -157,6 +158,7 @@ export function useWindowMemory(): void {
           previewVisible: s.previewVisible,
           previewRatio: s.previewRatio,
           pvSideWidth: s.pvSideWidth,
+          logHeight: s.logHeight,
         },
       });
     });

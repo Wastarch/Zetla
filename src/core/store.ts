@@ -84,6 +84,9 @@ export interface AppState {
   // ── 编译日志（M0-9：原始输出；M0-12：错误/警告结构化页签） ──
   logVisible: boolean;
   toggleLog: () => void;
+  /** M1-16：日志面板高度（120–560，拖拽上边界写入，偏好设置持久化） */
+  logHeight: number;
+  setLogHeight: (h: number) => void;
   /** 底部日志面板当前页签 */
   logTab: "errors" | "warnings" | "all";
   setLogTab: (t: "errors" | "warnings" | "all") => void;
@@ -189,6 +192,8 @@ export const useAppStore = create<AppState>((set) => ({
 
   logVisible: false,
   toggleLog: () => set((s) => ({ logVisible: !s.logVisible })),
+  logHeight: 212,
+  setLogHeight: (h) => set({ logHeight: h }),
   logTab: "errors",
   setLogTab: (t) => set({ logTab: t }),
   compileLog: [],

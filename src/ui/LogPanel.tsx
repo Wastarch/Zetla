@@ -1,7 +1,8 @@
 // M0-9/12 · 底部编译日志面板（对齐 mockup .logpanel）
 // 「全部」保留原始输出滚动；「错误/警告」是 M0-11 解析的结构化列表（读 lastResult.errors），
 // 点击条目经 src/editor/jump.ts 打开/定位报错行（行号为编译时快照，文件后被改过会钳到实际行）。
-import { useEffect, useRef } from "react";
+// M1-16：VSCode 式停靠 —— 面板挂在右侧主列底部（不横跨侧栏），上边界可拖拽改高度。
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/core/store";
 import { base } from "@/project/useProject";
 import { jumpToError } from "@/editor/jump";
@@ -11,11 +12,24 @@ import type { TexError } from "@/types";
 type LogTab = "errors" | "warnings" | "all";
 type Status = "idle" | "running" | "ok" | "error" | "cancelled";
 
+/** 面板高度下限 / 上限（上限还会被窗口高度约束，见 maxLogHeight） */
+const LOG_MIN_H = 120;
+const LOG_MAX_H = 560;
+/** 面板至少给编辑区留出的高度 */
+const MIN_EDITOR_H = 180;
+
 const TABS: Array<{ key: LogTab; label: string }> = [
   { key: "errors", label: "错误" },
   { key: "warnings", label: "警告" },
   { key: "all", label: "全部" },
 ];
+
+function maxLogHeight(): number {
+  return Math.max(
+    LOG_MIN_H,
+    Math.min(LOG_MAX_H, window.innerHeight - MIN_EDITOR_H - 140),
+  );
+}
 
 function filterBy(
   errs: TexError[] | undefined,
@@ -48,7 +62,49 @@ export function LogPanel() {
   const clearLog = useAppStore((s) => s.clearLog);
   const status = useAppStore((s) => s.compileStatus);
   const lastResult = useAppStore((s) => s.lastResult);
+  const logHeight = useAppStore((s) => s.logHeight);
+  const setLogHeight = useAppStore((s) => s.setLogHeight);
   const bodyRef = useRef<HTMLDivElement | null>(null);
+
+  // M1-16：拖拽上边界改高度（上拖变高；钳制在 [120, min(560, 窗口可容纳)]）
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ y: number; h: number } | null>(null);
+  const onResizeDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      dragRef.current = { y: e.clientY, h: logHeight };
+      setDragging(true);
+      document.body.classList.add("row-resizing");
+    },
+    [logHeight],
+  );
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const next = Math.round(d.h - (e.clientY - d.y));
+      setLogHeight(Math.min(maxLogHeight(), Math.max(LOG_MIN_H, next)));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      setDragging(false);
+      document.body.classList.remove("row-resizing");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("row-resizing");
+    };
+  }, [dragging, setLogHeight]);
+
+  // 窗口变小时兜底：记忆/上次拖出的高度不得超过当前窗口可容纳上限
+  useEffect(() => {
+    const clamped = Math.min(logHeight, maxLogHeight());
+    if (clamped !== logHeight) setLogHeight(clamped);
+  }, [logHeight, setLogHeight]);
 
   const errors = filterBy(lastResult?.errors, "error");
   const warnings = filterBy(lastResult?.errors, "warning");
@@ -62,7 +118,16 @@ export function LogPanel() {
   const list = logTab === "errors" ? errors : warnings;
 
   return (
-    <div className={visible ? "logpanel open" : "logpanel"} aria-hidden={!visible}>
+    <div
+      className={`logpanel${visible ? " open" : ""}${dragging ? " dragging" : ""}`}
+      style={{ height: visible ? logHeight : 0 }}
+      aria-hidden={!visible}
+    >
+      <div
+        className="log-resizer"
+        title="拖拽调整日志面板高度"
+        onMouseDown={onResizeDown}
+      />
       <div className="log-head">
         <Icon name="terminal" />
         <h2>编译日志</h2>

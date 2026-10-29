@@ -29,6 +29,10 @@ pub const PREVIEW_RATIO_MAX: f64 = 0.75;
 pub const PV_SIDE_MIN: u32 = 110;
 pub const PV_SIDE_MAX: u32 = 380;
 pub const PV_SIDE_DEFAULT: u32 = 132;
+/// M1-16：底部日志面板高度（拖拽上边界调整；与前端 LogPanel 的 LOG_MIN_H/LOG_MAX_H 一致）
+pub const LOG_H_MIN: u32 = 120;
+pub const LOG_H_MAX: u32 = 560;
+pub const LOG_H_DEFAULT: u32 = 212;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -203,6 +207,8 @@ pub struct LayoutConfig {
     pub preview_ratio: f64,
     /// PDF 预览内缩略图/目录侧栏宽度（110–380，拖拽调整）
     pub pv_side_width: u32,
+    /// M1-16：底部编译日志面板高度（120–560，拖拽上边界调整）
+    pub log_height: u32,
 }
 
 impl Default for LayoutConfig {
@@ -213,6 +219,7 @@ impl Default for LayoutConfig {
             preview_visible: true,
             preview_ratio: 0.5,
             pv_side_width: PV_SIDE_DEFAULT,
+            log_height: LOG_H_DEFAULT,
         }
     }
 }
@@ -555,6 +562,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     if cfg.layout.pv_side_width < PV_SIDE_MIN || cfg.layout.pv_side_width > PV_SIDE_MAX {
         cfg.layout.pv_side_width = PV_SIDE_DEFAULT;
     }
+    // M1-16：日志面板高度钳制（拖拽已限幅，此处兜底手改配置）
+    cfg.layout.log_height = cfg.layout.log_height.clamp(LOG_H_MIN, LOG_H_MAX);
     // M0-15a：tex 代装记录归一化（先去空白再校验 distro 白名单）
     // distro 非法 → 清空；distro 为 null 允许保留目录（「手动指定引擎目录」场景）
     cfg.tex.distro = clean_opt_str(cfg.tex.distro);
@@ -705,6 +714,7 @@ mod tests {
         cfg.layout.preview_visible = false;
         cfg.layout.preview_ratio = 0.42;
         cfg.layout.pv_side_width = 200;
+        cfg.layout.log_height = 320;
         cfg.general.restore_last_project = false;
         cfg.general.remember_window = false;
         cfg.general.restore_layout = false;
@@ -741,6 +751,8 @@ mod tests {
         assert!(text.contains("sidebarWidth"));
         assert!(text.contains("previewRatio"));
         assert!(text.contains("pvSideWidth"));
+        // M1-16 字段
+        assert!(text.contains("logHeight"));
         assert!(text.contains("restoreLastProject"));
         assert!(text.contains("rememberWindow"));
         assert!(text.contains("restoreLayout"));

@@ -122,6 +122,8 @@ export interface AppSettings {
     previewRatio: number; // 0.2–0.75
     /** PDF 预览内缩略图/目录侧栏宽度（110–380） */
     pvSideWidth: number;
+    /** M1-16：底部日志面板高度（120–560，拖拽上边界调整） */
+    logHeight: number;
   };
   /** M0-13：通用开关 */
   general: {
@@ -200,6 +202,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     previewVisible: true,
     previewRatio: 0.5,
     pvSideWidth: 132,
+    logHeight: 212,
   },
   general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true, theme: "light" },
   tex: { distro: null, installDir: null, engineBinDir: null },

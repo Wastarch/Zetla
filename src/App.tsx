@@ -166,29 +166,33 @@ function App() {
             />
           </>
         )}
-        {showWelcome ? (
-          <WelcomeScreen />
-        ) : (
-          <>
-            <EditorWorkspace />
-            {previewVisible && (
-              <>
-                <div
-                  className="resizer"
-                  title="拖拽调整预览宽度"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    startPrevResize();
-                  }}
-                />
-                <PdfPreview style={{ width: previewW }} />
-              </>
-            )}
-          </>
-        )}
+        {/* M1-16：右侧主列（VSCode 式）—— 日志面板停靠在主列底部，
+            不横跨侧栏；侧栏保持整列高度 */}
+        <div className="main-col">
+          {showWelcome ? (
+            <WelcomeScreen />
+          ) : (
+            <div className="main-row">
+              <EditorWorkspace />
+              {previewVisible && (
+                <>
+                  <div
+                    className="resizer"
+                    title="拖拽调整预览宽度"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      startPrevResize();
+                    }}
+                  />
+                  <PdfPreview style={{ width: previewW }} />
+                </>
+              )}
+            </div>
+          )}
+          <LogPanel />
+        </div>
       </div>
-      <LogPanel />
       <StatusBar />
       <ToastHost />
       <CtxMenu />
