@@ -10,7 +10,7 @@ import CodeMirror, {
 } from "@uiw/react-codemirror";
 import { syntaxHighlighting } from "@codemirror/language";
 import { openSearchPanel } from "@codemirror/search";
-import { latex, latexCompletionSource } from "codemirror-lang-latex";
+import { latex, latexCompletionSource, latexLinter } from "codemirror-lang-latex";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { hoverTooltip } from "@codemirror/view";
 import { linter, lintGutter } from "@codemirror/lint";
@@ -36,6 +36,13 @@ import {
   missingCiteLinter,
 } from "@/modules/reference/lint";
 import { importAndInsert, isImageFile } from "./image/importImage";
+import {
+  inputJumpAtCursor,
+  inputJumpHint,
+  inputLinkDecorations,
+  setInputJumpPath,
+} from "./inputJump";
+import { useProjectStore } from "@/project/useProject";
 import { showMinimap, Scale, type MinimapConfig } from "@replit/codemirror-minimap";
 
 // M1 · 缩略图最大宽度：经 patch 暴露包的 Scale 后，此处一处可调（默认 100px；拐点 = MaxWidth×6 = 600px）
@@ -122,6 +129,39 @@ export interface LaTeXEditorProps {
 }
 
 /**
+ * M2 · LaTeX 诊断（接管 latex() 内置 linter，改为每次按「主文件 / 片段文件」判定参数）：
+ * 被 \input 进来的章节片段本身没有 \documentclass 与 \bibliography，
+ * 内置 linter 会误报「Missing document environment」「\cite used but no \bibliography」。
+ * 因此对「非主文件」或「无 \documentclass 的片段」关掉这几项只有整篇文档才成立的检查；
+ * 环境配对、括号闭合、重复 label、数学模式等文件内检查保持开启。
+ */
+function latexLintFor(getPath: () => string | undefined) {
+  return (view: EditorView) => {
+    const path = getPath();
+    const main = useProjectStore.getState().tree?.mainFile;
+    const isFragmentPath =
+      !!path && !!main && main.toLowerCase() !== path.toLowerCase();
+    // 兜底：无项目树 / 未识别主文件时，按内容判断是否为片段（长文档只看前 20000 字符的导言区）
+    const head = view.state.doc.sliceString(
+      0,
+      Math.min(view.state.doc.length, 20000),
+    );
+    const isFragment = isFragmentPath || !/\\documentclass\b/.test(head);
+    return latexLinter({
+      fileName: path ?? "",
+      ...(isFragment
+        ? {
+            checkMissingDocumentEnv: false,
+            checkCitesWithoutBibliography: false,
+            checkMissingReferences: false,
+            checkMissingPackages: false,
+          }
+        : {}),
+    })(view);
+  };
+}
+
+/**
  * M1-14j：按语言档位装配「词法 + 诊断」扩展。
  * plain 不挂任何语言（交给 basicSetup 的默认高亮 fallback = 不染色），即纯文本渲染。
  */
@@ -146,11 +186,15 @@ function langSupport(lang: EditorLang, getPath: () => string | undefined) {
         // enableAutocomplete:false —— 关闭 latex() 自带的 autocompletion override，
         // 改由下方唯一的 autocompletion({override:[latex+cite]}) 提供，避免
         // 两个 override 配置冲突（Config merge conflict）导致编辑器崩溃白屏。
+        // enableLinting:false —— 关闭内置 linter，改由 latexLintFor 按文件动态给参
+        // （\input 进来的章节片段不该报「缺 document 环境 / 缺 \bibliography」）。
         latex({
           autoCloseBrackets: true,
           autoCloseTags: true,
           enableAutocomplete: false,
+          enableLinting: false,
         }),
+        linter(latexLintFor(getPath), { delay: 500 }),
         // M1-14e：.tex 内 \cite{key} 引用缺失告警（key 不在 store.byKey 即标红）
         linter(missingCiteLinter(), { delay: 400 }),
         lintGutter(),
@@ -218,6 +262,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     // M1-14e：当前文档路径（经 ref 取最新值，供 linter 按文件过滤重复 key）
     const pathRef = useRef(path);
     pathRef.current = path;
+    // \input 跳转的悬浮提示需要在点击/悬浮时拿到当前路径（模块级同步，避免切换标签重建扩展）
+    setInputJumpPath(path);
 
     // M1-14j：状态栏手动指定的语言优先于扩展名自动识别（缺省按扩展名，未收录 → 纯文本）
     const langOverride = useLangOverride((s) => (path ? s.byPath[path] : undefined));
@@ -270,6 +316,9 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
               citeLinkDecorations,
               ctrlHeldPlugin,
               hoverTooltip(citeJumpHint),
+              // M1-4+：\input / \include 文件跳转（同款：Ctrl 按住显链接 + 悬浮提示）
+              inputLinkDecorations,
+              hoverTooltip(inputJumpHint),
             ]
           : []),
         // M1-4：Ctrl/⌘+点击 → 优先 \cite 跳 bib 条目（M1-14d），否则回落 synctex 正向跳转
@@ -278,6 +327,11 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
             if (e.button !== 0 || !(e.ctrlKey || e.metaKey)) return false;
             const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
             if (pos == null) return false;
+            // \input / \include 目标文件：Ctrl+点击打开并跳转（命中即消费）
+            if (inputJumpAtCursor(view.state.doc, pos, pathRef.current)) {
+              e.preventDefault();
+              return true;
+            }
             // M1-14d：点击落在 \cite{key} 上 → 跳 bib 条目（命中即消费，不回落 synctex）
             if (citeJumpAtCursor(view.state.doc, pos)) {
               e.preventDefault();

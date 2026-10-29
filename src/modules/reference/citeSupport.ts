@@ -37,6 +37,11 @@ import {
  */
 let ctrlHeld = false;
 
+/** 供其它「Ctrl+点击」跳转（如 \input 文件跳转）复用同一按住状态 */
+export function isCtrlHeld(): boolean {
+  return ctrlHeld;
+}
+
 /**
  * \cite{ 补全源：在 .tex 中输入 \cite{（或带可选参数/多 key 逗号后）时，从引用索引给出 key 候选。
  * label=key，detail=作者(年份)，info=标题；选中插入 key（替换光标前已输入的前缀）。
