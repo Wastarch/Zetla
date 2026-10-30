@@ -242,6 +242,72 @@ body {
   color: var(--txt);
 }
 
+/* ── 自定义导航/标题栏：logo、拖拽区、金刚键 ── */
+.nav-logo {
+  height: 18px;
+  width: 18px;
+  margin-right: 8px;
+  flex: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 中间空白拖拽区：Tauri 的 data-tauri-drag-region 在此生效（仅此区可拖窗） */
+.nav-spacer {
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+/* 右侧金刚键分组：负右外边距抵掉 .menubar 的 8px padding，贴窗右缘 */
+.win-ctl-group {
+  display: flex;
+  height: 100%;
+  flex: none;
+  margin-right: -8px;
+}
+
+.win-ctl {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--txt-2);
+  cursor: pointer;
+}
+
+.win-ctl:hover {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+/* 关闭键仿 Windows：hover 红底白字 */
+.win-ctl-close:hover {
+  background: #e81123;
+  color: #fff;
+}
+
+/* ── 自定义窗口缩放边（decorations:false 后补足系统边缘缩放） ── */
+.resize-frame {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 150;
+}
+
+.rz {
+  position: absolute;
+  pointer-events: auto;
+}
+
+.rz-w { top: 0; bottom: 0; left: 0; width: 3px; cursor: ew-resize; }
+.rz-e { top: 0; bottom: 0; right: 0; width: 3px; cursor: ew-resize; }
+.rz-s { left: 0; right: 0; bottom: 0; height: 3px; cursor: ns-resize; }
+.rz-sw { left: 0; bottom: 0; width: 6px; height: 6px; cursor: nwse-resize; }
+.rz-se { right: 0; bottom: 0; width: 6px; height: 6px; cursor: nwse-resize; }
+
 /* 关于对话框（.modal.sm 补充） */
 .about .about-mark {
   display: flex;

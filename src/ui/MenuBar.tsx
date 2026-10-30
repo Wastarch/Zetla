@@ -3,7 +3,7 @@
 // 日志解析 M0-11、PDF M0-10、设置/偏好 M0-14a 已接、明暗主题 M1-2 已接、
 // Synctex 双向跳转 M1-4 已接）。撤销/重做/注释经
 // 命令桥 src/editor/activeView.ts 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力）。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -40,6 +40,9 @@ interface MenuDef {
   /** 菜单按钮右上角红点（如：有可用更新） */
   dot?: boolean;
 }
+
+/** 自定义标题栏边缘缩放方向（Tauri startResizeDragging 的子集） */
+type ResizeDir = "East" | "West" | "South" | "SouthEast" | "SouthWest";
 
 /** 有活动编辑器时才可执行编辑类命令 */
 function withView(
@@ -91,6 +94,23 @@ export function MenuBar() {
   const hasUpdate = useUpdateStore(selectHasUpdate);
   // M1-8：模块自带视图（视图菜单动态项，Ctrl+B 5/6/7… 与其顺序对应）
   const moduleViews = useModuleViews();
+  // 自定义标题栏：追踪最大化状态以切换金刚键图标（decorations:false 后无系统键）
+  const [maximized, setMaximized] = useState(false);
+  useEffect(() => {
+    const w = getCurrentWindow();
+    let unlisten: (() => void) | undefined;
+    void w.isMaximized().then(setMaximized);
+    void w
+      .onResized(() => {
+        void w.isMaximized().then(setMaximized);
+      })
+      .then((u) => {
+        unlisten = u;
+      });
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   const menus: MenuDef[] = [
     {
@@ -612,9 +632,53 @@ export function MenuBar() {
     it.onClick?.();
   }
 
+  // ── 自定义窗口控制（替代系统标题栏的金刚键） ──
+  const appWindow = getCurrentWindow();
+
+  function minimizeWindow() {
+    void appWindow.minimize();
+  }
+
+  function toggleMaximizeWindow() {
+    if (maximized) void appWindow.unmaximize();
+    else void appWindow.maximize();
+  }
+
+  /** 自定义窗口缩放边：在 decorations:false 下补足系统边缘缩放 */
+  function startResizeDragging(e: ReactMouseEvent, dir: ResizeDir) {
+    e.preventDefault();
+    void appWindow.startResizeDragging(dir);
+  }
+
+  /** 中区拖拽：按下并移动超过阈值才发起窗口移动（避免与双击最大化冲突） */
+  function onSpacerMouseDown(e: ReactMouseEvent) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let started = false;
+    const onMove = (ev: MouseEvent) => {
+      if (started) return;
+      if (Math.abs(ev.clientX - startX) > 4 || Math.abs(ev.clientY - startY) > 4) {
+        started = true;
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        void appWindow.startDragging();
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   return (
     <>
       <div className="menubar" ref={barRef} role="menubar">
+        {/* 左区：logo + 菜单 */}
+        <img className="nav-logo" src="/logo.svg" alt="Zetla" draggable={false} />
         {menus.map((m, i) => (
           <div
             key={m.label}
@@ -653,6 +717,64 @@ export function MenuBar() {
             </div>
           </div>
         ))}
+        {/* 中区：空白拖拽区（仅此区可拖动窗口，避免误触按钮；双击切换最大化） */}
+        <div
+          className="nav-spacer"
+          onMouseDown={onSpacerMouseDown}
+          onDoubleClick={toggleMaximizeWindow}
+          title="拖动移动窗口 · 双击最大化 / 还原"
+        />
+        {/* 右区：金刚键（最小化 / 最大化·还原 / 关闭） */}
+        <div className="win-ctl-group">
+          <button
+            type="button"
+            className="win-ctl"
+            title="最小化"
+            aria-label="最小化"
+            onClick={minimizeWindow}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M1 9 H9" stroke="currentColor" strokeWidth="1" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className="win-ctl"
+            title={maximized ? "向下还原" : "最大化"}
+            aria-label={maximized ? "向下还原" : "最大化"}
+            onClick={toggleMaximizeWindow}
+          >
+            {maximized ? (
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <rect x="2.5" y="1" width="6" height="6" fill="none" stroke="currentColor" strokeWidth="1" />
+                <rect x="1" y="3" width="6" height="6" fill="none" stroke="currentColor" strokeWidth="1" />
+              </svg>
+            ) : (
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <rect x="1.5" y="1.5" width="7" height="7" fill="none" stroke="currentColor" strokeWidth="1" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
+            className="win-ctl win-ctl-close"
+            title="关闭"
+            aria-label="关闭"
+            onClick={() => void quitApp()}
+          >
+            <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M2 2 L8 8 M8 2 L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      {/* 自定义窗口缩放边（decorations:false 后系统边缘缩放失效，用 Tauri 原生拖拽缩放补足） */}
+      <div className="resize-frame" aria-hidden="true">
+        <div className="rz rz-w" onMouseDown={(e) => startResizeDragging(e, "West")} />
+        <div className="rz rz-e" onMouseDown={(e) => startResizeDragging(e, "East")} />
+        <div className="rz rz-s" onMouseDown={(e) => startResizeDragging(e, "South")} />
+        <div className="rz rz-sw" onMouseDown={(e) => startResizeDragging(e, "SouthWest")} />
+        <div className="rz rz-se" onMouseDown={(e) => startResizeDragging(e, "SouthEast")} />
       </div>
     </>
   );

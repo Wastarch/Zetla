@@ -13,11 +13,12 @@
         "windows": [
             {
                 "title": "Zetla",
-                "width": 1280,
-                "height": 720,
-                "minWidth": 1024,
-                "minHeight": 640
-            }
+        "width": 1280,
+        "height": 720,
+        "minWidth": 1024,
+        "minHeight": 640,
+        "decorations": false
+    }
         ],
         "security": {
             "csp": null,
