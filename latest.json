@@ -6,11 +6,11 @@
     "installers": [
         {
             "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.1/Zetla_0.2.1_x64-setup.exe",
-            "sha256": "5e86e098fcaeed198d4dfe8d3cfef65d335680a509faf262781668e7bb6e3f41"
+            "sha256": "e2b70b34b1ec86bf6ecea56274297625a237f3d6a99f62902ee1082e67cc65e2"
         },
         {
             "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.1/Zetla_0.2.1_x64-setup.exe",
-            "sha256": "5e86e098fcaeed198d4dfe8d3cfef65d335680a509faf262781668e7bb6e3f41"
+            "sha256": "e2b70b34b1ec86bf6ecea56274297625a237f3d6a99f62902ee1082e67cc65e2"
         }
     ],
     "minVersion": "0.1.0",
