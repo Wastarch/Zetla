@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
 import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
+import { EditorToolbar } from "./EditorToolbar";
 import { ImageViewer } from "./ImageViewer";
 import { PdfPreview } from "@/preview/PdfPreview";
 import { setActiveView, setActiveEditorHandle } from "./activeView";
@@ -17,6 +18,13 @@ import { useSettingsStore } from "@/core/settings";
 export function EditorWorkspace() {
   const buffers = useBuffersStore((s) => s.buffers);
   const activePath = useBuffersStore((s) => s.activePath);
+  // 工具栏仅对「可编辑文本缓冲」且确为 .tex 源文件显示（.bib/.txt/.log 等不显示）
+  const showEditorToolbar = useBuffersStore(
+    (s) =>
+      s.activePath != null &&
+      s.buffers.find((b) => b.path === s.activePath)?.kind === "text" &&
+      /\.tex$/i.test(s.activePath),
+  );
   const openFiles = useBuffersStore((s) => s.openFiles);
   const updateContent = useBuffersStore((s) => s.updateContent);
   const saveBuffer = useBuffersStore((s) => s.saveBuffer);
@@ -118,6 +126,8 @@ export function EditorWorkspace() {
   return (
     <section className="center">
       <TabBar onFind={doFind} />
+
+      {showEditorToolbar && <EditorToolbar />}
 
       {activeExternal && (
         <div className="ext-changed-bar">

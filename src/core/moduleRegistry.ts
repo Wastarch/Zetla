@@ -262,6 +262,9 @@ export function insertSnippet(code: string): boolean {
   return true;
 }
 
+/** 语义别名：向活动编辑器插入文本（替换选区）；与 wrapSelection 配套构成工具条通用插入 API */
+export const insertText = insertSnippet;
+
 /**
  * 向当前活动编辑器插入代码，并把光标选区落在 (selFrom, selTo) 处（相对插入文本起点）。
  * R5 插入 figure 时用它把光标定位到空 \caption{} 内，用户直接键入标题。
@@ -276,6 +279,27 @@ export function insertSnippetSelect(code: string, selFrom: number, selTo: number
   view.dispatch({
     changes: { from: pos, insert: code },
     selection: { anchor: pos + selFrom, head: pos + selTo },
+  });
+  view.focus();
+  return true;
+}
+
+/**
+ * 包裹选区（加粗/斜体/下划线等）：有选区则 prefix+选区+suffix 并重新选中内层文本；
+ * 无选区则插入 prefix+suffix，光标置于两者之间。供编辑器快捷工具条调用。
+ */
+export function wrapSelection(prefix: string, suffix: string): boolean {
+  const view: EditorView | null = getActiveView();
+  if (!view) {
+    console.warn("[module] wrapSelection：无活动编辑器");
+    return false;
+  }
+  const { from, to } = view.state.selection.main;
+  const sel = view.state.sliceDoc(from, to);
+  const text = prefix + sel + suffix;
+  view.dispatch({
+    changes: { from, to, insert: text },
+    selection: { anchor: from + prefix.length, head: from + prefix.length + sel.length },
   });
   view.focus();
   return true;

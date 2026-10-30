@@ -1,7 +1,7 @@
 // M1-12b · 插入项右键菜单（符号面板 / 公式库条目共用）
 // 复用项目树右键菜单的 .ctx/.mi 样式（zetla.css）；自绘原因：WebView 无原生 contextmenu。
 // 口径对齐 project/CtxMenu.tsx：视口夹取 + 点击栏外/Esc/失焦关闭。
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 export interface CtxAction {
   label: string;
@@ -12,6 +12,10 @@ export interface CtxAction {
   disabled?: boolean;
   /** 置灰/说明原因（title 提示） */
   hint?: string;
+  /** 逐条附加 className（如菜单项需要差异化样式） */
+  className?: string;
+  /** 逐条内联样式（如章节菜单按层级递减字号） */
+  style?: CSSProperties;
   onClick: () => void;
 }
 
@@ -71,7 +75,8 @@ export function InsertCtxMenu({
           key={a.label}
           type="button"
           role="menuitem"
-          className={a.primary ? "mi primary" : "mi"}
+          className={a.primary ? `mi primary${a.className ? ` ${a.className}` : ""}` : `mi${a.className ? ` ${a.className}` : ""}`}
+          style={a.style}
           disabled={a.disabled}
           title={a.hint}
           onClick={() => {
