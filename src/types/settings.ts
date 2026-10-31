@@ -87,6 +87,13 @@ export interface AppSettings {
      * 一个 .tex 文件成功后触发编译；自动保存到旧内容不触发，避免频繁编译。
      */
     compileOnSave: boolean;
+    /**
+     * M1-18：实时预览（Live Preview）——编辑停止后防抖静默编译，右侧 PDF 无感刷新。
+     * 默认关：不改变存量用户「按需编译」的开箱行为。
+     */
+    livePreview: boolean;
+    /** M1-18：实时预览防抖延迟（毫秒，200–2000；默认 600） */
+    livePreviewDelayMs: number;
     /** M1-9b：编译成功完成后自动清理 LaTeX 辅助文件（.aux/.log/.out 等） */
     cleanAuxAfterCompile: boolean;
     /**
@@ -230,12 +237,15 @@ export const DEFAULT_AUX_EXTENSIONS: string[] = [
   ".idx", ".ilg", ".ind", ".fls", ".fdb_latexmk", ".synctex.gz",
 ];
 
+/** M1-18：实时预览防抖延迟可选档位（毫秒；设置页下拉；600 为默认，须包含以免空选） */
+export const LIVE_PREVIEW_DELAY_PRESETS = [500, 600, 800, 1200] as const;
+
 /** 前端兜底默认值（与 Rust Default 一致；正常路径以 load_app_config 返回为准） */
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
   editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true, minimap: true },
   autosave: { enabled: true, intervalSeconds: 30, pauseWhileCompiling: true },
-  build: { saveBeforeCompile: true, engine: "auto", steps: [], compileOnSave: false, cleanAuxAfterCompile: false, cleanAuxExtensions: DEFAULT_AUX_EXTENSIONS },
+  build: { saveBeforeCompile: true, engine: "auto", steps: [], compileOnSave: false, livePreview: false, livePreviewDelayMs: 600, cleanAuxAfterCompile: false, cleanAuxExtensions: DEFAULT_AUX_EXTENSIONS },
   pdf: { defaultZoom: "fit-width" },
   window: { width: null, height: null, x: null, y: null, maximized: false },
   session: { lastProject: null, openFiles: [], activeFile: null },

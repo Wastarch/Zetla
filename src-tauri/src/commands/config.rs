@@ -392,6 +392,10 @@ pub struct BuildConfig {
     pub steps: Vec<String>,
     /// 保存时自动编译：手动保存 .tex 成功后触发编译（不含自动保存，避免频繁编译）
     pub compile_on_save: bool,
+    /// M1-18：实时预览（编辑停止后防抖自动编译；默认关，不改变存量行为）
+    pub live_preview: bool,
+    /// M1-18：实时预览防抖延迟（毫秒；归一化钳制 200–2000）
+    pub live_preview_delay_ms: u32,
     /// M1-9b：编译成功完成后自动清理 LaTeX 辅助文件（.aux/.log/.out 等）
     pub clean_aux_after_compile: bool,
     /// M1-9c：清理辅助文件使用的后缀白名单（含点，如 ".aux"/".synctex.gz"）；
@@ -407,6 +411,8 @@ impl Default for BuildConfig {
             engine: "auto".to_string(),
             steps: Vec::new(),
             compile_on_save: false,
+            live_preview: false,
+            live_preview_delay_ms: LIVE_PREVIEW_DELAY_DEFAULT,
             clean_aux_after_compile: false,
             clean_aux_extensions: Vec::new(),
         }
@@ -421,6 +427,11 @@ pub const BUILD_STEPS: [&str; 3] = ["latex", "bibtex", "biber"];
 pub const THEMES: [&str; 3] = ["light", "dark", "auto"];
 /// M1-3：固定流程步骤数上限（防呆；空序列 = 自动）
 pub const MAX_STEPS: usize = 8;
+
+/// M1-18：实时预览防抖延迟范围（毫秒；与前端 LIVE_PREVIEW_DELAY_PRESETS / SettingsDialog 一致）
+pub const LIVE_PREVIEW_DELAY_MIN: u32 = 200;
+pub const LIVE_PREVIEW_DELAY_MAX: u32 = 2000;
+pub const LIVE_PREVIEW_DELAY_DEFAULT: u32 = 600;
 
 fn default_build_engine() -> String {
     "auto".to_string()
@@ -641,6 +652,11 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
         cfg.build.engine = "auto".to_string();
     }
     cfg.build.steps = normalize_build_steps(cfg.build.steps);
+    // M1-18：实时预览防抖延迟钳制（手改配置/旧值越界兜底）
+    cfg.build.live_preview_delay_ms = cfg
+        .build
+        .live_preview_delay_ms
+        .clamp(LIVE_PREVIEW_DELAY_MIN, LIVE_PREVIEW_DELAY_MAX);
     // M0-13：布局钳制（与前端拖拽范围一致）
     if cfg.layout.sidebar_width < SIDEBAR_MIN {
         cfg.layout.sidebar_width = SIDEBAR_MIN;
@@ -839,6 +855,9 @@ mod tests {
         assert!(text.contains("pauseWhileCompiling"));
         assert!(text.contains("saveBeforeCompile"));
         assert!(text.contains("compileOnSave"));
+        // M1-18 字段
+        assert!(text.contains("livePreview"));
+        assert!(text.contains("livePreviewDelayMs"));
         assert!(text.contains("defaultZoom"));
         // M0-13 字段
         assert!(text.contains("lastProject"));
@@ -1530,5 +1549,45 @@ mod tests {
         assert_eq!(norm.highlight.latex.len(), 13);
         let extra = norm.highlight.latex.iter().find(|g| g.id == "propertyName").unwrap();
         assert_eq!(extra.light, "#333333");
+    }
+
+    #[test]
+    fn live_preview_default_and_normalize() {
+        // M1-18：旧配置缺字段 → 默认关 + 600ms（不改变存量「按需编译」行为）
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert!(!parsed.build.live_preview);
+        assert_eq!(parsed.build.live_preview_delay_ms, LIVE_PREVIEW_DELAY_DEFAULT);
+
+        // 显式值往返保留 + camelCase 键名
+        let mut cfg = AppConfig::default();
+        cfg.build.live_preview = true;
+        cfg.build.live_preview_delay_ms = 800;
+        let text = serde_json::to_string(&cfg).unwrap();
+        assert!(text.contains("\"livePreview\":true"));
+        assert!(text.contains("\"livePreviewDelayMs\":800"));
+        let back = serde_json::from_str::<AppConfig>(&text).unwrap();
+        assert!(back.build.live_preview);
+        assert_eq!(back.build.live_preview_delay_ms, 800);
+
+        // 归一化：越界延迟被钳制到 [200, 2000]
+        let mut low = AppConfig::default();
+        low.build.live_preview_delay_ms = 10;
+        assert_eq!(
+            normalize(low).build.live_preview_delay_ms,
+            LIVE_PREVIEW_DELAY_MIN
+        );
+        let mut high = AppConfig::default();
+        high.build.live_preview_delay_ms = 99999;
+        assert_eq!(
+            normalize(high).build.live_preview_delay_ms,
+            LIVE_PREVIEW_DELAY_MAX
+        );
     }
 }

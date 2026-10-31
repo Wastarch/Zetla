@@ -27,6 +27,25 @@ function scheduleCompileOnSave(): void {
   }, 400);
 }
 
+/**
+ * M1-18a · 实时预览（Live Preview）：编辑内容变更后，若设置开启且编辑的是 .tex，
+ * 停止输入 livePreviewDelayMs 后静默触发一次编译。与「保存时自动编译」解耦
+ * （后者由 saveBuffer 触发）。本切片仅前端触发，后端仍单并发——重叠触发会被
+ * startCompile 的前置哨兵丢弃（预期；M1-18b 再改 latest-wins）。
+ */
+let livePreviewTimer: number | undefined;
+function scheduleLivePreview(path: string): void {
+  const build = useSettingsStore.getState().settings.build;
+  if (!build.livePreview) return;
+  if (!path.toLowerCase().endsWith(".tex")) return;
+  const delay = Math.min(2000, Math.max(200, build.livePreviewDelayMs || 600));
+  if (livePreviewTimer !== undefined) window.clearTimeout(livePreviewTimer);
+  livePreviewTimer = window.setTimeout(() => {
+    livePreviewTimer = undefined;
+    void startCompile();
+  }, delay);
+}
+
 /** 缓冲类型：`text`=普通文本文档（LaTeX 等，可编辑/可保存）；`image`/`pdf`=只读查看器，不持有文本 */
 export type BufferKind = "text" | "image" | "pdf";
 
@@ -226,6 +245,8 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
     set((s) => ({
       buffers: s.buffers.map((b) => (b.path === path ? { ...b, content } : b)),
     }));
+    // M1-18a：编辑 .tex 后按设置防抖触发实时预览编译（未开启时该函数立即返回）
+    scheduleLivePreview(path);
   },
 
   saveBuffer: async (path, options) => {

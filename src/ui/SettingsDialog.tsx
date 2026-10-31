@@ -18,7 +18,7 @@ import type { UpdateProgress } from "@/modules/updater/types";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Icon } from "@/ui/Icon";
 import { SyntaxHighlightDialog } from "@/ui/SyntaxHighlightDialog";
-import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel, DEFAULT_AUX_EXTENSIONS } from "@/types/settings";
+import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel, DEFAULT_AUX_EXTENSIONS, LIVE_PREVIEW_DELAY_PRESETS } from "@/types/settings";
 import type {
   AppSettings,
   AppTheme,
@@ -499,8 +499,50 @@ export function SettingsDialog() {
                   />
                 </Fld>
                 <Fld
+                  label="实时预览"
+                  hint="编辑停止后自动编译并刷新 PDF（打字停顿即渲染）"
+                  tip="M1-18a：先做前端防抖触发；重叠编译暂由单并发丢弃，M1-18b 改 latest-wins"
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <Switch
+                      checked={draft.build.livePreview}
+                      onChange={(v) =>
+                        update((d) => ({ ...d, build: { ...d.build, livePreview: v } }))
+                      }
+                    />
+                    <select
+                      disabled={!draft.build.livePreview}
+                      value={String(draft.build.livePreviewDelayMs)}
+                      title="停止输入后等待多久触发编译"
+                      onChange={(e) =>
+                        update((d) => ({
+                          ...d,
+                          build: { ...d.build, livePreviewDelayMs: Number(e.target.value) },
+                        }))
+                      }
+                    >
+                      {(LIVE_PREVIEW_DELAY_PRESETS as readonly number[]).includes(
+                        draft.build.livePreviewDelayMs,
+                      ) ? null : (
+                        <option value={String(draft.build.livePreviewDelayMs)}>
+                          {draft.build.livePreviewDelayMs} ms
+                        </option>
+                      )}
+                      {LIVE_PREVIEW_DELAY_PRESETS.map((ms) => (
+                        <option key={ms} value={String(ms)}>
+                          {ms} ms
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </Fld>
+                <Fld
                   label="编译完成后清理辅助文件"
-                  hint=".aux / .log / .out 等"
+                  hint={
+                    draft.build.livePreview
+                      ? ".aux / .log / .out 等（与实时预览冲突：会删 latexmk 缓存，建议关闭）"
+                      : ".aux / .log / .out 等"
+                  }
                 >
                   <Switch
                     checked={!!draft.build.cleanAuxAfterCompile}
