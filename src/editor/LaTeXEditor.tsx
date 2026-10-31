@@ -2,7 +2,7 @@
 // 职责：LaTeX 语法高亮 / 行号 / 括号配对 / 查找替换 / Ctrl+S 保存 / gotoLine 跳行 / 光标上报
 // M1-2：语法高亮配色与主题联动（亮/暗双份，随 data-theme 切换）
 // 「单文档受控组件」：多标签脏状态与实例驻留策略（方案 A）由 EditorWorkspace 上层接管。
-import { forwardRef, useImperativeHandle, useEffect, useMemo, useRef } from "react";
+import { forwardRef, useImperativeHandle, useCallback, useEffect, useMemo, useRef } from "react";
 import CodeMirror, {
   EditorView,
   keymap,
@@ -54,6 +54,28 @@ import { searchMatchHighlighter } from "./searchUtil";
 // M1 · 缩略图最大宽度：经 patch 暴露包的 Scale 后，此处一处可调（默认 100px；拐点 = MaxWidth×6 = 600px）
 const MINIMAP_MAX_WIDTH = 80;
 Scale.MaxWidth = MINIMAP_MAX_WIDTH;
+
+// M2-5b：静态扩展常量（模块级，引用恒定）。此前内联在 extensions useMemo 依赖里，
+// 每次渲染产生新引用 → @uiw 每次渲染都 StateEffect.reconfigure → 动态 appendConfig 的
+// snippetState（片段占位符会话）被丢弃，Tab 跳占位符失效。静态引用必须放模块级。
+const SEARCH_EXT = search();
+const SEARCH_MATCH_HL = searchMatchHighlighter();
+
+// M2-5b：basicSetup 必须模块级常量。内联对象字面量每次渲染都是新引用，而 @uiw 的
+// reconfigure effect 把它列入依赖 → 每次渲染 dispatch StateEffect.reconfigure →
+// 动态 appendConfig 挂载的 snippetState（片段占位符会话）被丢弃，Tab 跳占位符失效。
+const BASIC_SETUP = {
+  // 编辑基础：行号/高亮当前行/撤销重做/括号配对/自动闭合/缩进
+  lineNumbers: true,
+  highlightActiveLine: true,
+  highlightActiveLineGutter: true,
+  foldGutter: false, // MVP 暂不做代码折叠（MVP.md Phase 1-2）
+  autocompletion: false, // M1-14c：改由 autocompletion({override}) 提供（LaTeX + \cite）
+  closeBrackets: true,
+  bracketMatching: true,
+  // M1-find：关闭默认 searchKeymap（Ctrl+F/F3 由 EditorWorkspace 接管，驱动自定义查找面板）
+  searchKeymap: false,
+} as const;
 
 /**
  * M1 · 编辑器右侧缩略图（@replit/codemirror-minimap）。
@@ -258,6 +280,17 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     // 闭包里拿到最新回调；扩展仅在换行开关变化时重建
     const onSaveRef = useRef(onSave);
     onSaveRef.current = onSave;
+    /**
+     * M2-5b：onChange 经 ref 稳定化。@uiw 的 reconfigure effect 依赖 onChange 引用，
+     * 父组件内联箭头（如 `(v) => updateContent(path, v)`）每次渲染都新建 → 每渲染
+     * reconfigure → 片段占位符会话（appendConfig 的 snippetState）被丢弃。
+     */
+    const onChangeRef = useRef(onChange);
+    onChangeRef.current = onChange;
+    const stableOnChange = useCallback(
+      (v: string) => onChangeRef.current?.(v),
+      [],
+    );
     const onCursorRef = useRef(onCursorChange);
     onCursorRef.current = onCursorChange;
     // M1-4：Ctrl/⌘+点击 → 正向 synctex 跳转（闭包经 ref 取最新回调，不触发扩展重建）
@@ -394,7 +427,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           },
         }),
       ],
-      [lineWrapping, theme, lang, minimapOn, latexGroups, search(), searchMatchHighlighter()],
+      [lineWrapping, theme, lang, minimapOn, latexGroups, SEARCH_EXT, SEARCH_MATCH_HL],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置
@@ -504,22 +537,11 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           readOnly={readOnly}
           placeholder={placeholder}
           extensions={extensions}
-          onChange={onChange}
+          onChange={stableOnChange}
           // M2-5b：关闭 @uiw 默认 indentWithTab（其 keymap 被置于扩展数组最前=最高优先级，
           // 会压过片段 Tab 直展）；缩进 fallback 已并入 snippetTabKeymap（直展→缩进）
           indentWithTab={false}
-          basicSetup={{
-            // 编辑基础：行号/高亮当前行/撤销重做/括号配对/自动闭合/缩进
-            lineNumbers: true,
-            highlightActiveLine: true,
-            highlightActiveLineGutter: true,
-            foldGutter: false, // MVP 暂不做代码折叠（MVP.md Phase 1-2）
-            autocompletion: false, // M1-14c：改由 autocompletion({override}) 提供（LaTeX + \cite）
-            closeBrackets: true,
-            bracketMatching: true,
-            // M1-find：关闭默认 searchKeymap（Ctrl+F/F3 由 EditorWorkspace 接管，驱动自定义查找面板）
-            searchKeymap: false,
-          }}
+          basicSetup={BASIC_SETUP}
         />
       </div>
     );

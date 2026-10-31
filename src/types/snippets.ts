@@ -9,7 +9,7 @@ export interface SnippetDef {
   id: string;
   /** 触发词（非空、不含反斜杠与空白；命令补全都带 \ 前缀，二者天然区分） */
   trigger: string;
-  /** 展开模板：CodeMirror snippet 语法 ${n:默认} / $n / $0（终点）；$SELECTION 由 M2-5b 展开 */
+  /** 展开模板：CodeMirror snippet 语法 ${n:默认} / $n / ${0}（终点）；$SELECTION 由 M2-5b 展开 */
   body: string;
   /** 描述（可选；补全弹窗/设置页展示） */
   desc?: string;
@@ -44,49 +44,49 @@ export const DEFAULT_SNIPPETS: SnippetDef[] = [
     trigger: "beg",
     desc: "通用环境（\\begin/\\end，光标在环境名）",
     category: "结构",
-    body: "\\begin{${1:env}}\n\t${2}\n\\end{${1:env}}$0",
+    body: "\\begin{${1:env}}\n\t${2}\n\\end{${1:env}}${0}",
   },
   {
     id: "sn-item",
     trigger: "itemize",
     desc: "无序列表环境",
     category: "结构",
-    body: "\\begin{itemize}\n\t\\item ${1:内容}\n\\end{itemize}$0",
+    body: "\\begin{itemize}\n\t\\item ${1:内容}\n\\end{itemize}${0}",
   },
   {
     id: "sn-enum",
     trigger: "enumerate",
     desc: "有序列表环境",
     category: "结构",
-    body: "\\begin{enumerate}\n\t\\item ${1:内容}\n\\end{enumerate}$0",
+    body: "\\begin{enumerate}\n\t\\item ${1:内容}\n\\end{enumerate}${0}",
   },
   {
     id: "sn-sec",
     trigger: "sec",
     desc: "一级标题",
     category: "结构",
-    body: "\\section{${1:标题}}$0",
+    body: "\\section{${1:标题}}${0}",
   },
   {
     id: "sn-ssec",
     trigger: "ssec",
     desc: "二级标题",
     category: "结构",
-    body: "\\subsection{${1:标题}}$0",
+    body: "\\subsection{${1:标题}}${0}",
   },
   {
     id: "sn-sssec",
     trigger: "sssec",
     desc: "三级标题",
     category: "结构",
-    body: "\\subsubsection{${1:标题}}$0",
+    body: "\\subsubsection{${1:标题}}${0}",
   },
   {
     id: "sn-para",
     trigger: "para",
     desc: "四级标题（段落标题）",
     category: "结构",
-    body: "\\paragraph{${1:标题}}$0",
+    body: "\\paragraph{${1:标题}}${0}",
   },
   {
     id: "sn-fig",
@@ -94,7 +94,7 @@ export const DEFAULT_SNIPPETS: SnippetDef[] = [
     desc: "插图（figure + includegraphics）",
     category: "浮动体",
     body:
-      "\\begin{figure}[htbp]\n\t\\centering\n\t\\includegraphics[width=0.8\\textwidth]{${1:图片路径}}\n\t\\caption{${2:图片标题}}\n\t\\label{fig:${3:标签}}\n\\end{figure}$0",
+      "\\begin{figure}[htbp]\n\t\\centering\n\t\\includegraphics[width=0.8\\textwidth]{${1:图片路径}}\n\t\\caption{${2:图片标题}}\n\t\\label{fig:${3:标签}}\n\\end{figure}${0}",
   },
   {
     id: "sn-tab",
@@ -102,21 +102,21 @@ export const DEFAULT_SNIPPETS: SnippetDef[] = [
     desc: "三线表（booktabs）",
     category: "浮动体",
     body:
-      "\\begin{table}[htbp]\n\t\\centering\n\t\\caption{${1:表标题}}\n\t\\label{tab:${2:标签}}\n\t\\begin{tabular}{${3:lll}}\n\t\t\\toprule\n\t\t${4:表头} \\\\\n\t\t\\midrule\n\t\t${5:内容} \\\\\n\t\t\\bottomrule\n\t\\end{tabular}\n\\end{table}$0",
+      "\\begin{table}[htbp]\n\t\\centering\n\t\\caption{${1:表标题}}\n\t\\label{tab:${2:标签}}\n\t\\begin{tabular}{${3:lll}}\n\t\t\\toprule\n\t\t${4:表头} \\\\\n\t\t\\midrule\n\t\t${5:内容} \\\\\n\t\t\\bottomrule\n\t\\end{tabular}\n\\end{table}${0}",
   },
   {
     id: "sn-eq",
     trigger: "eq",
     desc: "编号公式环境",
     category: "数学",
-    body: "\\begin{equation}\n\t\\label{eq:${1:标签}}\n\t${2}\n\\end{equation}$0",
+    body: "\\begin{equation}\n\t\\label{eq:${1:标签}}\n\t${2}\n\\end{equation}${0}",
   },
   {
     id: "sn-algn",
     trigger: "algn",
     desc: "多行对齐公式（align）",
     category: "数学",
-    body: "\\begin{align}\n\t${1} &= ${2} \\\\\n\t${3} &= ${4}\n\\end{align}$0",
+    body: "\\begin{align}\n\t${1} &= ${2} \\\\\n\t${3} &= ${4}\n\\end{align}${0}",
   },
   {
     id: "sn-cases",
@@ -124,7 +124,7 @@ export const DEFAULT_SNIPPETS: SnippetDef[] = [
     desc: "分段函数",
     category: "数学",
     body:
-      "\\begin{cases}\n\t${1:表达式}, & \\text{若 ${2:条件}} \\\\\n\t${3:表达式}, & \\text{其他}\n\\end{cases}$0",
+      "\\begin{cases}\n\t${1:表达式}, & \\text{若 ${2:条件}} \\\\\n\t${3:表达式}, & \\text{其他}\n\\end{cases}${0}",
   },
   {
     id: "sn-mat",
@@ -132,21 +132,21 @@ export const DEFAULT_SNIPPETS: SnippetDef[] = [
     desc: "圆括号矩阵（pmatrix）",
     category: "数学",
     body:
-      "\\begin{pmatrix}\n\t${1:a} & ${2:b} \\\\\n\t${3:c} & ${4:d}\n\\end{pmatrix}$0",
+      "\\begin{pmatrix}\n\t${1:a} & ${2:b} \\\\\n\t${3:c} & ${4:d}\n\\end{pmatrix}${0}",
   },
   {
     id: "sn-txt",
     trigger: "text",
     desc: "数学环境内插入中文文本（\\text）",
     category: "数学",
-    body: "\\text{${1:文本}}$0",
+    body: "\\text{${1:文本}}${0}",
   },
   {
     id: "sn-footnote",
     trigger: "fn",
     desc: "脚注",
     category: "结构",
-    body: "\\footnote{${1:脚注内容}}$0",
+    body: "\\footnote{${1:脚注内容}}${0}",
   },
   {
     id: "sn-bf",

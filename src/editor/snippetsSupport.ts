@@ -4,7 +4,7 @@
 // Tab 直展挂最低优先级 keymap（补全弹窗 accept、公式槽位导航、缩进均先于它）。
 import type { EditorView } from "@codemirror/view";
 import { keymap } from "@codemirror/view";
-import { snippet } from "@codemirror/autocomplete";
+import { snippet, nextSnippetField, prevSnippetField } from "@codemirror/autocomplete";
 import { indentWithTab, indentLess } from "@codemirror/commands";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import {
@@ -119,6 +119,9 @@ export function snippetCompletionSource(
  * 顺序：补全弹窗 accept / 公式槽位导航（更高优先级 keymap）→ 直展 → 缩进。
  */
 export const snippetTabKeymap = keymap.of([
+  // 片段占位符跳转（snippet() 展开后 ${n:} 字段导航；无活动片段返回 false 自然落空）
+  { key: "Tab", run: nextSnippetField },
+  { key: "Shift-Tab", run: prevSnippetField },
   {
     key: "Tab",
     run: (view) => expandTriggerAtCursor(view),
