@@ -171,42 +171,44 @@ export function FindReplacePanel() {
         >
           <Icon name="chev" size={12} style={{ transform: replaceMode ? "rotate(0deg)" : "rotate(-90deg)" }} />
         </button>
-        <input
-          ref={findInputRef}
-          className={`fp-input${invalid ? " invalid" : ""}`}
-          type="text"
-          placeholder={regexp ? "查找（正则）" : "查找"}
-          value={query}
-          spellCheck={false}
-          autoComplete="off"
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={onFindKeyDown}
-        />
-        <div className="fp-toggles">
-          <button
-            type="button"
-            className={caseSensitive ? "fp-tg on" : "fp-tg"}
-            title="区分大小写"
-            onClick={toggleCase}
-          >
-            Aa
-          </button>
-          <button
-            type="button"
-            className={wholeWord ? "fp-tg on" : "fp-tg"}
-            title="整词匹配"
-            onClick={toggleWord}
-          >
-            ab
-          </button>
-          <button
-            type="button"
-            className={regexp ? "fp-tg on" : "fp-tg"}
-            title="正则表达式"
-            onClick={toggleRegex}
-          >
-            .*
-          </button>
+        <div className={`fp-field${invalid ? " invalid" : ""}`}>
+          <input
+            ref={findInputRef}
+            className="fp-input"
+            type="text"
+            placeholder={regexp ? "查找（正则）" : "查找"}
+            value={query}
+            spellCheck={false}
+            autoComplete="off"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onFindKeyDown}
+          />
+          <div className="fp-toggles">
+            <button
+              type="button"
+              className={caseSensitive ? "fp-tg on" : "fp-tg"}
+              title="区分大小写"
+              onClick={toggleCase}
+            >
+              Aa
+            </button>
+            <button
+              type="button"
+              className={wholeWord ? "fp-tg on" : "fp-tg"}
+              title="整词匹配"
+              onClick={toggleWord}
+            >
+              ab
+            </button>
+            <button
+              type="button"
+              className={regexp ? "fp-tg on" : "fp-tg"}
+              title="正则表达式"
+              onClick={toggleRegex}
+            >
+              .*
+            </button>
+          </div>
         </div>
         <span className={`fp-count${stats.count === 0 ? " none" : ""}`}>
           {stats.count === 0 ? "无结果" : `${stats.index}/${stats.count}`}
@@ -225,26 +227,28 @@ export function FindReplacePanel() {
       {replaceMode && (
         <div className="fp-row">
           <span className="fp-caret-placeholder" />
-          <input
-            ref={replaceInputRef}
-            className="fp-input"
-            type="text"
-            placeholder="替换为"
-            value={replace}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(e) => setReplace(e.target.value)}
-            onKeyDown={onFindKeyDown}
-          />
-          <div className="fp-toggles">
-            <button
-              type="button"
-              className={preserveCase ? "fp-tg on" : "fp-tg"}
-              title="替换时保留大小写"
-              onClick={togglePreserveCase}
-            >
-              AB
-            </button>
+          <div className="fp-field">
+            <input
+              ref={replaceInputRef}
+              className="fp-input"
+              type="text"
+              placeholder="替换为"
+              value={replace}
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(e) => setReplace(e.target.value)}
+              onKeyDown={onFindKeyDown}
+            />
+            <div className="fp-toggles">
+              <button
+                type="button"
+                className={preserveCase ? "fp-tg on" : "fp-tg"}
+                title="替换时保留大小写"
+                onClick={togglePreserveCase}
+              >
+                AB
+              </button>
+            </div>
           </div>
           <button
             type="button"
