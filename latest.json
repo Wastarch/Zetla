@@ -1,16 +1,16 @@
 {
-    "version": "0.2.1",
+    "version": "0.2.2",
     "notes": "日志面板停靠 · 语法高亮自定义 · 宁夏大学论文模板 · 片段诊断去噪",
     "pubDate": "2026-10-28T00:00:00+08:00",
-    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.1",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.2",
     "installers": [
         {
-            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.1/Zetla_0.2.1_x64-setup.exe",
-            "sha256": "e2b70b34b1ec86bf6ecea56274297625a237f3d6a99f62902ee1082e67cc65e2"
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.2/Zetla_0.2.2_x64-setup.exe",
+            "sha256": "97A22BA261E1D8FED433005AE27B4ECBFA0A59C65DD45558E893E809E0233F04"
         },
         {
-            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.1/Zetla_0.2.1_x64-setup.exe",
-            "sha256": "e2b70b34b1ec86bf6ecea56274297625a237f3d6a99f62902ee1082e67cc65e2"
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.2/Zetla_0.2.2_x64-setup.exe",
+            "sha256": "97A22BA261E1D8FED433005AE27B4ECBFA0A59C65DD45558E893E809E0233F04"
         }
     ],
     "minVersion": "0.1.0",
