@@ -866,6 +866,13 @@ async fn run_cmd(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // M1-19：让 TeX 别把日志按 79 列硬折断。
+    // kpathsea 的 max_print_line 默认 79，长路径/长报错会被 TeX 自己插换行写成多行，
+    // 面板再宽也只显示半行（.log 文件同样受影响）。这三个值可按环境变量覆盖，
+    // 放宽后一行完整输出，实际换行交给面板宽度（CSS soft wrap）决定。
+    cmd.env("max_print_line", "10000")
+        .env("error_line", "254")
+        .env("half_error_line", "238");
     if !path_dirs.is_empty() {
         let mut joined: Vec<PathBuf> = path_dirs.to_vec();
         joined.extend(std::env::split_paths(
