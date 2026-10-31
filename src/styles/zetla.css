@@ -6484,3 +6484,380 @@ body.row-resizing {
 .ref-preview-cites {
   flex: none;
 }
+
+/* ── M1-find · 单文件查找替换浮动面板（VS Code 风格，悬浮于编辑区右上角） ── */
+.find-panel {
+  position: absolute;
+  top: 10px;
+  right: 18px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.3);
+  animation: fp-in 0.14s ease;
+}
+
+@keyframes fp-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.find-panel .fp-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.find-panel .fp-caret {
+  width: 22px;
+  height: 26px;
+  flex: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+}
+
+.find-panel .fp-caret:hover {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+/* 替换行左对齐占位（与查找行的展开箭头同宽） */
+.find-panel .fp-caret-placeholder {
+  width: 22px;
+  flex: none;
+}
+
+.find-panel .fp-input {
+  flex: 1 1 auto;
+  min-width: 220px;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.find-panel .fp-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.find-panel .fp-input.invalid {
+  border-color: var(--err);
+  color: var(--err);
+}
+
+/* Aa / ab / .* / AB 开关（查找面板与全局搜索共用） */
+.fp-tg {
+  height: 26px;
+  min-width: 26px;
+  padding: 0 6px;
+  flex: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+}
+
+.fp-tg:hover {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+.fp-tg.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.find-panel .fp-toggles {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.find-panel .fp-count {
+  flex: none;
+  min-width: 42px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--txt-3);
+  white-space: nowrap;
+}
+
+.find-panel .fp-count.none {
+  color: var(--err);
+}
+
+.find-panel .fp-nav,
+.find-panel .fp-x {
+  width: 24px;
+  height: 26px;
+  flex: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 13px;
+  display: grid;
+  place-items: center;
+  transition: all 0.15s;
+}
+
+.find-panel .fp-nav:hover,
+.find-panel .fp-x:hover {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+.find-panel .fp-x:hover {
+  color: var(--err);
+}
+
+.find-panel .fp-rbtn {
+  height: 26px;
+  padding: 0 10px;
+  margin-left: 2px;
+  flex: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  transition: all 0.15s;
+}
+
+.find-panel .fp-rbtn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.find-panel .fp-rbtn:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* ── M1-find · 全局搜索侧栏（VS Code 搜索视图） ── */
+.search-view .sv-head-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.search-view .sv-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 12px;
+  overflow: hidden;
+}
+
+.search-view .sv-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.search-view .sv-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 9px;
+  background: var(--editor-bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--txt);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-view .sv-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.search-view .sv-toggles {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+
+.search-view .sv-replace-all {
+  height: 28px;
+  padding: 0 11px;
+  flex: none;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--txt-2);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  transition: all 0.15s;
+}
+
+.search-view .sv-replace-all:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.search-view .sv-replace-all:disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.search-view .sv-summary {
+  font-size: 11px;
+  color: var(--txt-3);
+  padding-left: 2px;
+}
+
+.search-view .sv-summary .sv-error {
+  color: var(--err);
+}
+
+.search-view .sv-results {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 -2px;
+}
+
+.search-view .sv-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.search-view .sv-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 5px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--txt-2);
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+}
+
+.search-view .sv-file:hover {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+.search-view .sv-file .ic {
+  color: var(--txt-3);
+  flex: none;
+}
+
+.search-view .sv-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--txt);
+  font-size: 12px;
+}
+
+.search-view .sv-file-count {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--txt-3);
+  background: var(--bg-4);
+  border-radius: 99px;
+  padding: 0 7px;
+  min-width: 18px;
+  text-align: center;
+}
+
+.search-view .sv-match {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 4px 3px 24px;
+  border: 0;
+  background: transparent;
+  color: var(--txt-2);
+  cursor: pointer;
+  text-align: left;
+  border-radius: var(--r-sm);
+}
+
+.search-view .sv-match:hover {
+  background: var(--bg-4);
+}
+
+.search-view .sv-line-no {
+  flex: none;
+  width: 30px;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.search-view .sv-match-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--txt);
+}
+
+/* 命中高亮切片（与 .cm-searchMatch 同色系，跨文件结果里标记匹配片段） */
+.search-view mark.sv-hl {
+  background: rgba(168, 106, 18, 0.3);
+  color: inherit;
+  border-radius: 2px;
+}

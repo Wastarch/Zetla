@@ -7,13 +7,17 @@ import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
 import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
 import { EditorToolbar } from "./EditorToolbar";
+import { FindReplacePanel } from "./FindReplacePanel";
 import { ImageViewer } from "./ImageViewer";
 import { PdfPreview } from "@/preview/PdfPreview";
-import { setActiveView, setActiveEditorHandle } from "./activeView";
+import { setActiveView, setActiveEditorHandle, clearAllSearchQueries } from "./activeView";
 import { takePendingJump } from "./jump";
 import { jumpToPdfFromSource } from "@/preview/syncTex";
 import { useBuffersStore } from "./useBuffers";
 import { useSettingsStore } from "@/core/settings";
+import { useAppStore } from "@/core/store";
+import { useFindStore } from "./findStore";
+import { findPanelBridge } from "./findStore";
 
 export function EditorWorkspace() {
   const buffers = useBuffersStore((s) => s.buffers);
@@ -106,14 +110,16 @@ export function EditorWorkspace() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openDialog, saveBuffer]);
 
-  const doFind = useCallback(() => {
-    if (activePath) handles.current[activePath]?.openFind();
-  }, [activePath]);
-
   // M1-9：活动文本缓冲被外部修改时的提示条
   const activeExternal = buffers.find(
     (b) => b.path === activePath && b.externallyChanged,
   )?.externallyChanged;
+
+  // 查找面板状态 + 当前缓冲类型（非文本不显示面板）
+  const findOpen = useFindStore((s) => s.open);
+  const activeKind = useBuffersStore(
+    (s) => s.buffers.find((b) => b.path === s.activePath)?.kind ?? null,
+  );
 
   const reloadExternal = useCallback(() => {
     if (activePath) void useBuffersStore.getState().revertBuffer(activePath);
@@ -123,9 +129,56 @@ export function EditorWorkspace() {
     if (activePath) useBuffersStore.getState().dismissExternal(activePath);
   }, [activePath]);
 
+  // 面板关闭时清理所有编辑器（含隐藏缓冲）残留的搜索高亮
+  useEffect(() => {
+    if (!findOpen) clearAllSearchQueries();
+  }, [findOpen]);
+
+  // 切到非文本缓冲（图片 / PDF）时关闭查找面板
+  useEffect(() => {
+    if (findOpen && activeKind !== "text") useFindStore.getState().closeFind();
+  }, [findOpen, activeKind]);
+
+  // 查找快捷键：Ctrl+F / Ctrl+H 打开；F3 / Shift+F3 导航；Esc 关闭；Ctrl+Shift+F 打开全局搜索
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const fs = useFindStore.getState();
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && k === "f") {
+        e.preventDefault();
+        if (fs.open) findPanelBridge.focusFind?.();
+        else fs.openFind();
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && k === "h") {
+        e.preventDefault();
+        fs.openFind({ replaceMode: true });
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && k === "f") {
+        e.preventDefault();
+        useAppStore.getState().setSidebarView("search");
+        return;
+      }
+      if (!fs.open) return;
+      if (e.key === "F3") {
+        e.preventDefault();
+        if (e.shiftKey) findPanelBridge.prev?.();
+        else findPanelBridge.next?.();
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        fs.closeFind();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, []);
+
   return (
     <section className="center">
-      <TabBar onFind={doFind} />
+      <TabBar onFind={() => useFindStore.getState().openFind()} />
 
       {showEditorToolbar && <EditorToolbar />}
 
@@ -188,6 +241,8 @@ export function EditorWorkspace() {
             </div>
           ))
         )}
+        {/* M1-find：单文件查找替换浮动面板（仅文本缓冲显示） */}
+        {findOpen && activeKind === "text" && <FindReplacePanel />}
       </div>
     </section>
   );

@@ -4,9 +4,29 @@
 // M0-12：另登记活动编辑器句柄（错误定位跳行 jump.ts 直接调用）。
 import type { EditorView } from "@codemirror/view";
 import type { LaTeXEditorHandle } from "./LaTeXEditor";
+import { clearQueryInView } from "./searchUtil";
 
 let view: EditorView | null = null;
 let editorHandle: LaTeXEditorHandle | null = null;
+
+/**
+ * 路径 → CM 视图 注册表（多实例常驻方案下，每个已挂载编辑器在此登记）。
+ * 用途：关闭查找面板时统一清理所有缓冲（含隐藏的）的搜索高亮，避免切回时残留。
+ */
+const viewsByPath = new Map<string, EditorView>();
+
+export function registerEditorView(path: string, v: EditorView): void {
+  viewsByPath.set(path, v);
+}
+
+export function unregisterEditorView(path: string): void {
+  viewsByPath.delete(path);
+}
+
+/** 清理所有已注册编辑器内的搜索高亮（关闭面板 / 关闭文档时调用）。 */
+export function clearAllSearchQueries(): void {
+  for (const v of viewsByPath.values()) clearQueryInView(v);
+}
 
 /** 激活标签变化/编辑器卸载时登记（null = 无活动编辑器） */
 export function setActiveView(v: EditorView | null): void {

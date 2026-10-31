@@ -13,6 +13,7 @@ import type { LatexModule, ModuleViewDecl } from "@/types/module";
 import { ProjectTree } from "./ProjectTree";
 import { OutlinePanel } from "@/outline/OutlinePanel";
 import ReferencePanel from "@/modules/reference/ReferencePanel";
+import { SearchView } from "@/editor/SearchView";
 
 const MathView = lazy(() => import("./MathView"));
 
@@ -75,6 +76,8 @@ export function Sidebar({ style }: SidebarProps) {
           </div>
           <ReferencePanel />
         </div>
+      ) : view === "search" ? (
+        <SearchView />
       ) : view === "math" ? (
         <Suspense
           fallback={

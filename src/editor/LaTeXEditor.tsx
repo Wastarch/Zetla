@@ -9,7 +9,7 @@ import CodeMirror, {
   type ReactCodeMirrorRef,
 } from "@uiw/react-codemirror";
 import { syntaxHighlighting } from "@codemirror/language";
-import { openSearchPanel } from "@codemirror/search";
+import { search } from "@codemirror/search";
 import { latex, latexCompletionSource, latexLinter } from "codemirror-lang-latex";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
 import { hoverTooltip } from "@codemirror/view";
@@ -44,6 +44,8 @@ import {
 } from "./inputJump";
 import { useProjectStore } from "@/project/useProject";
 import { showMinimap, Scale, type MinimapConfig } from "@replit/codemirror-minimap";
+import { registerEditorView, unregisterEditorView } from "./activeView";
+import { searchMatchHighlighter } from "./searchUtil";
 
 // M1 · 缩略图最大宽度：经 patch 暴露包的 Scale 后，此处一处可调（默认 100px；拐点 = MaxWidth×6 = 600px）
 const MINIMAP_MAX_WIDTH = 80;
@@ -97,8 +99,6 @@ export interface LaTeXEditorHandle {
   getCursorPos: () => CursorPos;
   /** 当前光标所在行（1-based） */
   getCursorLine: () => number;
-  /** 打开内置查找替换面板（tab-tools 查找按钮） */
-  openFind: () => void;
   /** 隐藏→显示后重新测量布局（方案 A 切换标签时调用） */
   refresh: () => void;
   focus: () => void;
@@ -383,7 +383,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           },
         }),
       ],
-      [lineWrapping, theme, lang, minimapOn, latexGroups],
+      [lineWrapping, theme, lang, minimapOn, latexGroups, search(), searchMatchHighlighter()],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置
@@ -420,6 +420,25 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
       return () => el.removeEventListener("wheel", onWheel);
     }, []);
 
+    // M1-find：把 CM 视图登记到全局注册表（路径 → 视图），供关闭查找面板时统一清理高亮。
+    // 视图在 @uiw 的 layout effect 中创建，此处用 rAF 轮询确保已就绪。
+    useEffect(() => {
+      let raf = 0;
+      const tryReg = () => {
+        const v = cmRef.current?.view;
+        if (v && path) {
+          registerEditorView(path, v);
+          return;
+        }
+        raf = requestAnimationFrame(tryReg);
+      };
+      tryReg();
+      return () => {
+        cancelAnimationFrame(raf);
+        if (path) unregisterEditorView(path);
+      };
+    }, [path]);
+
     function cursorPos(): CursorPos {
       const state = cmRef.current?.state;
       if (!state) return { line: 1, col: 1 };
@@ -453,10 +472,6 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
       getCursorLine() {
         return cursorPos().line;
       },
-      openFind() {
-        const view = cmRef.current?.view;
-        if (view) openSearchPanel(view);
-      },
       refresh() {
         cmRef.current?.view?.requestMeasure();
       },
@@ -488,7 +503,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
             autocompletion: false, // M1-14c：改由 autocompletion({override}) 提供（LaTeX + \cite）
             closeBrackets: true,
             bracketMatching: true,
-            searchKeymap: true,
+            // M1-find：关闭默认 searchKeymap（Ctrl+F/F3 由 EditorWorkspace 接管，驱动自定义查找面板）
+            searchKeymap: false,
           }}
         />
       </div>

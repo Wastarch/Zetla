@@ -8,7 +8,7 @@ export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
  *  模块可经 LatexModule.view 声明自带视图（如 "table"），故 SidebarView 放宽为 string。
  *  M1-12a：原「符号 / 公式」两视图合并为「公式」单视图（内部含 快捷工具/公式模板 两页签，
  *  输入/输出双区结构，见 src/project/MathView.tsx） */
-export const BUILTIN_SIDEBAR_VIEWS = ["explorer", "outline", "math", "references"] as const;
+export const BUILTIN_SIDEBAR_VIEWS = ["explorer", "outline", "math", "references", "search"] as const;
 export type BuiltinSidebarView = (typeof BUILTIN_SIDEBAR_VIEWS)[number];
 /**
  * 侧栏视图 id：内置 4 项 + 模块自带视图（运行期由 ModuleViewDecl 提供）。
