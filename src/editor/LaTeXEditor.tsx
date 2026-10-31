@@ -45,6 +45,10 @@ import {
 import { useProjectStore } from "@/project/useProject";
 import { showMinimap, Scale, type MinimapConfig } from "@replit/codemirror-minimap";
 import { registerEditorView, unregisterEditorView } from "./activeView";
+import {
+  snippetCompletionSource,
+  snippetTabKeymap,
+} from "./snippetsSupport";
 import { searchMatchHighlighter } from "./searchUtil";
 
 // M1 · 缩略图最大宽度：经 patch 暴露包的 Scale 后，此处一处可调（默认 100px；拐点 = MaxWidth×6 = 600px）
@@ -300,17 +304,24 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
         // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转），仅 LaTeX 文档启用
         ...(lang === "latex" ? mathSlotsExtension : []),
         // M1-14c：.tex 内 \cite{ 补全 + 悬浮预览。
-        // 唯一的 autocompletion override（合并 LaTeX 命令补全 + 引用补全），
+        // 唯一的 autocompletion override（合并 LaTeX 命令补全 + 引用补全 + M2-5b 片段补全），
         // 因 latex() 已设 enableAutocomplete:false，此处不会再有第二个 override 冲突。
+        // 片段项 type="text" + boost=-99（排在命令补全之后，视觉上以 text 图标区分）。
         ...(lang === "latex"
           ? [
               autocompletion({
-                override: [latexCompletionSource(true), citeCompletionSource],
+                override: [
+                  latexCompletionSource(true),
+                  citeCompletionSource,
+                  snippetCompletionSource,
+                ],
                 defaultKeymap: true,
                 activateOnTyping: true,
                 icons: true,
               }),
               keymap.of(completionKeymap),
+              // M2-5b：Tab 直展触发词（最低优先级：弹窗 accept / 公式槽位导航先于此）
+              snippetTabKeymap,
               hoverTooltip(citeHoverSource),
               // M1-14d+：Ctrl 按住时 \cite 显示可点链接提示（下划线+手型）+ 跳转提示气泡
               citeLinkDecorations,
@@ -494,6 +505,9 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
           placeholder={placeholder}
           extensions={extensions}
           onChange={onChange}
+          // M2-5b：关闭 @uiw 默认 indentWithTab（其 keymap 被置于扩展数组最前=最高优先级，
+          // 会压过片段 Tab 直展）；缩进 fallback 已并入 snippetTabKeymap（直展→缩进）
+          indentWithTab={false}
           basicSetup={{
             // 编辑基础：行号/高亮当前行/撤销重做/括号配对/自动闭合/缩进
             lineNumbers: true,

@@ -31,6 +31,7 @@ import { useModuleRuntime } from "@/core/useModuleRuntime";
 import { useProjectWatch } from "@/project/useProjectWatch";
 import { useUpdateCheck } from "@/modules/updater/useUpdateCheck";
 import { startReferenceWatcher } from "@/modules/reference/useReferenceStore";
+import { refreshUserSnippets } from "@/editor/snippetsSupport";
 import { useAutosave } from "@/editor/useAutosave";
 import { useWindowMemory } from "@/window/useWindowMemory";
 import "./styles/zetla.css";
@@ -73,6 +74,10 @@ function App() {
   // M0-14a：偏好设置启动加载 + 编辑器 CSS 生效 + 定时自动保存
   useEffect(() => {
     void useSettingsStore.getState().load();
+  }, []);
+  // M2-5b：启动加载用户自定义片段（合并进编辑器补全源；失败仅内置包可用）
+  useEffect(() => {
+    void refreshUserSnippets();
   }, []);
   // M0-15a/15b：启动检测 TeX 环境；未找到时自动打开引导（每次启动一次，检测失败不弹窗）
   useEffect(() => {
