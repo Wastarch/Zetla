@@ -1462,8 +1462,8 @@ body {
 }
 
 .latex-editor .cm-lineNumbers .cm-gutterElement {
-  padding: 0 10px 0 14px;
-  min-width: 34px;
+  padding: 0 0px 0 8px;
+  min-width: 26px;
 }
 
 .latex-editor .cm-activeLineGutter {
