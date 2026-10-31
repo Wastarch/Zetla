@@ -40,10 +40,13 @@ export function effectiveEngine(
 /**
  * 开始编译（项目 + 主文件来自 useProjectStore；引擎 = 设置页显式值 ?? 项目 config；
  * 流程步骤来自设置页，空=自动 —— M1-3）
+ *
+ * M1-18b：不再用「已在编译中就直接返回」的哨兵。后端已改为 latest-wins——
+ * 新请求会顶掉旧任务并杀掉其子进程，所以重叠触发（实时预览的常态）总是落到最新内容，
+ * 也不会再出现「已有编译任务在进行中」的误报。
  */
 export async function startCompile(): Promise<void> {
   const st = useAppStore.getState();
-  if (st.compileStatus === "running") return;
 
   const { root, tree } = useProjectStore.getState();
   if (!root || !tree) {
@@ -90,7 +93,8 @@ export async function startCompile(): Promise<void> {
   try {
     await compileApi.compileProject(root, tree.mainFile, engine, steps);
   } catch (e) {
-    // 命令本身失败（已有任务在跑 / 主文件不存在 / 引擎缺失）
+    // 命令本身失败（主文件不存在 / 引擎缺失 / 环境异常）；
+    // M1-18b 起「已有任务在跑」不再是错误（后端 latest-wins 顶替旧任务）
     const s = useAppStore.getState();
     s.setCompileDone({ status: "error", errors: [], passes: 0, durationMs: 0 });
     s.appendLog([String(e)]);

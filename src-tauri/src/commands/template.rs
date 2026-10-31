@@ -1197,6 +1197,9 @@ mod tests {
         nvars.remove("coSupervisor"); // 模拟未填写联合导师
         create_project_in(&builtin_root(), "nxuthesis", &nvars, ntgt.to_str().unwrap()).unwrap();
         let setup = std::fs::read_to_string(ntgt.join("nxusetup.tex")).unwrap();
+        // 模板文件在 Windows（core.autocrlf=true）下为 CRLF，渲染结果随之保留 CRLF；
+        // 断言只关心「换行结构」，先统一成 LF 再比对，避免行尾差异造成假失败。
+        let setup = setup.replace("\r\n", "\n");
         let start = setup.find("\\nxusetup{").expect("nxusetup.tex 应含 \\nxusetup");
         let body = &setup[start..];
         let end = body.find("\n}\n").expect("\\nxusetup 应有闭合行");

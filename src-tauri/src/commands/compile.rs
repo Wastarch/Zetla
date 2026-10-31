@@ -6,7 +6,7 @@
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, State};
@@ -337,17 +337,62 @@ pub struct CompileProgress {
 pub const EV_PROGRESS: &str = "compile_progress";
 pub const EV_FINISHED: &str = "compile_finished";
 
-/// 全局编译状态（P0：单并发，同一时刻只允许一个编译任务）
+/// 槽位里的子进程：记录它属于哪个任务（代号）。
+/// 只有「代号匹配」的任务才允许对它 try_wait / kill，
+/// 避免旧任务收尾时误杀新任务的 latexmk（latest-wins 的核心安全线）。
+struct SlotChild {
+    seq: u64,
+    child: Child,
+}
+
+/// 全局编译状态（M1-18b：latest-wins —— 同一时刻仍只有一个活任务，但新任务会顶掉旧任务）
 #[derive(Default)]
 pub struct CompileState {
-    /// 是否有任务在跑（含任务启动前的占位期）
-    busy: AtomicBool,
-    /// 用户点了取消
-    cancelled: AtomicBool,
-    /// 当前子进程句柄（cancel 时取走并 kill）
-    child: Mutex<Option<Child>>,
+    /// 任务代号自增器（每次 compile_project +1；0 保留给「空闲」，故从 1 起）
+    next_seq: AtomicU64,
+    /// 当前有效任务代号（0 = 空闲）；被顶替 = 与自己的代号不再相等
+    running: AtomicU64,
+    /// 被用户显式取消的任务代号（0 = 无）
+    cancel_seq: AtomicU64,
+    /// 当前子进程句柄（取消 / 被顶替时取走并 kill）
+    child: Mutex<Option<SlotChild>>,
+}
+
+impl CompileState {
+    /// 该任务是否已被更新的编译顶替
+    fn is_stale(&self, seq: u64) -> bool {
+        self.running.load(Ordering::SeqCst) != seq
+    }
+
+    /// 该任务是否应停止：用户取消 或 已被顶替
+    fn is_cancelled(&self, seq: u64) -> bool {
+        self.cancel_seq.load(Ordering::SeqCst) == seq || self.is_stale(seq)
+    }
+
+    /// 取走槽内子进程；`only_seq=Some(s)` 时仅在代号匹配时取走
+    fn take_child(&self, only_seq: Option<u64>) -> Option<SlotChild> {
+        let mut guard = self.child.lock().ok()?;
+        match guard.as_ref() {
+            Some(c) if only_seq.map_or(true, |s| c.seq == s) => guard.take(),
+            _ => None,
+        }
+    }
+}
+
+/// 单个任务的私有副作用（不进全局状态，避免并发任务互相污染）
+struct JobSig {
+    seq: u64,
     /// latexmk 输出的最大 `Run number N`（用于统计真实遍数）
     rule_runs: AtomicU32,
+}
+
+impl JobSig {
+    fn new(seq: u64) -> Self {
+        JobSig {
+            seq,
+            rule_runs: AtomicU32::new(0),
+        }
+    }
 }
 
 /// 单条命令的执行结果
@@ -406,6 +451,8 @@ fn emit_progress(app: &AppHandle, stage: &str, pct: u32, current: impl Into<Stri
 
 /// 开始编译（立即返回；实际编译在后台任务里跑，事件回传前端）
 /// M1-3：engine 缺省 xelatex；steps 空=自动（latexmk 判定），非空=按序直跑的固定流程
+/// M1-18b：latest-wins —— 若已有任务在跑，不报错，而是直接顶掉（杀子进程树、旧任务静默退出），
+///        保证实时预览「重叠触发总是落到最新内容」且不出现「已有编译任务在进行中」。
 #[tauri::command]
 pub async fn compile_project(
     app: AppHandle,
@@ -416,13 +463,22 @@ pub async fn compile_project(
     steps: Option<Vec<String>>,
 ) -> Result<(), String> {
     let st = state.inner().clone();
-    // P0 单并发：抢不到锁说明已有任务
-    if st.busy.swap(true, Ordering::SeqCst) {
-        return Err("已有编译任务在进行中".to_string());
-    }
-    st.cancelled.store(false, Ordering::SeqCst);
-    st.rule_runs.store(0, Ordering::SeqCst);
 
+    // 领新代号并抢占「当前任务」位：swap 之后旧任务立刻变成 stale（它会在下个检查点退出）
+    let seq = st.next_seq.fetch_add(1, Ordering::SeqCst) + 1;
+    let prev = st.running.swap(seq, Ordering::SeqCst);
+    // 新一轮的取消标记清零（否则上一轮"用户取消"会误伤新任务）
+    st.cancel_seq.store(0, Ordering::SeqCst);
+
+    if prev != 0 {
+        // latest-wins：顶掉旧任务——杀它的子进程树（旧任务自身发现 stale 后静默收尾）
+        // 只杀「上一个任务」的子进程：若槽里已是更新任务的（并发极窄窗口），留给它自己
+        if let Some(mut c) = st.take_child(Some(prev)) {
+            kill_tree(&mut c.child);
+        }
+    }
+
+    let sig = JobSig::new(seq);
     let job = Job {
         root: PathBuf::from(root),
         main: PathBuf::from(main_file),
@@ -433,22 +489,30 @@ pub async fn compile_project(
     };
 
     if !job.main.is_file() {
-        st.busy.store(false, Ordering::SeqCst);
+        // 只有仍是当前任务时才归还 slot（可能已被更快的一次调用顶替）
+        let _ = st
+            .running
+            .compare_exchange(seq, 0, Ordering::SeqCst, Ordering::SeqCst);
         return Err(format!("主文件不存在：{}", job.main.display()));
     }
 
     tauri::async_runtime::spawn(async move {
         let started = Instant::now();
-        let result = run_job(&app, &st, &job, started).await;
+        let result = run_job(&app, &st, &job, started, &sig).await;
 
-        // 清场：残留子进程一律杀掉
-        if let Ok(mut guard) = st.child.lock() {
-            if let Some(mut child) = guard.take() {
-                kill_tree(&mut child);
+        // 收尾：只有「仍是当前任务」才清场并回传结果。
+        // 被顶替的任务一律静默退出——既不 emit finished（否则会覆盖新任务的状态），
+        // 也不动全局 slot（里面的子进程已属于新任务）。
+        if st
+            .running
+            .compare_exchange(seq, 0, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+        {
+            if let Some(mut c) = st.take_child(Some(seq)) {
+                kill_tree(&mut c.child);
             }
+            let _ = app.emit(EV_FINISHED, result);
         }
-        st.busy.store(false, Ordering::SeqCst);
-        let _ = app.emit(EV_FINISHED, result);
     });
 
     Ok(())
@@ -458,14 +522,13 @@ pub async fn compile_project(
 #[tauri::command]
 pub fn cancel_compile(state: State<'_, Arc<CompileState>>) -> Result<(), String> {
     let st = state.inner();
-    if !st.busy.load(Ordering::SeqCst) {
+    let seq = st.running.load(Ordering::SeqCst);
+    if seq == 0 {
         return Err("当前没有编译任务".to_string());
     }
-    st.cancelled.store(true, Ordering::SeqCst);
-    if let Ok(mut guard) = st.child.lock() {
-        if let Some(mut child) = guard.take() {
-            kill_tree(&mut child);
-        }
+    st.cancel_seq.store(seq, Ordering::SeqCst);
+    if let Some(mut c) = st.take_child(Some(seq)) {
+        kill_tree(&mut c.child);
     }
     Ok(())
 }
@@ -476,6 +539,7 @@ async fn run_job(
     st: &Arc<CompileState>,
     job: &Job,
     started: Instant,
+    sig: &JobSig,
 ) -> CompileResult {
     // 产物与 main.tex 同目录（用户定稿：不设 -output-directory）
     let dir = job
@@ -527,7 +591,7 @@ async fn run_job(
         // M1-3：自定义固定流程（如 LaTeX → BibTeX → LaTeX → LaTeX），绕过 latexmk 按序直跑
         let total = job.steps.len();
         for (i, step) in job.steps.iter().enumerate() {
-            if cancelled || st.cancelled.load(Ordering::SeqCst) {
+            if cancelled || st.is_cancelled(sig.seq) {
                 cancelled = true;
                 break;
             }
@@ -542,7 +606,7 @@ async fn run_job(
                             0,
                             format!("{} · 第 {pos}/{total} 步（LaTeX）", job.engine),
                         );
-                        match run_cmd(app, st, &exe, &tex_args(&main_name), &dir, &job.search_dirs)
+                        match run_cmd(app, st, sig, &exe, &tex_args(&main_name), &dir, &job.search_dirs)
                             .await
                         {
                             CmdOutcome::Ok => {}
@@ -577,7 +641,7 @@ async fn run_job(
                             0,
                             format!("{step} · 处理参考文献（第 {pos}/{total} 步）"),
                         );
-                        match run_cmd(app, st, &exe, &[stem.clone()], &dir, &job.search_dirs).await
+                        match run_cmd(app, st, sig, &exe, &[stem.clone()], &dir, &job.search_dirs).await
                         {
                             CmdOutcome::Ok => {}
                             CmdOutcome::Failed => failed = true,
@@ -621,7 +685,7 @@ async fn run_job(
             0,
             format!("latexmk {}", latexmk_flag(&job.engine)),
         );
-        match run_cmd(app, st, lmk, &args, &dir, &job.search_dirs).await {
+        match run_cmd(app, st, sig, lmk, &args, &dir, &job.search_dirs).await {
             CmdOutcome::Ok => {}
             CmdOutcome::Failed => failed = true,
             CmdOutcome::Cancelled => cancelled = true,
@@ -642,7 +706,7 @@ async fn run_job(
         // 兜底：引擎自带管线（第 1 遍 → biber（有 .bcf）→ 再两遍收敛）
         passes += 1;
         emit_progress(app, "running", 0, format!("{} · 第 1 遍", job.engine));
-        match run_cmd(app, st, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
+        match run_cmd(app, st, sig, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
             CmdOutcome::Ok => {}
             CmdOutcome::Failed => failed = true,
             CmdOutcome::Cancelled => cancelled = true,
@@ -656,7 +720,7 @@ async fn run_job(
         if !cancelled && dir.join(format!("{stem}.bcf")).is_file() {
             if let Some(biber) = find_engine("biber", &job.search_dirs) {
                 emit_progress(app, "running", 0, "biber · 处理参考文献");
-                match run_cmd(app, st, &biber, &[stem.clone()], &dir, &job.search_dirs).await {
+                match run_cmd(app, st, sig, &biber, &[stem.clone()], &dir, &job.search_dirs).await {
                     CmdOutcome::Ok => {}
                     CmdOutcome::Failed => failed = true,
                     CmdOutcome::Cancelled => cancelled = true,
@@ -670,7 +734,7 @@ async fn run_job(
 
         // 再跑两遍，让 \ref / \cite 收敛
         for i in 0..2 {
-            if cancelled || st.cancelled.load(Ordering::SeqCst) {
+            if cancelled || st.is_cancelled(sig.seq) {
                 cancelled = true;
                 break;
             }
@@ -681,7 +745,7 @@ async fn run_job(
                 0,
                 format!("{} · 第 {} 遍", job.engine, i + 2),
             );
-            match run_cmd(app, st, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
+            match run_cmd(app, st, sig, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
                 CmdOutcome::Ok => {}
                 CmdOutcome::Failed => failed = true,
                 CmdOutcome::Cancelled => {
@@ -704,7 +768,7 @@ async fn run_job(
         );
     }
 
-    cancelled |= st.cancelled.load(Ordering::SeqCst);
+    cancelled |= st.is_cancelled(sig.seq);
     let pdf_mtime_after = std::fs::metadata(&pdf).and_then(|m| m.modified()).ok();
     // 本轮是否真的重写了产物（mtime 变化 / 从无到有）；命令全成功时放宽，避免低精度文件系统误判
     let pdf_written = match (pdf_mtime_before, pdf_mtime_after) {
@@ -754,7 +818,7 @@ async fn run_job(
     };
     let log_path = log.is_file().then(|| log.to_string_lossy().to_string());
     // latexmk 实际跑了几遍：取输出里的最大 Run number（直跑引擎按调用次数）
-    let passes = passes.max(st.rule_runs.load(Ordering::SeqCst));
+    let passes = passes.max(sig.rule_runs.load(Ordering::SeqCst));
 
     CompileResult {
         status: status.to_string(),
@@ -767,9 +831,13 @@ async fn run_job(
 }
 
 /// 转发一行编译输出；顺便记录 latexmk 的 `Run number N`（passes 统计）
-fn forward_line(app: &AppHandle, st: &Arc<CompileState>, line: &str) {
+/// 已被顶替的任务不再转发（避免旧任务的输出污染新任务的日志面板）
+fn forward_line(app: &AppHandle, st: &Arc<CompileState>, sig: &JobSig, line: &str) {
+    if st.is_stale(sig.seq) {
+        return;
+    }
     if let Some(n) = parse_run_number(line) {
-        st.rule_runs.fetch_max(n, Ordering::SeqCst);
+        sig.rule_runs.fetch_max(n, Ordering::SeqCst);
     }
     if !line.trim().is_empty() {
         emit_progress(app, "running", 0, line);
@@ -781,13 +849,14 @@ fn forward_line(app: &AppHandle, st: &Arc<CompileState>, line: &str) {
 async fn run_cmd(
     app: &AppHandle,
     st: &Arc<CompileState>,
+    sig: &JobSig,
     exe: &Path,
     args: &[String],
     cwd: &Path,
     path_dirs: &[PathBuf],
 ) -> CmdOutcome {
     // 取消可能发生在两条命令之间（尚未 spawn）
-    if st.cancelled.load(Ordering::SeqCst) {
+    if st.is_cancelled(sig.seq) {
         return CmdOutcome::Cancelled;
     }
 
@@ -846,17 +915,39 @@ async fn run_cmd(
     }
     drop(tx);
 
-    // 交给全局状态持有，cancel_compile 才能 kill
-    if let Ok(mut guard) = st.child.lock() {
-        *guard = Some(child);
-    } else {
-        return CmdOutcome::Failed;
+    // 交给全局状态持有，cancel_compile / 顶替才能 kill。
+    // spawn 与登记之间也可能被顶替：先复查一次，避免把过期子进程塞进槽位。
+    if st.is_cancelled(sig.seq) {
+        let _ = child.start_kill();
+        return CmdOutcome::Cancelled;
+    }
+    match st.child.lock() {
+        Ok(mut guard) => {
+            if let Some(mut old) = guard.take() {
+                // 槽里残留的旧子进程（上一任务被顶替时的极端窗口）：顺手清掉
+                kill_tree(&mut old.child);
+            }
+            *guard = Some(SlotChild {
+                seq: sig.seq,
+                child,
+            });
+        }
+        Err(_) => return CmdOutcome::Failed,
     }
 
     loop {
         // 先排空已到达的输出
         while let Ok(line) = rx.try_recv() {
-            forward_line(app, st, &line);
+            forward_line(app, st, sig, &line);
+        }
+
+        // 每轮复查取消/顶替：可覆盖「spawn 后、登记前被顶替」的窗口，
+        // 也保证被顶替后 30ms 内自杀子进程（不让旧编译白跑到底）
+        if st.is_cancelled(sig.seq) {
+            if let Some(mut c) = st.take_child(Some(sig.seq)) {
+                kill_tree(&mut c.child);
+            }
+            return CmdOutcome::Cancelled;
         }
 
         let mut finished: Option<bool> = None;
@@ -865,7 +956,9 @@ async fn run_cmd(
                 return CmdOutcome::Failed;
             };
             match guard.as_mut() {
-                Some(c) => match c.try_wait() {
+                // 槽里的子进程不属于本任务 → 已被顶替/取消
+                Some(c) if c.seq != sig.seq => return CmdOutcome::Cancelled,
+                Some(c) => match c.child.try_wait() {
                     Ok(Some(status)) => {
                         finished = Some(status.success());
                         guard.take();
@@ -883,7 +976,7 @@ async fn run_cmd(
 
         if let Some(ok) = finished {
             while let Ok(line) = rx.try_recv() {
-                forward_line(app, st, &line);
+                forward_line(app, st, sig, &line);
             }
             return if ok {
                 CmdOutcome::Ok
@@ -907,6 +1000,55 @@ mod tests {
         assert_eq!(latexmk_flag("lualatex"), "-lualatex");
         // 未知引擎回退 xelatex
         assert_eq!(latexmk_flag("tectonic"), "-xelatex");
+    }
+
+    /// M1-18b：latest-wins 状态机——新任务顶掉旧任务后，旧任务必须被判为「取消」，
+    /// 且旧任务的取消标记不得误伤新任务。
+    #[test]
+    fn latest_wins_supersedes_previous_job() {
+        let st = CompileState::default();
+
+        // 第一个任务
+        let first = st.next_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_eq!(st.running.swap(first, Ordering::SeqCst), 0); // 之前空闲
+        assert!(!st.is_stale(first));
+        assert!(!st.is_cancelled(first));
+
+        // 第二个任务顶替（模拟 compile_project 的 swap）
+        let second = st.next_seq.fetch_add(1, Ordering::SeqCst) + 1;
+        assert_ne!(first, second);
+        assert_eq!(st.running.swap(second, Ordering::SeqCst), first);
+        st.cancel_seq.store(0, Ordering::SeqCst); // 新一轮清取消标记
+
+        assert!(st.is_stale(first), "旧任务应被判定为过期");
+        assert!(st.is_cancelled(first), "过期任务等价于取消");
+        assert!(!st.is_stale(second));
+        assert!(!st.is_cancelled(second), "旧任务的取消不应误伤新任务");
+
+        // 用户取消只作用于「当前」任务
+        st.cancel_seq.store(second, Ordering::SeqCst);
+        assert!(st.is_cancelled(second));
+        st.cancel_seq.store(0, Ordering::SeqCst);
+
+        // 收尾：只有当前任务能归还 slot（旧任务的 CAS 必须失败）
+        assert!(st
+            .running
+            .compare_exchange(first, 0, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err());
+        assert!(st
+            .running
+            .compare_exchange(second, 0, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok());
+        assert_eq!(st.running.load(Ordering::SeqCst), 0);
+    }
+
+    /// 槽位按任务代号归属：非本任务的子进程不会被本任务取走/误杀
+    #[test]
+    fn child_slot_is_generation_scoped() {
+        let st = CompileState::default();
+        // 空槽：按代号取也取不到，且不 panic
+        assert!(st.take_child(Some(7)).is_none());
+        assert!(st.take_child(None).is_none());
     }
 
     #[test]

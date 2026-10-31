@@ -532,11 +532,22 @@ pub fn normalize_table(mut t: TableConfig) -> TableConfig {
 }
 
 /// M1-17：LaTeX 语法高亮配色（数据驱动，与前端 settings.highlight.latex 对应；camelCase）
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct HighlightConfig {
     /// 高亮分组（有序；顺序决定优先级：靠后更高）
     pub latex: Vec<HighlightGroupConfig>,
+}
+
+impl Default for HighlightConfig {
+    /// 默认值即「默认 12 组」，与 normalize（空列表兜底默认组）及前端
+    /// DEFAULT_SETTINGS.highlight.latex 保持一致——
+    /// 避免 AppConfig::default() 与「写盘→读盘」归一化结果不等（往返测试即因此失败）。
+    fn default() -> Self {
+        HighlightConfig {
+            latex: default_highlight(),
+        }
+    }
 }
 
 /// M1-17：单个高亮分组（可扩展：数量不限，tags 为 lezer 标签名；camelCase）
