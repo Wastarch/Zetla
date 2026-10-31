@@ -46,7 +46,9 @@ import { useProjectStore } from "@/project/useProject";
 import { showMinimap, Scale, type MinimapConfig } from "@replit/codemirror-minimap";
 import { registerEditorView, unregisterEditorView } from "./activeView";
 import {
+  plainTabKeymap,
   snippetCompletionSource,
+  snippetExplicitKeymap,
   snippetTabKeymap,
 } from "./snippetsSupport";
 import { searchMatchHighlighter } from "./searchUtil";
@@ -353,6 +355,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
                 icons: true,
               }),
               keymap.of(completionKeymap),
+              // M2-5b：显式唤起补全的备用键位（Ctrl+Space 被中文输入法占用）
+              snippetExplicitKeymap,
               // M2-5b：Tab 直展触发词（最低优先级：弹窗 accept / 公式槽位导航先于此）
               snippetTabKeymap,
               hoverTooltip(citeHoverSource),
@@ -364,7 +368,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
               inputLinkDecorations,
               hoverTooltip(inputJumpHint),
             ]
-          : []),
+          : // M2-5b：非 LaTeX 档位补回 Tab 缩进（全局已关 @uiw indentWithTab；片段仅 .tex 生效）
+            [plainTabKeymap]),
         // M1-4：Ctrl/⌘+点击 → 优先 \cite 跳 bib 条目（M1-14d），否则回落 synctex 正向跳转
         EditorView.domEventHandlers({
           mousedown: (e, view) => {

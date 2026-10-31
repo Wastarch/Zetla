@@ -8,6 +8,7 @@ import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { redo, toggleComment, undo } from "@codemirror/commands";
+import { startCompletion } from "@codemirror/autocomplete";
 import { getActiveView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useAppStore } from "@/core/store";
@@ -242,6 +243,19 @@ export function MenuBar() {
           enabled: canEditText,
           hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
           onClick: () => withView((v) => toggleComment(v)),
+        },
+        { sep: true, label: "" },
+        {
+          // M2-5b：片段列表入口（键盘 Ctrl+Shift+Space 被中文输入法抢占时的兜底）
+          label: "插入代码片段…",
+          sc: "Ctrl+Shift+Space",
+          enabled: canEditText,
+          hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
+          onClick: () =>
+            withView((v) => {
+              v.focus();
+              startCompletion(v);
+            }),
         },
       ],
     },

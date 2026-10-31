@@ -4,7 +4,12 @@
 // Tab 直展挂最低优先级 keymap（补全弹窗 accept、公式槽位导航、缩进均先于它）。
 import type { EditorView } from "@codemirror/view";
 import { keymap } from "@codemirror/view";
-import { snippet, nextSnippetField, prevSnippetField } from "@codemirror/autocomplete";
+import {
+  snippet,
+  nextSnippetField,
+  prevSnippetField,
+  startCompletion,
+} from "@codemirror/autocomplete";
 import { indentWithTab, indentLess } from "@codemirror/commands";
 import type { CompletionContext, CompletionResult } from "@codemirror/autocomplete";
 import {
@@ -90,24 +95,38 @@ export function expandTriggerAtCursor(view: EditorView): boolean {
  * 片段补全源（追加为 override 第三项）。按触发词前缀匹配；
  * type="text" 与 LaTeX 命令（function/keyword）视觉区分；boost=-99 让命令补全优先。
  * detail 展示 desc（缺省分类）。explicit=true 时（Ctrl+Space）空前缀也列出全部片段。
+ *
+ * 有选区时（$SELECTION 包裹流程：选中文字 → Ctrl+Space）：不再用选中文本当过滤前缀
+ * （否则一个都匹配不到），改为 explicit 下直接列出全部片段；`from` 取光标位置，
+ * 具体替换区间由 expandSnippet 按选区处理。
  */
 export function snippetCompletionSource(
   ctx: CompletionContext,
 ): CompletionResult | null {
+  const toOption = (s: SnippetDef) => ({
+    label: s.trigger,
+    detail: s.desc ?? s.category,
+    type: "text" as const,
+    boost: -99,
+    apply: (view: EditorView, _c: unknown, from: number, to: number) =>
+      expandSnippet(view, s, from, to),
+  });
+
+  // 有选区：列出全部片段（$SELECTION 包裹入口；不因选中自动弹窗——CM 只在
+  // 显式唤起/打字时才查询 source，选中状态下不会自发查询，故无需 explicit 门槛）
+  if (!ctx.state.selection.main.empty) {
+    const options = allSnippets().map(toOption);
+    if (options.length === 0) return null;
+    return { from: ctx.pos, options, filter: false };
+  }
+
   const word = ctx.matchBefore(/[A-Za-z]+/);
   if (!word) return null;
   if (word.from === word.to && !ctx.explicit) return null;
   const typed = word.text.toLowerCase();
   const options = allSnippets()
     .filter((s) => s.trigger.toLowerCase().startsWith(typed))
-    .map((s) => ({
-      label: s.trigger,
-      detail: s.desc ?? s.category,
-      type: "text" as const,
-      boost: -99,
-      apply: (view: EditorView, _c: unknown, from: number, to: number) =>
-        expandSnippet(view, s, from, to),
-    }));
+    .map(toOption);
   if (options.length === 0) return null;
   return { from: word.from, options, validFor: /^[A-Za-z]*$/ };
 }
@@ -127,5 +146,25 @@ export const snippetTabKeymap = keymap.of([
     run: (view) => expandTriggerAtCursor(view),
   },
   indentWithTab, // {Tab: indentMore}（新版 @codemirror/commands 为单对象；Shift-Tab 缩进不在其中）
+  { key: "Shift-Tab", run: indentLess },
+]);
+
+/**
+ * 显式唤起补全的备用键位（$SELECTION 包裹流程必需：选中文字后要能主动弹片段列表）。
+ * 原因：Windows 中文输入法把 Ctrl+Space 当作「中英文切换」抢先吃掉，WebView 收不到；
+ * 故补 Ctrl+Shift+Space（主）与 Ctrl+Alt+Space（备）两个不易冲突的组合。
+ */
+export const snippetExplicitKeymap = keymap.of([
+  { key: "Mod-Shift-Space", run: startCompletion },
+  { key: "Ctrl-Alt-Space", run: startCompletion },
+]);
+
+/**
+ * 非 LaTeX 档位（.bib / .bst / .log / plain）的 Tab keymap：仅缩进。
+ * LaTeXEditor 全局 `indentWithTab={false}` 关掉了 @uiw 默认缩进，此处补回，
+ * 否则非 .tex 文件按 Tab 无反应（片段展开仅 .tex 生效，见 M2-5b 决策）。
+ */
+export const plainTabKeymap = keymap.of([
+  indentWithTab,
   { key: "Shift-Tab", run: indentLess },
 ]);
