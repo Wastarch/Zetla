@@ -371,7 +371,6 @@ body {
   gap: 6px;
   padding: 4px 8px;
   background: var(--bg-2);
-  border-bottom: 1px dashed var(--txt-3);
 }
 
 .editor-toolbar .et-group {
@@ -1425,6 +1424,13 @@ body {
   font-size: var(--editor-fs);
   background: var(--editor-bg);
   color: var(--txt);
+}
+
+/* 移除聚焦时 CM baseTheme 注入的 1px dotted 轮廓（.cm-editor.cm-focused，特异性 0,3,0）。
+   用 :not(.drag-over) 提到 0,4,0——足以压过 CM 的运行时注入样式，
+   又不会误伤下方拖拽图片时的虚线高亮。 */
+.latex-editor .cm-editor.cm-focused:not(.drag-over) {
+  outline: none;
 }
 
 /* R5 拖拽图片：拖到编辑区时的高亮（M1-7） */
