@@ -27,9 +27,9 @@
   --bg-4: #262b31;
   --line: #2b3037;
   --line-soft: #23272d;
-  --txt: #d7dbe2;
-  --txt-2: #98a1ac;
-  --txt-3: #69717c;
+  --txt: #ebebeb;
+  --txt-2: #ebebeb;
+  --txt-3: #ebebeb;
   --accent: #5b9dff;
   --accent-2: #3d7ae0;
   --accent-soft: rgba(91, 157, 255, 0.15);
@@ -54,9 +54,9 @@
   --bg-4: #eef1f4;
   --line: #d8dee5;
   --line-soft: #e6eaee;
-  --txt: #23272d;
-  --txt-2: #59626d;
-  --txt-3: #8b949e;
+  --txt: #353333;
+  --txt-2: #3a3939;
+  --txt-3: #252525;
   --accent: #2b62cf;
   --accent-2: #1e4fae;
   --accent-soft: rgba(43, 98, 207, 0.11);
@@ -6712,24 +6712,38 @@ body.row-resizing {
   gap: 6px;
 }
 
-.search-view .sv-input {
+/* 输入框外壳：把开关包进框内（VS Code 风格），框获得焦点态 */
+.search-view .sv-field {
   flex: 1 1 auto;
   min-width: 0;
   height: 28px;
-  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  padding: 0 4px 0 0;
   background: var(--editor-bg);
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.search-view .sv-field:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+/* 框内实际输入框：无边框/透明背景，让出右侧给开关 */
+.search-view .sv-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0 6px 0 9px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
   color: var(--txt);
   font-family: var(--font-ui);
   font-size: 12px;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-.search-view .sv-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 .search-view .sv-toggles {
@@ -6739,18 +6753,59 @@ body.row-resizing {
   flex: none;
 }
 
-.search-view .sv-replace-all {
+/* 搜索框左侧的折叠箭头（展开/折叠替换行，VS Code 风格） */
+.search-view .sv-caret {
+  width: 18px;
   height: 28px;
-  padding: 0 11px;
   flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--txt-2);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  border-radius: var(--r-sm);
+  transition: all 0.15s;
+}
+
+.search-view .sv-caret:hover {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+/* 替换行左侧占位，使替换输入框与搜索输入框对齐 */
+.search-view .sv-caret-placeholder {
+  width: 18px;
+  flex: none;
+}
+
+.search-view .sv-replace-all {
+  width: 28px;
+  height: 28px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
   border: 1px solid var(--line);
   background: transparent;
   color: var(--txt-2);
   border-radius: var(--r-sm);
   cursor: pointer;
-  font-family: var(--font-ui);
-  font-size: 11.5px;
   transition: all 0.15s;
+}
+
+/* 全部替换图标：用 mask + currentColor，随主题（txt-2 / 悬停 accent）变色 */
+.search-view .sv-replace-all .ra-icon {
+  width: 15px;
+  height: 15px;
+  background-color: currentColor;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: contain;
+  mask-size: contain;
 }
 
 .search-view .sv-replace-all:hover:not(:disabled) {
@@ -6771,6 +6826,29 @@ body.row-resizing {
 
 .search-view .sv-summary .sv-error {
   color: var(--err);
+}
+
+.search-view .sv-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.search-view .sv-open-link {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  text-decoration: none;
+}
+
+.search-view .sv-open-link:hover {
+  text-decoration: underline;
 }
 
 .search-view .sv-results {

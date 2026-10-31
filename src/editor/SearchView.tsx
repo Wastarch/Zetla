@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
+import replaceAllIcon from "@/assets/icon/全部替换.svg";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "@/ipc/invoke";
 import { useProjectStore } from "@/project/useProject";
@@ -258,6 +259,13 @@ export function SearchView() {
     useFindStore.getState().openFind({ query, caseSensitive, wholeWord, regexp, replaceMode: false });
   };
 
+  /** 在编辑器中打开第一个命中（对应 VS Code 搜索结果的「在编辑器中打开」）。 */
+  const onOpenFirst = () => {
+    const g = groups[0];
+    if (!g || g.lines.length === 0) return;
+    onMatchClick(g.lines[0], g.path);
+  };
+
   const toggleCollapse = (path: string) => {
     setCollapsed((prev) => {
       const next = new Set(prev);
@@ -277,7 +285,7 @@ export function SearchView() {
   const hasQuery = query.trim() !== "";
 
   return (
-    <div className="side-view">
+    <div className="side-view search-view">
       <div className="side-head">
         <div className="side-title">搜索</div>
         <div className="sv-head-tools">
@@ -310,83 +318,99 @@ export function SearchView() {
 
       <div className="sv-body">
         <div className="sv-input-row">
-          <input
-            ref={inputRef}
-            className="sv-input"
-            type="text"
-            placeholder="搜索"
-            value={query}
-            spellCheck={false}
-            autoComplete="off"
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={onSearchKeyDown}
-          />
-          <div className="sv-toggles">
-            <button
-              type="button"
-              className={caseSensitive ? "fp-tg on" : "fp-tg"}
-              title="区分大小写"
-              onClick={() => setCaseSensitive((v) => !v)}
-            >
-              Aa
-            </button>
-            <button
-              type="button"
-              className={wholeWord ? "fp-tg on" : "fp-tg"}
-              title="整词匹配"
-              onClick={() => setWholeWord((v) => !v)}
-            >
-              ab
-            </button>
-            <button
-              type="button"
-              className={regexp ? "fp-tg on" : "fp-tg"}
-              title="正则表达式"
-              onClick={() => setRegexp((v) => !v)}
-            >
-              .*
-            </button>
-            <button
-              type="button"
-              className={showReplace ? "fp-tg on" : "fp-tg"}
-              title="展开 / 折叠替换"
-              onClick={() => setShowReplace((v) => !v)}
-            >
-              …
-            </button>
-          </div>
-        </div>
-
-        {showReplace && (
-          <div className="sv-input-row">
+          <button
+            type="button"
+            className="sv-caret"
+            title={showReplace ? "折叠替换" : "展开替换"}
+            onClick={() => setShowReplace((v) => !v)}
+          >
+            <Icon
+              name="chev"
+              size={12}
+              style={{ transform: showReplace ? "rotate(0deg)" : "rotate(-90deg)" }}
+            />
+          </button>
+          <div className="sv-field">
             <input
+              ref={inputRef}
               className="sv-input"
               type="text"
-              placeholder="替换为"
-              value={replace}
+              placeholder="搜索"
+              value={query}
               spellCheck={false}
               autoComplete="off"
-              onChange={(e) => setReplace(e.target.value)}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={onSearchKeyDown}
             />
             <div className="sv-toggles">
               <button
                 type="button"
-                className={preserveCase ? "fp-tg on" : "fp-tg"}
-                title="替换时保留大小写"
-                onClick={() => setPreserveCase((v) => !v)}
+                className={caseSensitive ? "fp-tg on" : "fp-tg"}
+                title="区分大小写"
+                onClick={() => setCaseSensitive((v) => !v)}
               >
-                AB
+                Aa
               </button>
               <button
                 type="button"
-                className="sv-replace-all"
-                title="在所有文件中替换"
-                disabled={!hasQuery}
-                onClick={() => void runReplaceAll()}
+                className={wholeWord ? "fp-tg on" : "fp-tg"}
+                title="整词匹配"
+                onClick={() => setWholeWord((v) => !v)}
               >
-                全部替换
+                ab
+              </button>
+              <button
+                type="button"
+                className={regexp ? "fp-tg on" : "fp-tg"}
+                title="正则表达式"
+                onClick={() => setRegexp((v) => !v)}
+              >
+                .*
               </button>
             </div>
+          </div>
+        </div>
+
+        {showReplace && (
+          <div className="sv-input-row sv-input-row--replace">
+            <span className="sv-caret-placeholder" />
+            <div className="sv-field">
+              <input
+                className="sv-input"
+                type="text"
+                placeholder="替换为"
+                value={replace}
+                spellCheck={false}
+                autoComplete="off"
+                onChange={(e) => setReplace(e.target.value)}
+              />
+              <div className="sv-toggles">
+                <button
+                  type="button"
+                  className={preserveCase ? "fp-tg on" : "fp-tg"}
+                  title="替换时保留大小写"
+                  onClick={() => setPreserveCase((v) => !v)}
+                >
+                  AB
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="sv-replace-all"
+              title="在所有文件中替换"
+              aria-label="在所有文件中替换"
+              disabled={!hasQuery}
+              onClick={() => void runReplaceAll()}
+            >
+              <span
+                className="ra-icon"
+                style={{
+                  WebkitMaskImage: `url("${replaceAllIcon}")`,
+                  maskImage: `url("${replaceAllIcon}")`,
+                }}
+              />
+            </button>
           </div>
         )}
 
@@ -399,8 +423,18 @@ export function SearchView() {
             totalMatches === 0 ? (
               <span>无结果</span>
             ) : (
-              <span>
-                {totalMatches} 个结果 · {groups.length} 个文件
+              <span className="sv-summary-row">
+                <span>
+                  {totalMatches} 个结果 · {groups.length} 个文件
+                </span>
+                <button
+                  type="button"
+                  className="sv-open-link"
+                  title="在编辑器中打开第一个命中"
+                  onClick={onOpenFirst}
+                >
+                  在编辑器中打开
+                </button>
               </span>
             )
           ) : (
