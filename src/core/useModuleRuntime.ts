@@ -6,6 +6,7 @@ import { moduleRegistry, bindModuleBus, KERNEL_CAPABILITIES } from "./moduleRegi
 import { useSettingsStore } from "./settings";
 import { registerMathModule } from "@/modules/formula/mathModule";
 import { registerTableModule } from "@/modules/table/tableModule";
+import { registerSnippetsModule } from "@/modules/snippets/snippetsModule";
 
 export function useModuleRuntime(): void {
   useEffect(() => {
@@ -19,6 +20,9 @@ export function useModuleRuntime(): void {
     // M1-8 · 表格模块（R6）：自带侧栏视图（LatexModule.view），活动栏/视图菜单/
     // Ctrl+B 5 由模块协议自动接入，停用即从界面消失。
     registerTableModule();
+
+    // M2-5c · 代码片段模块（纯钩子）：设置页开关控制补全源与 Tab 直展是否生效
+    registerSnippetsModule();
 
     // 设置页覆盖值 → 注册表：
     // - 配置未加载完成前传 null（各模块走 defaultEnabled）

@@ -23,6 +23,17 @@ import { snippetsApi } from "@/ipc/invoke";
 
 let userSnippets: SnippetDef[] = [];
 
+/**
+ * M2-5c：模块开关闸门。补全源与 Tab 直展是静态挂载的扩展，无法在运行中摘除，
+ * 故由模块钩子（snippetsModule 的 onModuleEnabled/onModuleDisabled）翻转此标志，
+ * 关闭后补全源返回 null、直展返回 false，Tab 自然落回缩进——无需重建编辑器扩展。
+ */
+let snippetsEnabled = true;
+
+export function setSnippetsEnabled(on: boolean): void {
+  snippetsEnabled = on;
+}
+
 /** 覆盖用户自定义片段表（归一化；启动加载与 M2-5c 设置页保存后调用） */
 export function setUserSnippets(list: SnippetDef[]): void {
   userSnippets = normalizeSnippets(list);
@@ -76,6 +87,7 @@ export function expandSnippet(
 
 /** 光标前触发词精确命中 → Tab 直展；否则返回 false 交还缩进 */
 export function expandTriggerAtCursor(view: EditorView): boolean {
+  if (!snippetsEnabled) return false;
   const { state } = view;
   const sel = state.selection.main;
   if (!sel.empty) return false;
@@ -103,6 +115,7 @@ export function expandTriggerAtCursor(view: EditorView): boolean {
 export function snippetCompletionSource(
   ctx: CompletionContext,
 ): CompletionResult | null {
+  if (!snippetsEnabled) return null;
   const toOption = (s: SnippetDef) => ({
     label: s.trigger,
     detail: s.desc ?? s.category,

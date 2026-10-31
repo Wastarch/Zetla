@@ -6956,3 +6956,278 @@ body.row-resizing {
   color: inherit;
   border-radius: 2px;
 }
+
+/* ── M2-5c：设置页「代码片段」双栏管理 ──────────────────────
+   左侧列表（内置只读 + 自定义）/ 右侧编辑区，高度固定避免设置框随内容抖动 */
+.snip-pane {
+  gap: 12px;
+}
+
+.snip-pane .set-note kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-3);
+  color: var(--txt-2);
+}
+
+.snip-cols {
+  display: grid;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 14px;
+  height: 352px;
+  min-height: 0;
+}
+
+/* 左：列表 */
+.snip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+}
+
+.snip-list-head {
+  display: flex;
+  gap: 6px;
+  padding-bottom: 6px;
+  position: sticky;
+  top: -6px;
+  background: var(--bg-2);
+  z-index: 1;
+}
+
+.snip-list-head .txt-in {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  font-size: 11px;
+}
+
+.snip-group {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+  padding: 8px 4px 3px;
+}
+
+.snip-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  align-items: flex-start;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  min-width: 0;
+  width: 100%;
+}
+
+.snip-item:hover {
+  background: var(--bg-3);
+}
+
+.snip-item.on {
+  background: var(--accent-soft);
+}
+
+.snip-item .snip-trigger {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--txt);
+}
+
+.snip-item.on .snip-trigger {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.snip-item .snip-desc,
+.snip-item.err .snip-desc {
+  font-size: 10px;
+  color: var(--txt-3);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.snip-item.err .snip-desc {
+  color: var(--err, #c0392b);
+}
+
+.snip-item.err .snip-trigger {
+  color: var(--err, #c0392b);
+}
+
+.snip-empty {
+  font-size: 10.5px;
+  color: var(--txt-3);
+  padding: 6px 6px 10px;
+  line-height: 1.5;
+}
+
+/* 右：编辑区 */
+.snip-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-2);
+  overflow-y: auto;
+}
+
+.snip-edit-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.snip-edit-head b {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--txt);
+}
+
+.snip-edit-head .tag {
+  font-size: 9.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--bg-3);
+  color: var(--txt-3);
+}
+
+.snip-edit-head .spacer,
+.snip-actions .spacer {
+  flex: 1;
+}
+
+.snip-meta {
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.snip-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.snip-field.grow {
+  flex: 1;
+  min-height: 0;
+}
+
+.snip-field > span {
+  font-size: 10.5px;
+  color: var(--txt-2);
+}
+
+.snip-field .txt-in {
+  height: 26px;
+  font-size: 11.5px;
+  font-family: var(--font-mono);
+}
+
+.snip-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.snip-body-in {
+  flex: 1;
+  min-height: 150px;
+  resize: none;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--editor-bg);
+  color: var(--txt);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  outline: none;
+  tab-size: 2;
+}
+
+.snip-body-in:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.snip-body-ro {
+  flex: 1;
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  background: var(--editor-bg);
+  color: var(--txt-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+}
+
+.snip-alert {
+  font-size: 10.5px;
+  color: var(--err, #c0392b);
+  background: rgba(192, 57, 43, 0.1);
+  border-radius: var(--r-sm);
+  padding: 4px 8px;
+}
+
+.snip-hint {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--txt-3);
+  font-size: 11.5px;
+  padding: 20px;
+}
+
+.snip-hint p {
+  margin: 0;
+  max-width: 340px;
+  line-height: 1.6;
+}
+
+.snip-hint p.dim {
+  font-size: 10.5px;
+  color: var(--txt-3);
+  opacity: 0.85;
+}
+
+/* 底栏：导入导出 + 保存 */
+.snip-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.snip-dirty {
+  font-size: 10.5px;
+  color: var(--txt-3);
+}

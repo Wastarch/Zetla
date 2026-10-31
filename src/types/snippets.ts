@@ -151,14 +151,14 @@ export const DEFAULT_SNIPPETS: SnippetDef[] = [
   {
     id: "sn-bf",
     trigger: "bf",
-    desc: "加粗（\\textbf；选中文字后 Ctrl+Space 选本项即包裹）",
+    desc: "加粗（\\textbf；选中文字后经菜单「编辑 → 插入代码片段」选本项即包裹）",
     category: "文本",
     body: "\\textbf{$SELECTION}",
   },
   {
     id: "sn-it",
     trigger: "it",
-    desc: "斜体（\\textit；选中文字后 Ctrl+Space 选本项即包裹）",
+    desc: "斜体（\\textit；选中文字后经菜单「编辑 → 插入代码片段」选本项即包裹）",
     category: "文本",
     body: "\\textit{$SELECTION}",
   },

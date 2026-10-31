@@ -23,6 +23,7 @@ export type SettingsPane =
   | "editor"
   | "pdf"
   | "look"
+  | "snippets"
   | "about"
   | "modules";
 

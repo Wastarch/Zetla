@@ -18,6 +18,8 @@ import type { UpdateProgress } from "@/modules/updater/types";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Icon } from "@/ui/Icon";
 import { SyntaxHighlightDialog } from "@/ui/SyntaxHighlightDialog";
+import { SnippetsPane, resetSnippetsDraft } from "@/ui/SnippetsPane";
+import { flushSnippets, hasDirtySnippets } from "@/ui/snippetsPaneBridge";
 import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel, DEFAULT_AUX_EXTENSIONS, LIVE_PREVIEW_DELAY_PRESETS } from "@/types/settings";
 import type {
   AppSettings,
@@ -34,6 +36,7 @@ const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "editor", icon: "edit", label: "编辑器" },
   { id: "pdf", icon: "pdf", label: "PDF 预览" },
   { id: "look", icon: "sun", label: "外观与保存" },
+  { id: "snippets", icon: "list", label: "代码片段" },
   { id: "modules", icon: "wand", label: "模块" },
   { id: "about", icon: "book", label: "关于 Zetla" },
 ];
@@ -186,7 +189,20 @@ export function SettingsDialog() {
     }));
 
   const cancel = useCallback(() => {
+    // M2-5c：「代码片段」页有未保存草稿时先确认（片段独立落盘，不受下面的回滚影响）
+    if (hasDirtySnippets()) {
+      void confirm("「代码片段」有未保存的改动，确定放弃并关闭？", {
+        title: "放弃片段改动",
+      }).then((ok) => {
+        if (!ok) return;
+        resetSnippetsDraft();
+        setSettings(cloneSettings(snapshotRef.current));
+        closeSettings();
+      });
+      return;
+    }
     // 未保存的预览改动回滚到打开时快照
+    resetSnippetsDraft();
     setSettings(cloneSettings(snapshotRef.current));
     closeSettings();
   }, [setSettings, closeSettings]);
@@ -204,6 +220,8 @@ export function SettingsDialog() {
 
   const save = useCallback(async () => {
     try {
+      // M2-5c：片段页草稿先落盘（独立 snippets.json），再保存 AppSettings
+      await flushSnippets();
       await useSettingsStore.getState().save(useSettingsStore.getState().settings);
       closeSettings();
     } catch (e) {
@@ -792,6 +810,9 @@ export function SettingsDialog() {
                 </Fld>
               </div>
             )}
+
+            {/* M2-5c：代码片段双栏管理（独立 snippets.json，页内自带保存） */}
+            {pane === "snippets" && <SnippetsPane />}
 
             {pane === "modules" && (
               <div className="set-pane" role="tabpanel">
