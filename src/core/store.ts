@@ -67,6 +67,12 @@ export interface AppState {
   pdfSync: { page: number; x: number; y: number; w: number; h: number; seq: number } | null;
   setPdfSync: (t: { page: number; x: number; y: number; w: number; h: number }) => void;
 
+  // ── 实时预览「静默锚定」目标（M1-18c）──
+  /** live 编译完成后把 PDF 滚到光标所在位置：只滚动定位，**不**闪现高亮（区别于 pdfSync）。
+   *  坐标同 pdfSync（pt，y 自页顶向下）；seq 保证同一位置连续触发也会重新应用 */
+  pdfAnchor: { page: number; x: number; y: number; w: number; h: number; seq: number } | null;
+  setPdfAnchor: (t: { page: number; x: number; y: number; w: number; h: number }) => void;
+
   // ── 项目 ──
   project: ProjectInfo | null;
   openProject: (p: ProjectInfo) => void;
@@ -147,6 +153,12 @@ export const useAppStore = create<AppState>((set) => ({
   setPdfSync: (t) =>
     set((s) => ({
       pdfSync: { ...t, seq: (s.pdfSync?.seq ?? 0) + 1 },
+    })),
+
+  pdfAnchor: null,
+  setPdfAnchor: (t) =>
+    set((s) => ({
+      pdfAnchor: { ...t, seq: (s.pdfAnchor?.seq ?? 0) + 1 },
     })),
 
   project: null,

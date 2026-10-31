@@ -240,6 +240,20 @@ export const DEFAULT_AUX_EXTENSIONS: string[] = [
 /** M1-18：实时预览防抖延迟可选档位（毫秒；设置页下拉；600 为默认，须包含以免空选） */
 export const LIVE_PREVIEW_DELAY_PRESETS = [500, 600, 800, 1200] as const;
 
+/**
+ * M1-18c：实时预览开启时必须保留的辅助文件后缀。
+ * - `.fdb_latexmk` / `.fls` 是 latexmk 的增量缓存，删了下次就退化为全量慢编译；
+ * - `.synctex.gz` 是滚动锚定 / 双向跳转的数据源，删了锚定直接失效。
+ * 开启实时预览时，编译后清理会跳过这三类（其余后缀照删）。
+ */
+export const LIVE_PREVIEW_KEEP_AUX: string[] = [".fdb_latexmk", ".fls", ".synctex.gz"];
+
+/** 过滤掉实时预览必需的缓存/同步后缀（后缀比较不区分大小写） */
+export function liveSafeAuxExtensions(exts: string[]): string[] {
+  const keep = new Set(LIVE_PREVIEW_KEEP_AUX.map((e) => e.toLowerCase()));
+  return exts.filter((e) => !keep.has(e.trim().toLowerCase()));
+}
+
 /** 前端兜底默认值（与 Rust Default 一致；正常路径以 load_app_config 返回为准） */
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,

@@ -540,7 +540,7 @@ export function SettingsDialog() {
                   label="编译完成后清理辅助文件"
                   hint={
                     draft.build.livePreview
-                      ? ".aux / .log / .out 等（与实时预览冲突：会删 latexmk 缓存，建议关闭）"
+                      ? ".aux / .log / .out 等；实时预览开启时自动保留 .fdb_latexmk / .fls（增量缓存）与 .synctex.gz（跳转与锚定）"
                       : ".aux / .log / .out 等"
                   }
                 >

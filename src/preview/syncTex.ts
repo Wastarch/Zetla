@@ -61,6 +61,32 @@ export async function jumpToPdfFromSource(
 }
 
 /**
+ * M1-18c · 实时预览「静默锚定」：live 编译成功后把 PDF 滚到光标行对应位置。
+ * 与 jumpToPdfFromSource 的区别：不展开/不打扰、**不闪现高亮**（只写 pdfAnchor），
+ * 失败静默（锚定不到就保持原滚动位置）。坐标约定与正向跳转一致（pt）。
+ */
+export async function anchorPdfToSource(
+  file: string,
+  line: number,
+  col: number,
+  pdf: string,
+): Promise<void> {
+  try {
+    const hit = await synctexApi.view(file, line, col, pdf);
+    if (!hit) return;
+    useAppStore.getState().setPdfAnchor({
+      page: hit.page,
+      x: hit.x,
+      y: hit.y,
+      w: hit.width,
+      h: hit.height,
+    });
+  } catch {
+    /* 锚定是锦上添花：查询失败不弹错、不影响预览 */
+  }
+}
+
+/**
  * 反向跳转：PDF (page, x, y) → 源码行。
  * 复用 M0-12 错误定位的打开/切标签/跳行链路（jumpToError）。
  */

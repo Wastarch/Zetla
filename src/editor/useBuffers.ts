@@ -19,7 +19,11 @@ const savingPaths = new Set<string>();
  */
 let compileOnSaveTimer: number | undefined;
 function scheduleCompileOnSave(): void {
-  if (!useSettingsStore.getState().settings.build.compileOnSave) return;
+  const build = useSettingsStore.getState().settings.build;
+  if (!build.compileOnSave) return;
+  // M1-18c：实时预览开启时，「保存即编译」已被编辑触发的 live 编译完全覆盖；
+  // 两者叠加会让每次保存多排一次编译（再被 latest-wins 顶掉），纯属浪费 CPU
+  if (build.livePreview) return;
   if (compileOnSaveTimer !== undefined) window.clearTimeout(compileOnSaveTimer);
   compileOnSaveTimer = window.setTimeout(() => {
     compileOnSaveTimer = undefined;
@@ -30,8 +34,8 @@ function scheduleCompileOnSave(): void {
 /**
  * M1-18a · 实时预览（Live Preview）：编辑内容变更后，若设置开启且编辑的是 .tex，
  * 停止输入 livePreviewDelayMs 后静默触发一次编译。与「保存时自动编译」解耦
- * （后者由 saveBuffer 触发）。本切片仅前端触发，后端仍单并发——重叠触发会被
- * startCompile 的前置哨兵丢弃（预期；M1-18b 再改 latest-wins）。
+ * （后者由 saveBuffer 触发）。M1-18b 起后端 latest-wins，重叠触发会顶掉旧任务；
+ * M1-18c 起以 `{ live: true }` 触发——不抢日志面板、失败静默、成功后按光标行锚定 PDF。
  */
 let livePreviewTimer: number | undefined;
 function scheduleLivePreview(path: string): void {
@@ -42,7 +46,7 @@ function scheduleLivePreview(path: string): void {
   if (livePreviewTimer !== undefined) window.clearTimeout(livePreviewTimer);
   livePreviewTimer = window.setTimeout(() => {
     livePreviewTimer = undefined;
-    void startCompile();
+    void startCompile({ live: true });
   }, delay);
 }
 
@@ -125,7 +129,7 @@ export interface BuffersState {
   /** 保存指定缓冲：write_file → 回读校验 → markSaved；silent 不弹「已保存」toast（自动保存用），失败仍弹 */
   saveBuffer: (path: string, options?: { silent?: boolean }) => Promise<boolean>;
   /** 保存全部脏缓冲（侧栏/菜单栏共用）；返回保存个数 */
-  saveAllBuffers: () => Promise<number>;
+  saveAllBuffers: (opts?: { silent?: boolean }) => Promise<number>;
   /** M0-14a · 自动保存全部脏缓冲（静默成功；失败汇总一条 toast），返回是否全部成功 */
   autosaveDirty: () => Promise<boolean>;
   /** 脏缓冲数量（退出确认等用） */
@@ -292,12 +296,13 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
     }
   },
 
-  saveAllBuffers: async () => {
+  saveAllBuffers: async (opts?: { silent?: boolean }) => {
+    const silent = !!opts?.silent;
     const dirty = get().buffers.filter((b) => b.kind === "text" && b.content !== b.savedContent);
     for (const b of dirty) {
-      await get().saveBuffer(b.path);
+      await get().saveBuffer(b.path, silent ? { silent: true } : undefined);
     }
-    if (dirty.length > 0) {
+    if (dirty.length > 0 && !silent) {
       set({ notice: { text: `已保存全部 ${dirty.length} 个文件`, kind: "ok" } });
     }
     return dirty.length;

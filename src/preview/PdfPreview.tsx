@@ -58,6 +58,8 @@ export function PdfPreview({
   const pvSideWidth = useAppStore((s) => s.pvSideWidth);
   // M1-4：synctex 正向跳转目标（源码 Ctrl+点击写入）
   const pdfSync = useAppStore((s) => s.pdfSync);
+  // M1-18c：实时预览重编译后的静默锚定目标（只滚动、不闪高亮）
+  const pdfAnchor = useAppStore((s) => s.pdfAnchor);
 
   // 标签页模式（path 指定）与右侧预览（store 驱动）解耦；interactive 决定是否支持 synctex 反向跳转
   const interactive = path == null;
@@ -339,6 +341,32 @@ export function PdfPreview({
     pendingScrollRef.current = false;
     requestAnimationFrame(() => jumpTo(page));
   }, [paged, doc, page, jumpTo]);
+
+  // M1-18c：实时预览静默锚定——新 PDF 就绪（loading 结束）后把光标所在行滚到视口上部。
+  // 与 pdfSync 的区别：不闪现高亮、不设 1.6s 定时器；每个 anchor.seq 只应用一次，
+  // 之后用户正常滚动/缩放不会被反复拽回。
+  const appliedAnchorSeqRef = useRef(0);
+  useEffect(() => {
+    if (!interactive || !pdfAnchor || !doc || loading) return;
+    if (appliedAnchorSeqRef.current === pdfAnchor.seq) return;
+    if (paged) {
+      // 翻页模式下按页定位（页内 y 不追，避免连翻页抖动）；同页时 jumpTo 是空操作
+      appliedAnchorSeqRef.current = pdfAnchor.seq;
+      jumpTo(pdfAnchor.page);
+      return;
+    }
+    // 新 doc 刚挂载时页面元素可能尚未布局完，下一帧再定位；定位失败则不记为已应用（等下次就绪重试）
+    const raf = requestAnimationFrame(() => {
+      const el = scrollEl?.querySelector<HTMLElement>(`[data-page="${pdfAnchor.page}"]`);
+      if (!el || !scrollEl) return;
+      // 目标行放到视口上方约 24px 处；y 为 pt（scale=1），需乘当前缩放
+      scrollEl.scrollTop = Math.max(0, el.offsetTop + pdfAnchor.y * scaleRef.current - 24);
+      appliedAnchorSeqRef.current = pdfAnchor.seq;
+    });
+    return () => cancelAnimationFrame(raf);
+    // 故意不依赖 page/scale：仅 anchor 变化或新 PDF 就绪时应用一次
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pdfAnchor, doc, loading, interactive, paged, scrollEl, jumpTo]);
 
   // 双页翻页时对齐到跨页起始页（奇数）
   useEffect(() => {
