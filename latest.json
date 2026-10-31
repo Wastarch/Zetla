@@ -1,7 +1,7 @@
 {
     "version": "0.2.2",
-    "notes": "日志面板停靠 · 语法高亮自定义 · 宁夏大学论文模板 · 片段诊断去噪",
-    "pubDate": "2026-10-28T00:00:00+08:00",
+    "notes": "自定义标题栏 · 查找替换 · 实时预览 · 代码片段",
+    "pubDate": "2026-10-31T00:00:00+08:00",
     "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.2",
     "installers": [
         {
