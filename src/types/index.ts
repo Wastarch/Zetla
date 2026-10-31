@@ -5,4 +5,5 @@ export * from "./project";
 export * from "./symbols";
 export * from "./module";
 export * from "./settings";
+export * from "./snippets";
 export * from "./synctex";

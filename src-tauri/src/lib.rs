@@ -79,6 +79,9 @@ pub fn run() {
             commands::project_mgmt::list_recent_projects,
             commands::project_mgmt::pin_project,
             commands::project_mgmt::archive_project,
+            // M2-5a：用户自定义快捷输入片段（独立 snippets.json）
+            commands::snippets::load_user_snippets,
+            commands::snippets::save_user_snippets,
             // R5 拖拽图片导入（M1-7）
             commands::image::import_image,
             commands::image::import_image_from_path,

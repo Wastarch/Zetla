@@ -9,6 +9,7 @@ pub mod logparse;
 pub mod perl;
 pub mod project_mgmt;
 pub mod project;
+pub mod snippets;
 pub mod synctex;
 pub mod template;
 pub mod updater;

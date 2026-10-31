@@ -10,6 +10,7 @@ import type {
   ProjectEntry,
   ProjectInfo,
   ProjectTree,
+  SnippetDef,
   SyncTexHit,
   TemplateManifest,
   TemplateMeta,
@@ -138,6 +139,15 @@ export const configApi = {
     call<ProjectEntry[]>("pin_project", { path, pinned }),
   archiveProject: (path: string, archived: boolean) =>
     call<ProjectEntry[]>("archive_project", { path, archived }),
+};
+
+// ── 用户自定义快捷输入片段（M2-5a，独立 snippets.json）──────
+export const snippetsApi = {
+  /** 读用户自定义片段（缺失/损坏回空列表；内置包在前端 DEFAULT_SNIPPETS） */
+  loadUserSnippets: () => call<SnippetDef[]>("load_user_snippets"),
+  /** 保存用户自定义片段（整对象写入，Rust 归一化）；返回归一化后的列表供前端镜像 */
+  saveUserSnippets: (snippets: SnippetDef[]) =>
+    call<SnippetDef[]>("save_user_snippets", { snippets }),
 };
 
 // ── 基础设施（M0-1 验收用） ───────────────────────────────
