@@ -2,6 +2,15 @@
 // 与 src-tauri/src/commands/snippets.rs 的 SnippetDef 一一对应，camelCase。
 // 存储于独立文件（非 AppSettings）：用户自定义存 config_dir/Zetla/snippets.json（Rust 读写），
 // 内置包随前端打包；两者在 M2-5b 合并进补全源。
+// M2-5d：内置包的模板正文改由 core/latexTemplates 的构建器生成，与图片导入（M1-7）、
+// 表格面板（M1-8）共用同一份骨架（缩进 2 空格、图片宽度 \linewidth、三线表规则常量）。
+import {
+  buildEnvironment,
+  buildFigure,
+  buildHeading,
+  buildList,
+  buildTableSkeleton,
+} from "@/core/latexTemplates";
 
 /** 片段定义 */
 export interface SnippetDef {
@@ -39,107 +48,62 @@ export function newSnippetId(): string {
  * M2-5d 会继续与公式/表格面板的模板字符串复用收敛，此处先手写自包含。
  */
 export const DEFAULT_SNIPPETS: SnippetDef[] = [
+  // ── 结构 ──────────────────────────────────────────────
   {
     id: "sn-beg",
     trigger: "beg",
-    desc: "通用环境（\\begin/\\end，光标在环境名）",
+    desc: "通用环境（\\begin/\\end，光标在环境名，结束标签自动联动）",
     category: "结构",
-    body: "\\begin{${1:env}}\n\t${2}\n\\end{${1:env}}${0}",
+    body: buildEnvironment({ env: "${1:env}", body: "${2}" }) + "${0}",
   },
   {
     id: "sn-item",
     trigger: "itemize",
     desc: "无序列表环境",
     category: "结构",
-    body: "\\begin{itemize}\n\t\\item ${1:内容}\n\\end{itemize}${0}",
+    body: buildList("itemize", "${1:内容}") + "${0}",
   },
   {
     id: "sn-enum",
     trigger: "enumerate",
     desc: "有序列表环境",
     category: "结构",
-    body: "\\begin{enumerate}\n\t\\item ${1:内容}\n\\end{enumerate}${0}",
+    body: buildList("enumerate", "${1:内容}") + "${0}",
+  },
+  {
+    id: "sn-center",
+    trigger: "center",
+    desc: "居中环境",
+    category: "结构",
+    body: buildEnvironment({ env: "center", body: "${1:内容}" }) + "${0}",
   },
   {
     id: "sn-sec",
     trigger: "sec",
     desc: "一级标题",
     category: "结构",
-    body: "\\section{${1:标题}}${0}",
+    body: buildHeading("section", "${1:标题}") + "${0}",
   },
   {
     id: "sn-ssec",
     trigger: "ssec",
     desc: "二级标题",
     category: "结构",
-    body: "\\subsection{${1:标题}}${0}",
+    body: buildHeading("subsection", "${1:标题}") + "${0}",
   },
   {
     id: "sn-sssec",
     trigger: "sssec",
     desc: "三级标题",
     category: "结构",
-    body: "\\subsubsection{${1:标题}}${0}",
+    body: buildHeading("subsubsection", "${1:标题}") + "${0}",
   },
   {
     id: "sn-para",
     trigger: "para",
     desc: "四级标题（段落标题）",
     category: "结构",
-    body: "\\paragraph{${1:标题}}${0}",
-  },
-  {
-    id: "sn-fig",
-    trigger: "fig",
-    desc: "插图（figure + includegraphics）",
-    category: "浮动体",
-    body:
-      "\\begin{figure}[htbp]\n\t\\centering\n\t\\includegraphics[width=0.8\\textwidth]{${1:图片路径}}\n\t\\caption{${2:图片标题}}\n\t\\label{fig:${3:标签}}\n\\end{figure}${0}",
-  },
-  {
-    id: "sn-tab",
-    trigger: "tab",
-    desc: "三线表（booktabs）",
-    category: "浮动体",
-    body:
-      "\\begin{table}[htbp]\n\t\\centering\n\t\\caption{${1:表标题}}\n\t\\label{tab:${2:标签}}\n\t\\begin{tabular}{${3:lll}}\n\t\t\\toprule\n\t\t${4:表头} \\\\\n\t\t\\midrule\n\t\t${5:内容} \\\\\n\t\t\\bottomrule\n\t\\end{tabular}\n\\end{table}${0}",
-  },
-  {
-    id: "sn-eq",
-    trigger: "eq",
-    desc: "编号公式环境",
-    category: "数学",
-    body: "\\begin{equation}\n\t\\label{eq:${1:标签}}\n\t${2}\n\\end{equation}${0}",
-  },
-  {
-    id: "sn-algn",
-    trigger: "algn",
-    desc: "多行对齐公式（align）",
-    category: "数学",
-    body: "\\begin{align}\n\t${1} &= ${2} \\\\\n\t${3} &= ${4}\n\\end{align}${0}",
-  },
-  {
-    id: "sn-cases",
-    trigger: "cases",
-    desc: "分段函数",
-    category: "数学",
-    body:
-      "\\begin{cases}\n\t${1:表达式}, & \\text{若 ${2:条件}} \\\\\n\t${3:表达式}, & \\text{其他}\n\\end{cases}${0}",
-  },
-  {
-    id: "sn-mat",
-    trigger: "pmat",
-    desc: "圆括号矩阵（pmatrix）",
-    category: "数学",
-    body:
-      "\\begin{pmatrix}\n\t${1:a} & ${2:b} \\\\\n\t${3:c} & ${4:d}\n\\end{pmatrix}${0}",
-  },
-  {
-    id: "sn-txt",
-    trigger: "text",
-    desc: "数学环境内插入中文文本（\\text）",
-    category: "数学",
-    body: "\\text{${1:文本}}${0}",
+    body: buildHeading("paragraph", "${1:标题}") + "${0}",
   },
   {
     id: "sn-footnote",
@@ -148,6 +112,103 @@ export const DEFAULT_SNIPPETS: SnippetDef[] = [
     category: "结构",
     body: "\\footnote{${1:脚注内容}}${0}",
   },
+  // ── 浮动体（与图片导入 / 表格面板共用 core/latexTemplates） ──
+  {
+    id: "sn-fig",
+    trigger: "fig",
+    desc: "插图（figure + includegraphics，版式同图片导入）",
+    category: "浮动体",
+    body:
+      buildFigure({
+        path: "${1:图片路径}",
+        caption: "${2:图片标题}",
+        label: "fig:${3:标签}",
+      }) + "${0}",
+  },
+  {
+    id: "sn-tab",
+    trigger: "tab",
+    desc: "三线表（booktabs，版式同表格面板）",
+    category: "浮动体",
+    body:
+      buildTableSkeleton({
+        caption: "${1:表标题}",
+        label: "tab:${2:标签}",
+        cols: "${3:lll}",
+        header: "${4:表头}",
+        row: "${5:内容}",
+      }) + "${0}",
+  },
+  // ── 数学 ──────────────────────────────────────────────
+  {
+    id: "sn-eq",
+    trigger: "eq",
+    desc: "编号公式环境",
+    category: "数学",
+    body: buildEnvironment({ env: "equation", body: "\\label{eq:${1:标签}}\n${2}" }) + "${0}",
+  },
+  {
+    id: "sn-algn",
+    trigger: "algn",
+    desc: "多行对齐公式（align）",
+    category: "数学",
+    body: buildEnvironment({ env: "align", body: "${1} &= ${2} \\\\\n${3} &= ${4}" }) + "${0}",
+  },
+  {
+    id: "sn-cases",
+    trigger: "cases",
+    desc: "分段函数",
+    category: "数学",
+    body:
+      buildEnvironment({
+        env: "cases",
+        body: "${1:表达式}, & \\text{若 ${2:条件}} \\\\\n${3:表达式}, & \\text{其他}",
+      }) + "${0}",
+  },
+  {
+    id: "sn-mat",
+    trigger: "pmat",
+    desc: "圆括号矩阵（pmatrix）",
+    category: "数学",
+    body:
+      "\\begin{pmatrix}\n  ${1:a} & ${2:b} \\\\\n  ${3:c} & ${4:d}\n\\end{pmatrix}${0}",
+  },
+  {
+    id: "sn-frac",
+    trigger: "frac",
+    desc: "分数",
+    category: "数学",
+    body: "\\frac{${1:分子}}{${2:分母}}${0}",
+  },
+  {
+    id: "sn-sqrt",
+    trigger: "sqrt",
+    desc: "根式",
+    category: "数学",
+    body: "\\sqrt{${1:x}}${0}",
+  },
+  {
+    id: "sn-sum",
+    trigger: "sum",
+    desc: "求和",
+    category: "数学",
+    body: "\\sum_{${1:i=1}}^{${2:n}} ${3}${0}",
+  },
+  {
+    id: "sn-int",
+    trigger: "int",
+    desc: "定积分",
+    category: "数学",
+    body: "\\int_{${1:a}}^{${2:b}} ${3}\\,\\mathrm{d}${4:x}${0}",
+  },
+  {
+    id: "sn-txt",
+    trigger: "text",
+    desc: "数学环境内插入中文文本（\\text）",
+    category: "数学",
+    body: "\\text{${1:文本}}${0}",
+  },
+  // ── 文本（选中包裹型：$SELECTION） ──────────────────────
   {
     id: "sn-bf",
     trigger: "bf",

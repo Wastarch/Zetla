@@ -8,6 +8,7 @@ import { EXT_IMG, extOf, notify, parentOf, useProjectStore } from "@/project/use
 import { useBuffersStore } from "@/editor/useBuffers";
 import { getActiveView } from "@/editor/activeView";
 import { insertSnippetSelect } from "@/core/moduleRegistry";
+import { buildFigure } from "@/core/latexTemplates";
 import { relativePath, slugify } from "./pathUtils";
 
 /** 默认图片目录（无 .ltex/config.json/imageDir 时回落） */
@@ -36,16 +37,9 @@ export function isImageFile(f: File): boolean {
   return f.type.startsWith("image/");
 }
 
-/** 组装一个 figure 环境片段（顺序固定：centering → includegraphics → caption → label） */
+/** 组装一个 figure 环境片段（M2-5d：与 fig 片段共用 core/latexTemplates.buildFigure） */
 export function buildFigureSnippet(relPath: string, slug: string, labelPrefix = "fig:"): string {
-  return [
-    "\\begin{figure}[htbp]",
-    "  \\centering",
-    `  \\includegraphics[width=0.8\\linewidth]{${relPath}}`,
-    "  \\caption{}",
-    `  \\label{${labelPrefix}${slug}}`,
-    "\\end{figure}",
-  ].join("\n");
+  return buildFigure({ path: relPath, caption: "", label: `${labelPrefix}${slug}` });
 }
 
 /** 把落盘结果组装成 figure 片段并插入编辑器（光标落于空 caption 内） */

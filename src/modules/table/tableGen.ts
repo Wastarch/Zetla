@@ -4,6 +4,7 @@
 // 转义：smart 默认只转义 & % # _（且在 $...$ 内不转义），保留 $ ^ ~ \ 与花括号，
 //   使单元格里可直接写 $\alpha$ / \textbf{粗体}；full 全转义；off 原样。
 import type { EscapeMode, HAlign, TableModel } from "./tableModel";
+import { TABLE_RULES } from "@/core/latexTemplates";
 
 /** smart 模式转义集：文本段内把这些字符转义（数学段内不动） */
 const SMART_SET = new Set<string>(["&", "%", "#", "_"]);
@@ -75,11 +76,8 @@ export function generateTable(m: TableModel): string {
   const tabArg = m.width === "full" ? "{\\linewidth}" : "";
   const placement = m.placement.trim() ? `[${m.placement.trim()}]` : "";
 
-  const rules = {
-    booktabs: { top: "\\toprule", mid: "\\midrule", bottom: "\\bottomrule" },
-    grid: { top: "\\hline", mid: "\\hline", bottom: "\\hline" },
-    plain: { top: "", mid: "", bottom: "" },
-  }[m.style];
+  // M2-5d：线型常量与 tab 片段共用 core/latexTemplates.TABLE_RULES（单一来源）
+  const rules = TABLE_RULES[m.style];
 
   const body: string[] = [];
   if (rules.top) body.push(`    ${rules.top}`);
