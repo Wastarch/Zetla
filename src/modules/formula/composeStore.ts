@@ -22,11 +22,11 @@ export interface RecentItem {
 export const RECENT_CAP = 12;
 
 /** 编写区字号范围（缩放步进 1px） */
-const FONT_MIN = 11;
-const FONT_MAX = 20;
+const FONT_MIN = 10;
+const FONT_MAX = 50;
 /** 输出区预览缩放范围（%，步进 25） */
 const ZOOM_MIN = 50;
-const ZOOM_MAX = 200;
+const ZOOM_MAX = 400;
 
 const clamp = (v: number, len: number) => Math.min(Math.max(v, 0), len);
 
@@ -72,9 +72,9 @@ export const useComposeStore = create<ComposeState>((set) => ({
   selStart: 0,
   selEnd: 0,
   cursorSeq: 0,
-  mode: "source",
-  fontSize: 13,
-  previewZoom: 100,
+  mode: "source", 
+  fontSize: 20,  // 默认编写字号 20 px
+  previewZoom: 150, // 默认输出区 150%
   recent: [],
 
   edit: (t, selStart, selEnd) => set({ text: t, selStart, selEnd }),

@@ -5676,7 +5676,7 @@ body.row-resizing {
   resize: none;
   padding: 8px 10px;
   font-family: var(--font-mono, monospace);
-  font-size: 13px;
+  font-size: 20px;
   line-height: 1.55;
   color: var(--txt);
   background: var(--bg-3);
