@@ -5104,15 +5104,18 @@ body.row-resizing {
   padding: 3px 8px;
 }
 
-.symbol-grid {
+/* 二级子类分区滚动容器：承载多个 .sym-subgroup，整块滚动一次（替代原单网格自滚） */
+.symbol-scroll {
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  padding-right: 2px;
+}
+.symbol-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
   gap: 6px;
   align-content: start;
-  padding-right: 2px;
 }
 
 .symbol-btn {
@@ -5879,6 +5882,10 @@ body.row-resizing {
 .sym-sec-count {
   color: var(--txt-4);
   font-family: var(--font-mono, monospace);
+}
+/* 二级子类小标题：在分类主标题与相邻子类之间留出间距，避免拥挤 */
+.sym-subsec {
+  margin-top: 12px;
 }
 
 /* 模板钮区分：左侧 accent 细条（符号为纯细边） */

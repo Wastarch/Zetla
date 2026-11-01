@@ -13,6 +13,8 @@ export interface InsertItem {
   kind: "symbol" | "template";
   /** 10 分类之一 */
   cat: string;
+  /** 二级子类（中文键，见 SUBCATS / SUBCAT_LABEL；模板与无需细分的分类为空串） */
+  subcat: string;
   /** 展示名 */
   name: string;
   /**
@@ -58,12 +60,63 @@ export const CAT_ICONS: Record<string, string> = {
   数组矩阵: "▦",
 };
 
+/**
+ * 二级子类（分类 → 有序子类中文键）。
+ * 顺序即面板内分区出现顺序；仅含当前数据真正存在的子类即可（空子类 UI 自动跳过）。
+ * 数组矩阵 用户指定「不加」子类，故不在此表。
+ */
+export const SUBCATS: Record<string, string[]> = {
+  常用符号: ["二元运算", "二元关系", "箭头", "其他"],
+  希腊字母: ["小写", "大写", "其他"],
+  分数微分: ["分数", "导数", "模算术"],
+  根式角标: ["根式", "上下标", "重音符及其他"],
+  极限对数: ["极限", "对数指数", "界限"],
+  三角函数: ["三角函数", "反三角函数", "双曲函数", "反双曲函数"],
+  积分运算: ["积分", "双重积分", "三重积分", "曲线积分"],
+  大型运算: ["求和", "乘积余积", "并集交集", "析取合取"],
+  括号取整: ["括号", "常用"],
+};
+
+/** 子类中文键 → 中英双语展示标签 */
+export const SUBCAT_LABEL: Record<string, string> = {
+  二元运算: "二元运算 Binary operations",
+  二元关系: "二元关系 Binary relations",
+  箭头: "箭头 Arrows",
+  其他: "其他 Others",
+  小写: "小写 Lowercase",
+  大写: "大写 Uppercase",
+  分数: "分数 Fractions",
+  导数: "导数 Derivative",
+  模算术: "模算术 Modular arithmetic",
+  根式: "根式 Radicals",
+  上下标: "上下标 Sub & Super",
+  重音符及其他: "重音符及其他 Accents and Others",
+  极限: "极限 Limits",
+  对数指数: "对数指数 Logarithms and exponentials",
+  界限: "界限 Bounds",
+  三角函数: "三角函数 Trigonometric functions",
+  反三角函数: "反三角函数 Inverse trigonometric functions",
+  双曲函数: "双曲函数 Hyperbolic functions",
+  反双曲函数: "反双曲函数 Inverse hyperbolic functions",
+  积分: "积分 Integral",
+  双重积分: "双重积分 Double integral",
+  三重积分: "三重积分 Triple integral",
+  曲线积分: "曲线积分 Closed line or path integral",
+  求和: "求和 Summation",
+  乘积余积: "乘积余积 Product and coproduct",
+  并集交集: "并集交集 Union and intersection",
+  析取合取: "析取合取 Disjunction and conjunction",
+  括号: "括号 Brackets",
+  常用: "常用 Commons",
+};
+
 const SYMBOL_ITEMS: InsertItem[] = (
-  symbolsData as { name: string; cmd: string; category: string }[]
+  symbolsData as { name: string; cmd: string; category: string; subcat: string }[]
 ).map((s) => ({
   key: s.cmd,
   kind: "symbol",
   cat: s.category,
+  subcat: s.subcat,
   name: s.name,
   glyph: s.cmd,
   latex: s.cmd,
@@ -75,6 +128,7 @@ const TEMPLATE_ITEMS: InsertItem[] = TPLS.map((t) => ({
   key: `tpl:${t.id}`,
   kind: "template",
   cat: t.cat,
+  subcat: "",
   name: t.name,
   glyph: t.icon,
   latex: t.latex(t.slotLabels.map(() => SLOT_MARK)),

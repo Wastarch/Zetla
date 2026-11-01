@@ -11,7 +11,7 @@ import LazySymbolGlyph from "./LazySymbolGlyph";
 import { notify } from "@/project/useProject";
 import { useComposeStore } from "@/modules/formula/composeStore";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
-import { CATEGORIES, CAT_ICONS, itemsByCat, searchItems, type InsertItem } from "./symbolItems";
+import { CATEGORIES, CAT_ICONS, itemsByCat, searchItems, SUBCATS, SUBCAT_LABEL, type InsertItem } from "./symbolItems";
 
 /** 回显时长（ms） */
 const FLASH_MS = 1200;
@@ -36,6 +36,30 @@ export default function SymbolPanel() {
     () => (searching ? searchItems(q) : openCat ? itemsByCat(openCat) : []),
     [searching, q, openCat],
   );
+
+  // 二级子类分区：符号按 subcat 分组（SUBCATS 顺序，空子类自动跳过）；模板单独成组；
+  // 搜索态 / 无子类分类（数组矩阵）合并为单组。每个分组 = 一个 .sym-subgroup（小标题 + 网格）。
+  const groups = useMemo(() => {
+    if (!openCat && !searching) return [];
+    const out: { key: string; label: string; items: InsertItem[] }[] = [];
+    if (searching) {
+      if (items.length) out.push({ key: "search", label: "", items });
+      return out;
+    }
+    const subs = SUBCATS[openCat!];
+    if (subs) {
+      for (const sub of subs) {
+        const sitems = items.filter((it) => it.kind === "symbol" && it.subcat === sub);
+        if (sitems.length) out.push({ key: sub, label: SUBCAT_LABEL[sub] ?? sub, items: sitems });
+      }
+    } else {
+      const sitems = items.filter((it) => it.kind === "symbol");
+      if (sitems.length) out.push({ key: "__all", label: "", items: sitems });
+    }
+    const titems = items.filter((it) => it.kind === "template");
+    if (titems.length) out.push({ key: "__tpl", label: "模板 Templates", items: titems });
+    return out;
+  }, [searching, items, openCat]);
 
   const say = (msg: string) => {
     setFlash(msg);
@@ -70,6 +94,44 @@ export default function SymbolPanel() {
     { label: "插入到编写区", onClick: () => writeToCompose(item) },
     { label: "复制 LaTeX", onClick: () => void copyLatex(item) },
   ];
+
+  /** 单个 tile（按钮）：大图判定 + KaTeX 懒渲染 / 命令文本，符号与模板共用 */
+  const renderTile = (it: InsertItem) => {
+    // 大图判定：符号若含 {}（\frac{}{} 等参数型宏）→ 命令文本；其余符号走 KaTeX 大图（与预览同引擎，真·所见即所得）
+    //           模板：icon ≤2 字符 → 大图，否则命令文本
+    const big = it.kind === "symbol" ? !it.latex.includes("{}") : it.glyph.length <= 2;
+    return (
+      <button
+        key={it.key}
+        type="button"
+        className={it.kind === "template" ? "symbol-btn is-tpl" : "symbol-btn"}
+        title={`${it.name}（${it.latex}）${it.slots ? ` · ${it.slots} 个空槽` : ""} · 单击写入编写区，右键直插编辑器`}
+        onClick={() => writeToCompose(it)}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          setCtx({ x: e.clientX, y: e.clientY, item: it });
+        }}
+      >
+        {big ? (
+          it.kind === "symbol" ? (
+            // 符号大图：KaTeX 渲染 latex，懒加载（进入视口才渲染，压低首开开销）
+            <LazySymbolGlyph tex={it.latex} />
+          ) : (
+            // 模板大图 icon（∑/∫ 等）保持原样
+            <span className="symbol-glyph">{it.glyph}</span>
+          )
+        ) : (
+          // 参数型符号（\frac{}{} 等）与长 icon 模板 → 等宽命令文本
+          <span className="symbol-glyph is-cmd">
+            {it.kind === "symbol" ? it.latex : it.glyph}
+          </span>
+        )}
+        <span className="symbol-name">
+          {it.kind === "template" ? it.name : `\\${it.name}`}
+        </span>
+      </button>
+    );
+  };
 
   return (
     <div className="symbol-panel">
@@ -119,44 +181,27 @@ export default function SymbolPanel() {
             <span className="sym-sec-name">{searching ? "搜索结果" : openCat}</span>
             <span className="sym-sec-count">{items.length} 项</span>
           </div>
-          <div className="symbol-grid">
-          {items.map((it) => {
-            // 大图判定：符号若含 {}（\frac{}{} 等参数型宏）→ 命令文本；其余符号走 KaTeX 大图（与预览同引擎，真·所见即所得）
-            //           模板：icon ≤2 字符 → 大图，否则命令文本
-            const big = it.kind === "symbol" ? !it.latex.includes("{}") : it.glyph.length <= 2;
-            return (
-              <button
-                key={it.key}
-                type="button"
-                className={it.kind === "template" ? "symbol-btn is-tpl" : "symbol-btn"}
-                title={`${it.name}（${it.latex}）${it.slots ? ` · ${it.slots} 个空槽` : ""} · 单击写入编写区，右键直插编辑器`}
-                onClick={() => writeToCompose(it)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setCtx({ x: e.clientX, y: e.clientY, item: it });
-                }}
-              >
-                {big ? (
-                  it.kind === "symbol" ? (
-                    // 符号大图：KaTeX 渲染 latex，懒加载（进入视口才渲染，压低首开开销）
-                    <LazySymbolGlyph tex={it.latex} />
-                  ) : (
-                    // 模板大图 icon（∑/∫ 等）保持原样
-                    <span className="symbol-glyph">{it.glyph}</span>
-                  )
-                ) : (
-                  // 参数型符号（\frac{}{} 等）与长 icon 模板 → 等宽命令文本
-                  <span className="symbol-glyph is-cmd">
-                    {it.kind === "symbol" ? it.latex : it.glyph}
-                  </span>
-                )}
-                <span className="symbol-name">
-                  {it.kind === "template" ? it.name : `\\${it.name}`}
-                </span>
-              </button>
-            );
-          })}
-          {items.length === 0 && <div className="symbol-empty">未找到匹配项</div>}
+          <div className="symbol-scroll">
+            {items.length === 0 ? (
+              <div className="symbol-empty">
+                {searching ? "未找到匹配项" : "该类暂无符号 / 模板"}
+              </div>
+            ) : (
+              // 按二级子类分区渲染；每个分组 = 小标题 + 网格（LazySymbolGlyph 在 tile 内部懒渲染）
+              groups.map((g) => (
+                <div className="sym-subgroup" key={g.key}>
+                  {g.label && (
+                    <div className="sym-sec sym-subsec">
+                      <span className="sym-sec-name">{g.label}</span>
+                      <span className="sym-sec-count">{g.items.length} 项</span>
+                    </div>
+                  )}
+                  <div className="symbol-grid">
+                    {g.items.map((it) => renderTile(it))}
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         </>
       )}
