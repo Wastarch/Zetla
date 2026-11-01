@@ -66,8 +66,8 @@ export const CAT_ICONS: Record<string, string> = {
  * 数组矩阵 用户指定「不加」子类，故不在此表。
  */
 export const SUBCATS: Record<string, string[]> = {
-  常用符号: ["二元运算", "二元关系", "箭头", "其他"],
-  希腊字母: ["小写", "大写", "其他"],
+  常用符号: ["二元运算符", "二元关系符", "箭头符号", "其他符号"],
+  希腊字母: ["小写", "大写", "其他符号"],
   分数微分: ["分数", "导数", "模算术"],
   根式角标: ["根式", "上下标", "重音符及其他"],
   极限对数: ["极限", "对数指数", "界限"],
@@ -79,10 +79,10 @@ export const SUBCATS: Record<string, string[]> = {
 
 /** 子类中文键 → 中英双语展示标签 */
 export const SUBCAT_LABEL: Record<string, string> = {
-  二元运算: "二元运算 Binary operations",
-  二元关系: "二元关系 Binary relations",
-  箭头: "箭头 Arrows",
-  其他: "其他 Others",
+  二元运算符: "二元运算符 Binary operations",
+  二元关系符: "二元关系符 Binary relations",
+  箭头符号: "箭头符号 Arrows",
+  其他符号: "其他 Others",
   小写: "小写 Lowercase",
   大写: "大写 Uppercase",
   分数: "分数 Fractions",

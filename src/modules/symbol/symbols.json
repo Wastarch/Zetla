@@ -1,193 +1,2059 @@
 [
-  { "name": "aleph", "cmd": "\\aleph", "category": "常用符号", "subcat": "其他" },
-  { "name": "approx", "cmd": "\\approx", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "ast", "cmd": "\\ast", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "backslash", "cmd": "\\backslash", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "bar", "cmd": "\\bar{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "binom", "cmd": "\\binom{}{}", "category": "分数微分", "subcat": "分数" },
-  { "name": "bot", "cmd": "\\bot", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "boxed", "cmd": "\\boxed{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "bullet", "cmd": "\\bullet", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "cap", "cmd": "\\cap", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "cdot", "cmd": "\\cdot", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "cdots", "cmd": "\\cdots", "category": "常用符号", "subcat": "其他" },
-  { "name": "circ", "cmd": "\\circ", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "cong", "cmd": "\\cong", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "cos", "cmd": "\\cos", "category": "三角函数", "subcat": "三角函数" },
-  { "name": "cup", "cmd": "\\cup", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "dagger", "cmd": "\\dagger", "category": "常用符号", "subcat": "其他" },
-  { "name": "ddagger", "cmd": "\\ddagger", "category": "常用符号", "subcat": "其他" },
-  { "name": "ddot", "cmd": "\\ddot{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "ddots", "cmd": "\\ddots", "category": "常用符号", "subcat": "其他" },
-  { "name": "deg", "cmd": "\\deg", "category": "常用符号", "subcat": "其他" },
-  { "name": "det", "cmd": "\\det", "category": "常用符号", "subcat": "其他" },
-  { "name": "div", "cmd": "\\div", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "dot", "cmd": "\\dot{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "doteq", "cmd": "\\doteq", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "downarrow", "cmd": "\\downarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "ell", "cmd": "\\ell", "category": "常用符号", "subcat": "其他" },
-  { "name": "emptyset", "cmd": "\\emptyset", "category": "常用符号", "subcat": "其他" },
-  { "name": "equiv", "cmd": "\\equiv", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "exists", "cmd": "\\exists", "category": "常用符号", "subcat": "其他" },
-  { "name": "exp", "cmd": "\\exp", "category": "极限对数", "subcat": "对数指数" },
-  { "name": "forall", "cmd": "\\forall", "category": "常用符号", "subcat": "其他" },
-  { "name": "frac", "cmd": "\\frac{}{}", "category": "分数微分", "subcat": "分数" },
-  { "name": "gcd", "cmd": "\\gcd", "category": "常用符号", "subcat": "其他" },
-  { "name": "geq", "cmd": "\\geq", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "gg", "cmd": "\\gg", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "hat", "cmd": "\\hat{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "hbar", "cmd": "\\hbar", "category": "常用符号", "subcat": "其他" },
-  { "name": "hookrightarrow", "cmd": "\\hookrightarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "Im", "cmd": "\\Im", "category": "常用符号", "subcat": "其他" },
-  { "name": "in", "cmd": "\\in", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "inf", "cmd": "\\inf", "category": "极限对数", "subcat": "界限" },
-  { "name": "infty", "cmd": "\\infty", "category": "极限对数", "subcat": "极限" },
-  { "name": "ldots", "cmd": "\\ldots", "category": "常用符号", "subcat": "其他" },
-  { "name": "leftarrow", "cmd": "\\leftarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "Leftarrow", "cmd": "\\Leftarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "leftrightarrow", "cmd": "\\leftrightarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "Leftrightarrow", "cmd": "\\Leftrightarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "leq", "cmd": "\\leq", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "lim", "cmd": "\\lim", "category": "极限对数", "subcat": "极限" },
-  { "name": "liminf", "cmd": "\\liminf", "category": "极限对数", "subcat": "极限" },
-  { "name": "limsup", "cmd": "\\limsup", "category": "极限对数", "subcat": "极限" },
-  { "name": "ll", "cmd": "\\ll", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "ln", "cmd": "\\ln", "category": "极限对数", "subcat": "对数指数" },
-  { "name": "log", "cmd": "\\log", "category": "极限对数", "subcat": "对数指数" },
-  { "name": "longleftarrow", "cmd": "\\longleftarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "longrightarrow", "cmd": "\\longrightarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "mapsto", "cmd": "\\mapsto", "category": "常用符号", "subcat": "箭头" },
-  { "name": "mathbb", "cmd": "\\mathbb{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "mathbf", "cmd": "\\mathbf{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "mathcal", "cmd": "\\mathcal{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "mathit", "cmd": "\\mathit{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "mathrm", "cmd": "\\mathrm{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "max", "cmd": "\\max", "category": "极限对数", "subcat": "界限" },
-  { "name": "mid", "cmd": "\\mid", "category": "分数微分", "subcat": "模算术" },
-  { "name": "min", "cmd": "\\min", "category": "极限对数", "subcat": "界限" },
-  { "name": "models", "cmd": "\\models", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "mp", "cmd": "\\mp", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "nabla", "cmd": "\\nabla", "category": "分数微分", "subcat": "导数" },
-  { "name": "nearrow", "cmd": "\\nearrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "neg", "cmd": "\\neg", "category": "常用符号", "subcat": "其他" },
-  { "name": "neq", "cmd": "\\neq", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "nexists", "cmd": "\\nexists", "category": "常用符号", "subcat": "其他" },
-  { "name": "ni", "cmd": "\\ni", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "notin", "cmd": "\\notin", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "nwarrow", "cmd": "\\nwarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "ominus", "cmd": "\\ominus", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "oplus", "cmd": "\\oplus", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "oslash", "cmd": "\\oslash", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "otimes", "cmd": "\\otimes", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "overline", "cmd": "\\overline{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "overset", "cmd": "\\overset{}{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "parallel", "cmd": "\\parallel", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "partial", "cmd": "\\partial", "category": "分数微分", "subcat": "导数" },
-  { "name": "perp", "cmd": "\\perp", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "pm", "cmd": "\\pm", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "prime", "cmd": "\\prime", "category": "分数微分", "subcat": "导数" },
-  { "name": "propto", "cmd": "\\propto", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "Re", "cmd": "\\Re", "category": "常用符号", "subcat": "其他" },
-  { "name": "rightarrow", "cmd": "\\rightarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "Rightarrow", "cmd": "\\Rightarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "rightsquigarrow", "cmd": "\\rightsquigarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "searrow", "cmd": "\\searrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "setminus", "cmd": "\\setminus", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "sim", "cmd": "\\sim", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "simeq", "cmd": "\\simeq", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "sin", "cmd": "\\sin", "category": "三角函数", "subcat": "三角函数" },
-  { "name": "sqcap", "cmd": "\\sqcap", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "sqcup", "cmd": "\\sqcup", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "sqrt", "cmd": "\\sqrt{}", "category": "根式角标", "subcat": "根式" },
-  { "name": "stackrel", "cmd": "\\stackrel{}{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "star", "cmd": "\\star", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "subset", "cmd": "\\subset", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "subseteq", "cmd": "\\subseteq", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "sup", "cmd": "\\sup", "category": "极限对数", "subcat": "界限" },
-  { "name": "supset", "cmd": "\\supset", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "supseteq", "cmd": "\\supseteq", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "surd", "cmd": "\\surd", "category": "根式角标", "subcat": "根式" },
-  { "name": "swarrow", "cmd": "\\swarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "tan", "cmd": "\\tan", "category": "三角函数", "subcat": "三角函数" },
-  { "name": "text", "cmd": "\\text{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "tilde", "cmd": "\\tilde{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "times", "cmd": "\\times", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "top", "cmd": "\\top", "category": "常用符号", "subcat": "其他" },
-  { "name": "twoheadrightarrow", "cmd": "\\twoheadrightarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "underline", "cmd": "\\underline{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "underset", "cmd": "\\underset{}{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "uparrow", "cmd": "\\uparrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "updownarrow", "cmd": "\\updownarrow", "category": "常用符号", "subcat": "箭头" },
-  { "name": "uplus", "cmd": "\\uplus", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "vdash", "cmd": "\\vdash", "category": "常用符号", "subcat": "二元关系" },
-  { "name": "vdots", "cmd": "\\vdots", "category": "常用符号", "subcat": "其他" },
-  { "name": "vec", "cmd": "\\vec{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "vee", "cmd": "\\vee", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "wedge", "cmd": "\\wedge", "category": "常用符号", "subcat": "二元运算" },
-  { "name": "widehat", "cmd": "\\widehat{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "widetilde", "cmd": "\\widetilde{}", "category": "根式角标", "subcat": "重音符及其他" },
-  { "name": "wp", "cmd": "\\wp", "category": "常用符号", "subcat": "其他" },
-  { "name": "alpha", "cmd": "\\alpha", "category": "希腊字母", "subcat": "小写" },
-  { "name": "beta", "cmd": "\\beta", "category": "希腊字母", "subcat": "小写" },
-  { "name": "chi", "cmd": "\\chi", "category": "希腊字母", "subcat": "小写" },
-  { "name": "delta", "cmd": "\\delta", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Delta", "cmd": "\\Delta", "category": "希腊字母", "subcat": "大写" },
-  { "name": "epsilon", "cmd": "\\epsilon", "category": "希腊字母", "subcat": "小写" },
-  { "name": "eta", "cmd": "\\eta", "category": "希腊字母", "subcat": "小写" },
-  { "name": "gamma", "cmd": "\\gamma", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Gamma", "cmd": "\\Gamma", "category": "希腊字母", "subcat": "大写" },
-  { "name": "iota", "cmd": "\\iota", "category": "希腊字母", "subcat": "小写" },
-  { "name": "kappa", "cmd": "\\kappa", "category": "希腊字母", "subcat": "小写" },
-  { "name": "lambda", "cmd": "\\lambda", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Lambda", "cmd": "\\Lambda", "category": "希腊字母", "subcat": "大写" },
-  { "name": "mu", "cmd": "\\mu", "category": "希腊字母", "subcat": "小写" },
-  { "name": "nu", "cmd": "\\nu", "category": "希腊字母", "subcat": "小写" },
-  { "name": "omega", "cmd": "\\omega", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Omega", "cmd": "\\Omega", "category": "希腊字母", "subcat": "大写" },
-  { "name": "phi", "cmd": "\\phi", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Phi", "cmd": "\\Phi", "category": "希腊字母", "subcat": "大写" },
-  { "name": "pi", "cmd": "\\pi", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Pi", "cmd": "\\Pi", "category": "希腊字母", "subcat": "大写" },
-  { "name": "psi", "cmd": "\\psi", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Psi", "cmd": "\\Psi", "category": "希腊字母", "subcat": "大写" },
-  { "name": "rho", "cmd": "\\rho", "category": "希腊字母", "subcat": "小写" },
-  { "name": "sigma", "cmd": "\\sigma", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Sigma", "cmd": "\\Sigma", "category": "希腊字母", "subcat": "大写" },
-  { "name": "tau", "cmd": "\\tau", "category": "希腊字母", "subcat": "小写" },
-  { "name": "theta", "cmd": "\\theta", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Theta", "cmd": "\\Theta", "category": "希腊字母", "subcat": "大写" },
-  { "name": "upsilon", "cmd": "\\upsilon", "category": "希腊字母", "subcat": "小写" },
-  { "name": "varepsilon", "cmd": "\\varepsilon", "category": "希腊字母", "subcat": "小写" },
-  { "name": "varphi", "cmd": "\\varphi", "category": "希腊字母", "subcat": "小写" },
-  { "name": "varpi", "cmd": "\\varpi", "category": "希腊字母", "subcat": "小写" },
-  { "name": "varrho", "cmd": "\\varrho", "category": "希腊字母", "subcat": "小写" },
-  { "name": "varsigma", "cmd": "\\varsigma", "category": "希腊字母", "subcat": "小写" },
-  { "name": "vartheta", "cmd": "\\vartheta", "category": "希腊字母", "subcat": "小写" },
-  { "name": "xi", "cmd": "\\xi", "category": "希腊字母", "subcat": "小写" },
-  { "name": "Xi", "cmd": "\\Xi", "category": "希腊字母", "subcat": "大写" },
-  { "name": "zeta", "cmd": "\\zeta", "category": "希腊字母", "subcat": "小写" },
-  { "name": "bigcap", "cmd": "\\bigcap", "category": "大型运算", "subcat": "并集交集" },
-  { "name": "bigcup", "cmd": "\\bigcup", "category": "大型运算", "subcat": "并集交集" },
-  { "name": "bigoplus", "cmd": "\\bigoplus", "category": "大型运算", "subcat": "乘积余积" },
-  { "name": "bigotimes", "cmd": "\\bigotimes", "category": "大型运算", "subcat": "乘积余积" },
-  { "name": "biguplus", "cmd": "\\biguplus", "category": "大型运算", "subcat": "并集交集" },
-  { "name": "bigvee", "cmd": "\\bigvee", "category": "大型运算", "subcat": "析取合取" },
-  { "name": "bigwedge", "cmd": "\\bigwedge", "category": "大型运算", "subcat": "析取合取" },
-  { "name": "coprod", "cmd": "\\coprod", "category": "大型运算", "subcat": "乘积余积" },
-  { "name": "iiint", "cmd": "\\iiint", "category": "积分运算", "subcat": "三重积分" },
-  { "name": "iint", "cmd": "\\iint", "category": "积分运算", "subcat": "双重积分" },
-  { "name": "int", "cmd": "\\int", "category": "积分运算", "subcat": "积分" },
-  { "name": "oint", "cmd": "\\oint", "category": "积分运算", "subcat": "曲线积分" },
-  { "name": "prod", "cmd": "\\prod", "category": "大型运算", "subcat": "乘积余积" },
-  { "name": "sum", "cmd": "\\sum", "category": "大型运算", "subcat": "求和" },
-  { "name": "angle", "cmd": "\\angle", "category": "括号取整", "subcat": "常用" },
-  { "name": "diamond", "cmd": "\\diamond", "category": "括号取整", "subcat": "常用" },
-  { "name": "langle", "cmd": "\\langle", "category": "括号取整", "subcat": "括号" },
-  { "name": "lceil", "cmd": "\\lceil", "category": "括号取整", "subcat": "括号" },
-  { "name": "lfloor", "cmd": "\\lfloor", "category": "括号取整", "subcat": "括号" },
-  { "name": "rangle", "cmd": "\\rangle", "category": "括号取整", "subcat": "括号" },
-  { "name": "rceil", "cmd": "\\rceil", "category": "括号取整", "subcat": "括号" },
-  { "name": "rfloor", "cmd": "\\rfloor", "category": "括号取整", "subcat": "括号" },
-  { "name": "square", "cmd": "\\square", "category": "括号取整", "subcat": "常用" },
-  { "name": "triangle", "cmd": "\\triangle", "category": "括号取整", "subcat": "常用" }
+    {
+        "name": "plus",
+        "cmd": "+",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "minus",
+        "cmd": "-",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "times",
+        "cmd": "\\times",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "div",
+        "cmd": "\\div",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "pm",
+        "cmd": "\\pm",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "mp",
+        "cmd": "\\mp",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "triangleleft",
+        "cmd": "\\triangleleft",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "triangleright",
+        "cmd": "\\triangleright",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "cdot",
+        "cmd": "\\cdot",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "setminus",
+        "cmd": "\\setminus",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "star",
+        "cmd": "\\star",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "ast",
+        "cmd": "\\ast",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "cup",
+        "cmd": "\\cup",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "cap",
+        "cmd": "\\cap",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "sqcup",
+        "cmd": "\\sqcup",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "sqcap",
+        "cmd": "\\sqcap",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "vee",
+        "cmd": "\\vee",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "wedge",
+        "cmd": "\\wedge",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "circ",
+        "cmd": "\\circ",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "bullet",
+        "cmd": "\\bullet",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "oplus",
+        "cmd": "\\oplus",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "ominus",
+        "cmd": "\\ominus",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "odot",
+        "cmd": "\\odot",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "oslash",
+        "cmd": "\\oslash",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "otimes",
+        "cmd": "\\otimes",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "bigcirc",
+        "cmd": "\\bigcirc",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "diamonda",
+        "cmd": "\\diamond",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "uplus",
+        "cmd": "\\uplus",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "bigtriangleup",
+        "cmd": "\\bigtriangleup",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "bigtriangledown",
+        "cmd": "\\bigtriangledown",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "lhd",
+        "cmd": "\\lhd",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "rhd",
+        "cmd": "\\rhd",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "unlhd",
+        "cmd": "\\unlhd",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "unrhd",
+        "cmd": "\\unrhd",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "amalg",
+        "cmd": "\\amalg",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "wr",
+        "cmd": "\\wr",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "dagger",
+        "cmd": "\\dagger",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "ddagger",
+        "cmd": "\\ddagger",
+        "category": "常用符号",
+        "subcat": "二元运算符"
+    },
+    {
+        "name": "less",
+        "cmd": "<",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "more",
+        "cmd": ">",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "equal",
+        "cmd": "=",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "le",
+        "cmd": "\\le",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "ge",
+        "cmd": "\\ge",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "equiv",
+        "cmd": "\\equiv",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "ll",
+        "cmd": "\\ll",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "gg",
+        "cmd": "\\gg",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "doteq",
+        "cmd": "\\doteq",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "prec",
+        "cmd": "\\prec",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "succ",
+        "cmd": "\\succ",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "sim",
+        "cmd": "\\sim",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "preceq",
+        "cmd": "\\preceq",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "succeq",
+        "cmd": "\\succeq",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "simeq",
+        "cmd": "\\simeq",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "approx",
+        "cmd": "\\approx",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "subset",
+        "cmd": "\\subset",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "supset",
+        "cmd": "\\supset",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "subseteq",
+        "cmd": "\\subseteq",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "supseteq",
+        "cmd": "\\supseteq",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "sqsubset",
+        "cmd": "\\sqsubset",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "sqsupset",
+        "cmd": "\\sqsupset",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "sqsubseteq",
+        "cmd": "\\sqsubseteq",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "sqsupseteq",
+        "cmd": "\\sqsupseteq",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "cong",
+        "cmd": "\\cong",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "Join",
+        "cmd": "\\Join",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "bowtie",
+        "cmd": "\\bowtie",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "propto",
+        "cmd": "\\propto",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "in",
+        "cmd": "\\in",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "ni",
+        "cmd": "\\ni",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "vdash",
+        "cmd": "\\vdash",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "dashv",
+        "cmd": "\\dashv",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "models",
+        "cmd": "\\models",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "mid",
+        "cmd": "\\mid",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "parallel",
+        "cmd": "\\parallel",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "perp",
+        "cmd": "\\perp",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "smile",
+        "cmd": "\\smile",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "frown",
+        "cmd": "\\frown",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "asymp",
+        "cmd": "\\asymp",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "colon",
+        "cmd": ":",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "notin",
+        "cmd": "\\notin",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "ne",
+        "cmd": "\\ne",
+        "category": "常用符号",
+        "subcat": "二元关系符"
+    },
+    {
+        "name": "gets",
+        "cmd": "\\gets",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "to",
+        "cmd": "\\to",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "longleftarrow",
+        "cmd": "\\longleftarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "longrightarrow",
+        "cmd": "\\longrightarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "uparrow",
+        "cmd": "\\uparrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "downarrow",
+        "cmd": "\\downarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "updownarrow",
+        "cmd": "\\updownarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "leftrightarrow",
+        "cmd": "\\leftrightarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "uparrow ",
+        "cmd": "\\uparrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "Downarrow",
+        "cmd": "\\Downarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "Updownarrow",
+        "cmd": "\\Updownarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "longleftrightarrow",
+        "cmd": "\\longleftrightarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "Leftarrow",
+        "cmd": "\\Leftarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "Longleftarrow",
+        "cmd": "\\Longleftarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "Rightarrow",
+        "cmd": "\\Rightarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "Longrightarrow",
+        "cmd": "\\Longrightarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "Leftrightarrow",
+        "cmd": "\\Leftrightarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "Longleftrightarrow",
+        "cmd": "\\Longleftrightarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "mapsto",
+        "cmd": "\\mapsto",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "longmapsto",
+        "cmd": "\\longmapsto",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "nearrow",
+        "cmd": "\\nearrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "searrow",
+        "cmd": "\\searrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "swarrow",
+        "cmd": "\\swarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "nwarrow",
+        "cmd": "\\nwarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "hookleftarrow",
+        "cmd": "\\hookleftarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "hookrightarrow",
+        "cmd": "\\hookrightarrow",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "rightleftharpoons",
+        "cmd": "\\rightleftharpoons",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "iff",
+        "cmd": "\\iff",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "leftharpoonup",
+        "cmd": "\\leftharpoonup",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "rightharpoonup",
+        "cmd": "\\rightharpoonup",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "leftharpoondown",
+        "cmd": "\\leftharpoondown",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "rightharpoondown",
+        "cmd": "\\rightharpoondown",
+        "category": "常用符号",
+        "subcat": "箭头符号"
+    },
+    {
+        "name": "because",
+        "cmd": "\\because",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "therefore",
+        "cmd": "\\therefore",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "dots",
+        "cmd": "\\dots",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "cdots",
+        "cmd": "\\cdots",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "vdots",
+        "cmd": "\\vdots",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "ddots",
+        "cmd": "\\ddots",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "forall",
+        "cmd": "\\forall",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "exists",
+        "cmd": "\\exists",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "nexists",
+        "cmd": "\\nexists",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "Finv",
+        "cmd": "\\Finv",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "neg",
+        "cmd": "\\neg",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "prime",
+        "cmd": "\\prime",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "emptyset",
+        "cmd": "\\emptyset",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "infty",
+        "cmd": "\\infty",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "nabla",
+        "cmd": "\\nabla",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "triangle",
+        "cmd": "\\triangle",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "Box",
+        "cmd": "\\Box",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "Diamond",
+        "cmd": "\\Diamond",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "bot",
+        "cmd": "\\bot",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "top",
+        "cmd": "\\top",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "angle",
+        "cmd": "\\angle",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "measuredangle",
+        "cmd": "\\measuredangle",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "sphericalangle",
+        "cmd": "\\sphericalangle",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "surd",
+        "cmd": "\\surd",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "diamondsuit",
+        "cmd": "\\diamondsuit",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "heartsuit",
+        "cmd": "\\heartsuit",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "clubsuit",
+        "cmd": "\\clubsuit",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "spadesuit",
+        "cmd": "\\spadesuit",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "flat",
+        "cmd": "\\flat",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "natural",
+        "cmd": "\\natural",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "sharp",
+        "cmd": "\\sharp",
+        "category": "常用符号",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "alpha",
+        "cmd": "\\alpha",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "beta",
+        "cmd": "\\beta",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "gamma",
+        "cmd": "\\gamma",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "delta",
+        "cmd": "\\delta",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "epsilon",
+        "cmd": "\\epsilon",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "varepsilon",
+        "cmd": "\\varepsilon",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "zeta",
+        "cmd": "\\zeta",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "eta",
+        "cmd": "\\eta",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "theta",
+        "cmd": "\\theta",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "vartheta",
+        "cmd": "\\vartheta",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "iota",
+        "cmd": "\\iota",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "kappa",
+        "cmd": "\\kappa",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "lambda",
+        "cmd": "\\lambda",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "mu",
+        "cmd": "\\mu",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "nu",
+        "cmd": "\\nu",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "xi",
+        "cmd": "\\xi",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "o",
+        "cmd": "\\omicron",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "pi",
+        "cmd": "\\pi",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "varpi",
+        "cmd": "\\varpi",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "rho",
+        "cmd": "\\rho",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "varrho",
+        "cmd": "\\varrho",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "sigma",
+        "cmd": "\\sigma",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "varsigma",
+        "cmd": "\\varsigma",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "tau",
+        "cmd": "\\tau",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "upsilon",
+        "cmd": "\\upsilon",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "phi",
+        "cmd": "\\phi",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "varphi",
+        "cmd": "\\varphi",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "chi",
+        "cmd": "\\chi",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "psi",
+        "cmd": "\\psi",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "omega",
+        "cmd": "\\omega",
+        "category": "希腊字母",
+        "subcat": "小写"
+    },
+    {
+        "name": "Gamma",
+        "cmd": "\\Gamma",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Delta",
+        "cmd": "\\Delta",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Theta",
+        "cmd": "\\Theta",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Lambda",
+        "cmd": "\\Lambda",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Xi",
+        "cmd": "\\Xi",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Pi",
+        "cmd": "\\Pi",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Sigma",
+        "cmd": "\\Sigma",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Upsilon",
+        "cmd": "\\Upsilon",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Phi",
+        "cmd": "\\Phi",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Psi",
+        "cmd": "\\Psi",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "Omega",
+        "cmd": "\\Omega",
+        "category": "希腊字母",
+        "subcat": "大写"
+    },
+    {
+        "name": "hbar",
+        "cmd": "\\hbar",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "imath",
+        "cmd": "\\imath",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "jmath",
+        "cmd": "\\jmath",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "ell",
+        "cmd": "\\ell",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "Re",
+        "cmd": "\\Re",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "Im",
+        "cmd": "\\Im",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "aleph",
+        "cmd": "\\aleph",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "beth",
+        "cmd": "\\beth",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "gimel",
+        "cmd": "\\gimel",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "daleth",
+        "cmd": "\\daleth",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "wp",
+        "cmd": "\\wp",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "mho",
+        "cmd": "\\mho",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "backepsilon",
+        "cmd": "\\backepsilon",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "partial",
+        "cmd": "\\partial",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "eth",
+        "cmd": "\\eth",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "Bbbk",
+        "cmd": "\\Bbbk",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "complement",
+        "cmd": "\\complement",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "circledS",
+        "cmd": "\\circledS",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "S",
+        "cmd": "\\S",
+        "category": "希腊字母",
+        "subcat": "其他符号"
+    },
+    {
+        "name": "frac",
+        "cmd": "\\frac{a}{b}",
+        "category": "分数微分",
+        "subcat": "分数"
+    },
+    {
+        "name": "tfrac",
+        "cmd": "x\\tfrac{a}{b}",
+        "category": "分数微分",
+        "subcat": "分数"
+    },
+    {
+        "name": "mathrm{d}t ",
+        "cmd": "\\mathrm{d}t ",
+        "category": "分数微分",
+        "subcat": "分数"
+    },
+    {
+        "name": "frac{mathrm{d} y}{mathrm{d} x} ",
+        "cmd": "\\frac{\\mathrm{d} y}{\\mathrm{d} x} ",
+        "category": "分数微分",
+        "subcat": "分数"
+    },
+    {
+        "name": "partial t",
+        "cmd": "\\partial t ",
+        "category": "分数微分",
+        "subcat": "分数"
+    },
+    {
+        "name": "frac{partial y}{partial x} ",
+        "cmd": "\\frac{\\partial y}{\\partial x} ",
+        "category": "分数微分",
+        "subcat": "分数"
+    },
+    {
+        "name": "nabla",
+        "cmd": "\\nabla\\psi ",
+        "category": "分数微分",
+        "subcat": "分数"
+    },
+    {
+        "name": "frac{partial^2}{partial x_1 partial x_2}y ",
+        "cmd": "\\frac{\\partial^2}{\\partial x_1\\partial x_2}y ",
+        "category": "分数微分",
+        "subcat": "分数"
+    },
+    {
+        "name": "dot",
+        "cmd": "\\dot{a}",
+        "category": "分数微分",
+        "subcat": "导数"
+    },
+    {
+        "name": "ddot",
+        "cmd": "\\ddot{a}",
+        "category": "分数微分",
+        "subcat": "导数"
+    },
+    {
+        "name": "prime1",
+        "cmd": "f^{\\prime}",
+        "category": "分数微分",
+        "subcat": "导数"
+    },
+    {
+        "name": "prime2",
+        "cmd": "{f}''",
+        "category": "分数微分",
+        "subcat": "导数"
+    },
+    {
+        "name": "primen",
+        "cmd": "{f}^{(n)} ",
+        "category": "分数微分",
+        "subcat": "导数"
+    },
+    {
+        "name": "bmod",
+        "cmd": "\\bmod",
+        "category": "分数微分",
+        "subcat": "模算术"
+    },
+    {
+        "name": "gcd",
+        "cmd": "\\gcd",
+        "category": "分数微分",
+        "subcat": "模算术"
+    },
+    {
+        "name": "lcm",
+        "cmd": "\\operatorname{lcm}",
+        "category": "分数微分",
+        "subcat": "模算术"
+    },
+    {
+        "name": "sqrt",
+        "cmd": "\\sqrt{x}",
+        "category": "根式角标",
+        "subcat": "根式"
+    },
+    {
+        "name": "sqrtn",
+        "cmd": "\\sqrt[n]{x}",
+        "category": "根式角标",
+        "subcat": "根式"
+    },
+    {
+        "name": "topright",
+        "cmd": "x^{a}",
+        "category": "根式角标",
+        "subcat": "上下标"
+    },
+    {
+        "name": "bottomright",
+        "cmd": "x_{a}",
+        "category": "根式角标",
+        "subcat": "上下标"
+    },
+    {
+        "name": "right",
+        "cmd": "x_{a}^{b}",
+        "category": "根式角标",
+        "subcat": "上下标"
+    },
+    {
+        "name": "left",
+        "cmd": "_{a}^{b}x",
+        "category": "根式角标",
+        "subcat": "上下标"
+    },
+    {
+        "name": "hat",
+        "cmd": "\\hat{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "check",
+        "cmd": "\\check{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "grave",
+        "cmd": "\\grave{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "acute",
+        "cmd": "\\acute{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "tilde",
+        "cmd": "\\tilde{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "breve",
+        "cmd": "\\breve{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "bar",
+        "cmd": "\\bar{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "vec",
+        "cmd": "\\vec{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "not",
+        "cmd": "\\not{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "degree",
+        "cmd": "37^{\\circ}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "widetilde",
+        "cmd": "\\widetilde{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "widehat",
+        "cmd": "\\widehat{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "overleftarrow",
+        "cmd": "\\overleftarrow{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "overrightarrow",
+        "cmd": "\\overrightarrow{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "overline",
+        "cmd": "\\overline{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "underline",
+        "cmd": "\\underline{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "overbrace",
+        "cmd": "\\overbrace{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "underbrace",
+        "cmd": "\\underbrace{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "overset",
+        "cmd": "\\overset{a}{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "underset",
+        "cmd": "\\underset{a}{abc}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "stackrelfrown",
+        "cmd": "\\stackrel{\\frown}{AB}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "overleftrightarrow",
+        "cmd": "\\overleftrightarrow{AB}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "oversetleftarrow",
+        "cmd": "\\overset{\\leftarrow}{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "oversetrightarrow",
+        "cmd": "\\overset{\\rightarrow}{a}",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "xleftarrow",
+        "cmd": "\\xleftarrow[abc]{a} ",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "xrightarrow",
+        "cmd": "\\xrightarrow[abc]{a} ",
+        "category": "根式角标",
+        "subcat": "重音符及其他"
+    },
+    {
+        "name": "lim",
+        "cmd": "\\lim a",
+        "category": "极限对数",
+        "subcat": "极限"
+    },
+    {
+        "name": "limto0",
+        "cmd": "\\lim_{x \\to 0}",
+        "category": "极限对数",
+        "subcat": "极限"
+    },
+    {
+        "name": "limtoinfty",
+        "cmd": "\\lim_{x \\to \\infty}",
+        "category": "极限对数",
+        "subcat": "极限"
+    },
+    {
+        "name": "limtf",
+        "cmd": "\\textstyle \\lim_{x \\to 0} ",
+        "category": "极限对数",
+        "subcat": "极限"
+    },
+    {
+        "name": "max",
+        "cmd": "\\max",
+        "category": "极限对数",
+        "subcat": "极限"
+    },
+    {
+        "name": "min",
+        "cmd": "\\min",
+        "category": "极限对数",
+        "subcat": "极限"
+    },
+    {
+        "name": "log",
+        "cmd": "\\log_{a}{b} ",
+        "category": "极限对数",
+        "subcat": "对数指数"
+    },
+    {
+        "name": "lg",
+        "cmd": "\\lg_{a}{b} ",
+        "category": "极限对数",
+        "subcat": "对数指数"
+    },
+    {
+        "name": "ln",
+        "cmd": "\\ln_{a}{b} ",
+        "category": "极限对数",
+        "subcat": "对数指数"
+    },
+    {
+        "name": "exp",
+        "cmd": "\\exp a",
+        "category": "极限对数",
+        "subcat": "对数指数"
+    },
+    {
+        "name": "mina",
+        "cmd": "\\min x",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "maxa",
+        "cmd": "\\max y",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "sup",
+        "cmd": "\\sup t",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "inf",
+        "cmd": "\\inf s",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "lima",
+        "cmd": "\\lim u",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "limsup",
+        "cmd": "\\limsup w",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "liminf",
+        "cmd": "\\liminf v",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "dim",
+        "cmd": "\\dim p",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "ker",
+        "cmd": "\\ker \\phi",
+        "category": "极限对数",
+        "subcat": "界限"
+    },
+    {
+        "name": "sin",
+        "cmd": "\\sin \\alpha",
+        "category": "三角函数",
+        "subcat": "三角函数"
+    },
+    {
+        "name": "cos",
+        "cmd": "\\cos \\alpha",
+        "category": "三角函数",
+        "subcat": "三角函数"
+    },
+    {
+        "name": "tan",
+        "cmd": "\\tan \\alpha",
+        "category": "三角函数",
+        "subcat": "三角函数"
+    },
+    {
+        "name": "cot",
+        "cmd": "\\cot \\alpha",
+        "category": "三角函数",
+        "subcat": "三角函数"
+    },
+    {
+        "name": "sec",
+        "cmd": "\\sec \\alpha",
+        "category": "三角函数",
+        "subcat": "三角函数"
+    },
+    {
+        "name": "csc",
+        "cmd": "\\csc \\alpha",
+        "category": "三角函数",
+        "subcat": "三角函数"
+    },
+    {
+        "name": "insin",
+        "cmd": "\\sin^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "incos",
+        "cmd": "\\cos^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "intan",
+        "cmd": "\\tan^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "incot",
+        "cmd": "\\cot^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "insec",
+        "cmd": "\\sec^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "incsc",
+        "cmd": "\\csc^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "arcsin",
+        "cmd": "\\arcsin \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "arccos",
+        "cmd": "\\arccos \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "arctan",
+        "cmd": "\\arctan \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "arccot",
+        "cmd": "\\operatorname{arccot} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "arcsec",
+        "cmd": "\\operatorname{arcsec} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "arccsc",
+        "cmd": "\\operatorname{arccsc} \\alpha",
+        "category": "三角函数",
+        "subcat": "反三角函数"
+    },
+    {
+        "name": "sinh",
+        "cmd": "\\sinh \\alpha",
+        "category": "三角函数",
+        "subcat": "双曲函数"
+    },
+    {
+        "name": "cosh",
+        "cmd": "\\cosh \\alpha",
+        "category": "三角函数",
+        "subcat": "双曲函数"
+    },
+    {
+        "name": "tanh",
+        "cmd": "\\tanh \\alpha",
+        "category": "三角函数",
+        "subcat": "双曲函数"
+    },
+    {
+        "name": "coth",
+        "cmd": "\\coth \\alpha",
+        "category": "三角函数",
+        "subcat": "双曲函数"
+    },
+    {
+        "name": "sech",
+        "cmd": "\\operatorname{sech} \\alpha",
+        "category": "三角函数",
+        "subcat": "双曲函数"
+    },
+    {
+        "name": "csch",
+        "cmd": "\\operatorname{csch} \\alpha",
+        "category": "三角函数",
+        "subcat": "双曲函数"
+    },
+    {
+        "name": "insinh",
+        "cmd": "\\sinh^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反双曲函数"
+    },
+    {
+        "name": "incosh",
+        "cmd": "\\cosh^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反双曲函数"
+    },
+    {
+        "name": "intanh",
+        "cmd": "\\tanh^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反双曲函数"
+    },
+    {
+        "name": "incoth",
+        "cmd": "\\coth^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反双曲函数"
+    },
+    {
+        "name": "insech",
+        "cmd": "\\operatorname{sech}^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反双曲函数"
+    },
+    {
+        "name": "incsch",
+        "cmd": "\\operatorname{csch}^{-1} \\alpha",
+        "category": "三角函数",
+        "subcat": "反双曲函数"
+    },
+    {
+        "name": "int",
+        "cmd": "\\int",
+        "category": "积分运算",
+        "subcat": "积分"
+    },
+    {
+        "name": "int_{}^{} ",
+        "cmd": "\\int_{a}^{b} ",
+        "category": "积分运算",
+        "subcat": "积分"
+    },
+    {
+        "name": "int limits_{}^{} ",
+        "cmd": "\\int\\limits_{a}^{b} ",
+        "category": "积分运算",
+        "subcat": "积分"
+    },
+    {
+        "name": "iint",
+        "cmd": "\\iint",
+        "category": "积分运算",
+        "subcat": "双重积分"
+    },
+    {
+        "name": "iint_{}^{}",
+        "cmd": "\\iint_{a}^{b}",
+        "category": "积分运算",
+        "subcat": "双重积分"
+    },
+    {
+        "name": "iint limits_{}^{} ",
+        "cmd": "\\iint\\limits_{a}^{b} ",
+        "category": "积分运算",
+        "subcat": "双重积分"
+    },
+    {
+        "name": "iiint",
+        "cmd": "\\iiint",
+        "category": "积分运算",
+        "subcat": "三重积分"
+    },
+    {
+        "name": "iiint_{}^{}",
+        "cmd": "\\iiint_{a}^{b}",
+        "category": "积分运算",
+        "subcat": "三重积分"
+    },
+    {
+        "name": "iiint limits_{}^{}",
+        "cmd": "\\iiint\\limits_{a}^{b}",
+        "category": "积分运算",
+        "subcat": "三重积分"
+    },
+    {
+        "name": "oint",
+        "cmd": "\\oint",
+        "category": "积分运算",
+        "subcat": "曲线积分"
+    },
+    {
+        "name": "oint_{C}",
+        "cmd": "\\oint_{C}",
+        "category": "积分运算",
+        "subcat": "曲线积分"
+    },
+    {
+        "name": "oiint",
+        "cmd": "\\oiint_{C}",
+        "category": "积分运算",
+        "subcat": "曲线积分"
+    },
+    {
+        "name": "oiiint",
+        "cmd": "\\oiiint_{C}",
+        "category": "积分运算",
+        "subcat": "曲线积分"
+    },{
+        "name": "sum",
+        "cmd": "\\sum",
+        "category": "大型运算",
+        "subcat": "求和"
+    },
+    {
+        "name": "sum_{}^{} ",
+        "cmd": "\\sum_{a}^{b} ",
+        "category": "大型运算",
+        "subcat": "求和"
+    },
+    {
+        "name": "sumb",
+        "cmd": "{\\textstyle \\sum_{a}^{b}}",
+        "category": "大型运算",
+        "subcat": "求和"
+    },
+    {
+        "name": "prod",
+        "cmd": "\\prod",
+        "category": "大型运算",
+        "subcat": "乘积余积"
+    },
+    {
+        "name": "prod_{a}^{b}",
+        "cmd": "\\prod_{a}^{b}",
+        "category": "大型运算",
+        "subcat": "乘积余积"
+    },
+    {
+        "name": "prod_{a}^{b}",
+        "cmd": "\\textstyle \\prod_{a}^{b}",
+        "category": "大型运算",
+        "subcat": "乘积余积"
+    },
+    {
+        "name": "coprod",
+        "cmd": "\\coprod",
+        "category": "大型运算",
+        "subcat": "乘积余积"
+    },
+    {
+        "name": "coproda_{a}^{b}",
+        "cmd": "\\coprod_{a}^{b}",
+        "category": "大型运算",
+        "subcat": "乘积余积"
+    },
+    {
+        "name": "coprodb",
+        "cmd": "\\textstyle\\coprod_{a}^{b}",
+        "category": "大型运算",
+        "subcat": "乘积余积"
+    },
+    {
+        "name": "cup",
+        "cmd": "\\cup",
+        "category": "大型运算",
+        "subcat": "并集交集"
+    },
+    {
+        "name": "cup_{}^{} ",
+        "cmd": "\\cup_{a}^{b} ",
+        "category": "大型运算",
+        "subcat": "并集交集"
+    },
+    {
+        "name": "cap",
+        "cmd": "\\cap",
+        "category": "大型运算",
+        "subcat": "并集交集"
+    },
+    {
+        "name": "cap_{}^{} ",
+        "cmd": "\\cap_{a}^{b} ",
+        "category": "大型运算",
+        "subcat": "并集交集"
+    },
+    {
+        "name": "vee",
+        "cmd": "\\vee",
+        "category": "大型运算",
+        "subcat": "析取合取"
+    },
+    {
+        "name": "vee_{}^{} ",
+        "cmd": "\\vee_{a}^{b} ",
+        "category": "大型运算",
+        "subcat": "析取合取"
+    },
+    {
+        "name": "wedage",
+        "cmd": "\\wedge",
+        "category": "大型运算",
+        "subcat": "析取合取"
+    },
+    {
+        "name": "wedage_{}^{} ",
+        "cmd": "\\wedge_{a}^{b} ",
+        "category": "大型运算",
+        "subcat": "析取合取"
+    },
+    {
+        "name": "bracket1",
+        "cmd": "\\left( \\right)",
+        "category": "括号取整",
+        "subcat": "括号"
+    },
+    {
+        "name": "bracket3",
+        "cmd": "\\left[ \\right]",
+        "category": "括号取整",
+        "subcat": "括号"
+    },
+    {
+        "name": "bracket4",
+        "cmd": "\\left\\langle \\right\\rangle",
+        "category": "括号取整",
+        "subcat": "括号"
+    },
+    {
+        "name": "bracket5",
+        "cmd": "\\left\\{ \\right\\}",
+        "category": "括号取整",
+        "subcat": "括号"
+    },
+    {
+        "name": "bracket7",
+        "cmd": "\\left| \\right|",
+        "category": "括号取整",
+        "subcat": "括号"
+    },
+    {
+        "name": "bracket2",
+        "cmd": "\\left\\| \\right\\|",
+        "category": "括号取整",
+        "subcat": "括号"
+    },
+    {
+        "name": "bracket6",
+        "cmd": "\\left\\lfloor \\right\\rfloor",
+        "category": "括号取整",
+        "subcat": "括号"
+    },
+    {
+        "name": "bracket8",
+        "cmd": "\\left\\lceil \\right\\rceil",
+        "category": "括号取整",
+        "subcat": "括号"
+    },
+    {
+        "name": "binom",
+        "cmd": "\\binom{a}{b}",
+        "category": "括号取整",
+        "subcat": "常用"
+    },
+    {
+        "name": "common1",
+        "cmd": "\\left[0,1 \\right)",
+        "category": "括号取整",
+        "subcat": "常用"
+    },
+    {
+        "name": "common2",
+        "cmd": "\\left\\langle\\psi\\right|",
+        "category": "括号取整",
+        "subcat": "常用"
+    },
+    {
+        "name": "common3",
+        "cmd": "\\left|\\psi\\right\\rangle ",
+        "category": "括号取整",
+        "subcat": "常用"
+    },
+    {
+        "name": "common4",
+        "cmd": "\\left \\langle \\psi  | \\phi  \\right \\rangle ",
+        "category": "括号取整",
+        "subcat": "常用"
+    }
 ]
