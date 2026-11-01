@@ -124,6 +124,41 @@ body {
   overflow: hidden;
 }
 
+/* ── UI 外壳禁选（M1 易用性）：菜单栏 / 活动栏 / 侧栏 / 编辑工具栏 / 标签栏 /
+   状态栏 / 行号栏 / PDF 标题栏·工具栏·导航侧栏，均禁止文字选中（防误触拖蓝）。
+   编辑器正文与 PDF 正文保持可选中：前者由 .cm-content（user-select:text）维持，
+   后者由 .pdf-scroll > .textLayer（默认可选中，本块不覆盖）维持。 ── */
+.menubar,
+.activity,
+.sidebar,
+.editor-toolbar,
+.tabbar,
+.statusbar,
+.cm-gutters,
+.pv-head,
+.pv-tools,
+.pv-side {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 外壳内的可编辑控件（PDF 页码框 / 缩放框、侧栏各面板搜索与输入）不受禁选影响 */
+.menubar input,
+.menubar textarea,
+.sidebar input,
+.sidebar textarea,
+.editor-toolbar input,
+.editor-toolbar textarea,
+.pv-head input,
+.pv-head textarea,
+.pv-tools input,
+.pv-tools textarea,
+.pv-side input,
+.pv-side textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
 /* ── 顶部菜单栏（M0-13 前移，对齐 mockup .menubar/.drop/.mi） ── */
 .menubar {
   height: 32px;
