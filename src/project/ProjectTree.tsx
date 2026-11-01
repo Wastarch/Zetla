@@ -108,7 +108,7 @@ export function ProjectTree() {
       return (
         <div
           key={n.path}
-          className={isSel ? "tnode sel" : "tnode"}
+          className={isSel ? "tnode sel file" : "tnode file"}
           style={{ paddingLeft: pad, opacity: isCut(n.path) ? 0.55 : undefined }}
           title={n.path}
           onClick={() => openFromTree(n.path)}

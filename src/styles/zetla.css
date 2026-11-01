@@ -2979,6 +2979,14 @@ body.col-resizing {
   flex: none;
 }
 
+/* 文件行无折叠箭头，预留等宽占位（= .chev 的 12px），使文件图标与文件夹图标同列、
+   文件名对齐；flex 的 gap 会自动补足箭头与图标之间的 6px 间距。 */
+.tnode.file::before {
+  content: "";
+  width: 12px;
+  flex: none;
+}
+
 .tnode.open-dir .chev {
   transform: rotate(90deg);
 }
