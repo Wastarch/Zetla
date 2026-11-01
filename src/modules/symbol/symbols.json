@@ -1263,7 +1263,8 @@
         "name": "frac{partial^2}{partial x_1 partial x_2}y ",
         "cmd": "\\frac{\\partial^2}{\\partial x_1\\partial x_2}y ",
         "category": "分数微分",
-        "subcat": "分数"
+        "subcat": "分数",
+        "w": 72
     },
     {
         "name": "dot",
@@ -1515,19 +1516,22 @@
         "name": "limto0",
         "cmd": "\\lim_{x \\to 0}",
         "category": "极限对数",
-        "subcat": "极限"
+        "subcat": "极限",
+        "w": 72
     },
     {
         "name": "limtoinfty",
         "cmd": "\\lim_{x \\to \\infty}",
         "category": "极限对数",
-        "subcat": "极限"
+        "subcat": "极限",
+        "w": 72
     },
     {
         "name": "limtf",
         "cmd": "\\textstyle \\lim_{x \\to 0} ",
         "category": "极限对数",
-        "subcat": "极限"
+        "subcat": "极限",
+        "w": 72
     },
     {
         "name": "max",
@@ -1599,13 +1603,15 @@
         "name": "limsup",
         "cmd": "\\limsup w",
         "category": "极限对数",
-        "subcat": "界限"
+        "subcat": "界限",
+        "w": 82
     },
     {
         "name": "liminf",
         "cmd": "\\liminf v",
         "category": "极限对数",
-        "subcat": "界限"
+        "subcat": "界限",
+        "w": 82
     },
     {
         "name": "dim",
@@ -1659,145 +1665,169 @@
         "name": "insin",
         "cmd": "\\sin^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "incos",
         "cmd": "\\cos^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "intan",
         "cmd": "\\tan^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "incot",
         "cmd": "\\cot^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "insec",
         "cmd": "\\sec^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "incsc",
         "cmd": "\\csc^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "arcsin",
         "cmd": "\\arcsin \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "arccos",
         "cmd": "\\arccos \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "arctan",
         "cmd": "\\arctan \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "arccot",
         "cmd": "\\operatorname{arccot} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "arcsec",
         "cmd": "\\operatorname{arcsec} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "arccsc",
         "cmd": "\\operatorname{arccsc} \\alpha",
         "category": "三角函数",
-        "subcat": "反三角函数"
+        "subcat": "反三角函数",
+        "w": 72
     },
     {
         "name": "sinh",
         "cmd": "\\sinh \\alpha",
         "category": "三角函数",
-        "subcat": "双曲函数"
+        "subcat": "双曲函数",
+        "w": 72
     },
     {
         "name": "cosh",
         "cmd": "\\cosh \\alpha",
         "category": "三角函数",
-        "subcat": "双曲函数"
+        "subcat": "双曲函数",
+        "w": 72
     },
     {
         "name": "tanh",
         "cmd": "\\tanh \\alpha",
         "category": "三角函数",
-        "subcat": "双曲函数"
+        "subcat": "双曲函数",
+        "w": 72
     },
     {
         "name": "coth",
         "cmd": "\\coth \\alpha",
         "category": "三角函数",
-        "subcat": "双曲函数"
+        "subcat": "双曲函数",
+        "w": 72
     },
     {
         "name": "sech",
         "cmd": "\\operatorname{sech} \\alpha",
         "category": "三角函数",
-        "subcat": "双曲函数"
+        "subcat": "双曲函数",
+        "w": 72
     },
     {
         "name": "csch",
         "cmd": "\\operatorname{csch} \\alpha",
         "category": "三角函数",
-        "subcat": "双曲函数"
+        "subcat": "双曲函数",
+        "w": 72
     },
     {
         "name": "insinh",
         "cmd": "\\sinh^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反双曲函数"
+        "subcat": "反双曲函数",
+        "w": 75
     },
     {
         "name": "incosh",
         "cmd": "\\cosh^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反双曲函数"
+        "subcat": "反双曲函数",
+        "w": 75
     },
     {
         "name": "intanh",
         "cmd": "\\tanh^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反双曲函数"
+        "subcat": "反双曲函数",
+        "w": 75
     },
     {
         "name": "incoth",
         "cmd": "\\coth^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反双曲函数"
+        "subcat": "反双曲函数",
+        "w": 75
     },
     {
         "name": "insech",
         "cmd": "\\operatorname{sech}^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反双曲函数"
+        "subcat": "反双曲函数",
+        "w": 75
     },
     {
         "name": "incsch",
         "cmd": "\\operatorname{csch}^{-1} \\alpha",
         "category": "三角函数",
-        "subcat": "反双曲函数"
+        "subcat": "反双曲函数",
+        "w": 75
     },
     {
         "name": "int",

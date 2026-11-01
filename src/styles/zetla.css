@@ -5110,12 +5110,19 @@ body.row-resizing {
   min-height: 0;
   overflow: auto;
   padding-right: 2px;
+  /* 符号钮统一宽度：改这一个值即可整体调节（symbol panel 内所有 symbol-btn） */
+  --symbol-btn-w: 54px;
 }
 .symbol-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
-  align-content: start;
+  align-content: flex-start;
+}
+/* 每个符号钮保持各自宽度（全局 --symbol-btn-w 或按钮级 --btn-w）；不收缩，gap 始终一致不被挤压 */
+.symbol-grid .symbol-btn {
+  width: var(--btn-w, var(--symbol-btn-w, 54px));
+  flex: 0 0 auto;
 }
 
 .symbol-btn {
@@ -5175,7 +5182,7 @@ body.row-resizing {
 }
 
 .symbol-empty {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
   font-size: 11px;
   color: var(--txt-3);
   text-align: center;
@@ -5188,6 +5195,10 @@ body.row-resizing {
   flex-direction: column;
   gap: 4px;
   align-content: stretch;
+}
+/* 行布局下钮应填满整行，不被 symbol panel 的固定宽度限制 */
+.formula-panel .symbol-grid .symbol-btn {
+  width: auto;
 }
 .formula-item {
   display: flex;

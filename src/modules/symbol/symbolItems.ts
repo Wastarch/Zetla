@@ -30,6 +30,8 @@ export interface InsertItem {
   slots: number;
   /** 名称备注（符号 = \cmd；模板 = 槽位名，参与搜索） */
   note: string;
+  /** 可选：按钮宽度（px）。不填则用全局 --symbol-btn-w；填了则单独覆盖该钮宽度 */
+  w?: number;
 }
 
 /** 10 分类（顺序即大钮排列，2 行 × 5） */
@@ -111,7 +113,7 @@ export const SUBCAT_LABEL: Record<string, string> = {
 };
 
 const SYMBOL_ITEMS: InsertItem[] = (
-  symbolsData as { name: string; cmd: string; category: string; subcat: string }[]
+  symbolsData as { name: string; cmd: string; category: string; subcat: string; w?: number }[]
 ).map((s) => ({
   key: s.cmd,
   kind: "symbol",
@@ -122,6 +124,7 @@ const SYMBOL_ITEMS: InsertItem[] = (
   latex: s.cmd,
   slots: 0,
   note: s.cmd,
+  w: s.w,
 }));
 
 const TEMPLATE_ITEMS: InsertItem[] = TPLS.map((t) => ({
@@ -134,6 +137,7 @@ const TEMPLATE_ITEMS: InsertItem[] = TPLS.map((t) => ({
   latex: t.latex(t.slotLabels.map(() => SLOT_MARK)),
   slots: t.slotLabels.length,
   note: t.slotLabels.join("/"),
+  w: t.w,
 }));
 
 /** 全部插入项（符号 191 + 模板 24） */

@@ -105,6 +105,7 @@ export default function SymbolPanel() {
         key={it.key}
         type="button"
         className={it.kind === "template" ? "symbol-btn is-tpl" : "symbol-btn"}
+        style={it.w ? ({ ["--btn-w"]: `${it.w}px` } as React.CSSProperties) : undefined}
         title={`${it.name}（${it.latex}）${it.slots ? ` · ${it.slots} 个空槽` : ""} · 单击写入编写区，右键直插编辑器`}
         onClick={() => writeToCompose(it)}
         onContextMenu={(e) => {

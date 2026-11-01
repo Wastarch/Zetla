@@ -55,6 +55,8 @@ export interface Tpl {
   slotLabels: string[];
   /** 由序列化后的槽位内容生成结构 LaTeX 片段 */
   latex: (s: string[]) => string;
+  /** 可选：按钮宽度（px），不填则随全局 --symbol-btn-w */
+  w?: number;
 }
 
 /** 行列式 LaTeX 生成辅助（矩阵 / 行列式 / cases 共用） */
