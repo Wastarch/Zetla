@@ -2615,7 +2615,7 @@ body.col-resizing {
   flex: 1 1 auto;
   min-height: 96px;
   overflow: auto;
-  border: 1px solid var(--line-soft);
+  border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--bg);
 }
@@ -2629,8 +2629,8 @@ body.col-resizing {
 
 .tbl-grid th,
 .tbl-grid td {
-  border-right: 1px solid var(--line-soft);
-  border-bottom: 1px solid var(--line-soft);
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
   padding: 0;
 }
 
