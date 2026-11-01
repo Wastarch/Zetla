@@ -7,6 +7,7 @@
 // 模板含 \Box 槽位：直插编辑器时自动选中首槽、Tab 跳下一槽（mathSlots 协议）。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { insertSnippetWithSlots } from "@/editor/mathSlots";
+import LazySymbolGlyph from "./LazySymbolGlyph";
 import { notify } from "@/project/useProject";
 import { useComposeStore } from "@/modules/formula/composeStore";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
@@ -120,8 +121,9 @@ export default function SymbolPanel() {
           </div>
           <div className="symbol-grid">
           {items.map((it) => {
-            // 符号有真字形 → 大图；无字形符号（glyph=cmd）与模板 → 等宽小字
-            const big = it.kind === "symbol" ? it.glyph !== it.latex : it.glyph.length <= 2;
+            // 大图判定：符号若含 {}（\frac{}{} 等参数型宏）→ 命令文本；其余符号走 KaTeX 大图（与预览同引擎，真·所见即所得）
+            //           模板：icon ≤2 字符 → 大图，否则命令文本
+            const big = it.kind === "symbol" ? !it.latex.includes("{}") : it.glyph.length <= 2;
             return (
               <button
                 key={it.key}
@@ -134,7 +136,20 @@ export default function SymbolPanel() {
                   setCtx({ x: e.clientX, y: e.clientY, item: it });
                 }}
               >
-                <span className={big ? "symbol-glyph" : "symbol-glyph is-cmd"}>{it.glyph}</span>
+                {big ? (
+                  it.kind === "symbol" ? (
+                    // 符号大图：KaTeX 渲染 latex，懒加载（进入视口才渲染，压低首开开销）
+                    <LazySymbolGlyph tex={it.latex} />
+                  ) : (
+                    // 模板大图 icon（∑/∫ 等）保持原样
+                    <span className="symbol-glyph">{it.glyph}</span>
+                  )
+                ) : (
+                  // 参数型符号（\frac{}{} 等）与长 icon 模板 → 等宽命令文本
+                  <span className="symbol-glyph is-cmd">
+                    {it.kind === "symbol" ? it.latex : it.glyph}
+                  </span>
+                )}
                 <span className="symbol-name">
                   {it.kind === "template" ? it.name : `\\${it.name}`}
                 </span>

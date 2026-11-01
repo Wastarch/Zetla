@@ -15,7 +15,12 @@ export interface InsertItem {
   cat: string;
   /** 展示名 */
   name: string;
-  /** 按钮预览（符号 = Unicode 字形，缺省回退 cmd；模板 = ASCII 示意） */
+  /**
+   * 按钮预览文本。
+   * 符号侧（symbols.json）已彻底移除 glyph 字段——符号视觉统一由 KaTeX 渲染 latex（见 SymbolPanel / LazySymbolGlyph）。
+   * 此处符号的 glyph 仅作 cmd 的别名（保留字段以兼容接口与搜索），无独立语义，后续可一并删除。
+   * 仅「模板」真正使用 glyph（= builderTypes.TPLS 的 icon，如 ∑/∫/a/b），并参与模板搜索。
+   */
   glyph: string;
   /** 插入的 LaTeX（符号 = cmd；模板含 \Box） */
   latex: string;
@@ -54,13 +59,13 @@ export const CAT_ICONS: Record<string, string> = {
 };
 
 const SYMBOL_ITEMS: InsertItem[] = (
-  symbolsData as { name: string; cmd: string; category: string; glyph?: string }[]
+  symbolsData as { name: string; cmd: string; category: string }[]
 ).map((s) => ({
   key: s.cmd,
   kind: "symbol",
   cat: s.category,
   name: s.name,
-  glyph: s.glyph ?? s.cmd,
+  glyph: s.cmd,
   latex: s.cmd,
   slots: 0,
   note: s.cmd,
@@ -95,6 +100,7 @@ export function searchItems(kw: string): InsertItem[] {
       it.latex.toLowerCase().includes(k) ||
       it.note.toLowerCase().includes(k) ||
       it.cat.includes(k) ||
-      (it.kind === "symbol" && it.glyph.includes(k)),
+      // 模板 icon（∑/∫/a/b 等）单独参与检索；符号已无 glyph，Unicode 直搜失效（改用命令/中文名）
+      (it.kind === "template" && it.glyph.toLowerCase().includes(k)),
   );
 }

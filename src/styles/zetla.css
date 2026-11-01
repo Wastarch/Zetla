@@ -5148,6 +5148,18 @@ body.row-resizing {
   color: var(--txt-2);
   word-break: break-all;
 }
+/* 有真字形符号改由 KaTeX 渲染（.fx 为 FormulaKaTeX 容器）：纵向居中、留出行高避免 ∑/∫/√ 被裁切 */
+.symbol-glyph .fx {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  max-width: 100%;
+}
+/* 懒渲染占位：预留字形高度（≈ 17px × 1.1 行高），避免进入视口触发 KaTeX 时布局抖动 */
+.symbol-glyph.is-pending {
+  min-height: 19px;
+}
 
 .symbol-name {
   font-size: 9px;
