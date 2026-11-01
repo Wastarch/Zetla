@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1.76ex" height="1.507ex" viewBox="0 -583 778 666"
+    xmlns:xlink="http://www.w3.org/1999/xlink" style="">
+    <defs>
+        <path id="MJX-1-NCM-N-2B"
+            d="M698 274L413 274L413 559C413 575 405 583 389 583C373 583 365 575 365 559L365 274L80 274C64 274 56 266 56 250C56 234 64 226 80 226L365 226L365-59C365-75 373-83 389-83C405-83 413-75 413-59L413 226L698 226C714 226 722 234 722 250C722 263 711 274 698 274Z"></path>
+    </defs>
+    <g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)">
+        <g data-mml-node="math" data-latex="+  ">
+            <g data-mml-node="mo" data-latex="+">
+                <use data-c="2B" xlink:href="#MJX-1-NCM-N-2B"></use>
+            </g>
+        </g>
+    </g>
+</svg>
