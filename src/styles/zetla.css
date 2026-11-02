@@ -5903,6 +5903,10 @@ body.row-resizing {
 .symbol-btn.is-tpl {
   border-left: 2px solid var(--accent);
 }
+/* 矩阵图标（KaTeX 渲染 2×2 示意）：缩小字号以适配 64px 钮，避免溢出挤压 */
+.symbol-btn.is-tpl .symbol-glyph .fx {
+  font-size: 12px;
+}
 
 /* 二级工具栏（两行） */
 .math-tools {
@@ -7309,4 +7313,98 @@ body.row-resizing {
 .snip-dirty {
   font-size: 10.5px;
   color: var(--txt-3);
+}
+
+/* ── 矩阵浮层（M1-12b 改造：点击图标就地展开，替代居中模态；复用 .entry-* / .btn 体系） ── */
+.matrix-pop {
+  position: fixed;
+  z-index: 60;
+  width: 268px;
+  padding: 12px 14px 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.3);
+  color: var(--txt);
+}
+.matrix-pop .mp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.matrix-pop .mp-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--txt);
+}
+.matrix-pop .mp-head .x {
+  width: 24px;
+  height: 24px;
+  font-size: 16px;
+  padding: 0;
+}
+.matrix-pop .mp-body {
+  display: block;
+}
+.matrix-pop .mp-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+.matrix-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 4px 0 14px;
+}
+.matrix-field .matrix-stepper {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.matrix-stepper input {
+  width: 52px;
+  height: 32px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  color: var(--txt);
+  font-size: 14px;
+  font-family: var(--font-ui);
+}
+.matrix-stepper input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.matrix-stepper .btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.matrix-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+.matrix-preview {
+  margin-top: 4px;
+  padding: 14px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-3);
+  overflow: auto;
 }

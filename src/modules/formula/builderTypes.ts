@@ -51,12 +51,18 @@ export interface Tpl {
   group: string;
   /** M1-12b：符号面板 10 分类归属（Formula.html 体系；与 group 正交——group 服务搭建器分组，cat 服务符号面板分类） */
   cat: string;
+  /** 可选：符号面板二级子类（如数组矩阵 → 矩阵；模板大多不细分，故可选） */
+  subcat?: string;
   /** 各槽位展示名 */
   slotLabels: string[];
   /** 由序列化后的槽位内容生成结构 LaTeX 片段 */
   latex: (s: string[]) => string;
   /** 可选：按钮宽度（px），不填则随全局 --symbol-btn-w */
   w?: number;
+  /** 可选：对话框触发型模板（如矩阵，需用户设定参数后再生成 latex，不直接静态预生成） */
+  dialog?: boolean;
+  /** 可选：对话框初始环境（matrix/pmatrix/bmatrix/vmatrix/cases；dialog 模板用，点击预选） */
+  env?: string;
 }
 
 /** 行列式 LaTeX 生成辅助（矩阵 / 行列式 / cases 共用） */
@@ -68,30 +74,48 @@ function grid(env: string, rows: number, cols: number, s: string[]): string {
   return `\\begin{${env}}\n${lines.join(" \\\\\n")}\n\\end{${env}}`;
 }
 
-/** M1-11：结构模板库（现仅保留数组矩阵的 4 个模板：mat2/mat3/vmat2/cases；
- *  其余 7 分类的模板已于符号面板重构时移除——符号已覆盖对应功能，避免「模板」区块重复展示；icon 为 ASCII 示意，名称说人话）
- *  group = 搭建器分组（现仅「矩阵」）；cat = 符号面板 10 分类（Formula.html 体系） */
+/** 矩阵 / 行列式 / cases 环境 → 中文标签（对话框下拉用，对齐 amsmath） */
+export const MATRIX_ENVS: Record<string, string> = {
+  matrix: "无括号矩阵",
+  pmatrix: "圆括号 ( )",
+  bmatrix: "方括号 [ ]",
+  vmatrix: "单竖线 · 行列式 | |",
+  Bmatrix: "双竖线 ‖ ‖",
+  cases: "分段 cases",
+};
+
+/**
+ * 生成可插入的矩阵 LaTeX（含 \Box 空槽；cases 强制 2 列）。
+ * 供 MatrixDialog 确认后调用，与现有模板插入协议完全一致（\Box 走 mathSlots 槽位导航）。
+ */
+export function makeMatrixLatex(env: string, rows: number, cols: number): string {
+  const c = env === "cases" ? 2 : cols;
+  return grid(env, rows, c, Array.from({ length: rows * c }, () => SLOT_MARK));
+}
+
+/** M1-11：结构模板库（矩阵按括号样式拆为多个对话框入口——无括号/圆括号/方括号/行列式/cases；
+ *  点击预选对应环境，行/列运行时由 MatrixDialog 设定；其余分类的模板已于符号面板重构时移除） */
 export const TPLS: Tpl[] = [
-  // ── 矩阵 ──
+  // ── 矩阵 / 行列式 / cases（按括号样式拆为多个对话框入口，点击预选环境；行/列运行时设定）──
   {
-    id: "mat2", name: "矩阵 2×2", icon: "▦", group: "矩阵", cat: "数组矩阵",
-    slotLabels: ["(1,1)", "(1,2)", "(2,1)", "(2,2)"],
-    latex: (s) => grid("matrix", 2, 2, s),
+    id: "matrix", name: "无括号矩阵", icon: "▦", group: "矩阵", cat: "数组矩阵",
+    subcat: "矩阵", env: "matrix", slotLabels: [], latex: () => "", dialog: true, w: 64,
   },
   {
-    id: "mat3", name: "矩阵 3×3", icon: "▤", group: "矩阵", cat: "数组矩阵",
-    slotLabels: ["(1,1)", "(1,2)", "(1,3)", "(2,1)", "(2,2)", "(2,3)", "(3,1)", "(3,2)", "(3,3)"],
-    latex: (s) => grid("matrix", 3, 3, s),
+    id: "pmatrix", name: "圆括号矩阵", icon: "(▦)", group: "矩阵", cat: "数组矩阵",
+    subcat: "矩阵", env: "pmatrix", slotLabels: [], latex: () => "", dialog: true, w: 64,
   },
   {
-    id: "vmat2", name: "行列式 2×2", icon: "|▦|", group: "矩阵", cat: "数组矩阵",
-    slotLabels: ["(1,1)", "(1,2)", "(2,1)", "(2,2)"],
-    latex: (s) => grid("vmatrix", 2, 2, s),
+    id: "bmatrix", name: "方括号矩阵", icon: "[▦]", group: "矩阵", cat: "数组矩阵",
+    subcat: "矩阵", env: "bmatrix", slotLabels: [], latex: () => "", dialog: true, w: 64,
   },
   {
-    id: "cases", name: "分段 cases", icon: "{▾", group: "矩阵", cat: "数组矩阵",
-    slotLabels: ["条件 1", "取值 1", "条件 2", "取值 2"],
-    latex: (s) => grid("cases", 2, 2, s),
+    id: "vmatrix", name: "行列式", icon: "|▦|", group: "矩阵", cat: "数组矩阵",
+    subcat: "矩阵", env: "vmatrix", slotLabels: [], latex: () => "", dialog: true, w: 64,
+  },
+  {
+    id: "cases", name: "分段函数", icon: "{▾", group: "矩阵", cat: "数组矩阵",
+    subcat: "矩阵", env: "cases", slotLabels: [], latex: () => "", dialog: true, w: 64,
   },
 ];
 

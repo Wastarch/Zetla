@@ -3,7 +3,7 @@
 //   常用符号 / 希腊字母 / 分数微分 / 根式角标 / 极限对数 / 三角函数 / 积分运算 / 大型运算 / 括号取整 / 数组矩阵
 // 交互定稿（用户 2026-10-25）：单击 → 写入侧栏编写区；右键 → 直插菜单。
 import symbolsData from "./symbols.json";
-import { TPLS } from "@/modules/formula/builderTypes";
+import { TPLS, makeMatrixLatex } from "@/modules/formula/builderTypes";
 import { SLOT_MARK } from "@/editor/slotRange";
 
 /** 插入项：符号（cmd 原样插入）或模板（latex 含 \Box 槽位，插入后可 Tab 跳填） */
@@ -32,6 +32,10 @@ export interface InsertItem {
   note: string;
   /** 可选：按钮宽度（px）。不填则用全局 --symbol-btn-w；填了则单独覆盖该钮宽度 */
   w?: number;
+  /** 可选：对话框触发型模板（矩阵），值为触发类型；有此字段则不静态预生成 latex */
+  dialog?: "matrix";
+  /** 可选：对话框预选环境（matrix/pmatrix/bmatrix/vmatrix/cases；dialog 模板携带） */
+  env?: string;
 }
 
 /** 10 分类（顺序即大钮排列，2 行 × 5） */
@@ -129,18 +133,38 @@ const SYMBOL_ITEMS: InsertItem[] = (
   w: s.w,
 }));
 
-const TEMPLATE_ITEMS: InsertItem[] = TPLS.map((t) => ({
-  key: `tpl:${t.id}`,
-  kind: "template",
-  cat: t.cat,
-  subcat: "",
-  name: t.name,
-  glyph: t.icon,
-  latex: t.latex(t.slotLabels.map(() => SLOT_MARK)),
-  slots: t.slotLabels.length,
-  note: t.slotLabels.join("/"),
-  w: t.w,
-}));
+const TEMPLATE_ITEMS: InsertItem[] = TPLS.map((t) => {
+  if (t.dialog) {
+    // 对话框触发型（矩阵）：latex 取该环境 2×2 示意作图标；点击/右键打开 MatrixDialog 并预选 env
+    const env = t.env ?? "matrix";
+    return {
+      key: `tpl:${t.id}`,
+      kind: "template",
+      cat: t.cat,
+      subcat: t.subcat ?? "",
+      name: t.name,
+      glyph: t.icon,
+      latex: makeMatrixLatex(env, 2, 2),
+      slots: 0,
+      note: `${t.name} 矩阵 行列式 分段 cases 行列 行 列`,
+      w: t.w,
+      dialog: "matrix",
+      env,
+    } as InsertItem;
+  }
+  return {
+    key: `tpl:${t.id}`,
+    kind: "template",
+    cat: t.cat,
+    subcat: "",
+    name: t.name,
+    glyph: t.icon,
+    latex: t.latex(t.slotLabels.map(() => SLOT_MARK)),
+    slots: t.slotLabels.length,
+    note: t.slotLabels.join("/"),
+    w: t.w,
+  };
+});
 
 /** 全部插入项（符号 191 + 模板 24） */
 export const INSERT_ITEMS: InsertItem[] = [...SYMBOL_ITEMS, ...TEMPLATE_ITEMS];

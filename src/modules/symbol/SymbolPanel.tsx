@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { insertSnippetWithSlots } from "@/editor/mathSlots";
 import LazySymbolGlyph from "./LazySymbolGlyph";
+import MatrixDialog from "./MatrixDialog";
 import { notify } from "@/project/useProject";
 import { useComposeStore } from "@/modules/formula/composeStore";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
@@ -22,6 +23,13 @@ export default function SymbolPanel() {
   const [openCat, setOpenCat] = useState<string>(CATEGORIES[0]);
   const [flash, setFlash] = useState<string | null>(null);
   const [ctx, setCtx] = useState<{ x: number; y: number; item: InsertItem } | null>(null);
+  // 矩阵浮层：触发方式 write=单击(写编写区)/direct=右键(直插编辑器)；null=关闭；matrixKey 记当前展开的是哪个图标（用于再次点击收起）
+  const [matrixDlg, setMatrixDlg] = useState<null | "write" | "direct">(null);
+  // 矩阵浮层预选环境（点击某括号样式图标时带入）
+  const [matrixEnv, setMatrixEnv] = useState<string | undefined>(undefined);
+  // 矩阵浮层锚点（触发图标视口矩形，用于就地定位在侧栏旁）
+  const [matrixAnchor, setMatrixAnchor] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [matrixKey, setMatrixKey] = useState<string | null>(null);
   const flashTimer = useRef<number | null>(null);
 
   useEffect(
@@ -56,8 +64,22 @@ export default function SymbolPanel() {
       const sitems = items.filter((it) => it.kind === "symbol");
       if (sitems.length) out.push({ key: "__all", label: "", items: sitems });
     }
-    const titems = items.filter((it) => it.kind === "template");
-    if (titems.length) out.push({ key: "__tpl", label: "模板 Templates", items: titems });
+    // 模板：有 subcat 的按子类归组（如矩阵集），无 subcat 的归通用「模板 Templates」
+    const tNoSub: InsertItem[] = [];
+    const tBySub = new Map<string, InsertItem[]>();
+    for (const it of items.filter((x) => x.kind === "template")) {
+      if (it.subcat) {
+        const arr = tBySub.get(it.subcat);
+        if (arr) arr.push(it);
+        else tBySub.set(it.subcat, [it]);
+      } else {
+        tNoSub.push(it);
+      }
+    }
+    for (const [sub, sitems] of tBySub) {
+      out.push({ key: `__tpl-${sub}`, label: SUBCAT_LABEL[sub] ?? sub, items: sitems });
+    }
+    if (tNoSub.length) out.push({ key: "__tpl", label: "模板 Templates", items: tNoSub });
     return out;
   }, [searching, items, openCat]);
 
@@ -95,25 +117,79 @@ export default function SymbolPanel() {
     { label: "复制 LaTeX", onClick: () => void copyLatex(item) },
   ];
 
+  /** 矩阵对话框确认：按触发方式落位（write→编写区 / direct→直插编辑器），并记最近 */
+  const applyMatrix = (latex: string) => {
+    const mode = matrixDlg;
+    setMatrixDlg(null);
+    const item: InsertItem = {
+      key: `tpl:${matrixEnv ?? "matrix"}`,
+      kind: "template",
+      cat: "数组矩阵",
+      subcat: "矩阵",
+      name: "矩阵",
+      glyph: "▦",
+      latex,
+      slots: 0,
+      note: "",
+    };
+    if (mode === "direct") directInsert(item);
+    else writeToCompose(item);
+  };
+
   /** 单个 tile（按钮）：大图判定 + KaTeX 懒渲染 / 命令文本，符号与模板共用 */
   const renderTile = (it: InsertItem) => {
     // 大图判定：符号若含 {}（\frac{}{} 等参数型宏）→ 命令文本；其余符号走 KaTeX 大图（与预览同引擎，真·所见即所得）
     //           模板：icon ≤2 字符 → 大图，否则命令文本
     const big = it.kind === "symbol" ? !it.latex.includes("{}") : it.glyph.length <= 2;
+    // 矩阵对话框型模板：不走 writeToCompose / 右键菜单，改为打开 MatrixDialog
+    const isMatrix = it.dialog === "matrix";
     return (
       <button
         key={it.key}
         type="button"
         className={it.kind === "template" ? "symbol-btn is-tpl" : "symbol-btn"}
         style={it.w ? ({ ["--btn-w"]: `${it.w}px` } as React.CSSProperties) : undefined}
-        title={`${it.name}（${it.latex}）${it.slots ? ` · ${it.slots} 个空槽` : ""} · 单击写入编写区，右键直插编辑器`}
-        onClick={() => writeToCompose(it)}
-        onContextMenu={(e) => {
-          e.preventDefault();
-          setCtx({ x: e.clientX, y: e.clientY, item: it });
-        }}
+        title={
+          isMatrix
+            ? `${it.name} · 点击设置行列数 · 右键直插编辑器`
+            : `${it.name}（${it.latex}）${it.slots ? ` · ${it.slots} 个空槽` : ""} · 单击写入编写区，右键直插编辑器`
+        }
+        onClick={
+          isMatrix
+            ? (e) => {
+                const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                // 再次点击同一图标 → 收起；否则重定位并展开
+                if (matrixDlg && matrixKey === it.key) {
+                  setMatrixDlg(null);
+                  return;
+                }
+                setMatrixKey(it.key);
+                setMatrixEnv(it.env);
+                setMatrixAnchor({ x: r.left, y: r.top, w: r.width, h: r.height });
+                setMatrixDlg("write");
+              }
+            : () => writeToCompose(it)
+        }
+        onContextMenu={
+          isMatrix
+            ? (e) => {
+                e.preventDefault();
+                const r = (e.currentTarget as HTMLButtonElement).getBoundingClientRect();
+                setMatrixKey(it.key);
+                setMatrixEnv(it.env);
+                setMatrixAnchor({ x: r.left, y: r.top, w: r.width, h: r.height });
+                setMatrixDlg("direct");
+              }
+            : (e) => {
+                e.preventDefault();
+                setCtx({ x: e.clientX, y: e.clientY, item: it });
+              }
+        }
       >
-        {big ? (
+        {isMatrix ? (
+          // 矩阵图标：KaTeX 渲染该环境 2×2 示意（带括号样式，所见即所得）
+          <LazySymbolGlyph tex={it.latex} />
+        ) : big ? (
           it.kind === "symbol" ? (
             // 符号大图：KaTeX 渲染 latex，懒加载（进入视口才渲染，压低首开开销）
             <LazySymbolGlyph tex={it.latex} />
@@ -209,6 +285,17 @@ export default function SymbolPanel() {
 
       {ctx && (
         <InsertCtxMenu x={ctx.x} y={ctx.y} actions={menuFor(ctx.item)} onClose={() => setCtx(null)} />
+      )}
+
+      {matrixDlg && matrixAnchor && (
+        <MatrixDialog
+          key={matrixKey ?? "matrix"}
+          mode={matrixDlg}
+          initialEnv={matrixEnv}
+          anchor={matrixAnchor}
+          onApply={applyMatrix}
+          onClose={() => setMatrixDlg(null)}
+        />
       )}
     </div>
   );
