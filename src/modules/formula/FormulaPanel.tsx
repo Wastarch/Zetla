@@ -35,6 +35,8 @@ interface Row {
   latex: string;
   /** 分类徽标（最近条目无） */
   cat?: string;
+  /** 条目最小高度（px）；不填用默认 */
+  h?: number;
   /** 自定义公式（可编辑/删除） */
   isCustom?: boolean;
   /** 原始定义（编辑用） */
@@ -126,6 +128,7 @@ export default function FormulaPanel() {
     label: d.name,
     latex: d.latex,
     cat: d.category,
+    h: d.h,
     isCustom: customMap.has(d.id),
     def: d,
   });
@@ -138,6 +141,7 @@ export default function FormulaPanel() {
       label: r.label,
       latex: def?.latex ?? r.latex,
       cat: def?.category,
+      h: def?.h,
       isCustom: customMap.has(r.key),
       def,
     };
@@ -238,7 +242,7 @@ export default function FormulaPanel() {
           title="新建自定义公式"
           onClick={openNew}
         >
-          ＋
+          +
         </button>
       </div>
 
@@ -299,17 +303,20 @@ export default function FormulaPanel() {
               type="button"
               className="formula-insert"
               title={`${r.label}（${r.latex}）· 单击写入编写区，右键直插编辑器`}
+              style={r.h ? ({ ["--formula-h"]: `${r.h}px` } as React.CSSProperties) : undefined}
               onClick={() => writeToCompose(r)}
               onContextMenu={(e) => {
                 e.preventDefault();
                 setCtx({ x: e.clientX, y: e.clientY, item: r });
               }}
             >
-              <span className="formula-name">{r.label}</span>
+              <span className="formula-head">
+                <span className="formula-name">{r.label}</span>
+                {r.cat && <span className="formula-cat">{r.cat}</span>}
+              </span>
               <span className="formula-latex">
                 <FormulaKaTeX tex={r.latex} strict />
               </span>
-              {r.cat && <span className="formula-cat">{r.cat}</span>}
             </button>
             {r.isCustom && r.def && (
               <>
@@ -336,7 +343,7 @@ export default function FormulaPanel() {
         {rows.length === 0 && (
           <div className="symbol-empty">
             {tab === "custom"
-              ? "尚无自定义公式，点击右上角 ＋ 新建"
+              ? "尚无自定义公式，点击右上角 + 新建"
               : tab === "recent"
                 ? "还没有使用记录（符号 / 模板 / 公式的写入都会记入这里）"
                 : "未找到匹配公式"}

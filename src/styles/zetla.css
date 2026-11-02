@@ -5209,10 +5209,10 @@ body.row-resizing {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-  min-height: 34px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-height: var(--formula-h, 34px);
   padding: 5px 10px;
   text-align: left;
   background: var(--bg-3);
@@ -5228,8 +5228,17 @@ body.row-resizing {
 .formula-insert:active {
   background: var(--accent-soft);
 }
+/* 头部行：名称 + 分类同排（2026-11-02 调整：名称/分类一行，LaTeX 单独一行） */
+.formula-head {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
 .formula-name {
-  flex: 0 0 74px;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 11.5px;
   color: var(--txt-1);
   font-weight: 600;
@@ -5237,9 +5246,9 @@ body.row-resizing {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 公式库列表：一行式 [名称 | KaTeX 预览 | 分类]（2026-10-25 反馈：竖排预览太小 → 改横排放大） */
+/* 公式库列表：上排 [名称 | 分类]，下排 KaTeX 预览（2026-11-02 调整） */
 .formula-latex {
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   display: flex;
   align-items: center;
@@ -5253,6 +5262,10 @@ body.row-resizing {
   overflow: hidden;
   vertical-align: middle;
   font-size: 14px;
+}
+/* 设了 --formula-h 的条目：预览字号随高度等比放大（默认 14px / 34px ≈ 0.41） */
+.formula-insert[style*="--formula-h"] .formula-latex .fx {
+  font-size: calc(var(--formula-h, 34px) * 0.41);
 }
 /* KaTeX 渲染容器通用样式 */
 .fx {
