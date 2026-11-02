@@ -1,16 +1,16 @@
 {
-    "version": "0.2.3",
-    "notes": "编译日志完整换行 · 编辑器视觉细节修复",
-    "pubDate": "2026-11-01T00:00:00+08:00",
-    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.3",
+    "version": "0.2.4",
+    "notes": "符号面板重构 · 公式编写区升级",
+    "pubDate": "2026-11-02T00:00:00+08:00",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.4",
     "installers": [
         {
-            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.3/Zetla_0.2.3_x64-setup.exe",
-            "sha256": "B72D807E80336DEE2D26DBA30A7277F8E1B5A7439C15ED55703C2D9F5E93A30C"
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.4/Zetla_0.2.4_x64-setup.exe",
+            "sha256": "D2CB5F985B4D231FBDE9407C17EFDD21B5654AD8E07969D7272353D5DD89A1B0"
         },
         {
-            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.3/Zetla_0.2.3_x64-setup.exe",
-            "sha256": "B72D807E80336DEE2D26DBA30A7277F8E1B5A7439C15ED55703C2D9F5E93A30C"
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.4/Zetla_0.2.4_x64-setup.exe",
+            "sha256": "D2CB5F985B4D231FBDE9407C17EFDD21B5654AD8E07969D7272353D5DD89A1B0"
         }
     ],
     "minVersion": "0.1.0",
