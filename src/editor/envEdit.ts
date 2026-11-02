@@ -1,19 +1,23 @@
-// 环境反向编辑注册表（M1-19）：hover ✎ 标记 → 打开对应编辑面板 → 指纹校验原地替换。
+// 环境反向编辑注册表（M1-19，M1-20 修订）：环境开头常驻 ✎ 标记 → 打开对应编辑面板
+// → 指纹校验原地替换。
 // 职责边界：本文件只做「注册表 + 统一入口」，**禁止 import src/modules**（依赖方向
 // modules → editor 单向，与 mathInsert→mathSlots 同向；反向会成环）。
 // 各模块（公式/表格，未来图片等）在自己的注册函数 hooks.onModuleEnabled 里调
-// registerEnvEditor，onModuleDisabled 里调 unregisterEnvEditor——模块停用后 hover
-// 自然无对应标记，无需在此反查 moduleRegistry。
+// registerEnvEditor，onModuleDisabled 里调 unregisterEnvEditor——模块停用后常驻标记
+// 自然消失，无需在此反查 moduleRegistry。
 import { useAppStore } from "@/core/store";
 
-/** 环境命中（hover 场景）：区间 + 展示名 + 模块私有富解析结果 */
+/** 环境命中（常驻标记场景）：区间 + 展示名 + 模块私有富解析结果 */
 export interface EnvHit {
   /** = EnvEditor.id（"formula" | "table" | …） */
   id: string;
-  /** 环境整体区间（含包裹定界符，如 $…$ / \begin{…}…\end{…}） */
+  /** 环境整体区间（含包裹定界符，如 $…$ / \begin{…}…\end{…}）；用于「更新」时原地替换 */
   from: number;
   to: number;
-  /** tooltip 按钮展示名，如「公式（$…$）」「表格（tabular）」 */
+  /** ✎ 标记的安放位置：环境开头定界符之后（如 \begin{…} 之后、$ 之后）；
+   *  decoration 以 side:-1 置于该处 = 紧贴开头右侧（\begin{equation}✎） */
+  markAt: number;
+  /** 标记悬停展示名，如「公式（$…$）」「表格（tabular）」 */
   label: string;
   /** 模块私有解析结果（load 时取回，避免二次解析） */
   data?: unknown;
@@ -24,8 +28,8 @@ export interface EnvEditor {
   id: string;
   /** 点击标记后切换到的侧栏视图（"math" / "table" / …） */
   viewId: string;
-  /** 命中检测：pos 落在某环境区间内则返回 hit；null = 不命中 */
-  detectAt(doc: string, pos: number): EnvHit | null;
+  /** 全文扫描：返回该类型全部环境命中（嵌套多返回多个，按 from 升序），供常驻 ✎ 标记装饰 */
+  scan(doc: string): EnvHit[];
   /** 载入该环境到对应面板 store（切视图由 openEnvEditor 统一执行） */
   load(hit: EnvHit): void;
 }
@@ -42,24 +46,17 @@ export function unregisterEnvEditor(id: string): void {
 }
 
 /**
- * 收集 pos 处全部可编辑环境（嵌套时多个并存，如 table 单元格里的 $…$）。
- * 排序：内层（区间短）优先；同 id 同区间去重。
+ * 收集全文全部可编辑环境命中（嵌套时多个并存，如 table 单元格里的 $…$）。
+ * 按 from 升序；同 id+同区间去重。供装饰扩展在每次文档/视口变更时重建标记。
  */
-export function collectEnvHitsAt(doc: string, pos: number): EnvHit[] {
+export function collectEnvHits(doc: string): EnvHit[] {
   const hits: EnvHit[] = [];
-  for (const ed of registry.values()) {
-    const hit = ed.detectAt(doc, pos);
-    if (hit) hits.push(hit);
-  }
-  hits.sort((a, b) => a.to - a.from - (b.to - b.from) || a.from - b.from);
+  for (const ed of registry.values()) hits.push(...ed.scan(doc));
+  hits.sort((a, b) => a.from - b.from || a.to - b.to);
   return hits.filter(
     (h, i) =>
       i === 0 ||
-      !(
-        h.id === hits[i - 1].id &&
-        h.from === hits[i - 1].from &&
-        h.to === hits[i - 1].to
-      ),
+      !(h.id === hits[i - 1].id && h.from === hits[i - 1].from && h.to === hits[i - 1].to),
   );
 }
 

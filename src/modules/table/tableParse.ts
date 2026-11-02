@@ -186,7 +186,7 @@ export interface ParsedTable {
   fingerprint: string;
 }
 
-/** 定位光标所在的 table/tabular 环境边界（hover ✎ 标记与 parseTableAt 共用） */
+/** 定位光标所在的 table/tabular 环境边界（parseTableAt 光标回填入口） */
 export function findEnv(
   doc: string,
   pos: number,
@@ -209,6 +209,28 @@ export function findEnv(
   return { name, from, to };
 }
 
+/** 全文扫描所有 tabular/tabularx/tabular* 环境（M1-20 常驻 ✎ 标记用），按 from 升序 */
+export function scanTables(doc: string): {
+  name: string;
+  from: number;
+  to: number;
+  /** ✎ 标记锚点：紧接 \begin{name} 之后（开头右侧） */
+  markAt: number;
+}[] {
+  const out: { name: string; from: number; to: number; markAt: number }[] = [];
+  TABULAR_BEGIN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TABULAR_BEGIN.exec(doc))) {
+    const name = m[1];
+    const endTag = `\\end{${name}}`;
+    const endIdx = doc.indexOf(endTag, m.index);
+    if (endIdx < 0) continue;
+    const openerLen = `\\begin{${name}}`.length;
+    out.push({ name, from: m.index, to: endIdx + endTag.length, markAt: m.index + openerLen });
+  }
+  return out;
+}
+
 /** 从光标处解析表格；失败返回 null（面板据此提示"未找到可编辑的表格"） */
 export function parseTableAt(doc: string, pos: number): ParsedTable | null {
   const env = findEnv(doc, pos);
@@ -216,7 +238,7 @@ export function parseTableAt(doc: string, pos: number): ParsedTable | null {
   return parseTableRange(doc, env.from, env.to);
 }
 
-/** hover ✎ 场景：已知精确区间（findEnv 产出口径），直接对该区间解析（不走光标语义） */
+/** 已知精确区间（✎ 标记载入或光标处回填），直接对该区间解析（不走光标语义） */
 export function parseTableRange(doc: string, from: number, to: number): ParsedTable | null {
   const source = doc.slice(from, to);
   // 环境名从区间头部读出（tabular / tabular* / tabularx）

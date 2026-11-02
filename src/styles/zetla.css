@@ -6113,35 +6113,26 @@ body.row-resizing {
   font-family: var(--font-mono, monospace);
 }
 
-/* M1-19 · 环境反向编辑 · hover ✎ 标记（悬停公式/表格环境时浮出，点击载入对应面板） */
-.cm-env-tooltip {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 5px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--bg-3);
-  box-shadow: var(--shadow);
-}
-.cm-env-btn {
+/* M1-19/M1-20 · 环境反向编辑 · 环境开头常驻 ✎ 标记（点击载入对应面板） */
+.cm-env-mark {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 10px;
-  border: 0;
-  border-radius: var(--r-sm);
-  background: transparent;
-  color: var(--txt);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: left;
+  justify-content: center;
+  margin-right: 2px;
+  padding: 0 2px;
+  border-radius: 4px;
+  color: var(--txt-3);
+  font-size: 18px;
+  line-height: 1;
   cursor: pointer;
-  white-space: nowrap;
+  opacity: 0.45;
+  user-select: none;
+  transition: color 0.12s, background 0.12s, opacity 0.12s;
 }
-.cm-env-btn:hover {
-  background: var(--accent-soft);
+.cm-env-mark:hover {
+  opacity: 1;
   color: var(--accent);
+  background: var(--accent-soft);
 }
 
 /* M1-14d+ · 按住 Ctrl 时 \cite 显示「可点链接」提示（仿 VS Code Follow link） */

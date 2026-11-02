@@ -2,22 +2,25 @@
 // 形态：自带侧栏视图的模块（LatexModule.view）——活动栏图标、视图菜单项、
 // Ctrl+B 5 均由内核按下述声明自动接入，无需在 ActivityBar/Sidebar/MenuBar 硬编码。
 // 组件 TablePanel 懒加载：网格 UI 与代码生成器体积不进首屏。
-// M1-19：模块启停联动注册/注销「表格」环境编辑器（hover ✎ 标记 → 反向编辑）。
+// M1-19/M1-20：模块启停联动注册/注销「表格」环境编辑器（环境开头常驻 ✎ 标记 → 反向编辑）。
 import { lazy } from "react";
 import { moduleRegistry } from "@/core/moduleRegistry";
 import { registerEnvEditor, unregisterEnvEditor, type EnvEditor } from "@/editor/envEdit";
-import { findEnv } from "./tableParse";
+import { scanTables } from "./tableParse";
 import { loadTableRange } from "./tableEdit";
 
-/** 表格环境编辑器：hover 命中 tabular/tabularx/tabular* → 打开表格面板反向编辑 */
+/** 表格环境编辑器：全文扫描命中 tabular/tabularx/tabular* → 打开表格面板反向编辑 */
 const tableEnvEditor: EnvEditor = {
   id: "table",
   viewId: "table",
-  detectAt: (doc, pos) => {
-    const env = findEnv(doc, pos);
-    if (!env) return null;
-    return { id: "table", from: env.from, to: env.to, label: `表格（${env.name}）` };
-  },
+  scan: (doc) =>
+    scanTables(doc).map((e) => ({
+      id: "table",
+      from: e.from,
+      to: e.to,
+      markAt: e.markAt,
+      label: `表格（${e.name}）`,
+    })),
   load: (hit) => {
     loadTableRange(hit.from, hit.to);
   },

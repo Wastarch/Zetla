@@ -17,7 +17,7 @@ import { linter, lintGutter } from "@codemirror/lint";
 import { useSettingsStore } from "@/core/settings";
 import type { EffectiveTheme, HighlightGroup } from "@/types/settings";
 import { mathSlotsExtension } from "./mathSlots";
-import { envHoverExtension } from "./envHover";
+import { envMarkExtension } from "./envMark";
 import { bibtexLanguage, BIB_HIGHLIGHT } from "./bibtex";
 import { bstLanguage, BST_HIGHLIGHT } from "./bst";
 import { logLanguage, LOG_HIGHLIGHT } from "./log";
@@ -368,8 +368,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
               // M1-4+：\input / \include 文件跳转（同款：Ctrl 按住显链接 + 悬浮提示）
               inputLinkDecorations,
               hoverTooltip(inputJumpHint),
-              // M1-19：环境反向编辑 · hover ✎ 标记（点标记载入公式/表格到对应面板编辑）
-              envHoverExtension,
+              // M1-19/M1-20：环境反向编辑 · 环境开头常驻 ✎ 标记（点标记载入公式/表格到对应面板编辑）
+              envMarkExtension,
             ]
           : // M2-5b：非 LaTeX 档位补回 Tab 缩进（全局已关 @uiw indentWithTab；片段仅 .tex 生效）
             [plainTabKeymap]),

@@ -1,9 +1,9 @@
-// 公式定位器（M1-19）：全文单遍扫描，产出所有公式容器 region，供 hover ✎ 标记按 pos 取内层命中。
+// 公式定位器（M1-19，M1-20 修订）：全文单遍扫描，产出所有公式容器 region，供常驻 ✎ 标记扫描全文。
 // 覆盖：$…$（inline）、$$…$$（display）、公式环境（equation/align/gather/cases/…）。
 // 鲁棒性：转义（\$ \% \\）、% 注释、\verb、verbatim/lstlisting/minted 整段快进均不触发数学态；
 //         未闭合的 opener 丢弃（不产生 region），envStack 通用压栈保证 \begin/\end 配对，
-//         嵌套公式环境（align 内套 cases）产出内外两个 region，由「区间最短 = 内层」规则取舍。
-// 纯函数 + doc 引用缓存（hover 移动只做 containment 查找；doc 变更由 CM hideOnChange 使 tooltip 消失）。
+//         嵌套公式环境（align 内套 cases）产出内外两个 region，各在自身开头生成独立标记。
+// 纯函数 + doc 引用缓存（同一 doc 字符串重复扫描不重算）。
 import { fingerprintOf } from "@/editor/envEdit";
 
 export type FormulaWrapKind = "inline" | "display" | "env";
@@ -24,6 +24,8 @@ export interface FormulaHit {
   fingerprint: string;
   /** 区间源码原文（未改动时原样写回的保底依据） */
   sourceText: string;
+  /** ✎ 标记锚点：紧接开头定界符之后（\begin{…} 之后 / $ 之后） */
+  markAt: number;
 }
 
 /** 公式容器环境（\begin{name}…\end{name} 整体作为一个可编辑公式） */
@@ -226,28 +228,25 @@ function scanCached(doc: string): Region[] {
 }
 
 /**
- * 定位 pos 所在公式：取包含 pos（from ≤ pos < to）且区间最短（= 内层优先）的 region。
- * 失败返回 null（hover 据此不出标记）。
+ * 全文扫描所有公式环境（M1-20 常驻 ✎ 标记用）：把单遍状态机的全部 region 转成
+ * FormulaHit（含 from、to、body 区间、wrapKind、envName、fingerprint、sourceText），按 from 升序返回。
  */
-export function parseFormulaAt(doc: string, pos: number): FormulaHit | null {
+export function scanFormulas(doc: string): FormulaHit[] {
   const regions = scanCached(doc);
-  let best: Region | null = null;
-  for (const r of regions) {
-    if (r.from <= pos && pos < r.to && (!best || r.to - r.from < best.to - best.from)) {
-      best = r;
-    }
-  }
-  if (!best) return null;
-  const sourceText = doc.slice(best.from, best.to);
-  return {
-    from: best.from,
-    to: best.to,
-    bodyFrom: best.bodyFrom,
-    bodyTo: best.bodyTo,
-    body: doc.slice(best.bodyFrom, best.bodyTo).trim(),
-    wrapKind: best.wrapKind,
-    envName: best.envName,
-    fingerprint: fingerprintOf(sourceText),
-    sourceText,
-  };
+  return regions.map((r) => {
+    const sourceText = doc.slice(r.from, r.to);
+    return {
+      from: r.from,
+      to: r.to,
+      bodyFrom: r.bodyFrom,
+      bodyTo: r.bodyTo,
+      body: doc.slice(r.bodyFrom, r.bodyTo).trim(),
+      wrapKind: r.wrapKind,
+      envName: r.envName,
+      fingerprint: fingerprintOf(sourceText),
+      sourceText,
+      // ✎ 标记锚点 = 开头定界符之后（\begin{…} 之后 / $ 之后），envMark 以 side:-1 紧贴右侧
+      markAt: r.bodyFrom,
+    };
+  });
 }

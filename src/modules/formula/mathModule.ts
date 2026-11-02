@@ -1,28 +1,32 @@
 // M1-12a · 公式模块（合并原 M1-6 符号面板 + M1-10 公式库）：侧栏「公式」单视图的统一入口。
 // 经 ModuleRegistry 注册，设置页一个开关控制整块「公式」视图（输入/输出双区 +
 // 快捷工具 / 公式模板 两页签，见 src/project/MathView.tsx）。默认启用。
-// M1-19：模块启停联动注册/注销「公式」环境编辑器（hover ✎ 标记 → 反向编辑）。
+// M1-19/M1-20：模块启停联动注册/注销「公式」环境编辑器（环境开头常驻 ✎ 标记 → 反向编辑）。
 import { lazy } from "react";
 import { moduleRegistry } from "@/core/moduleRegistry";
 import { registerEnvEditor, unregisterEnvEditor, type EnvEditor } from "@/editor/envEdit";
-import { parseFormulaAt, type FormulaHit } from "./formulaLocate";
+import { scanFormulas, type FormulaHit } from "./formulaLocate";
 import { useComposeStore, type ComposeEditTarget } from "./composeStore";
 
-/** hover 标记展示名 */
+/** 常驻标记悬停展示名 */
 function formulaLabel(f: FormulaHit): string {
   if (f.wrapKind === "env") return `公式（\\begin{${f.envName}}）`;
   return f.wrapKind === "display" ? "公式（$$…$$）" : "公式（$…$）";
 }
 
-/** 公式环境编辑器：hover 命中 → body 载入编写区并绑定编辑目标（指纹校验原地替换） */
+/** 公式环境编辑器：全文扫描命中 → body 载入编写区并绑定编辑目标（指纹校验原地替换） */
 const formulaEnvEditor: EnvEditor = {
   id: "formula",
   viewId: "math",
-  detectAt: (doc, pos) => {
-    const f = parseFormulaAt(doc, pos);
-    if (!f) return null;
-    return { id: "formula", from: f.from, to: f.to, label: formulaLabel(f), data: f };
-  },
+  scan: (doc) =>
+    scanFormulas(doc).map((f) => ({
+      id: "formula",
+      from: f.from,
+      to: f.to,
+      markAt: f.markAt,
+      label: formulaLabel(f),
+      data: f,
+    })),
   load: (hit) => {
     const f = hit.data as FormulaHit;
     const st = useComposeStore.getState();
