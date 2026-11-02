@@ -14,8 +14,10 @@ export interface EnvHit {
   /** 环境整体区间（含包裹定界符，如 $…$ / \begin{…}…\end{…}）；用于「更新」时原地替换 */
   from: number;
   to: number;
-  /** ✎ 标记的安放位置：环境开头定界符之后（如 \begin{…} 之后、$ 之后）；
-   *  decoration 以 side:-1 置于该处 = 紧贴开头右侧（\begin{equation}✎） */
+  /** ✎ 标记的安放位置：公式/环境定界符之后（如 \begin{…} 之后、$ 之后）；
+   *  decoration 以 side:-1 置于该处 = 紧贴该处右侧。
+   *  注意：表格的 markAt 锚定在「外层 \begin{table[…]}」之后，会早于其内层
+   *  tabular 的 from（可编辑区间），这是设计预期，envMark.ts 按 markAt 排序渲染。 */
   markAt: number;
   /** 标记悬停展示名，如「公式（$…$）」「表格（tabular）」 */
   label: string;

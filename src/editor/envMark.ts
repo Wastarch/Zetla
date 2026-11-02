@@ -51,10 +51,14 @@ class EnvEditWidget extends WidgetType {
 function buildEnvDecos(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   const doc = view.state.doc.toString();
-  for (const hit of collectEnvHits(doc)) {
-    // 紧接开头定界符之后：\begin{…}✎ / $✎ / $$✎
+  // 按「实际插入位置」markAt 升序：表格的 markAt 锚定在外层 \begin{table} 处，
+  // 早于其内层 tabular 的 from；若仍按 from 排序，markAt 会逆序导致 RangeSetBuilder 抛错。
+  const hits = collectEnvHits(doc);
+  hits.sort((a, b) => a.markAt - b.markAt || a.from - b.from);
+  for (const hit of hits) {
+    // 紧接开头定界符之后：\begin{…}✎ / $✎ / $$✎ / \begin{table[htbp]}✎
     const at = hit.markAt;
-    if (at <= hit.from || at > doc.length) continue;
+    if (at < 0 || at > doc.length) continue;
     builder.add(
       at,
       at,

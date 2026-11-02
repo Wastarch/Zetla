@@ -209,12 +209,41 @@ export function findEnv(
   return { name, from, to };
 }
 
+/**
+ * 求 tabular 的外层 \begin{table[*][args]} opener 结束位置（✎ 标记锚点）。
+ * 找到最近的 \begin{table（与 parseTableRange 取外层 table 同口径）；
+ * 跳过可选的 * 与 [args]，返回 '}' 之后的位置。无外层 table 时返回 -1。
+ */
+function tableOpenerEnd(doc: string, pos: number): number {
+  const begin = doc.lastIndexOf("\\begin{table", pos);
+  if (begin < 0) return -1;
+  let p = begin + "\\begin{table".length; // 跳过 "\begin{table"
+  if (doc[p] === "*") p++; // table*
+  while (p < doc.length && /\s/.test(doc[p])) p++; // 跳过空白
+  if (doc[p] === "[") {
+    // 可选位置参数 [htbp]
+    let depth = 0;
+    for (; p < doc.length; p++) {
+      if (doc[p] === "[") depth++;
+      else if (doc[p] === "]") {
+        depth--;
+        if (depth === 0) {
+          p++;
+          break;
+        }
+      }
+    }
+    while (p < doc.length && /\s/.test(doc[p])) p++;
+  }
+  return doc[p] === "}" ? p + 1 : -1;
+}
+
 /** 全文扫描所有 tabular/tabularx/tabular* 环境（M1-20 常驻 ✎ 标记用），按 from 升序 */
 export function scanTables(doc: string): {
   name: string;
   from: number;
   to: number;
-  /** ✎ 标记锚点：紧接 \begin{name} 之后（开头右侧） */
+  /** ✎ 标记锚点：外层 \begin{table[...]} 之后；无外层 table 时回退到 \begin{tabular...} 之后 */
   markAt: number;
 }[] {
   const out: { name: string; from: number; to: number; markAt: number }[] = [];
@@ -225,8 +254,10 @@ export function scanTables(doc: string): {
     const endTag = `\\end{${name}}`;
     const endIdx = doc.indexOf(endTag, m.index);
     if (endIdx < 0) continue;
-    const openerLen = `\\begin{${name}}`.length;
-    out.push({ name, from: m.index, to: endIdx + endTag.length, markAt: m.index + openerLen });
+    // 优先锚定在外层 \begin{table[htbp]} 行尾右侧；无外层 table 则贴在 \begin{tabular...} 之后
+    const outer = tableOpenerEnd(doc, m.index);
+    const markAt = outer >= 0 ? outer : m.index + `\\begin{${name}}`.length;
+    out.push({ name, from: m.index, to: endIdx + endTag.length, markAt });
   }
   return out;
 }

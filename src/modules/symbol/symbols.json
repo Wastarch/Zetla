@@ -1086,12 +1086,6 @@
         "subcat": "大写"
     },
     {
-        "name": "Epsilon",
-        "cmd": "\\Epsilon",
-        "category": "希腊字母",
-        "subcat": "大写"
-    },
-    {
         "name": "Kappa",
         "cmd": "\\Kappa",
         "category": "希腊字母",
