@@ -5504,6 +5504,8 @@ body.row-resizing {
    下区（输出）= 区域头 + KaTeX 预览（主区）+ 动作条（固定基准高）
    ============================================================ */
 .math-view {
+  /* 下方「工具栏+编写区」最小高度：与 MathView.tsx 的 MIN_BOTTOM_H 保持一致（改值需同步两处） */
+  --math-bottom-min: 320px;
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
@@ -5526,7 +5528,8 @@ body.row-resizing {
 /* 上区：输入区域（弹性占满剩余高度；编写区固定在下） */
 .math-input {
   flex: 1 1 auto;
-  min-height: 220px;
+  /* 容纳「固定头部 71 + 下方最小高度」，否则下方会被 .math-region 的 overflow:hidden 裁底 */
+  min-height: calc(var(--math-bottom-min, 320px) + 71px);
 }
 
 .math-region-head {
@@ -5641,14 +5644,52 @@ body.row-resizing {
   border-color: var(--accent);
 }
 
-/* 面板挂载区（symbol/formula/builder 懒加载组件撑满） */
+/* 面板挂载区（symbol/formula/builder 懒加载组件撑满）—— 上方符号面板，拖拽下方时随剩余空间伸缩并保持滚动 */
 .math-input-body {
   flex: 1 1 auto;
+  /* 空间不足时允许符号面板被压缩（常态由 flex:1 占满剩余，不会自行变小） */
   min-height: 0;
   overflow: auto;
   display: flex;
   flex-direction: column;
   padding: 8px 8px 0;
+}
+
+/* 符号面板（上）与 工具栏+编写区（下）之间：可拖拽分割线（复用 .log-resizer 视觉口径） */
+.math-splitter {
+  flex: none;
+  height: 6px;
+  cursor: row-resize;
+  position: relative;
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+}
+.math-splitter::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  transition: background 0.15s;
+}
+.math-splitter:hover::after,
+.math-splitter.dragging::after {
+  background: var(--accent);
+  opacity: 0.5;
+}
+.math-divider {
+    height: 1px;
+    background: #3d3d3d;
+    /* 或 var(--border-color) */
+    margin: 8px 0;
+}
+/* 下方：工具栏 + 编写区（高度由内联 style 控制，可拖拽调整；min-height 作布局层硬兜底） */
+.math-bottom {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: var(--math-bottom-min, 320px);
+  overflow: hidden;
 }
 
 .math-input-body > .symbol-panel,
@@ -5657,14 +5698,16 @@ body.row-resizing {
   min-height: 0;
 }
 
-/* 编写区（输入区域底部；聚焦蓝框） */
+/* 编写区（输入区域底部；在 .math-bottom 内撑满剩余高度，焦点蓝框） */
 .math-compose {
   position: relative;
-  flex: none;
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow: auto;
 }
 
 .math-compose-ta {
@@ -5683,9 +5726,10 @@ body.row-resizing {
   outline: none;
 }
 
-/* 源码模式下区：KaTeX 实时渲染预览（只读，点空槽定位光标） */
+/* 源码模式下区：KaTeX 实时渲染预览（只读，点空槽定位光标）—— 随下方区域放大而增高 */
 .math-compose-render {
   position: relative;
+  flex: 1 1 auto;
   min-height: 84px;
   padding: 10px 12px;
   background: var(--bg-3);
@@ -5880,9 +5924,13 @@ body.row-resizing {
 
 /* 二级工具栏（两行） */
 .math-tools {
-  flex: none;
+  /* 随下方区域一起放大：与 .math-compose 按 1:1 同步增长，max-height 兜底防工具栏过高 */
+  flex: 1 1 auto;
+  min-height: 56px;
+  max-height: 132px;
   display: flex;
   flex-direction: column;
+  justify-content: space-evenly;
   gap: 4px;
   padding: 6px 8px 0;
 }
@@ -5962,6 +6010,39 @@ body.row-resizing {
 .math-seg button.on {
   background: var(--accent);
   color: #fff;
+}
+
+/* 工具栏：编写区字号缩放（− N +；S3 删输出区时误删，工具栏仍在用，故补回） */
+.math-zoom {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.math-zoom button {
+  width: 20px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  background: transparent;
+  color: var(--txt-3);
+  font-size: 13px;
+  line-height: 1;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.math-zoom button:hover {
+  background: var(--bg-4);
+  color: var(--accent);
+}
+.math-zoom-val {
+  min-width: 26px;
+  text-align: center;
+  font-size: 10.5px;
+  color: var(--txt-3);
+  font-family: var(--font-mono, monospace);
 }
 
 /* 插入项右键菜单：主项 accent 高亮 */

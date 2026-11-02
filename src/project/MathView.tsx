@@ -27,6 +27,15 @@ const TAB_LABELS: { id: MathTab; label: string }[] = [
   { id: "library", label: "公式模板" },
 ];
 
+/** 编写区（下方工具栏+编写区）可调高度：默认/最小同值（320 = 工具栏56 + 输入框84 + 预览84 + 动作条43 + 间隙）；
+ *  最大按输入区域高度动态计算。与 zetla.css 的 --math-bottom-min 保持一致（改值需同步两处）。 */
+const DEFAULT_BOTTOM_H = 320;
+const MIN_BOTTOM_H = 320;
+/** bottom 之外的固定占位：区域头 26 + 页签 28 + 分割线 17 = 71 */
+const FIXED_TOP_H = 71;
+/** 常态下给上方符号面板保留的最小可用高度；仅极端矮窗口才允许压到 0（优先保下方编写区） */
+const MIN_TOP_H = 60;
+
 /** 读「公式」模块启用态（注册在 App 根部 effect，晚于本组件挂载 → 补一拍重读，防首帧误判停用） */
 function useMathModuleEnabled(): boolean {
   const mods = useModuleList();
@@ -49,12 +58,25 @@ function InsertPrefs() {
     void st.persist({ formula: next });
   };
 
-  const value = formula.inline ? "inline" : formula.numbered ? "numbered" : "star";
-  const options: { v: string; label: string; patch: Partial<FormulaConfig> }[] = [
-    { v: "inline", label: "行内公式 $…$", patch: { inline: true } },
-    { v: "numbered", label: "编号公式 equation", patch: { inline: false, numbered: true } },
-    { v: "star", label: "无编号公式 equation*", patch: { inline: false, numbered: false } },
-  ];
+  const value = formula.inline
+    ? "inline"
+    : formula.numbered
+      ? "numbered"
+      : "star";
+  const options: { v: string; label: string; patch: Partial<FormulaConfig> }[] =
+    [
+      { v: "inline", label: "行内公式 $…$", patch: { inline: true } },
+      {
+        v: "numbered",
+        label: "编号公式 equation",
+        patch: { inline: false, numbered: true },
+      },
+      {
+        v: "star",
+        label: "无编号公式 equation*",
+        patch: { inline: false, numbered: false },
+      },
+    ];
 
   return (
     <div className="math-prefs" role="dialog" aria-label="插入偏好">
@@ -105,6 +127,59 @@ export function MathView() {
   // 输入区域 Ctrl+滚轮 → 编写区字号缩放（2026-10-25 用户反馈；对应工具栏「− 18 +」）
   const zoomFont = useComposeStore((s) => s.zoomFont);
   const inputZoomRef = useCtrlWheelZoom<HTMLElement>((dir) => zoomFont(dir));
+
+  // 符号面板（上）与工具栏+编写区（下）之间的可拖拽分割线：下方容器高度 state
+  const [bottomH, setBottomH] = useState(DEFAULT_BOTTOM_H);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ y: number; h: number } | null>(null);
+
+  // 拖拽起始：记录起点，挂全局 move/up（复用 LogPanel 已验证口径；body.row-resizing 关掉文本选中）
+  const onResizeDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { y: e.clientY, h: bottomH };
+    setDragging(true);
+    document.body.classList.add("row-resizing");
+  };
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      // 上方常态至少留 MIN_TOP_H；Math.max 保证上限不低于下限（窗口过矮时优先压上方符号面板）
+      const maxH = Math.max(
+        MIN_BOTTOM_H,
+        (inputZoomRef.current?.clientHeight ?? 600) - FIXED_TOP_H - MIN_TOP_H,
+      );
+      const next = Math.round(d.h - (e.clientY - d.y)); // 边界跟随鼠标：向下拖→分割线下移、下方变小；向上拖→分割线上移、下方变大
+      setBottomH(Math.min(maxH, Math.max(MIN_BOTTOM_H, next)));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      setDragging(false);
+      document.body.classList.remove("row-resizing");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("row-resizing");
+    };
+  }, [dragging]);
+
+  // 窗口变小兜底：拖出的高度不得超过当前输入区域可容纳上限，避免上方符号面板被压没
+  useEffect(() => {
+    const onResize = () => {
+      // 上方常态至少留 MIN_TOP_H；Math.max 保证上限不低于下限（窗口过矮时优先压上方符号面板）
+      const maxH = Math.max(
+        MIN_BOTTOM_H,
+        (inputZoomRef.current?.clientHeight ?? 600) - FIXED_TOP_H - MIN_TOP_H,
+      );
+      setBottomH((h) => Math.min(maxH, Math.max(MIN_BOTTOM_H, h)));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
 
   // 双模块全停用：空态 + 去设置启用（复用 .side-empty 构图）
   if (avail.length === 0) {
@@ -166,9 +241,17 @@ export function MathView() {
             {active === "library" && <FormulaPanel />}
           </Suspense>
         </div>
-
-        <MathToolbar />
-        <MathCompose />
+        <div className="math-divider">
+          <div
+            className="math-splitter"
+            title="拖拽调整编写区高度"
+            onMouseDown={onResizeDown}
+          />
+        </div>
+        <div className="math-bottom" style={{ height: bottomH }}>
+          <MathToolbar />
+          <MathCompose />
+        </div>
       </section>
     </div>
   );
