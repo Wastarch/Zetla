@@ -46,6 +46,8 @@ export interface FormulaDef {
   desc?: string;
   /** 整段已是完整环境（不套用编号/行内包裹）；缺省 false */
   isEnv?: boolean;
+  /** 可选：该条目最小高度（px）。不填则用全局默认（34px）；填了则单独覆盖该条目高度，给高型公式（矩阵/连分式/多行 cases 等）更多纵向空间 */
+  h?: number;
 }
 
 /** M1-10：公式模块配置（收藏 / 自定义 / 插入行为） */

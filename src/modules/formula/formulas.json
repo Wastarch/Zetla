@@ -1,591 +1,954 @@
 [
     {
-        "id": "fr-frac",
-        "name": "分数",
-        "latex": "\\frac{a}{b}",
-        "category": "分数根式",
-        "glyph": "a⁄b",
-        "desc": "分式"
+        "id": "fr-algebra-PolynomialFactorization",
+        "name": "多项式因式分解",
+        "latex": "\\left(x-1\\right)\\left(x+3\\right)",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-frac-par",
-        "name": "带括号分式",
-        "latex": "\\frac{a+b}{c+d}",
-        "category": "分数根式",
-        "desc": "分子分母含多项式"
+        "id": "fr-algebra-SumOfSquaresRoot",
+        "name": "平方和根式",
+        "latex": "\\sqrt{a^{2}+b^{2}}",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-sqrt",
-        "name": "平方根",
-        "latex": "\\sqrt{x}",
-        "category": "分数根式",
-        "glyph": "√x",
-        "desc": "平方根"
+        "id": "fr-algebra-FractionPowerRule",
+        "name": "分式幂法则",
+        "latex": "\\left(\\frac{a}{b}\\right)^{n}=\\frac{a^{n}}{b^{n}}",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-nthroot",
-        "name": "n 次根",
-        "latex": "\\sqrt[n]{x}",
-        "category": "分数根式",
-        "desc": "n 次根号"
+        "id": "fr-algebra-FractionAddition",
+        "name": "分式加减法",
+        "latex": "\\frac{a}{b}\\pm\\frac{c}{d}=\\frac{ad\\pm bc}{bd}",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-binom",
-        "name": "二项式系数",
-        "latex": "\\binom{n}{k}",
-        "category": "分数根式",
-        "desc": "组合数"
+        "id": "fr-algebra-HyperbolaStandardEquation",
+        "name": "双曲线标准方程",
+        "latex": "\\frac{x^{2}}{a^{2}}-\\frac{y^{2}}{b^{2}}=1",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-sqrt-sum",
-        "name": "平方和根",
-        "latex": "\\sqrt{a^2 + b^2}",
-        "category": "分数根式",
-        "desc": "勾股定理"
+        "id": "fr-algebra-RationalizeRadical",
+        "name": "根式有理化",
+        "latex": "\\frac{1}{\\sqrt{a}}=\\frac{\\sqrt{a}}{a}",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-sqrt-frac",
-        "name": "根式分式",
-        "latex": "\\sqrt{\\frac{a}{b}}",
-        "category": "分数根式",
-        "desc": "根号内含分式"
+        "id": "fr-algebra-NthRootPower",
+        "name": "n 次根式幂",
+        "latex": "\\sqrt[n]{a^{m}}=a^{\\frac{m}{n}}",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-frac-deriv",
-        "name": "导数分式",
-        "latex": "\\frac{dy}{dx}",
-        "category": "分数根式",
-        "desc": "莱布尼茨导数"
+        "id": "fr-algebra-QuadraticFormula",
+        "name": "一元二次方程求根公式",
+        "latex": "x=\\frac{-b\\pm\\sqrt{b^{2}-4ac}}{2a}",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-frac-partial",
-        "name": "偏导分式",
-        "latex": "\\frac{\\partial f}{\\partial x}",
-        "category": "分数根式",
-        "desc": "偏导数"
+        "id": "fr-algebra-PointSlopeLine",
+        "name": "直线点斜式方程",
+        "latex": "y-y_{0}=k\\left(x-x_{0}\\right)",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-sup",
-        "name": "上标",
-        "latex": "a^n",
-        "category": "上下标",
-        "desc": "幂"
+        "id": "fr-algebra-CircleParametricEquation",
+        "name": "圆的参数方程",
+        "latex": "\\begin{cases}x=a+r\\cos\\theta\\\\y=b+r\\sin\\theta\\end{cases}",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-sub",
-        "name": "下标",
-        "latex": "a_i",
-        "category": "上下标",
-        "desc": "索引"
+        "id": "fr-algebra-CubicRootsOfUnity",
+        "name": "三次单位根",
+        "latex": "\\begin{array}{l}\\text{对于方程形如：}x^{3}-1=0 \\\\ \\text{设}\\text{:}\\omega =\\frac{-1+\\sqrt{3}i}{2} \\\\ x_{1}=1,x_{2}= \\omega =\\frac{-1+\\sqrt{3}i}{2} \\\\ x_{3}= \\omega ^{2}=\\frac{-1-\\sqrt{3}i}{2} \\end{array} ",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-subsup",
-        "name": "上下标",
-        "latex": "a_i^n",
-        "category": "上下标",
-        "desc": "同时上下标"
+        "id": "fr-algebra-QuadraticDiscriminant",
+        "name": "二次方程判别式",
+        "latex": "\\begin{array}{l}a\\mathop{{x}}\\nolimits^{{2}}+bx+c=0 \\\\ \\Delta =\\mathop{{b}}\\nolimits^{{2}}-4ac\\end{array} ",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-sup2",
-        "name": "平方",
-        "latex": "x^2",
-        "category": "上下标",
-        "desc": "二次方"
+        "id": "fr-algebra-VietaTheorem",
+        "name": "韦达定理",
+        "latex": "\\begin{array}{l}a\\mathop{{x}}\\nolimits^{{2}}+bx+c=0 \\\\   \\Delta =\\mathop{{b}}\\nolimits^{{2}}-4ac \\\\   \\mathop{{x}}\\nolimits_{{1,2}}=\\frac{{-b \\pm \\sqrt{{\\mathop{{b}}\\nolimits^{{2}}-4ac}}}}{{2a}} \\\\   \\mathop{{x}}\\nolimits_{{1}}+\\mathop{{x}}\\nolimits_{{2}}=-\\frac{{b}}{{a}} \\\\   \\mathop{{x}}\\nolimits_{{1}}\\mathop{{x}}\\nolimits_{{2}}=\\frac{{c}}{{a}} \\end{array} ",
+        "category": "代数",
+        "h": 56
     },
     {
-        "id": "fr-sup3",
-        "name": "立方",
-        "latex": "x^3",
-        "category": "上下标",
-        "desc": "三次方"
+        "id": "fr-geometry-TriangleABC",
+        "name": "三角形 ABC",
+        "latex": "\\triangle ABC",
+        "category": "几何",
+        "h": 56
     },
     {
-        "id": "fr-vec-comp",
-        "name": "向量分量",
-        "latex": "v_1, v_2, \\dots, v_n",
-        "category": "上下标",
-        "desc": "分量序列"
+        "id": "fr-geometry-ParallelTransitivity",
+        "name": "平行线传递性",
+        "latex": "a\\parallel b,\\ b\\parallel c\\Rightarrow a\\parallel c",
+        "category": "几何",
+        "h": 56
     },
     {
-        "id": "fr-prime",
-        "name": "导数符号",
-        "latex": "f^{\\prime}(x)",
-        "category": "上下标",
-        "desc": "一撇导数"
+        "id": "fr-geometry-LinePerpPlaneToPlanePerp",
+        "name": "线面垂直推出面面垂直",
+        "latex": "l\\perp\\alpha,\\ l\\subset\\beta\\Rightarrow \\alpha\\perp\\beta",
+        "category": "几何",
+        "h": 56
     },
     {
-        "id": "fr-tensor",
-        "name": "张量上下标",
-        "latex": "T^{ij}_{kl}",
-        "category": "上下标",
-        "desc": "混合上下标"
+        "id": "fr-geometry-PerpSamePlaneParallel",
+        "name": "垂直于同一平面的两条直线平行",
+        "latex": "\\left.\\begin{matrix}a\\perp\\alpha\\\\ b\\perp\\alpha\\end{matrix}\\right\\}\\Rightarrow a\\parallel b",
+        "category": "几何",
+        "h": 56
     },
     {
-        "id": "fr-lim-sub",
-        "name": "下标极限",
-        "latex": "\\lim_{n \\to \\infty}",
-        "category": "上下标",
-        "desc": "极限下限"
+        "id": "fr-geometry-PlaneCommonPointOnIntersection",
+        "name": "两个平面的公共点在交线上",
+        "latex": "P \\in \\alpha ,P \\in \\beta , \\\\ \\alpha \\cap \\beta =l \\Rightarrow P \\in l ",
+        "category": "几何",
+        "h": 56
     },
     {
-        "id": "fr-int",
-        "name": "定积分",
-        "latex": "\\int_a^b f(x)\\,dx",
+        "id": "fr-geometry-PlanePerpProperty",
+        "name": "平面垂直性质定理",
+        "latex": "\\alpha\\perp\\beta,\\ \\alpha\\cap\\beta=l,\\\\ a\\subset\\alpha,\\ a\\perp l\\Rightarrow a\\perp\\beta",
+        "category": "几何",
+        "h": 56
+    },
+    {
+        "id": "fr-geometry-PlaneParallelCriterion",
+        "name": "面面平行判定定理",
+        "latex": "\\left.\\begin{matrix}   a \\subset \\beta ,b \\subset \\beta ,\\\\a \\cap b=P \\\\    a \\parallel \\alpha ,b \\parallel \\alpha  \\end{matrix}\\right\\}\\Rightarrow \\beta \\parallel \\alpha ",
+        "category": "几何",
+        "h": 56
+    },
+    {
+        "id": "fr-geometry-ParallelPlaneSectionParallel",
+        "name": "平行平面截线平行",
+        "latex": "\\alpha\\parallel\\beta,\\ \\gamma\\cap\\alpha=a,\\\\ \\gamma\\cap\\beta=b\\Rightarrow a\\parallel b",
+        "category": "几何",
+        "h": 56
+    },
+    {
+        "id": "fr-geometry-TwoPointsLineInPlane",
+        "name": "两点确定直线在平面内",
+        "latex": "A\\in\\alpha,\\ B\\in\\alpha\\Rightarrow AB\\subset\\alpha",
+        "category": "几何",
+        "h": 56
+    },
+    {
+        "id": "fr-geometry-LinePerpPlaneCriterion",
+        "name": "线面垂直判定定理",
+        "latex": "\\left.\\begin{matrix} m \\subset \\alpha ,n \\subset \\alpha \\\\ m \\cap n=P \\\\ a \\perp m,a \\perp n \\end{matrix}\\right\\}\\Rightarrow a \\perp \\alpha ",
+        "category": "几何",
+        "h": 56
+    },
+    {
+        "id": "fr-geometry-PythagoreanTheorem",
+        "name": "勾股定理",
+        "latex": "a^{2}+b^{2}=c^{2}",
+        "category": "几何",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-Transitivity",
+        "name": "不等式传递性",
+        "latex": "a<b,\\ b<c\\Rightarrow a<c",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-AdditionProperty",
+        "name": "不等式加法性质",
+        "latex": "a<b\\Rightarrow a+c<b+c",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-PositiveMultiplication",
+        "name": "正数不等式乘法性质",
+        "latex": "a<b,\\ c>0\\Rightarrow ac<bc",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-SameMultiplication",
+        "name": "不等式同乘性质",
+        "latex": "a<b,\\ c<0\\Rightarrow ac>bc",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-AbsoluteReverseTriangle",
+        "name": "绝对值反三角不等式",
+        "latex": "\\left|\\left|a\\right|-\\left|b\\right|\\right|\\leq\\left|a-b\\right|",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-AbsoluteBound",
+        "name": "绝对值界限",
+        "latex": "\\left|a\\right|\\leq b\\Leftrightarrow -b\\leq a\\leq b",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-AbsoluteEquivalentForm",
+        "name": "绝对值不等式等价形式",
+        "latex": "\\left|a\\right|\\geq b\\Leftrightarrow a\\leq -b\\ \\text{或}\\ a\\geq b",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-TriangleInequality",
+        "name": "三角不等式",
+        "latex": "\\left|a+b\\right|\\leq\\left|a\\right|+\\left|b\\right|",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-PowerRootProperty",
+        "name": "幂与根的不等式性质",
+        "latex": "0<a<b\\Rightarrow a^{n}<b^{n},\\ \\sqrt[n]{a}<\\sqrt[n]{b}",
+        "category": "不等式",
+        "h": 52
+    },
+    {
+        "id": "fr-inequality-CauchySchwarz",
+        "name": "柯西-施瓦茨不等式",
+        "latex": "\\left(\\sum_{i=1}^{n}a_{i}b_{i}\\right)^{2}\\leq\\left(\\sum_{i=1}^{n}a_{i}^{2}\\right)\\left(\\sum_{i=1}^{n}b_{i}^{2}\\right)",
+        "category": "不等式",
+        "h": 48
+    },
+    {
+        "id": "fr-inequality-MeanChain",
+        "name": "平均值不等式链",
+        "latex": "\\begin{array}{c} H_{n}=\\frac{n}{\\sum \\limits_{i=1}^{n}\\frac{1}{x_{i}}}= \\frac{n}{\\frac{1}{x_{1}}+ \\frac{1}{x_{2}}+ \\cdots + \\frac{1}{x_{n}}} \\\\ G_{n}=\\sqrt[n]{\\prod \\limits_{i=1}^{n}x_{i}}= \\sqrt[n]{x_{1}x_{2}\\cdots x_{n}} \\\\ A_{n}=\\frac{1}{n}\\sum \\limits_{i=1}^{n}x_{i}=\\frac{x_{1}+ x_{2}+ \\cdots + x_{n}}{n} \\\\ Q_{n}=\\sqrt{\\frac{1}{n}\\sum \\limits_{i=1}^{n}x_{i}^{2}}= \\sqrt{\\frac{x_{1}^{2}+ x_{2}^{2}+ \\cdots + x_{n}^{2}}{n}} \\\\ H_{n}\\leq G_{n}\\leq A_{n}\\leq Q_{n}\\quad(x_i>0)\\end{array}",
+        "category": "不等式",
+        "h": 48
+    },
+    {
+        "id": "fr-inequality-AMGM",
+        "name": "算术-几何平均不等式",
+        "latex": "\\frac{a+b}{2}\\geq\\sqrt{ab}\\ (a,b>0)",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-inequality-SquareNonNegative",
+        "name": "平方非负不等式",
+        "latex": "a^{2}\\geq 0,\\ a^{2}+b^{2}\\geq 2ab",
+        "category": "不等式",
+        "h": 56
+    },
+    {
+        "id": "fr-calculous-PowerRule",
+        "name": "幂函数求导公式",
+        "latex": "\\frac{\\mathrm{d}}{\\mathrm{d}x}x^n=nx^{n-1} ",
         "category": "微积分",
-        "desc": "定积分"
+        "h": 56
     },
     {
-        "id": "fr-int-inf",
-        "name": "无穷积分",
-        "latex": "\\int_{-\\infty}^{\\infty} f(x)\\,dx",
+        "id": "fr-calculous-ExponentialDerivative",
+        "name": "指数函数求导公式",
+        "latex": "\\left(a^{x}\\right)'=a^{x}\\ln a",
         "category": "微积分",
-        "desc": "广义积分"
+        "h": 56
     },
     {
-        "id": "fr-iint",
-        "name": "二重积分",
-        "latex": "\\iint_D f(x,y)\\,dx\\,dy",
+        "id": "fr-calculous-LogarithmDerivative",
+        "name": "对数函数求导公式",
+        "latex": "\\left(\\log_{a}x\\right)'=\\frac{1}{x\\ln a}",
         "category": "微积分",
-        "desc": "面积分"
+        "h": 56
     },
     {
-        "id": "fr-iiint",
-        "name": "三重积分",
-        "latex": "\\iiint_V f\\,dV",
+        "id": "fr-calculous-SineDerivative",
+        "name": "正弦函数求导公式",
+        "latex": "\\left(\\sin x\\right)'=\\cos x",
         "category": "微积分",
-        "desc": "体积分"
+        "h": 56
     },
     {
-        "id": "fr-sum",
-        "name": "求和",
-        "latex": "\\sum_{i=1}^{n} a_i",
+        "id": "fr-calculous-CosineDerivative",
+        "name": "余弦函数求导公式",
+        "latex": "\\left(\\cos x\\right)'=-\\sin x",
         "category": "微积分",
-        "desc": "求和号"
+        "h": 56
     },
     {
-        "id": "fr-prod",
-        "name": "连乘",
-        "latex": "\\prod_{i=1}^{n} a_i",
+        "id": "fr-calculous-ConstantIntegral",
+        "name": "常数积分公式",
+        "latex": "\\int k\\,\\mathrm{d}x=kx+C",
         "category": "微积分",
-        "desc": "连乘积"
+        "h": 56
     },
     {
-        "id": "fr-lim",
-        "name": "极限",
-        "latex": "\\lim_{x \\to 0} f(x)",
+        "id": "fr-calculous-TangentDerivative",
+        "name": "正切函数求导公式",
+        "latex": "\\left(\\tan x\\right)'=\\sec^{2}x",
         "category": "微积分",
-        "desc": "极限"
+        "h": 56
     },
     {
-        "id": "fr-partial",
-        "name": "偏导",
-        "latex": "\\frac{\\partial}{\\partial x}",
+        "id": "fr-calculous-CotangentDerivative",
+        "name": "余切函数求导公式",
+        "latex": "\\left(\\cot x\\right)'=-\\csc^{2}x",
         "category": "微积分",
-        "desc": "偏导数算子"
+        "h": 56
     },
     {
-        "id": "fr-grad",
-        "name": "梯度",
-        "latex": "\\nabla f",
+        "id": "fr-calculous-ReciprocalIntegral",
+        "name": "倒数积分公式",
+        "latex": "\\int\\frac{1}{x}\\,\\mathrm{d}x=\\ln\\left|x\\right|+C",
         "category": "微积分",
-        "desc": "梯度算子"
+        "h": 56
     },
     {
-        "id": "fr-pmatrix",
-        "name": "圆括号矩阵",
-        "latex": "\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}",
-        "category": "矩阵行列式",
-        "isEnv": true
+        "id": "fr-calculous-ArcsinIntegral",
+        "name": "反正弦积分公式",
+        "latex": "\\int\\frac{1}{\\sqrt{1-x^{2}}}\\,\\mathrm{d}x=\\arcsin x+C",
+        "category": "微积分",
+        "h": 56
     },
     {
-        "id": "fr-bmatrix",
-        "name": "方括号矩阵",
-        "latex": "\\begin{bmatrix} a & b \\\\ c & d \\end{bmatrix}",
-        "category": "矩阵行列式",
-        "isEnv": true
+        "id": "fr-calculous-ArctanIntegral",
+        "name": "反正切积分公式",
+        "latex": "\\int\\frac{1}{1+x^{2}}\\,\\mathrm{d}x=\\arctan x+C",
+        "category": "微积分",
+        "h": 56
     },
     {
-        "id": "fr-vmatrix",
-        "name": "行列式",
-        "latex": "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}",
-        "category": "矩阵行列式",
-        "isEnv": true
+        "id": "fr-calculous-IntegrationByParts",
+        "name": "分部积分公式",
+        "latex": "\\int u\\,\\mathrm{d}v=uv-\\int v\\,\\mathrm{d}u",
+        "category": "微积分",
+        "h": 56
     },
     {
-        "id": "fr-matrix",
-        "name": "无括号矩阵",
-        "latex": "\\begin{matrix} a & b \\\\ c & d \\end{matrix}",
-        "category": "矩阵行列式",
-        "isEnv": true
+        "id": "fr-calculous-FourierInversion",
+        "name": "傅里叶反演公式",
+        "latex": "f(x)=\\frac{1}{2\\pi}\\int_{-\\infty}^{\\infty}\\hat{f}(\\xi)e^{i\\xi x}\\,\\mathrm{d}\\xi",
+        "category": "微积分",
+        "h": 56
     },
     {
-        "id": "fr-2x2det",
-        "name": "二阶行列式",
-        "latex": "ad - bc",
-        "category": "矩阵行列式",
-        "desc": "二阶行列式展开"
+        "id": "fr-calculous-PowerIntegral",
+        "name": "幂函数积分公式",
+        "latex": "\\int x^{n}\\,\\mathrm{d}x=\\frac{x^{n+1}}{n+1}+C\\ (n\\neq -1)",
+        "category": "微积分",
+        "h": 58
     },
     {
-        "id": "fr-transpose",
-        "name": "转置",
-        "latex": "A^{\\mathsf{T}}",
-        "category": "矩阵行列式",
-        "desc": "矩阵转置"
+        "id": "fr-array-IdentityMatrix2",
+        "name": "二阶单位矩阵",
+        "latex": "I_{2}=\\begin{pmatrix}1&0\\\\0&1\\end{pmatrix}",
+        "category": "矩阵",
+        "h": 56
     },
     {
-        "id": "fr-inv",
-        "name": "逆矩阵",
-        "latex": "A^{-1}",
-        "category": "矩阵行列式",
-        "desc": "矩阵求逆"
+        "id": "fr-array-Matrix3",
+        "name": "三阶矩阵",
+        "latex": "A=\\begin{pmatrix}a_{11}&a_{12}&a_{13}\\\\a_{21}&a_{22}&a_{23}\\\\a_{31}&a_{32}&a_{33}\\end{pmatrix}",
+        "category": "矩阵",
+        "h": 48
     },
     {
-        "id": "fr-det",
-        "name": "行列式符号",
-        "latex": "\\det(A)",
-        "category": "矩阵行列式",
-        "desc": "行列式函数"
+        "id": "fr-array-MatrixMN",
+        "name": "m*n 矩阵",
+        "latex": "A=\\begin{pmatrix}a_{11}&\\cdots&a_{1n}\\\\\\vdots&\\ddots&\\vdots\\\\a_{m1}&\\cdots&a_{mn}\\end{pmatrix}",
+        "category": "矩阵",
+        "h": 48
     },
     {
-        "id": "fr-trace",
-        "name": "迹",
-        "latex": "\\operatorname{tr}(A)",
-        "category": "矩阵行列式",
-        "desc": "矩阵迹"
+        "id": "fr-array-SymmetricAntisymmetric",
+        "name": "对称与反对称矩阵",
+        "latex": "A^{\\mathsf{T}}=A,\\quad A^{\\mathsf{T}}=-A",
+        "category": "矩阵",
+        "h": 56
     },
     {
-        "id": "fr-sin",
-        "name": "正弦",
-        "latex": "\\sin x",
-        "category": "三角对数指数"
+        "id": "fr-array-ZeroMatrix",
+        "name": "零矩阵",
+        "latex": "O=\\begin{pmatrix}0&\\cdots&0\\\\\\vdots&\\ddots&\\vdots\\\\0&\\cdots&0\\end{pmatrix}",
+        "category": "矩阵",
+        "h": 56
     },
     {
-        "id": "fr-cos",
-        "name": "余弦",
-        "latex": "\\cos x",
-        "category": "三角对数指数"
+        "id": "fr-array-MatrixNotation",
+        "name": "矩阵记号",
+        "latex": "A=\\left(a_{ij}\\right)_{m\\times n}",
+        "category": "矩阵",
+        "h": 56
     },
     {
-        "id": "fr-tan",
-        "name": "正切",
-        "latex": "\\tan x",
-        "category": "三角对数指数"
+        "id": "fr-array-MatrixMultiplication",
+        "name": "矩阵乘法",
+        "latex": "C=AB,\\quad c_{ij}=\\sum_{k=1}^{n}a_{ik}b_{kj}",
+        "category": "矩阵",
+        "h": 56
     },
     {
-        "id": "fr-arcsin",
-        "name": "反正弦",
-        "latex": "\\arcsin x",
-        "category": "三角对数指数"
+        "id": "fr-array-VectorCrossDeterminant",
+        "name": "向量叉乘行列式",
+        "latex": "\\mathbf{a}\\times\\mathbf{b}=\\begin{vmatrix}\\mathbf{i}&\\mathbf{j}&\\mathbf{k}\\\\a_{1}&a_{2}&a_{3}\\\\b_{1}&b_{2}&b_{3}\\end{vmatrix}",
+        "category": "矩阵",
+        "h": 56
     },
     {
-        "id": "fr-log",
-        "name": "常用对数",
-        "latex": "\\log x",
-        "category": "三角对数指数"
+        "id": "fr-trigonometry-EulerFormula",
+        "name": "欧拉公式",
+        "latex": "e^{i\\theta}=\\cos\\theta+i\\sin\\theta",
+        "category": "三角公式",
+        "h": 56
     },
     {
-        "id": "fr-ln",
-        "name": "自然对数",
-        "latex": "\\ln x",
-        "category": "三角对数指数"
+        "id": "fr-trigonometry-HalfAngleSine",
+        "name": "半角正弦公式",
+        "latex": "\\sin\\frac{\\theta}{2}=\\pm\\sqrt{\\frac{1-\\cos\\theta}{2}}",
+        "category": "三角公式",
+        "h": 56
     },
     {
-        "id": "fr-exp",
-        "name": "指数",
-        "latex": "e^{x}",
-        "category": "三角对数指数",
-        "desc": "自然指数"
+        "id": "fr-trigonometry-HalfAngleCosine",
+        "name": "半角余弦公式",
+        "latex": "\\cos\\frac{\\theta}{2}=\\pm\\sqrt{\\frac{1+\\cos\\theta}{2}}",
+        "category": "三角公式",
+        "h": 56
     },
     {
-        "id": "fr-powbase",
-        "name": "以 a 为底",
-        "latex": "a^{x}",
-        "category": "三角对数指数",
-        "desc": "幂函数"
+        "id": "fr-trigonometry-HalfAngleTangent",
+        "name": "半角正切公式",
+        "latex": "\\tan\\frac{\\theta}{2}=\\frac{\\sin\\theta}{1+\\cos\\theta}=\\frac{1-\\cos\\theta}{\\sin\\theta}",
+        "category": "三角公式",
+        "h": 56
     },
     {
-        "id": "fr-euler",
-        "name": "欧拉恒等式",
-        "latex": "e^{i\\pi} + 1 = 0",
-        "category": "三角对数指数",
-        "desc": "欧拉公式"
+        "id": "fr-trigonometry-SineSumToProduct",
+        "name": "正弦和差化积公式",
+        "latex": "\\sin A\\pm\\sin B=2\\sin\\frac{A\\pm B}{2}\\cos\\frac{A\\mp B}{2}",
+        "category": "三角公式",
+        "h": 48
     },
     {
-        "id": "fr-to",
-        "name": "趋近",
-        "latex": "\\to",
-        "category": "箭头关系",
-        "glyph": "→",
-        "desc": "趋于"
+        "id": "fr-trigonometry-CosineSumToProduct",
+        "name": "余弦和差化积公式",
+        "latex": "\\cos A\\pm\\cos B=\\pm2\\cos\\frac{A+B}{2}\\cos\\frac{A-B}{2}",
+        "category": "三角公式",
+        "h": 47
     },
     {
-        "id": "fr-implies",
-        "name": "推出",
-        "latex": "\\implies",
-        "category": "箭头关系",
-        "glyph": "⇒",
-        "desc": "蕴含"
+        "id": "fr-trigonometry-LawOfCosines",
+        "name": "余弦定理",
+        "latex": "c^{2}=a^{2}+b^{2}-2ab\\cos C",
+        "category": "三角公式",
+        "h": 56
     },
     {
-        "id": "fr-iff",
-        "name": "等价",
-        "latex": "\\iff",
-        "category": "箭头关系",
-        "glyph": "⇔",
-        "desc": "当且仅当"
+        "id": "fr-trigonometry-LawOfSines",
+        "name": "正弦定理",
+        "latex": "\\frac{a}{\\sin A}=\\frac{b}{\\sin B}=\\frac{c}{\\sin C}=2R",
+        "category": "三角公式",
+        "h": 56
     },
     {
-        "id": "fr-mapsto",
-        "name": "映射",
-        "latex": "\\mapsto",
-        "category": "箭头关系",
-        "glyph": "↦",
-        "desc": "映射到"
+        "id": "fr-trigonometry-ComplementarySine",
+        "name": "余角正弦公式",
+        "latex": "\\sin\\left(\\frac{\\pi}{2}-\\alpha\\right)=\\cos\\alpha",
+        "category": "三角公式",
+        "h": 56
     },
     {
-        "id": "fr-approx",
-        "name": "约等于",
-        "latex": "\\approx",
-        "category": "箭头关系",
-        "glyph": "≈",
-        "desc": "近似"
+        "id": "fr-trigonometry-SineShift",
+        "name": "正弦移位公式",
+        "latex": "\\sin\\left(\\alpha+\\frac{\\pi}{2}\\right)=\\cos\\alpha",
+        "category": "三角公式",
+        "h": 56
     },
     {
-        "id": "fr-equiv",
-        "name": "恒等",
-        "latex": "\\equiv",
-        "category": "箭头关系",
-        "glyph": "≡",
-        "desc": "恒等于"
+        "id": "fr-statistics-Combination",
+        "name": "组合数",
+        "latex": "C_{n}^{m}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-leq",
-        "name": "小于等于",
-        "latex": "\\leq",
-        "category": "箭头关系",
-        "glyph": "≤",
-        "desc": "不大于"
+        "id": "fr-statistics-CombinationFormula",
+        "name": "组合数公式",
+        "latex": "C_{n}^{m}=\\frac{n!}{m!\\left(n-m\\right)!}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-geq",
-        "name": "大于等于",
-        "latex": "\\geq",
-        "category": "箭头关系",
-        "glyph": "≥",
-        "desc": "不小于"
+        "id": "fr-statistics-PermutationFormula",
+        "name": "排列数公式",
+        "latex": "A_{n}^{m}=\\frac{n!}{\\left(n-m\\right)!}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-propto",
-        "name": "正比于",
-        "latex": "\\propto",
-        "category": "箭头关系",
-        "glyph": "∝",
-        "desc": "成比例"
+        "id": "fr-statistics-SampleSum",
+        "name": "样本和",
+        "latex": "\\sum_{i=1}^{n}x_{i}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-paren",
-        "name": "圆括号",
-        "latex": "\\left( \\frac{a}{b} \\right)",
-        "category": "括号定界符",
-        "desc": "自适应圆括号"
+        "id": "fr-statistics-SumOfSquares",
+        "name": "平方和",
+        "latex": "\\sum_{i=1}^{n}x_{i}^{2}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-brack",
-        "name": "方括号",
-        "latex": "\\left[ \\frac{a}{b} \\right]",
-        "category": "括号定界符",
-        "desc": "自适应方括号"
+        "id": "fr-statistics-SampleSequence",
+        "name": "样本序列",
+        "latex": "x_{1},x_{2},\\ldots,x_{n}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-brace",
-        "name": "花括号",
-        "latex": "\\left\\{ x \\in \\mathbb{R} \\right\\}",
-        "category": "括号定界符",
-        "desc": "自适应花括号"
+        "id": "fr-statistics-StandardizedVariable",
+        "name": "标准化变量",
+        "latex": "Z=\\frac{X-\\mu}{\\sigma}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-angle",
-        "name": "尖括号",
-        "latex": "\\langle u, v \\rangle",
-        "category": "括号定界符",
-        "desc": "内积括号"
+        "id": "fr-statistics-SumOfSquaredDeviations",
+        "name": "离差平方和",
+        "latex": "\\sum_{i=1}^{n}\\left(x_{i}-\\bar{x}\\right)^{2}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-norm",
-        "name": "范数",
-        "latex": "\\left\\| \\vec{v} \\right\\|",
-        "category": "括号定界符",
-        "desc": "向量范数"
+        "id": "fr-statistics-ProbabilityAddition",
+        "name": "概率加法公式",
+        "latex": "P\\left(A\\cup B\\right)=P\\left(A\\right)+P\\left(B\\right)-P\\left(A\\cap B\\right)",
+        "category": "统计与概率",
+        "h": 48
     },
     {
-        "id": "fr-floor",
-        "name": "下取整",
-        "latex": "\\lfloor x \\rfloor",
-        "category": "括号定界符",
-        "desc": "向下取整"
+        "id": "fr-statistics-BinomialDistribution",
+        "name": "二项分布概率",
+        "latex": "P\\left(X=k\\right)=C_{n}^{k}p^{k}\\left(1-p\\right)^{n-k}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-ceil",
-        "name": "上取整",
-        "latex": "\\lceil x \\rceil",
-        "category": "括号定界符",
-        "desc": "向上取整"
+        "id": "fr-statistics-FrequencyProbability",
+        "name": "频率概率定义",
+        "latex": "P\\left(A\\right)=\\frac{m}{n}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-abs",
-        "name": "绝对值",
-        "latex": "\\left| x \\right|",
-        "category": "括号定界符",
-        "desc": "绝对值"
+        "id": "fr-statistics-CountableAdditivity",
+        "name": "可列可加性",
+        "latex": "P\\left(\\bigcup_{i=1}^{\\infty}A_{i}\\right)=\\sum_{i=1}^{\\infty}P\\left(A_{i}\\right)\\\\[8pt] (A_{i}\\text{ 两两互斥})",
+        "category": "统计与概率",
+        "h": 48
     },
     {
-        "id": "fr-big",
-        "name": "自适应括号",
-        "latex": "\\left( \\cdots \\right)",
-        "category": "括号定界符",
-        "desc": "自适应大小占位"
+        "id": "fr-statistics-ProbabilityBasicProperties",
+        "name": "概率基本性质",
+        "latex": "P\\left(\\varnothing\\right)=0,\\\\ P\\left(\\Omega\\right)=1,\\\\ P\\left(\\bar{A}\\right)=1-P\\left(A\\right)",
+        "category": "统计与概率",
+        "h": 48
     },
     {
-        "id": "fr-thm",
-        "name": "定理",
-        "latex": "\\begin{theorem}\n  内容\n\\end{theorem}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 定理"
+        "id": "fr-statistics-ProbabilityNonnegativity",
+        "name": "概率非负性",
+        "latex": "0\\leq P\\left(A\\right)\\leq 1",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-lemma",
-        "name": "引理",
-        "latex": "\\begin{lemma}\n  内容\n\\end{lemma}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 引理"
+        "id": "fr-statistics-IndependentConditionalProbability",
+        "name": "独立事件条件概率",
+        "latex": "P\\left(AB\\right)=P\\left(A\\right)P\\left(B\\right),\\\\[10pt] P\\left(A\\mid B\\right)=\\frac{P\\left(AB\\right)}{P\\left(B\\right)}",
+        "category": "统计与概率",
+        "h": 48
     },
     {
-        "id": "fr-corollary",
-        "name": "推论",
-        "latex": "\\begin{corollary}\n  内容\n\\end{corollary}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 推论"
+        "id": "fr-statistics-HypergeometricDistribution",
+        "name": "超几何分布概率",
+        "latex": "P\\left(X=k\\right)=\\frac{C_{M}^{k}C_{N-M}^{n-k}}{C_{N}^{n}}",
+        "category": "统计与概率",
+        "h": 56
     },
     {
-        "id": "fr-def",
-        "name": "定义",
-        "latex": "\\begin{definition}\n  内容\n\\end{definition}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 定义"
+        "id": "fr-sequence-GeometricTerm",
+        "name": "等比数列通项公式",
+        "latex": "a_{n}=a_{1}q^{n-1}",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-proof",
-        "name": "证明",
-        "latex": "\\begin{proof}\n  \\dots\n\\end{proof}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 证明"
+        "id": "fr-sequence-ArithmeticTerm",
+        "name": "等差数列通项公式",
+        "latex": "a_{n}=a_{1}+\\left(n-1\\right)d",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-prop",
-        "name": "命题",
-        "latex": "\\begin{proposition}\n  内容\n\\end{proposition}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 命题"
+        "id": "fr-sequence-ArithmeticSum1",
+        "name": "等差数列求和公式一",
+        "latex": "S_{n}=\\frac{n\\left(a_{1}+a_{n}\\right)}{2}",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-ex",
-        "name": "例",
-        "latex": "\\begin{example}\n  内容\n\\end{example}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 例"
+        "id": "fr-sequence-ArithmeticSum2",
+        "name": "等差数列求和公式二",
+        "latex": "S_{n}=na_{1}+\\frac{n\\left(n-1\\right)}{2}d",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-remark",
-        "name": "注",
-        "latex": "\\begin{remark}\n  内容\n\\end{remark}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 注"
+        "id": "fr-sequence-TelescopingSum",
+        "name": "裂项相消公式",
+        "latex": "\\frac{1}{n\\left(n+1\\right)}=\\frac{1}{n}-\\frac{1}{n+1}",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-claim",
-        "name": "断言",
-        "latex": "\\begin{claim}\n  内容\n\\end{claim}",
-        "category": "定理环境",
-        "isEnv": true,
-        "desc": "amsthm 断言"
+        "id": "fr-sequence-DifferenceOfSquaresTelescoping",
+        "name": "平方差裂项公式",
+        "latex": "\\frac{1}{n\\left(n+2\\right)}=\\frac{1}{2}\\left(\\frac{1}{n}-\\frac{1}{n+2}\\right)",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-align",
-        "name": "多行对齐",
-        "latex": "\\begin{align}\n  a &= b \\\\\n  c &= d\n\\end{align}",
-        "category": "环境模板",
-        "isEnv": true,
-        "desc": "等号对齐多行"
+        "id": "fr-sequence-FractionTelescoping",
+        "name": "分式裂项公式",
+        "latex": "\\frac{1}{\\left(2n-1\\right)\\left(2n+1\\right)}=\\frac{1}{2}\\left(\\frac{1}{2n-1}-\\frac{1}{2n+1}\\right)",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-cases",
-        "name": "分段函数",
-        "latex": "\\begin{cases}\n  x & x \\geq 0 \\\\\n  -x & x < 0\n\\end{cases}",
-        "category": "环境模板",
-        "isEnv": true,
-        "desc": "cases 分段"
+        "id": "fr-sequence-PowerOfTwoTelescoping",
+        "name": "含 2^n 的裂项公式",
+        "latex": "\\frac{n}{2^{n}}=\\frac{2}{2^{n}}-\\frac{n+2}{2^{n+1}}",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-gather",
-        "name": "居中多行",
-        "latex": "\\begin{gather}\n  a \\\\\n  b\n\\end{gather}",
-        "category": "环境模板",
-        "isEnv": true,
-        "desc": "gather 多行公式"
+        "id": "fr-sequence-ArithmeticClosure",
+        "name": "等差数列闭合性质",
+        "latex": "a_{m}+a_{n}=a_{p}+a_{q}\\ \\left(m+n=p+q\\right)",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-split",
-        "name": "单式多行",
-        "latex": "\\begin{split}\n  a &= b \\\\\n  &= c\n\\end{split}",
-        "category": "环境模板",
-        "isEnv": true,
-        "desc": "split 拆分"
+        "id": "fr-sequence-BinomialExpansion",
+        "name": "二项式展开",
+        "latex": "\\left(a+b\\right)^{n}=\\sum_{k=0}^{n}C_{n}^{k}a^{n-k}b^{k}",
+        "category": "数列",
+        "h": 56
     },
     {
-        "id": "fr-array",
-        "name": "数组",
-        "latex": "\\begin{array}{cc}\n  a & b \\\\\n  c & d\n\\end{array}",
-        "category": "环境模板",
-        "isEnv": true,
-        "desc": "array 表格公式"
+        "id": "fr-physics-NewtonFirstLaw",
+        "name": "牛顿第一定律",
+        "latex": "\\sum\\mathbf{F}=0\\Rightarrow \\mathbf{v}=\\text{常矢量}",
+        "category": "物理",
+        "h": 56
     },
     {
-        "id": "fr-aligned",
-        "name": "内嵌对齐",
-        "latex": "\\begin{aligned}\n  a &= b \\\\\n  c &= d\n\\end{aligned}",
-        "category": "环境模板",
-        "isEnv": true,
-        "desc": "aligned 嵌套对齐"
+        "id": "fr-physics-NewtonSecondLaw",
+        "name": "牛顿第二定律",
+        "latex": "\\mathbf{F}=m\\mathbf{a}",
+        "category": "物理",
+        "h": 56
     },
     {
-        "id": "fr-multline",
-        "name": "长式折行",
-        "latex": "\\begin{multline}\n  a + b + c \\\\\n  + d + e\n\\end{multline}",
-        "category": "环境模板",
-        "isEnv": true,
-        "desc": "multline 折行"
+        "id": "fr-physics-NewtonThirdLaw",
+        "name": "牛顿第三定律",
+        "latex": "\\mathbf{F}_{12}=-\\mathbf{F}_{21}",
+        "category": "物理",
+        "h": 56
     },
     {
-        "id": "fr-substack",
-        "name": "条件求和",
-        "latex": "\\sum_{\\substack{i=1 \\\\ i \\neq j}}^{n} a_i",
-        "category": "环境模板",
-        "desc": "substack 多行下标"
+        "id": "fr-physics-GravitationalPotentialEnergy",
+        "name": "引力势能",
+        "latex": "E_{p}=-G\\frac{Mm}{r}",
+        "category": "物理",
+        "h": 56
     },
     {
-        "id": "fr-eqnarray",
-        "name": "编号多行",
-        "latex": "\\begin{eqnarray}\n  a &=& b \\\\\n  c &=& d\n\\end{eqnarray}",
-        "category": "环境模板",
-        "isEnv": true,
-        "desc": "eqnarray 编号"
+        "id": "fr-physics-UniversalGravitation",
+        "name": "万有引力定律",
+        "latex": "F=G\\frac{m_{1}m_{2}}{r^{2}}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-SimpleHarmonicMotion",
+        "name": "简谐振动方程",
+        "latex": "x=A\\cos\\left(\\omega t+\\varphi\\right)",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-SimpleHarmonicWave",
+        "name": "简谐波方程",
+        "latex": "y=A\\cos\\left[\\omega\\left(t-\\frac{x}{v}\\right)+\\varphi\\right]",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-CoulombLaw",
+        "name": "库仑定律",
+        "latex": "F=\\frac{1}{4\\pi\\varepsilon_{0}}\\frac{q_{1}q_{2}}{r^{2}}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-ElectrostaticCirculation",
+        "name": "静电场环路定理",
+        "latex": "\\oint_{L}\\mathbf{E}\\cdot\\mathrm{d}\\mathbf{l}=0",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-GaussLaw",
+        "name": "高斯定律",
+        "latex": "\\oint_{S}\\mathbf{E}\\cdot\\mathrm{d}\\mathbf{S}=\\frac{Q}{\\varepsilon_{0}}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-BiotSavartLaw",
+        "name": "毕奥-萨伐尔定律",
+        "latex": "\\mathrm{d}\\mathbf{B}=\\frac{\\mu_{0}}{4\\pi}\\frac{I\\,\\mathrm{d}\\mathbf{l}\\times\\mathbf{r}}{r^{3}}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-AmpereForce",
+        "name": "安培力公式",
+        "latex": "\\mathbf{F}=I\\mathbf{L}\\times\\mathbf{B}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-FaradayLaw",
+        "name": "法拉第电磁感应定律",
+        "latex": "\\mathcal{E}=-\\frac{\\mathrm{d}\\Phi_{B}}{\\mathrm{d}t}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-FaradayLawIntegral",
+        "name": "法拉第定律积分形式",
+        "latex": "\\oint_{L}\\mathbf{E}\\cdot\\mathrm{d}\\mathbf{l}=-\\frac{\\mathrm{d}}{\\mathrm{d}t}\\int_{S}\\mathbf{B}\\cdot\\mathrm{d}\\mathbf{S}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-AmpereMaxwellLaw",
+        "name": "安培-麦克斯韦定律",
+        "latex": "\\oint_{L}\\mathbf{B}\\cdot\\mathrm{d}\\mathbf{l}=\\mu_{0}I+\\mu_{0}\\varepsilon_{0}\\frac{\\mathrm{d}\\Phi_{E}}{\\mathrm{d}t}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-JouleLaw",
+        "name": "焦耳定律",
+        "latex": "Q=I^{2}Rt",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-PhotoelectricEquation",
+        "name": "光电效应方程",
+        "latex": "E_{k}=h\\nu-W",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-DeBroglieWavelength",
+        "name": "德布罗意波长",
+        "latex": "\\lambda=\\frac{h}{p}=\\frac{h}{mv}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-HeisenbergUncertainty",
+        "name": "海森堡不确定性原理",
+        "latex": "\\Delta x\\,\\Delta p\\geq\\frac{\\hbar}{2}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-SchrodingerTimeDependent",
+        "name": "含时薛定谔方程",
+        "latex": "i\\hbar\\frac{\\partial}{\\partial t}\\Psi\\left(\\mathbf{r},t\\right)=\\hat{H}\\Psi\\left(\\mathbf{r},t\\right)",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-SchrodingerTimeIndependent",
+        "name": "定态薛定谔方程",
+        "latex": "-\\frac{\\hbar^{2}}{2m}\\nabla^{2}\\psi\\left(\\mathbf{r}\\right)+V\\left(\\mathbf{r}\\right)\\psi\\left(\\mathbf{r}\\right)=E\\psi\\left(\\mathbf{r}\\right)",
+        "category": "物理",
+        "h": 48
+    },
+    {
+        "id": "fr-physics-CanonicalCommutation",
+        "name": "正则对易关系",
+        "latex": "\\left[\\hat{x},\\hat{p}_{x}\\right]=i\\hbar",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-MomentumOperator",
+        "name": "动量算符",
+        "latex": "\\hat{\\mathbf{p}}=-i\\hbar\\nabla",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-GeneralizedUncertainty",
+        "name": "广义不确定关系",
+        "latex": "\\sigma_{A}\\sigma_{B}\\geq\\frac{1}{2}\\left|\\left\\langle\\left[\\hat{A},\\hat{B}\\right]\\right\\rangle\\right|",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-EnergyTimeUncertainty",
+        "name": "能量-时间不确定关系",
+        "latex": "\\Delta E\\,\\Delta t\\geq\\frac{\\hbar}{2}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-ParticleInBoxEnergy",
+        "name": "一维无限深势阱能级",
+        "latex": "E_{n}=\\frac{n^{2}\\pi^{2}\\hbar^{2}}{2ma^{2}},\\quad n=1,2,3,\\ldots",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-QuantumHarmonicOscillator",
+        "name": "谐振子能级",
+        "latex": "E_{n}=\\left(n+\\frac{1}{2}\\right)\\hbar\\omega,\\quad n=0,1,2,\\ldots",
+        "category": "物理",
+        "h": 48
+    },
+    {
+        "id": "fr-physics-HydrogenEnergyLevel",
+        "name": "氢原子能级",
+        "latex": "E_{n}=-\\frac{m_{e}e^{4}}{2\\left(4\\pi\\varepsilon_{0}\\right)^{2}\\hbar^{2}}\\frac{1}{n^{2}}=-\\frac{13.6\\,\\mathrm{eV}}{n^{2}}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-AngularMomentumQuantization",
+        "name": "角动量量子化",
+        "latex": "L^{2}=l\\left(l+1\\right)\\hbar^{2},\\quad L_{z}=m\\hbar",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-EhrenfestTheorem",
+        "name": "埃伦费斯特定理",
+        "latex": "\\frac{\\mathrm{d}}{\\mathrm{d}t}\\left\\langle\\hat{A}\\right\\rangle=\\frac{i}{\\hbar}\\left\\langle\\left[\\hat{H},\\hat{A}\\right]\\right\\rangle+\\left\\langle\\frac{\\partial\\hat{A}}{\\partial t}\\right\\rangle",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-BornRule",
+        "name": "玻恩概率诠释",
+        "latex": "P\\left(\\mathbf{r}\\right)=\\left|\\Psi\\left(\\mathbf{r},t\\right)\\right|^{2}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-LengthContraction",
+        "name": "长度收缩公式",
+        "latex": "L=L_{0}\\sqrt{1-\\frac{v^{2}}{c^{2}}}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-MassEnergy",
+        "name": "质能方程",
+        "latex": "E=mc^{2}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-EinsteinFieldEquation",
+        "name": "爱因斯坦场方程",
+        "latex": "R_{\\mu\\nu}-\\frac{1}{2}R\\,g_{\\mu\\nu}+\\Lambda g_{\\mu\\nu}=\\frac{8\\pi G}{c^{4}}T_{\\mu\\nu}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-MaxwellDifferential",
+        "name": "麦克斯韦方程组微分形式",
+        "latex": "\\nabla\\cdot\\mathbf{E}=\\frac{\\rho}{\\varepsilon_{0}},\\\\ \\nabla\\cdot\\mathbf{B}=0,\\\\ \\nabla\\times\\mathbf{E}=-\\frac{\\partial\\mathbf{B}}{\\partial t},\\\\ \\nabla\\times\\mathbf{B}=\\mu_{0}\\mathbf{J}+\\mu_{0}\\varepsilon_{0}\\frac{\\partial\\mathbf{E}}{\\partial t}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-MaxwellIntegral",
+        "name": "麦克斯韦方程组积分形式",
+        "latex": "\\oint_{S}\\mathbf{E}\\cdot\\mathrm{d}\\mathbf{S}=\\frac{Q}{\\varepsilon_{0}},\\\\ \\oint_{S}\\mathbf{B}\\cdot\\mathrm{d}\\mathbf{S}=0,\\\\ \\oint_{L}\\mathbf{E}\\cdot\\mathrm{d}\\mathbf{l}=-\\frac{\\mathrm{d}\\Phi_{B}}{\\mathrm{d}t},\\\\ \\oint_{L}\\mathbf{B}\\cdot\\mathrm{d}\\mathbf{l}=\\mu_{0}I+\\mu_{0}\\varepsilon_{0}\\frac{\\mathrm{d}\\Phi_{E}}{\\mathrm{d}t}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-MaxwellMediumDifferential",
+        "name": "介质中的麦克斯韦方程组微分形式",
+        "latex": "\\nabla\\cdot\\mathbf{D}=\\rho_{f},\\\\ \\nabla\\cdot\\mathbf{B}=0,\\\\ \\nabla\\times\\mathbf{E}=-\\frac{\\partial\\mathbf{B}}{\\partial t},\\\\ \\nabla\\times\\mathbf{H}=\\mathbf{J}_{f}+\\frac{\\partial\\mathbf{D}}{\\partial t}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-physics-MaxwellMediumIntegral",
+        "name": "介质中的麦克斯韦方程组积分形式",
+        "latex": "\\oint_{S}\\mathbf{D}\\cdot\\mathrm{d}\\mathbf{S}=Q_{f},\\\\ \\oint_{S}\\mathbf{B}\\cdot\\mathrm{d}\\mathbf{S}=0,\\\\ \\oint_{L}\\mathbf{E}\\cdot\\mathrm{d}\\mathbf{l}=-\\frac{\\mathrm{d}\\Phi_{B}}{\\mathrm{d}t},\\\\ \\oint_{L}\\mathbf{H}\\cdot\\mathrm{d}\\mathbf{l}=I_{f}+\\frac{\\mathrm{d}\\Phi_{D}}{\\mathrm{d}t}",
+        "category": "物理",
+        "h": 56
+    },
+    {
+        "id": "fr-chemistry-BariumSulfatePrecipitation",
+        "name": "硫酸钡沉淀反应",
+        "latex": "\\mathrm{BaCl_{2}}+\\mathrm{Na_{2}SO_{4}}\\rightarrow\\mathrm{BaSO_{4}}\\downarrow+2\\mathrm{NaCl}",
+        "category": "化学",
+        "h": 48
+    },
+    {
+        "id": "fr-chemistry-MercuryIodideComplex",
+        "name": "汞碘络合反应",
+        "latex": "\\mathrm{HgI_{2}}+2\\mathrm{I^{-}}\\rightarrow\\left[\\mathrm{HgI_{4}}\\right]^{2-}",
+        "category": "化学",
+        "h": 56
+    },
+    {
+        "id": "fr-chemistry-ZincHydroxideAmphoteric",
+        "name": "锌氢氧化物两性反应",
+        "latex": "\\mathrm{Zn\\left(OH\\right)_{2}}+2\\mathrm{OH^{-}}\\rightarrow\\left[\\mathrm{Zn\\left(OH\\right)_{4}}\\right]^{2-}",
+        "category": "化学",
+        "h": 48
     }
 ]
