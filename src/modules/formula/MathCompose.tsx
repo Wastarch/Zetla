@@ -11,7 +11,7 @@ import FormulaKaTeX from "./FormulaKaTeX";
 import { useComposeStore } from "./composeStore";
 import { SLOT_MARK, SLOT_RE } from "@/editor/slotRange";
 import { activeSlotFromSelection, boxOffset, serializeSlotsText, slotIdIndex } from "./mathTex";
-import { copyCompose, submitCompose } from "./mathInsert";
+import { copyCompose, submitCompose, updateCompose } from "./mathInsert";
 
 export default function MathCompose() {
   const text = useComposeStore((s) => s.text);
@@ -20,6 +20,8 @@ export default function MathCompose() {
   const cursorSeq = useComposeStore((s) => s.cursorSeq);
   const mode = useComposeStore((s) => s.mode);
   const fontSize = useComposeStore((s) => s.fontSize);
+  const editTarget = useComposeStore((s) => s.editTarget);
+  const setEditTarget = useComposeStore((s) => s.setEditTarget);
   const edit = useComposeStore((s) => s.edit);
   const setSelection = useComposeStore((s) => s.setSelection);
   const setCursor = useComposeStore((s) => s.setCursor);
@@ -95,7 +97,9 @@ export default function MathCompose() {
     }
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
-      submitCompose();
+      // M1-19：编辑既有公式时提交 = 原地更新（指纹校验）；否则插入光标处
+      if (editTarget) updateCompose();
+      else submitCompose();
     }
   };
 
@@ -156,15 +160,40 @@ export default function MathCompose() {
       )}
 
       <div className="math-compose-actions">
-        <button
-          type="button"
-          className="btn primary"
-          disabled={empty}
-          title="插入到编辑器光标处（Ctrl+Enter）"
-          onClick={() => submitCompose()}
-        >
-          插入编辑器
-        </button>
+        {editTarget ? (
+          <>
+            <div className="math-compose-editing">
+              正在编辑源码中的公式（{editTarget.from}–{editTarget.to}），「更新公式」指纹校验通过后原地替换
+            </div>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={empty}
+              title="写回源码原位置（Ctrl+Enter）"
+              onClick={() => updateCompose()}
+            >
+              更新公式
+            </button>
+            <button
+              type="button"
+              className="btn"
+              title="退出编辑态，保留编写区内容（变回新建模式）"
+              onClick={() => setEditTarget(null)}
+            >
+              取消
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="btn primary"
+            disabled={empty}
+            title="插入到编辑器光标处（Ctrl+Enter）"
+            onClick={() => submitCompose()}
+          >
+            插入编辑器
+          </button>
+        )}
         <button
           type="button"
           className="btn"

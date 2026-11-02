@@ -13,15 +13,12 @@ import {
   type HAlign,
   type TableModel,
 } from "./tableModel";
+import { fingerprintOf } from "@/editor/envEdit";
+
+// djb2 指纹已上移至 editor/envEdit.ts（环境反向编辑统一口径），此处 re-export 保持兼容
+export { fingerprintOf };
 
 const TABULAR_BEGIN = /\\begin\{(tabular\*?|tabularx)\}/g;
-
-/** djb2 指纹（用于「更新表格」前校验源码是否被手改） */
-export function fingerprintOf(text: string): string {
-  let h = 5381;
-  for (let i = 0; i < text.length; i++) h = ((h << 5) + h + text.charCodeAt(i)) | 0;
-  return (h >>> 0).toString(36);
-}
 
 /** 读一个平衡花括号组（s[i] 必须是 '{'）；返回组内文本与结束位置 */
 export function readGroup(s: string, i: number): { text: string; end: number } | null {
@@ -189,8 +186,8 @@ export interface ParsedTable {
   fingerprint: string;
 }
 
-/** 定位光标所在的 table/tabular 环境边界 */
-function findEnv(
+/** 定位光标所在的 table/tabular 环境边界（hover ✎ 标记与 parseTableAt 共用） */
+export function findEnv(
   doc: string,
   pos: number,
 ): { name: string; from: number; to: number } | null {
@@ -216,8 +213,16 @@ function findEnv(
 export function parseTableAt(doc: string, pos: number): ParsedTable | null {
   const env = findEnv(doc, pos);
   if (!env) return null;
+  return parseTableRange(doc, env.from, env.to);
+}
 
-  const source = doc.slice(env.from, env.to);
+/** hover ✎ 场景：已知精确区间（findEnv 产出口径），直接对该区间解析（不走光标语义） */
+export function parseTableRange(doc: string, from: number, to: number): ParsedTable | null {
+  const source = doc.slice(from, to);
+  // 环境名从区间头部读出（tabular / tabular* / tabularx）
+  const name = /^\\begin\{(tabular\*?|tabularx)\}/.exec(source)?.[1];
+  if (!name) return null;
+  const env = { name, from, to };
   // 1) 头部：\begin{env} 之后读宽度组（tabularx/tabular*）与列规格组
   const head = `\\begin{${env.name}}`;
   let i = head.length;

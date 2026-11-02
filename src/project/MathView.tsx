@@ -98,7 +98,9 @@ function InsertPrefs() {
 
 export function MathView() {
   const mathEnabled = useMathModuleEnabled();
-  const [tab, setTab] = useState<MathTab>("tools");
+  // 页签（M1-19 提升进 composeStore：hover ✎ 载入公式时强制切回「快捷工具」，保证下方编写区可见）
+  const tab = useComposeStore((s) => s.tab);
+  const setTab = useComposeStore((s) => s.setTab);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const prefsAnchor = useRef<HTMLDivElement>(null);
 

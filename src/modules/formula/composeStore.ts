@@ -27,6 +27,26 @@ const FONT_MAX = 50;
 
 const clamp = (v: number, len: number) => Math.min(Math.max(v, 0), len);
 
+/** 编写区页签（M1-19 提升进 store：hover ✎ 载入公式时强制切回「快捷工具」，保证下方编写区可见） */
+export type MathComposeTab = "tools" | "library";
+
+/** 「编辑既有公式」目标（M1-19）：hover ✎ 载入时绑定源码区间，更新时指纹校验原地替换 */
+export interface ComposeEditTarget {
+  /** 源码整体区间（含包裹定界符） */
+  from: number;
+  to: number;
+  /** 载入时区间原文指纹（djb2，与表格同口径） */
+  fingerprint: string;
+  /** 原包裹形态：env 原件更新时沿用原环境名（保 &/\\ 语义），inline/display 走插入偏好 */
+  wrapKind: "inline" | "display" | "env";
+  /** wrapKind==="env" 时的环境名 */
+  envName?: string;
+  /** 载入时 body（trim 后）：与当前 text 全等 = 未修改（保留原包裹原样写回 / no-op） */
+  loadedBody: string;
+  /** 载入时区间源码原文（留档；未修改时不再需要 dispatch） */
+  sourceText: string;
+}
+
 export interface ComposeState {
   /** 编写区 LaTeX 源码 */
   text: string;
@@ -42,6 +62,10 @@ export interface ComposeState {
   fontSize: number;
   /** 最近使用（新→旧） */
   recent: RecentItem[];
+  /** 当前页签（M1-19 自 MathView 提升进 store） */
+  tab: MathComposeTab;
+  /** 编辑既有公式的目标区间；null = 新建模式（插入到光标处） */
+  editTarget: ComposeEditTarget | null;
 
   /** 用户编辑（打字/删除）：文本 + 选区一把更新 */
   edit: (t: string, selStart: number, selEnd: number) => void;
@@ -56,6 +80,10 @@ export interface ComposeState {
   setMode: (m: "source" | "visual") => void;
   /** 编写区字号缩放（±1px，clamp 10–50） */
   zoomFont: (d: number) => void;
+  /** 页签切换（M1-19 自 MathView 提升进 store） */
+  setTab: (t: MathComposeTab) => void;
+  /** 绑定/解绑编辑目标（打字不清——指纹校验兜底；clear() 一并清） */
+  setEditTarget: (t: ComposeEditTarget | null) => void;
   clear: () => void;
   pushRecent: (it: RecentItem) => void;
 }
@@ -65,9 +93,11 @@ export const useComposeStore = create<ComposeState>((set) => ({
   selStart: 0,
   selEnd: 0,
   cursorSeq: 0,
-  mode: "source", 
+  mode: "source",
   fontSize: 20,  // 默认编写字号 20 px
   recent: [],
+  tab: "tools",
+  editTarget: null,
 
   edit: (t, selStart, selEnd) => set({ text: t, selStart, selEnd }),
   setSelection: (a, b) =>
@@ -111,8 +141,16 @@ export const useComposeStore = create<ComposeState>((set) => ({
   setMode: (m) => set({ mode: m }),
   zoomFont: (d) =>
     set((s) => ({ fontSize: Math.min(FONT_MAX, Math.max(FONT_MIN, s.fontSize + d)) })),
+  setTab: (tab) => set({ tab }),
+  setEditTarget: (editTarget) => set({ editTarget }),
   clear: () =>
-    set((s) => ({ text: "", selStart: 0, selEnd: 0, cursorSeq: s.cursorSeq + 1 })),
+    set((s) => ({
+      text: "",
+      selStart: 0,
+      selEnd: 0,
+      cursorSeq: s.cursorSeq + 1,
+      editTarget: null, // 清空编写区 = 放弃编辑绑定
+    })),
   pushRecent: (it) =>
     set((s) => ({
       recent: [it, ...s.recent.filter((r) => r.key !== it.key)].slice(0, RECENT_CAP),

@@ -36,7 +36,7 @@ import {
   type TableStyle,
 } from "./tableModel";
 import { generateTable, captionSelection } from "./tableGen";
-import { fingerprintOf, parseTableAt } from "./tableParse";
+import { loadTableAtCursor, updateTableInPlace } from "./tableEdit";
 import { looksLikeTable, parseDelimited, toTSV } from "./tableCsv";
 import { selectionRect, useTableStore } from "./tableStore";
 
@@ -387,22 +387,10 @@ export function TablePanel() {
     notify("已插入表格代码", "ok");
   }, [canInsert, finalizeModel]);
 
-  /** 「编辑当前表格」：从光标处 tabular 回填网格 */
+  /** 「编辑当前表格」：从光标处 tabular 回填网格（逻辑在 tableEdit.ts，与 hover ✎ 入口共用） */
   const handleEditCurrent = useCallback(() => {
-    const view = getActiveView();
-    if (!view) {
-      notify("请先在 .tex 标签页中使用", "err");
-      return;
-    }
-    const parsed = parseTableAt(view.state.doc.toString(), view.state.selection.main.head);
-    if (!parsed) {
-      notify("光标处未找到可编辑的表格", "err");
-      return;
-    }
-    reset(parsed.model);
-    setSource({ from: parsed.from, to: parsed.to, fingerprint: parsed.fingerprint });
-    notify(`已载入表格（${parsed.model.rows}×${parsed.model.cols}）`, "ok");
-  }, [reset, setSource]);
+    loadTableAtCursor();
+  }, []);
 
   /** 「导入 CSV/TSV」：读文本 → 嗅探分隔符 → 建表（编码由 Rust read_file 处理） */
   const handleImport = useCallback(async () => {
@@ -441,29 +429,10 @@ export function TablePanel() {
     }
   }, [reset, setSource, tableCfg]);
 
-  /** 「更新表格」：指纹校验通过才原地替换，避免覆盖用户手改的源码 */
+  /** 「更新表格」：指纹校验通过才原地替换，避免覆盖用户手改的源码（逻辑在 tableEdit.ts） */
   const handleUpdate = useCallback(() => {
-    if (!source) return;
-    const view = getActiveView();
-    if (!view) {
-      notify("没有可更新的编辑器", "err");
-      return;
-    }
-    const doc = view.state.doc.toString();
-    const current = doc.slice(source.from, source.to);
-    if (fingerprintOf(current) !== source.fingerprint) {
-      notify("表格源码已被修改，已取消更新（可改用「插入到编辑器」）", "err");
-      return;
-    }
-    const body = generateTable(finalizeModel());
-    view.dispatch({ changes: { from: source.from, to: source.to, insert: body } });
-    setSource({
-      from: source.from,
-      to: source.from + body.length,
-      fingerprint: fingerprintOf(body),
-    });
-    notify("已更新表格", "ok");
-  }, [source, setSource, finalizeModel]);
+    updateTableInPlace(finalizeModel());
+  }, [finalizeModel]);
 
   /** 把缺失宏包补进主文件导言区（仅当活动标签就是主文件，避免插错文档） */
   const addPackages = useCallback(() => {
