@@ -5529,11 +5529,6 @@ body.row-resizing {
   min-height: 220px;
 }
 
-/* 下区：输出区域（预览主区 + 动作条） */
-.math-output {
-  flex: 0 0 246px;
-}
-
 .math-region-head {
   position: relative;
   display: flex;
@@ -5667,12 +5662,15 @@ body.row-resizing {
   position: relative;
   flex: none;
   padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .math-compose-ta {
   display: block;
   width: 100%;
-  height: 104px;
+  height: 84px;
   resize: none;
   padding: 8px 10px;
   font-family: var(--font-mono, monospace);
@@ -5684,6 +5682,52 @@ body.row-resizing {
   border-radius: var(--r-md);
   outline: none;
 }
+
+/* 源码模式下区：KaTeX 实时渲染预览（只读，点空槽定位光标） */
+.math-compose-render {
+  position: relative;
+  min-height: 84px;
+  padding: 10px 12px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+.math-compose-render-empty {
+  font-size: 11.5px;
+  color: var(--txt-3);
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: text;
+}
+
+/* 可视化模式：隐藏但可聚焦的 textarea（sr-only，禁用 display:none/visibility:hidden 以免 WebView 失焦） */
+.math-compose-ta.vis-hidden {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  pointer-events: none;
+  resize: none;
+}
+
+/* 可视化模式：渲染区即主编辑面，加高以容纳公式 */
+.math-compose.mode-visual .math-compose-render {
+  min-height: 168px;
+}
 .math-compose-ta:focus {
   border-color: var(--accent);
 }
@@ -5691,94 +5735,20 @@ body.row-resizing {
   color: var(--txt-3);
 }
 
-/* 空态 LaTeX 水印（大而淡，纯装饰） */
-.math-compose-wm {
-  position: absolute;
-  right: 16px;
-  bottom: 12px;
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: var(--line);
-  pointer-events: none;
-  user-select: none;
-}
-
-/* 输出区域：预览缩放（− 100% +） */
-.math-zoom {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.math-zoom button {
-  width: 20px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 0;
-  background: transparent;
-  color: var(--txt-3);
-  font-size: 13px;
-  line-height: 1;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.math-zoom button:hover {
-  background: var(--bg-4);
-  color: var(--accent);
-}
-
-.math-zoom-val {
-  min-width: 40px;
-  text-align: center;
-  font-size: 10.5px;
-  color: var(--txt-3);
-  font-family: var(--font-mono, monospace);
-}
-
-/* 输出区域：KaTeX 实时预览（字号由行内 style 按缩放百分比驱动） */
-.math-output-fx {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 12px;
-}
-
-.math-output-empty {
-  text-align: center;
-  font-size: 11.5px;
-  color: var(--txt-3);
-}
-
-.math-output-wm {
-  display: block;
-  font-size: 30px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--line);
-  margin-bottom: 8px;
-}
-
-/* 输出区域：动作条 */
-.math-output-actions {
+/* 编写区底部动作条（取代原输出区域动作条） */
+.math-compose-actions {
   flex: none;
   display: flex;
   gap: 6px;
   padding: 8px;
   border-top: 1px solid var(--line-soft);
 }
-.math-output-actions .btn {
+.math-compose-actions .btn {
   height: 27px;
   padding: 0 12px;
   font-size: 11.5px;
 }
-.math-output-actions .btn.primary {
+.math-compose-actions .btn.primary {
   flex: 1 1 auto;
 }
 
@@ -5992,34 +5962,6 @@ body.row-resizing {
 .math-seg button.on {
   background: var(--accent);
   color: #fff;
-}
-
-/* 可视化模式编写区（KaTeX 只读渲染；点空槽切回源码） */
-.math-compose-fx {
-  position: relative;
-  min-height: 104px;
-  padding: 10px 12px;
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  overflow: auto;
-}
-
-.math-compose-fx-empty {
-  font-size: 11.5px;
-  color: var(--txt-3);
-}
-
-.math-compose-fx-hint {
-  position: absolute;
-  right: 10px;
-  bottom: 6px;
-  font-size: 10px;
-  color: var(--txt-3);
-  pointer-events: none;
 }
 
 /* 插入项右键菜单：主项 accent 高亮 */

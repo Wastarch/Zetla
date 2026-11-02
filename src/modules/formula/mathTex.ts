@@ -1,7 +1,7 @@
 // M1-12a · 编写区文本的槽位预览协议（文本版 serializeSlots，纯函数无框架依赖）
 // 与 builderTypes.serializeSlots 同一协议：\Box → slotCmd(i) 纯字母命令，
 // KaTeX 宽容渲染为红字原文，FormulaKaTeX.injectSlots 按出现序替换为可点选方框。
-import { SLOT_RE } from "@/editor/slotRange";
+import { SLOT_MARK, SLOT_RE } from "@/editor/slotRange";
 import { slotCmd } from "./slotCmd";
 
 /**
@@ -34,4 +34,26 @@ export function boxOffset(text: string, index: number): number {
 export function slotIdIndex(id: string): number {
   const m = /^box-(\d+)$/.exec(id);
   return m ? Number(m[1]) : -1;
+}
+
+/**
+ * 当前选区若恰好落在某个 \Box 上，返回该槽位 id（box-i），否则 null。
+ * 用于可视化模式高亮「活动槽」——用户点槽或 Tab 跳转后选区即选中 \Box。
+ */
+export function activeSlotFromSelection(
+  text: string,
+  selStart: number,
+  selEnd: number,
+): string | null {
+  if (selStart !== selEnd) return null;
+  SLOT_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = SLOT_RE.exec(text)) !== null) {
+    const from = m.index;
+    const to = from + SLOT_MARK.length;
+    if (selStart >= from && selStart <= to) return `box-${i}`;
+    i += 1;
+  }
+  return null;
 }

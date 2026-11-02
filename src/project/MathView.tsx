@@ -1,12 +1,11 @@
 // M1-12a · 公式侧栏（符号面板 / 公式库 两模块合并入口；取代 M1-6b SymbolView 与 M1-10 FormulaView）
 // M1-12b：输入区域挂载二级工具栏（颜色/字体/字号/环境 + 源码可视化 + 缩放）。
 // 2026-10-25 反馈：移除「搭建」页签（原 M1-11 图形化搭建器，用户确认无用）；builderTypes.TPLS 保留供符号面板模板数据。
-// 结构（对齐 docs/Formula.html 输入/输出双区参考，用户 2026-10-25 确认）：
-//   输入区域 Input：区域头（标题 + 插入偏好齿轮）→ 页签（快捷工具/公式模板）→ 面板挂载区 → 工具栏 → 编写区
-//   输出区域 Output：区域头（标题 + 预览缩放）→ KaTeX 实时预览 → 动作条（插入编辑器 / 复制 LaTeX）
+// 结构（单一「输入区域」承载全部交互，2026-11-02 起移除独立输出区域 Output）：
+//   输入区域 Input：区域头（标题 + 插入偏好齿轮）→ 页签（快捷工具/公式模板）→ 面板挂载区 → 工具栏 → 编写区（含实时预览与底部动作条）
 // 交互铁律（用户定稿）：单击符号/模板 → 写入编写区；右键 → 直插菜单；Ctrl+Enter / 按钮提交。
 // 页签随「公式」模块整体启停：模块停用 → 空态 + 「去设置启用」；启用 → 两页签常驻。
-// bundle：本组件经 Sidebar lazy 加载——katex（MathCompose 可视化模式 + MathOutput）随本 chunk，
+// bundle：本组件经 Sidebar lazy 加载——katex（MathCompose 可视化模式 + 编写区预览）随本 chunk，
 //          首开公式侧栏时按需拉取；SymbolPanel/FormulaPanel 仍为各自懒加载 chunk。
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useAppStore } from "@/core/store";
@@ -17,7 +16,6 @@ const FormulaPanel = lazy(() => import("@/modules/formula/FormulaPanel"));
 import { Icon } from "@/ui/Icon";
 import type { FormulaConfig } from "@/types/settings";
 import MathCompose from "@/modules/formula/MathCompose";
-import MathOutput from "@/modules/formula/MathOutput";
 import MathToolbar from "@/modules/formula/MathToolbar";
 import { useComposeStore } from "@/modules/formula/composeStore";
 import { useCtrlWheelZoom } from "@/modules/formula/useCtrlWheelZoom";
@@ -172,9 +170,6 @@ export function MathView() {
         <MathToolbar />
         <MathCompose />
       </section>
-
-      {/* ── 输出区域 ── */}
-      <MathOutput />
     </div>
   );
 }

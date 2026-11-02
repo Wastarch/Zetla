@@ -1,14 +1,17 @@
-// M1-12a · 编写区（输入区域主体）：多行 LaTeX 源码编辑
+// M1-12a · 编写区（输入区域主体）：多行 LaTeX 源码编辑 + 可视化可编辑
 // M1-12b：
-// - 选区模型：onSelect/点击/键入都同步 selStart/selEnd（不再折叠拖拽选区——
-//   工具栏的「字体/字号/环境」要包裹选区，符号插入要替换选区）
-// - 源码/可视化双模式：源码 = textarea；可视化 = KaTeX 只读渲染（点空槽切回源码并定位光标）
+// - 选区模型：onSelect/点击/键入都同步 selStart/selEnd
+// - 真相源：composeStore.text（含 \Box 空槽），不新建节点树
+// - 源码模式：上 textarea + 下 KaTeX 实时渲染（只读预览，点空槽仅定位光标）
+// - 可视化模式：隐藏但可聚焦的 textarea 承载输入，公式可见渲染为主编辑面；
+//   点 \Box 选中该槽（首键即替换）、Tab 在槽间循环、活动槽高亮 —— 轻量插槽式 WYSIWYG
 // - Ctrl+Enter → mathInsert.submitCompose() 提交到主编辑器
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import FormulaKaTeX from "./FormulaKaTeX";
 import { useComposeStore } from "./composeStore";
-import { boxOffset, serializeSlotsText, slotIdIndex } from "./mathTex";
-import { submitCompose } from "./mathInsert";
+import { SLOT_MARK, SLOT_RE } from "@/editor/slotRange";
+import { activeSlotFromSelection, boxOffset, serializeSlotsText, slotIdIndex } from "./mathTex";
+import { copyCompose, submitCompose } from "./mathInsert";
 
 export default function MathCompose() {
   const text = useComposeStore((s) => s.text);
@@ -20,7 +23,6 @@ export default function MathCompose() {
   const edit = useComposeStore((s) => s.edit);
   const setSelection = useComposeStore((s) => s.setSelection);
   const setCursor = useComposeStore((s) => s.setCursor);
-  const setMode = useComposeStore((s) => s.setMode);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const composing = useRef(false);
 
@@ -36,63 +38,143 @@ export default function MathCompose() {
     }
   }, [cursorSeq, selStart, selEnd, text]);
 
+  // 进入可视化模式：聚焦隐藏 textarea，确保立即可输入
+  useEffect(() => {
+    if (mode === "visual") taRef.current?.focus();
+  }, [mode]);
+
   const syncSelection = () => {
     const ta = taRef.current;
     if (ta) setSelection(ta.selectionStart, ta.selectionEnd);
   };
 
-  // 可视化模式：点空槽 → 切回源码并把光标放回该 \Box（看得见才能改）
+  // 点空槽：源码下区预览 → 仅定位光标（不切模式）；可视化主编辑面 → 选中 \Box（首键替换）+ 聚焦
   const onSlotClick = (id: string) => {
     const idx = slotIdIndex(id);
     if (idx < 0) return;
     const pos = boxOffset(text, idx);
     if (pos < 0) return;
-    setMode("source");
-    setCursor(pos);
+    if (mode === "visual") {
+      setSelection(pos, pos + SLOT_MARK.length);
+      taRef.current?.focus();
+    } else {
+      setCursor(pos);
+      taRef.current?.focus();
+    }
   };
+
+  // 可视化：Tab 在 \Box 间循环跳转（选中该槽，首键即替换）
+  const jumpToNextSlot = () => {
+    const len = text.length;
+    const from = Math.min(Math.max(selStart, 0), len);
+    let found = -1;
+    SLOT_RE.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = SLOT_RE.exec(text)) !== null) {
+      if (m.index > from) {
+        found = m.index;
+        break;
+      }
+    }
+    if (found < 0) {
+      SLOT_RE.lastIndex = 0;
+      const first = SLOT_RE.exec(text);
+      if (first) found = first.index;
+    }
+    if (found >= 0) {
+      setSelection(found, found + SLOT_MARK.length);
+      taRef.current?.focus();
+    }
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mode === "visual" && e.key === "Tab") {
+      e.preventDefault();
+      jumpToNextSlot();
+      return;
+    }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      submitCompose();
+    }
+  };
+
+  // 活动槽（可视化模式）：光标/选区落在某 \Box 上 → 高亮对应方框
+  const activeSlot = useMemo(
+    () => (mode === "visual" ? activeSlotFromSelection(text, selStart, selEnd) : null),
+    [mode, text, selStart, selEnd],
+  );
 
   const { tex, slotIds } = serializeSlotsText(text);
   const empty = text.trim() === "";
 
   return (
-    <div className="math-compose">
-      {mode === "visual" ? (
-        <div className="math-compose-fx" style={{ fontSize }}>
-          {empty ? (
-            <span className="math-compose-fx-empty">（空公式，切到源码开始输入）</span>
-          ) : (
-            <FormulaKaTeX tex={tex} display slots={slotIds} onSlotClick={onSlotClick} />
-          )}
-          <span className="math-compose-fx-hint">可视化预览 · 点击空槽切回源码编辑</span>
+    <div className={mode === "visual" ? "math-compose mode-visual" : "math-compose"}>
+      {/* 始终挂载同一 textarea：源码可见（上）；可视化 sr-only 隐藏但可聚焦承载输入 */}
+      <textarea
+        ref={taRef}
+        className={mode === "visual" ? "math-compose-ta vis-hidden" : "math-compose-ta"}
+        style={{ fontSize }}
+        placeholder="请输入您的 LaTeX 表达式"
+        spellCheck={false}
+        value={text}
+        onChange={(e) => edit(e.target.value, e.target.selectionStart, e.target.selectionEnd)}
+        onSelect={syncSelection}
+        onKeyUp={syncSelection}
+        onClick={syncSelection}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={() => {
+          composing.current = false;
+          syncSelection();
+        }}
+        onKeyDown={onKeyDown}
+      />
+
+      {empty ? (
+        <div
+          className="math-compose-render math-compose-render-empty"
+          onClick={() => mode === "visual" && taRef.current?.focus()}
+        >
+          {mode === "visual" ? "（空公式，点此或切到源码开始输入）" : "LaTeX"}
         </div>
       ) : (
-        <textarea
-          ref={taRef}
-          className="math-compose-ta"
+        <div
+          className="math-compose-render"
           style={{ fontSize }}
-          placeholder="请输入您的 LaTeX 表达式"
-          spellCheck={false}
-          value={text}
-          onChange={(e) => edit(e.target.value, e.target.selectionStart, e.target.selectionEnd)}
-          onSelect={syncSelection}
-          onKeyUp={syncSelection}
-          onClick={syncSelection}
-          onCompositionStart={() => {
-            composing.current = true;
-          }}
-          onCompositionEnd={() => {
-            composing.current = false;
-            syncSelection();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              submitCompose();
-            }
-          }}
-        />
+          onClick={() => mode === "visual" && taRef.current?.focus()}
+        >
+          <FormulaKaTeX
+            tex={tex}
+            display
+            slots={slotIds}
+            activeSlot={activeSlot}
+            onSlotClick={onSlotClick}
+          />
+        </div>
       )}
-      {mode === "source" && !text && <span className="math-compose-wm">LaTeX</span>}
+
+      <div className="math-compose-actions">
+        <button
+          type="button"
+          className="btn primary"
+          disabled={empty}
+          title="插入到编辑器光标处（Ctrl+Enter）"
+          onClick={() => submitCompose()}
+        >
+          插入编辑器
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={empty}
+          title="复制 LaTeX 源码"
+          onClick={() => void copyCompose()}
+        >
+          复制 LaTeX
+        </button>
+      </div>
     </div>
   );
 }

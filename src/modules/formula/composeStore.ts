@@ -1,10 +1,10 @@
 // M1-12a · 公式侧栏编写区状态（会话级 zustand，**不落盘**——重启/切项目即清空）
 // M1-12b：cursor → selStart/selEnd 选区模型——工具栏「字体/字号/环境」要包裹编写区
 //          选区，符号插入要替换选区（与打字行为一致），单光标无法表达这两件事。
-// 双区结构的上区「编写区」与下区「输出区域」经此共享：
+// 编写区状态：2026-11-02 起「输出区域 Output」已移除，渲染职责由编写区自身承担（源码下区预览 + 可视化主编辑面）
 //   符号/模板点击 → insert() 写入光标处（M1-12b 接通符号面板）
-//   输出区实时渲染 text；\Box 空槽点选 → setCursor() 定位（cursorSeq 同步选区）
-//   插入编辑器按钮 / Ctrl+Enter → mathInsert.submitCompose() 提交到主编辑器
+//   编写区实时渲染 text；\Box 空槽点选 → setCursor()/setSelection() 定位（cursorSeq 同步选区）
+//   底部动作条「插入编辑器」按钮 / Ctrl+Enter → mathInsert.submitCompose() 提交到主编辑器
 import { create } from "zustand";
 import { SLOT_MARK } from "@/editor/slotRange";
 
@@ -24,9 +24,6 @@ export const RECENT_CAP = 12;
 /** 编写区字号范围（缩放步进 1px） */
 const FONT_MIN = 10;
 const FONT_MAX = 50;
-/** 输出区预览缩放范围（%，步进 25） */
-const ZOOM_MIN = 50;
-const ZOOM_MAX = 400;
 
 const clamp = (v: number, len: number) => Math.min(Math.max(v, 0), len);
 
@@ -39,12 +36,10 @@ export interface ComposeState {
   selEnd: number;
   /** 选区/光标变更序号：程序化定位时递增，MathCompose 据此同步 textarea 选区 */
   cursorSeq: number;
-  /** 源码 / 可视化（可视化 = KaTeX 只读渲染，点空槽切回源码定位） */
+  /** 源码 / 可视化（可视化 = KaTeX 渲染主编辑面，轻量插槽式可编辑） */
   mode: "source" | "visual";
-  /** 编写区字号 px（可视化模式下为渲染字号） */
+  /** 编写区字号 px（可视化模式下为渲染字号，源码下区预览同步跟随） */
   fontSize: number;
-  /** 输出区预览缩放 % */
-  previewZoom: number;
   /** 最近使用（新→旧） */
   recent: RecentItem[];
 
@@ -59,10 +54,8 @@ export interface ComposeState {
   /** 用 prefix/suffix 包裹当前选区（样式工具）；无选区时中间插 \Box 并选中 */
   wrapSelection: (prefix: string, suffix: string) => void;
   setMode: (m: "source" | "visual") => void;
-  /** 编写区字号缩放（±1px，clamp 11–20） */
+  /** 编写区字号缩放（±1px，clamp 10–50） */
   zoomFont: (d: number) => void;
-  /** 输出区预览缩放（±25%，clamp 50–200） */
-  zoomPreview: (d: number) => void;
   clear: () => void;
   pushRecent: (it: RecentItem) => void;
 }
@@ -74,7 +67,6 @@ export const useComposeStore = create<ComposeState>((set) => ({
   cursorSeq: 0,
   mode: "source", 
   fontSize: 20,  // 默认编写字号 20 px
-  previewZoom: 150, // 默认输出区 150%
   recent: [],
 
   edit: (t, selStart, selEnd) => set({ text: t, selStart, selEnd }),
@@ -119,10 +111,6 @@ export const useComposeStore = create<ComposeState>((set) => ({
   setMode: (m) => set({ mode: m }),
   zoomFont: (d) =>
     set((s) => ({ fontSize: Math.min(FONT_MAX, Math.max(FONT_MIN, s.fontSize + d)) })),
-  zoomPreview: (d) =>
-    set((s) => ({
-      previewZoom: Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, s.previewZoom + d)),
-    })),
   clear: () =>
     set((s) => ({ text: "", selStart: 0, selEnd: 0, cursorSeq: s.cursorSeq + 1 })),
   pushRecent: (it) =>
