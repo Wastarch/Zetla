@@ -528,12 +528,6 @@
         "subcat": "箭头符号"
     },
     {
-        "name": "uparrow ",
-        "cmd": "\\uparrow",
-        "category": "常用符号",
-        "subcat": "箭头符号"
-    },
-    {
         "name": "Downarrow",
         "cmd": "\\Downarrow",
         "category": "常用符号",

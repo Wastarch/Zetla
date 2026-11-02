@@ -5713,7 +5713,9 @@ body.row-resizing {
 .math-compose-ta {
   display: block;
   width: 100%;
-  height: 84px;
+  /* 与 .math-compose-render 按 1:1 平分 .math-compose 剩余高度（空间不足时各自缩到 min-height，仍等高） */
+  flex: 1 1 0;
+  min-height: 60px;
   resize: none;
   padding: 8px 10px;
   font-family: var(--font-mono, monospace);
@@ -5726,11 +5728,11 @@ body.row-resizing {
   outline: none;
 }
 
-/* 源码模式下区：KaTeX 实时渲染预览（只读，点空槽定位光标）—— 随下方区域放大而增高 */
+/* 源码模式下区：KaTeX 实时渲染预览（只读，点空槽定位光标）—— 与 .math-compose-ta 按 1:1 平分剩余高度 */
 .math-compose-render {
   position: relative;
-  flex: 1 1 auto;
-  min-height: 84px;
+  flex: 1 1 0;
+  min-height: 60px;
   padding: 10px 12px;
   background: var(--bg-3);
   border: 1px solid var(--line);
@@ -5924,10 +5926,9 @@ body.row-resizing {
 
 /* 二级工具栏（两行） */
 .math-tools {
-  /* 随下方区域一起放大：与 .math-compose 按 1:1 同步增长，max-height 兜底防工具栏过高 */
-  flex: 1 1 auto;
-  min-height: 56px;
-  max-height: 132px;
+  /* 固定 70px：不随下方区域缩放，剩余高度全部留给编写区（输入框+预览 1:1 平分） */
+  flex: 0 0 auto;
+  height: 70px;
   display: flex;
   flex-direction: column;
   justify-content: space-evenly;

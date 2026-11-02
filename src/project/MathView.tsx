@@ -27,7 +27,7 @@ const TAB_LABELS: { id: MathTab; label: string }[] = [
   { id: "library", label: "公式模板" },
 ];
 
-/** 编写区（下方工具栏+编写区）可调高度：默认/最小同值（320 = 工具栏56 + 输入框84 + 预览84 + 动作条43 + 间隙）；
+/** 编写区（下方工具栏+编写区）可调高度：默认/最小同值（320 = 工具栏70 + 输入框60 + 预览60 + 动作条43 + 间隙/内边距）；
  *  最大按输入区域高度动态计算。与 zetla.css 的 --math-bottom-min 保持一致（改值需同步两处）。 */
 const DEFAULT_BOTTOM_H = 320;
 const MIN_BOTTOM_H = 320;
