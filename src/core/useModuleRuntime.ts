@@ -7,6 +7,7 @@ import { useSettingsStore } from "./settings";
 import { registerMathModule } from "@/modules/formula/mathModule";
 import { registerTableModule } from "@/modules/table/tableModule";
 import { registerSnippetsModule } from "@/modules/snippets/snippetsModule";
+import { registerFigureModule } from "@/modules/figure/figureModule";
 
 export function useModuleRuntime(): void {
   useEffect(() => {
@@ -23,6 +24,9 @@ export function useModuleRuntime(): void {
 
     // M2-5c · 代码片段模块（纯钩子）：设置页开关控制补全源与 Tab 直展是否生效
     registerSnippetsModule();
+
+    // 拼图模块（F2 起）：自带侧栏视图「拼图」，活动栏图标/视图菜单由协议自动接入
+    registerFigureModule();
 
     // 设置页覆盖值 → 注册表：
     // - 配置未加载完成前传 null（各模块走 defaultEnabled）
