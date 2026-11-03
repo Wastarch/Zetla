@@ -70,6 +70,7 @@ export default function FigureSidebar() {
   const setGrid = useFigureStore((s) => s.setGrid);
   const setMode = useFigureStore((s) => s.setMode);
   const setSelectedIndex = useFigureStore((s) => s.setSelectedIndex);
+  const reorder = useFigureStore((s) => s.reorder);
   const reset = useFigureStore((s) => s.reset);
 
   const cells = layout.cells;
@@ -324,6 +325,7 @@ export default function FigureSidebar() {
             cells={cells}
             selectedIndex={selectedIndex}
             onSelect={setSelectedIndex}
+            onReorder={reorder}
           />
           {selectedIndex >= 0 && selectedIndex < cells.length ? (
             <CellEditor cell={cells[selectedIndex]!} index={selectedIndex} />

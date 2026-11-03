@@ -11,6 +11,7 @@ import {
   VAlign,
   defaultLayout,
   makeCell,
+  subLabel,
 } from "@/types/figure";
 
 export interface FigureState {
@@ -29,6 +30,8 @@ export interface FigureState {
   setGrid: (rows: number, cols: number) => void;
   /** 删除单个子图（清除这张图），并修正选中索引 */
   removeCell: (index: number) => void;
+  /** 移动子图位置（拖拽排序）；同时按新位置重排 label 与选中索引 */
+  reorder: (from: number, to: number) => void;
   /** 更新单格字段（label 由索引自动生成，不在此覆盖） */
   updateCell: (index: number, patch: Partial<Omit<FigureCell, "label">>) => void;
   /** 设置单格裁剪（四边归一化 0–1） */
@@ -56,6 +59,22 @@ export interface FigureState {
 
 const clampGrid = (n: number) => Math.max(1, Math.floor(n));
 const clampRatio = (n: number) => Math.min(1, Math.max(0, n));
+
+/**
+ * 按当前顺序重排每格 label（fig:sub-a/b/c…）。
+ * label 在 makeCell 时按索引写死，删除/拖拽排序后位置会变，必须重算，
+ * 否则展示徽标（按位置）与生成代码里的 \label（按旧 label）会错位。
+ */
+function relabel(cells: FigureCell[]): FigureCell[] {
+  let changed = false;
+  const next = cells.map((c, i) => {
+    const want = subLabel(i);
+    if (c.label === want) return c;
+    changed = true;
+    return { ...c, label: want };
+  });
+  return changed ? next : cells;
+}
 
 /**
  * 按图片数量自动给出接近正方形的网格（如 4→2×2、5→3×2、6→3×2）。
@@ -117,11 +136,31 @@ export const useFigureStore = create<FigureState>((set) => ({
       const cells = s.layout.cells.slice();
       if (index < 0 || index >= cells.length) return s;
       cells.splice(index, 1);
+      // 删除后位置前移，重新按新顺序编号（否则 fig:sub-b 之后会跳号/错位）
+      const next = relabel(cells);
       // 选中索引修正：删除的正是选中项→取消选中；之后的项索引前移
       const sel = s.layout.selectedIndex;
       const selectedIndex =
         sel === index ? -1 : sel > index ? sel - 1 : sel;
-      return { layout: { ...s.layout, cells, selectedIndex } };
+      return { layout: { ...s.layout, cells: next, selectedIndex } };
+    }),
+
+  reorder: (from, to) =>
+    set((s) => {
+      const cells = s.layout.cells.slice();
+      const n = cells.length;
+      if (from < 0 || from >= n || to < 0 || to >= n || from === to) return s;
+      const [moved] = cells.splice(from, 1);
+      cells.splice(to, 0, moved!);
+      // 顺序变了 → 重排 label，保证徽标 / 生成代码 / 预览三者编号一致
+      const next = relabel(cells);
+      // 选中索引跟随：移动项指向新位置；区间内的项整体 ±1 平移
+      const sel = s.layout.selectedIndex;
+      let selectedIndex = sel;
+      if (sel === from) selectedIndex = to;
+      else if (from < sel && sel <= to) selectedIndex = sel - 1;
+      else if (to <= sel && sel < from) selectedIndex = sel + 1;
+      return { layout: { ...s.layout, cells: next, selectedIndex } };
     }),
 
   updateCell: (index, patch) =>

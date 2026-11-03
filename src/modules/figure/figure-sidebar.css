@@ -127,6 +127,7 @@
   border-radius: 6px;
   padding: 4px;
   background: #fbfcfe;
+  user-select: none;
 }
 
 .figside-cell {
@@ -137,6 +138,40 @@
   border-radius: 5px;
   cursor: pointer;
   border-left: 3px solid transparent;
+  position: relative;
+  touch-action: none;
+}
+
+/* 拖拽排序手柄（仅作 affordance，整行可拖） */
+.figside-grip {
+  flex: 0 0 auto;
+  width: 10px;
+  color: #b6bcc6;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: -2px;
+  cursor: grab;
+  user-select: none;
+}
+
+.figside-cell:hover .figside-grip {
+  color: #7d8695;
+}
+
+.figside-cell:active .figside-grip,
+.figside-cell.is-dragging .figside-grip {
+  cursor: grabbing;
+}
+
+/* 拖拽中：源行半透明 */
+.figside-cell.is-dragging {
+  opacity: 0.45;
+}
+
+/* 悬停落点：顶部插入指示线 */
+.figside-cell.is-over {
+  background: #eef2fb;
+  box-shadow: inset 0 2px 0 #2563eb;
 }
 
 .figside-cell:hover {
