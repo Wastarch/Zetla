@@ -1,0 +1,107 @@
+/* P2 · 拼图中心 Tab 预览样式 —— MVP 仅亮色主题 */
+.fig-approx {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-sizing: border-box;
+  overflow: auto;
+  background: #eef1f5;
+}
+
+/* 模拟纸张 */
+.fig-approx-paper {
+  margin: 0 auto;
+  width: min(720px, 100%);
+  background: #fff;
+  border: 1px solid #d9dde3;
+  border-radius: 6px;
+  padding: 28px 32px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+/* 模拟 \textwidth 版心 */
+.fig-approx-textwidth {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.fig-approx-row {
+  display: flex;
+  align-items: stretch;
+}
+
+.fig-approx-sub {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  min-width: 0;
+}
+
+.fig-approx-letter {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  z-index: 2;
+  font-weight: 700;
+  font-size: 12px;
+  color: #2563eb;
+  background: rgba(255, 255, 255, 0.82);
+  border-radius: 3px;
+  padding: 0 3px;
+}
+
+.fig-approx-imgwrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  background: #f5f7f9;
+  border: 1px solid #e4e7ec;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.fig-approx-img {
+  position: absolute;
+  max-width: none;
+  object-fit: fill;
+}
+
+.fig-approx-scap {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #333;
+  text-align: center;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.fig-approx-cap {
+  margin-top: 8px;
+  text-align: center;
+  font-size: 13px;
+  color: #2a2f3a;
+}
+
+.fig-approx-note {
+  margin: 12px auto 0;
+  max-width: 720px;
+  font-size: 11px;
+  color: #8a909a;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* composite 占位（P3 实现） */
+.fig-preview-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  color: #8a909a;
+  text-align: center;
+}

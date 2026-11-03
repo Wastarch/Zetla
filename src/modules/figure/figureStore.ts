@@ -17,9 +17,11 @@ export interface FigureState {
   layout: FigureLayout;
   /** 是否处于画布编辑态（单图直插不走画布；F6 多图导入置 true） */
   active: boolean;
+  /** 导入时的目标 .tex 路径（生成代码时插入此文件，即便拼图 Tab 当前活动） */
+  targetTex: string | null;
 
   /** 用一批图片路径初始化画布（多图导入预填，行优先；F6 调用） */
-  initFromImages: (paths: string[]) => void;
+  initFromImages: (paths: string[], targetTex?: string | null) => void;
   /** 追加图片到画布（画布内“添加图片”入口，F6） */
   addImages: (paths: string[]) => void;
   /** 设置网格行列（≥1，向下取整） */
@@ -34,6 +36,12 @@ export interface FigureState {
   setGaps: (gapCol: number, gapRow: number) => void;
   /** 设置统一尺寸模式 */
   setUniform: (u: UniformMode) => void;
+  /** 设置渲染 / 导出模式（subfigure | composite，两模式平级） */
+  setMode: (m: "subfigure" | "composite") => void;
+  /** 设置选中子图索引（-1 未选） */
+  setSelectedIndex: (i: number) => void;
+  /** 记录某格自然尺寸（缩略图 onLoad 回填，供 §4.2 预算与裁剪换算） */
+  setNaturalSize: (index: number, size: { w: number; h: number }) => void;
   /** 设置外层标题 / label */
   setCaption: (c: string) => void;
   setLabel: (l: string) => void;
@@ -49,10 +57,12 @@ const clampRatio = (n: number) => Math.min(1, Math.max(0, n));
 export const useFigureStore = create<FigureState>((set) => ({
   layout: defaultLayout(),
   active: false,
+  targetTex: null,
 
-  initFromImages: (paths) =>
+  initFromImages: (paths, targetTex) =>
     set((s) => ({
       active: true,
+      targetTex: targetTex ?? s.targetTex,
       layout: {
         ...s.layout,
         cells: paths.map((p, i) => makeCell(p, i)),
@@ -106,6 +116,18 @@ export const useFigureStore = create<FigureState>((set) => ({
     })),
 
   setUniform: (uniform) => set((s) => ({ layout: { ...s.layout, uniform } })),
+  setMode: (mode) => set((s) => ({ layout: { ...s.layout, mode } })),
+  setSelectedIndex: (selectedIndex) =>
+    set((s) => ({ layout: { ...s.layout, selectedIndex } })),
+  setNaturalSize: (index, size) =>
+    set((s) => {
+      const cells = s.layout.cells.slice();
+      if (index < 0 || index >= cells.length) return s;
+      const prev = cells[index].naturalSize;
+      if (prev && prev.w === size.w && prev.h === size.h) return s;
+      cells[index] = { ...cells[index], naturalSize: size };
+      return { layout: { ...s.layout, cells } };
+    }),
   setCaption: (caption) => set((s) => ({ layout: { ...s.layout, caption } })),
   setLabel: (label) => set((s) => ({ layout: { ...s.layout, label } })),
   setActive: (active) => set({ active }),

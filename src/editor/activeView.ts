@@ -28,6 +28,11 @@ export function clearAllSearchQueries(): void {
   for (const v of viewsByPath.values()) clearQueryInView(v);
 }
 
+/** 按路径取已注册的编辑器视图（即使该缓冲当前非活动也能插入；拼图生成用）。 */
+export function getEditorView(path: string): EditorView | null {
+  return viewsByPath.get(path) ?? null;
+}
+
 /** 激活标签变化/编辑器卸载时登记（null = 无活动编辑器） */
 export function setActiveView(v: EditorView | null): void {
   view = v;

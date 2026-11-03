@@ -36,10 +36,12 @@ export async function pickImagesToCanvas(append = false): Promise<void> {
   if (results.length === 0) return;
 
   const rels = results.map((r) => relativePath(ctx.texDir, r.absPath));
+  // 记录导入时的目标 .tex（生成代码时即便拼图 Tab 活动也能插入此文件）
+  const targetTex = useBuffersStore.getState().activePath;
   if (append) {
     useFigureStore.getState().addImages(rels);
   } else {
-    useFigureStore.getState().initFromImages(rels);
+    useFigureStore.getState().initFromImages(rels, targetTex);
   }
   // 确保在拼图画布视图（若从别处触发，自动切过去），并打开中心预览 Tab
   useAppStore.getState().setSidebarView("figure");

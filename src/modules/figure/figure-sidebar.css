@@ -1,0 +1,378 @@
+/* P2 · 拼图侧栏控制面板样式 —— MVP 仅亮色主题 */
+.figside {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.figside-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.figside-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2a2f3a;
+}
+
+/* 模式开关（segmented control） */
+.figside-modes {
+  display: flex;
+  border: 1px solid #d4d7dd;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.figside-mode {
+  flex: 1;
+  padding: 6px 8px;
+  border: none;
+  background: #fff;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  border-right: 1px solid #d4d7dd;
+}
+
+.figside-mode:last-child {
+  border-right: none;
+}
+
+.figside-mode.is-on {
+  background: #2563eb;
+  color: #fff;
+}
+
+.figside-mode:disabled {
+  color: #b6bac1;
+  cursor: not-allowed;
+}
+
+/* 行列输入 + 工具按钮行 */
+.figside-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.figside-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #444;
+  white-space: nowrap;
+}
+
+.figside-field input {
+  width: 46px;
+  padding: 3px 5px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.figside-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: #8a909a;
+}
+
+/* 通用按钮（窄侧栏不换行、不被压） */
+.figside .btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  padding: 5px 10px;
+  font-size: 12px;
+  border: 1px solid #d4d7dd;
+  border-radius: 5px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.figside .btn:hover {
+  border-color: #9db5e6;
+}
+
+.figside .btn:disabled {
+  color: #b6bac1;
+  cursor: not-allowed;
+}
+
+.figside .btn.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.figside .btn.primary:hover {
+  background: #1d4fd7;
+}
+
+/* 子图列表 */
+.figside-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid #e4e7ec;
+  border-radius: 6px;
+  padding: 4px;
+  background: #fbfcfe;
+}
+
+.figside-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 5px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+}
+
+.figside-cell:hover {
+  background: #eef2fb;
+}
+
+.figside-cell.is-sel {
+  background: #e7eefc;
+  border-left-color: #2563eb;
+}
+
+.figside-badge {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2563eb;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.figside-thumb {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 4px;
+  background: #f5f7f9;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.figside-thumb img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.figside-cell-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.figside-cell-name {
+  font-size: 12px;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.figside-cell-label {
+  font-size: 10px;
+  color: #9aa0a8;
+}
+
+/* 子图编辑器 / 间距控件卡片 */
+.figside-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #dfe2e8;
+  border-radius: 6px;
+  background: #fbfcfe;
+}
+
+.figside-card-head {
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+}
+
+.figside-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.figside-edit-col {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+}
+
+.figside-label {
+  font-size: 12px;
+  color: #444;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.figside-input {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.figside-num {
+  width: 64px;
+  padding: 3px 5px;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+
+.figside-hint {
+  font-size: 11px;
+  color: #9aa0a8;
+}
+
+/* 对齐分段按钮 */
+.figside-seg {
+  display: inline-flex;
+  border: 1px solid #d4d7dd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.figside-seg-btn {
+  padding: 3px 12px;
+  border: none;
+  background: #fff;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+  border-right: 1px solid #d4d7dd;
+}
+
+.figside-seg-btn:last-child {
+  border-right: none;
+}
+
+.figside-seg-btn.is-on {
+  background: #2563eb;
+  color: #fff;
+}
+
+/* 裁剪四值网格 */
+.figside-crop-grid {
+  display: grid;
+  grid-template-columns: repeat(4, auto);
+  gap: 8px;
+}
+
+.figside-crop-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: #444;
+}
+
+/* 间距滑块 */
+.figside-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.figside-slider-row input[type="range"] {
+  flex: 1;
+}
+
+/* 子标题内联预览（复用 SubCaptionPreview） */
+.figside-scap {
+  font-size: 13px;
+  color: #333;
+  line-height: 1.5;
+  word-break: break-word;
+  padding: 4px 6px;
+  background: #fff;
+  border: 1px dashed #d4d7dd;
+  border-radius: 4px;
+}
+
+.figside-scap-empty {
+  font-size: 12px;
+  color: #c2c7cf;
+}
+
+/* 主操作区（sticky 底部） */
+.figside-actions {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eceff3;
+}
+
+.figside-actions .btn {
+  width: 100%;
+  padding: 8px;
+  font-size: 13px;
+}
+
+/* 导言区缺失警告横幅 */
+.figside-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid #f0c36d;
+  border-radius: 6px;
+  background: #fff8e6;
+  font-size: 12px;
+  color: #7a5a00;
+}
+
+.figside-banner .btn {
+  padding: 3px 8px;
+  font-size: 11px;
+  border-color: #e0a93b;
+  background: #fff;
+  color: #7a5a00;
+}
+
+/* 空态 */
+.figside-empty {
+  padding: 24px 12px;
+  text-align: center;
+  color: #8a909a;
+  font-size: 13px;
+}
+
+.figside-empty p {
+  margin: 0 0 12px;
+}

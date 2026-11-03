@@ -87,7 +87,9 @@ function finalize(results: ImportImageResult[], texDir: string): void {
 function importToCanvas(results: ImportImageResult[], texDir: string): void {
   if (results.length === 0) return;
   const rels = results.map((r) => relativePath(texDir, r.absPath));
-  useFigureStore.getState().initFromImages(rels);
+  // 记录导入时的目标 .tex（生成代码时即便拼图 Tab 活动也能插入此文件）
+  const targetTex = useBuffersStore.getState().activePath;
+  useFigureStore.getState().initFromImages(rels, targetTex);
   // 自动切到拼图画布视图（侧栏展开）+ 打开中心预览 Tab（P1）
   useAppStore.getState().setSidebarView("figure");
   useBuffersStore.getState().openFigure();

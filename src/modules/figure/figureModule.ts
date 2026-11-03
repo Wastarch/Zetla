@@ -16,6 +16,6 @@ export function registerFigureModule(): void {
     defaultEnabled: true,
     // 不声明 slot：UI 由自带视图（view）承载，避免被 ModuleDock 重复挂载
     view: { id: "figure", icon: "image", label: "拼图", order: 6 },
-    component: lazy(() => import("./FigureCanvas")),
+    component: lazy(() => import("./FigureSidebar")),
   });
 }
