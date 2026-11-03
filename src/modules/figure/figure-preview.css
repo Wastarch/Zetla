@@ -61,9 +61,27 @@
   overflow: hidden;
 }
 
-/* PDF 无栅格预览，占位卡需要一个可见高度（不参与“尺寸诚实”语义） */
+/* PDF 单元格：wrapper 由内联 aspect-ratio 撑高（首页 pt 比例），画布铺满 */
 .fig-approx-imgwrap.pdf {
-  min-height: 160px;
+  background: #f5f7f9;
+}
+
+.fig-approx-pdf-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* PDF 加载中 / 失败提示（覆盖在 wrapper 上） */
+.fig-approx-pdf-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  color: #6d4bd1;
+  background: #f3f0ff;
 }
 
 /* 未裁剪：正常文档流，按列宽等比、保留原始宽高比（贴近 LaTeX \includegraphics[width=...]） */

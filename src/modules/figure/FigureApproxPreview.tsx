@@ -7,44 +7,55 @@ import { useFigureStore } from "./figureStore";
 import { computeRowLayout } from "./figureGen";
 import { subFigureLetter, FigureCell } from "@/types/figure";
 import SubCaptionPreview from "./SubCaptionPreview";
+import PdfThumb from "./PdfThumb";
 import { cellPreviewUrl, isPdfSource } from "./figurePreviewUrl";
 
 const hideOnErr = (e: SyntheticEvent<HTMLImageElement>) => {
   (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
 };
 
-/** 子图可见区域（crop 左上角原点）的 DOM 裁剪包装；PDF 显示占位卡 */
-function CroppedImage({ cell }: { cell: FigureCell }) {
+/** 子图可见区域（crop 左上角原点）的 DOM 裁剪包装；PDF 渲染首页 canvas */
+function CroppedImage({ cell, index }: { cell: FigureCell; index: number }) {
   const { l, b, r, t } = cell.crop;
   const anyCrop = l || b || r || t;
   const ns = cell.naturalSize;
   const pdf = isPdfSource(cell.source);
   const url = cellPreviewUrl(cell);
+  const vw = Math.max(0.01, 1 - l - r);
+  const vh = Math.max(0.01, 1 - t - b);
+  // 裁剪时把可见区域放大填满 wrapper（左上角原点），img / canvas 同口径
+  const cropStyle = {
+    position: "absolute",
+    width: `${(1 / vw) * 100}%`,
+    height: `${(1 / vh) * 100}%`,
+    left: `${-(l / vw) * 100}%`,
+    top: `${-(t / vh) * 100}%`,
+  } as const;
 
-  if (pdf || !url) {
-    return <div className="fig-approx-img fig-approx-pdf">PDF</div>;
+  if (pdf) {
+    return (
+      <PdfThumb
+        cell={cell}
+        index={index}
+        canvasStyle={anyCrop ? cropStyle : { display: "block", width: "100%", height: "100%" }}
+      />
+    );
+  }
+  if (!url) {
+    return <div className="fig-approx-img fig-approx-pdf">无预览</div>;
   }
   if (!anyCrop || !ns || ns.w === 0 || ns.h === 0) {
     return (
       <img className="fig-approx-img" src={url} alt="" style={{ display: "block" }} onError={hideOnErr} />
     );
   }
-  const vw = Math.max(0.01, 1 - l - r);
-  const vh = Math.max(0.01, 1 - t - b);
   // 把可见区域（l,t）→（l+vw, t+vh）映射到 wrapper：scale + translate（左上角原点）
   return (
     <img
       className="fig-approx-img"
       src={url}
       alt=""
-      style={{
-        position: "absolute",
-        objectFit: "fill",
-        width: `${(1 / vw) * 100}%`,
-        height: `${(1 / vh) * 100}%`,
-        left: `${-(l / vw) * 100}%`,
-        top: `${-(t / vh) * 100}%`,
-      }}
+      style={{ ...cropStyle, objectFit: "fill" }}
       onError={hideOnErr}
     />
   );
@@ -82,11 +93,9 @@ export default function FigureApproxPreview() {
                 {rl.indices.map((gi, i) => {
                   const cell = cells[gi]!;
                   // 诚实预览：非裁剪图靠相对 <img> 撑开真实高度；
-                  // 裁剪图去掉 min-height 后需显式按可见区域真实宽高比撑高，避免塌成 0 高；
-                  // PDF 无栅格预览，走 .pdf 占位盒（CSS 给固定高）。
+                  // 裁剪图与 PDF 显式按真实宽高比撑高 wrapper（避免塌成 0 高）。
                   const pdf = isPdfSource(cell.source);
                   const wrapStyle: CSSProperties | undefined = (() => {
-                    if (pdf) return undefined;
                     const { l, b, r, t } = cell.crop;
                     const anyCrop = l || b || r || t;
                     const ns = cell.naturalSize;
@@ -94,6 +103,10 @@ export default function FigureApproxPreview() {
                       const vw = Math.max(0.01, 1 - l - r);
                       const vh = Math.max(0.01, 1 - t - b);
                       return { aspectRatio: `${(vw * ns.w) / (vh * ns.h)}` };
+                    }
+                    // PDF 无 <img> 撑高：按首页 pt 宽高比撑开（加载前给 4:3 兜底）
+                    if (pdf) {
+                      return { aspectRatio: ns && ns.h > 0 ? `${ns.w / ns.h}` : "4 / 3" };
                     }
                     return undefined;
                   })();
@@ -105,7 +118,7 @@ export default function FigureApproxPreview() {
                     >
                       <span className="fig-approx-letter">{subFigureLetter(gi)}</span>
                       <div className={pdf ? "fig-approx-imgwrap pdf" : "fig-approx-imgwrap"} style={wrapStyle}>
-                        <CroppedImage cell={cell} />
+                        <CroppedImage cell={cell} index={gi} />
                       </div>
                       <div className="fig-approx-scap">
                         <SubCaptionPreview text={cell.subCaption} />
