@@ -1,4 +1,6 @@
-/* P2 · 拼图中心 Tab 预览样式 —— MVP 仅亮色主题 */
+/* P2 · 拼图中心 Tab 预览样式
+   主题：外围容器/说明走全局 token；「纸张」保持白纸黑字（它模拟真实 PDF 页面，
+   深色主题下也不应反转，否则预览与编译产物观感不一致）。 */
 .fig-approx {
   position: absolute;
   inset: 0;
@@ -7,7 +9,7 @@
   padding: 20px;
   box-sizing: border-box;
   overflow: auto;
-  background: #eef1f5;
+  background: var(--bg);
 }
 
 /* 模拟纸张：左右留白按页面宽度百分比近似真实页边距（\textwidth ≈ 页宽 76–80%） */
@@ -18,7 +20,7 @@
   border: 1px solid #d9dde3;
   border-radius: 6px;
   padding: 24px 10%;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
 }
 
 /* 模拟 \textwidth 版心：行间距由每组 row 的 margin-top 控制（等价 \vspace{gapRow\textwidth}） */
@@ -126,7 +128,8 @@
   margin: 12px auto 0;
   max-width: 720px;
   font-size: 11px;
-  color: #8a909a;
+  color: var(--txt);
+  opacity: 0.62;
   text-align: center;
   line-height: 1.5;
 }
@@ -139,6 +142,7 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  color: #8a909a;
+  color: var(--txt);
+  opacity: 0.65;
   text-align: center;
 }
