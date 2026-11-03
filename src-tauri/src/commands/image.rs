@@ -126,6 +126,29 @@ pub fn import_image_from_path(
     import_image(root, image_dir, file_name, bytes)
 }
 
+/// 查询项目图片目录下是否已存在同名文件（生成前同名冲突检测用）。
+/// 路径处理与 place_image 一致（相对根子目录 + 越界防护）。
+#[tauri::command]
+pub fn image_exists(root: String, image_dir: String, file_name: String) -> bool {
+    let root_path = Path::new(&root);
+    if !root_path.is_dir() {
+        return false;
+    }
+    let dir_norm = image_dir
+        .trim()
+        .trim_matches(|c| c == '/' || c == '\\')
+        .to_string();
+    let dir_path: PathBuf = if dir_norm.is_empty() {
+        root_path.to_path_buf()
+    } else {
+        root_path.join(&dir_norm)
+    };
+    if !dir_path.starts_with(root_path) {
+        return false;
+    }
+    dir_path.join(&file_name).exists()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +196,21 @@ mod tests {
         let r = place_image(root.to_str().unwrap(), "", "x.png", b"1").unwrap();
         assert_eq!(r.rel_root_path, "x.png");
         assert!(root.join("x.png").is_file());
+    }
+
+    #[test]
+    fn reports_existing_and_missing() {
+        let root = tmp_root("exists");
+        let _ = place_image(root.to_str().unwrap(), "figure", "pic.png", b"a").unwrap();
+        assert!(image_exists(
+            root.to_str().unwrap().to_string(),
+            "figure".to_string(),
+            "pic.png".to_string()
+        ));
+        assert!(!image_exists(
+            root.to_str().unwrap().to_string(),
+            "figure".to_string(),
+            "nope.png".to_string()
+        ));
     }
 }

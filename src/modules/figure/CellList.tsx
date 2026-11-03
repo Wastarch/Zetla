@@ -1,5 +1,6 @@
 // P2 后续 · 子图选择列表（替代原「点格选中」交互）。
 // 行优先；编号徽标 + 缩略图 + 文件名 + label；选中行左侧蓝色竖条。
+// 再次点击已选中项取消选择（回到间距控制页）；每行带 × 删除按钮。
 // 缩略图 onLoad 回填空格 naturalSize（供 §4.2 预算 / 裁剪换算）。
 import { useFigureStore } from "./figureStore";
 import { subFigureLetter, FigureCell } from "@/types/figure";
@@ -16,6 +17,7 @@ interface Props {
 
 export default function CellList({ cells, selectedIndex, onSelect }: Props) {
   const setNaturalSize = useFigureStore((s) => s.setNaturalSize);
+  const removeCell = useFigureStore((s) => s.removeCell);
 
   if (cells.length === 0) return null;
 
@@ -25,7 +27,7 @@ export default function CellList({ cells, selectedIndex, onSelect }: Props) {
         <div
           key={i}
           className={i === selectedIndex ? "figside-cell is-sel" : "figside-cell"}
-          onClick={() => onSelect(i)}
+          onClick={() => onSelect(i === selectedIndex ? -1 : i)}
         >
           <span className="figside-badge">{subFigureLetter(i)}</span>
           <span className="figside-thumb">
@@ -37,6 +39,17 @@ export default function CellList({ cells, selectedIndex, onSelect }: Props) {
             </div>
             <div className="figside-cell-label">{cell.label}</div>
           </span>
+          <button
+            type="button"
+            className="figside-cell-del"
+            title="移除这张图"
+            onClick={(e) => {
+              e.stopPropagation();
+              removeCell(i);
+            }}
+          >
+            ×
+          </button>
         </div>
       ))}
     </div>

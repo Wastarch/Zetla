@@ -99,6 +99,9 @@ export const projectApi = {
   /** R5 插入菜单：从磁盘源路径复制图片到项目图片目录 */
   importImageFromPath: (root: string, imageDir: string, srcPath: string) =>
     call<ImportImageResult>("import_image_from_path", { root, imageDir, srcPath }),
+  /** R5 生成前同名冲突检测：项目图片目录下是否已存在同名文件 */
+  imageExists: (root: string, imageDir: string, fileName: string) =>
+    call<boolean>("image_exists", { root, imageDir, fileName }),
   /** R5 项目设置：写回 .ltex/config.json 的 imageDir */
   saveProjectConfig: (root: string, imageDir: string) =>
     call<void>("save_project_config", { root, imageDir }),

@@ -85,6 +85,7 @@ pub fn run() {
             // R5 拖拽图片导入（M1-7）
             commands::image::import_image,
             commands::image::import_image_from_path,
+            commands::image::image_exists,
             // 项目目录监听（M0-9a）
             commands::watch::watch_project,
             commands::watch::unwatch_project,

@@ -1,7 +1,7 @@
 // P2 · 拼图侧栏控制面板（替代原 F2 侧栏内画布）。
 // 纯控制，不渲染画布：模式开关 / 行列 / 导入清空预览 / CellList / CellEditor ⇄ GapControls /
 // subcaption 检测横幅 / 底部随模式变化的主操作（subfigure→生成代码；composite→P3 占位）。
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { useFigureStore } from "./figureStore";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -19,6 +19,15 @@ import CellList from "./CellList";
 import CellEditor from "./CellEditor";
 import GapControls from "./GapControls";
 import "./figure-sidebar.css";
+
+/** 同名冲突项：索引 + 拟落盘文件名 + 处理选择 */
+interface Conflict {
+  index: number;
+  fileName: string;
+  choice: "use" | "rename";
+}
+
+const basename = (p: string): string => p.split(/[\\/]/).pop() ?? p;
 
 /** 把生成代码插入到指定视图光标处（活动缓冲非 tex 时仍可用目标 tex 视图） */
 function insertGenerated(view: EditorView, code: string): { from: number; to: number } {
@@ -110,6 +119,37 @@ export default function FigureSidebar() {
     const imageDir = project.tree?.imageDir?.trim() || "figure";
     const texDir = parentOf(targetTex);
 
+    // 1) 计算每格拟落盘文件名，并检测 figure/ 下是否已存在同名文件
+    const intended: { index: number; name: string }[] = [];
+    for (let i = 0; i < cells.length; i++) {
+      const src = cells[i]!.source;
+      if (!src) continue; // 已落盘（cell.path 已填），无同名冲突
+      intended.push({ index: i, name: src.kind === "path" ? basename(src.abs) : src.file.name });
+    }
+    const found: Conflict[] = [];
+    for (const it of intended) {
+      try {
+        const exists = await projectApi.imageExists(root, imageDir, it.name);
+        if (exists) found.push({ index: it.index, fileName: it.name, choice: "use" });
+      } catch {
+        // 检测失败不阻断：按“重命名”处理（Rust 端 dedup 兜底）
+      }
+    }
+    if (found.length > 0) {
+      setConflicts(found); // 弹窗让用户选择；确认后调用 doGenerate
+      return;
+    }
+    await doGenerate(new Map(), root, imageDir, texDir, targetTex);
+  };
+
+  // 真正落盘 + 生成 + 插入（由 handleGenerate 或冲突弹窗确认后调用）
+  const doGenerate = async (
+    choices: Map<number, "use" | "rename">,
+    root: string,
+    imageDir: string,
+    texDir: string,
+    targetTex: string,
+  ) => {
     // 1) 生成时才把“用到的图”落盘到 figure/（path 级拷文件；file 级读字节），并回填 LaTeX 相对路径
     const relPaths: string[] = [];
     for (let i = 0; i < cells.length; i++) {
@@ -118,6 +158,13 @@ export default function FigureSidebar() {
       if (!src) {
         // 兜底：已落盘链路（cell.path 已为相对路径）
         relPaths[i] = cell.path;
+        continue;
+      }
+      const name = src.kind === "path" ? basename(src.abs) : src.file.name;
+      const choice = choices.get(i) ?? "rename";
+      if (choice === "use") {
+        // 复用 figure/ 中已有的同名文件（不再复制）
+        relPaths[i] = relativePath(texDir, `${root}/${imageDir}/${name}`);
         continue;
       }
       try {
@@ -132,7 +179,7 @@ export default function FigureSidebar() {
               );
         relPaths[i] = relativePath(texDir, res.absPath);
       } catch (e) {
-        notify(`图片「${src.kind === "path" ? src.abs : src.file.name}」落盘失败：${String(e)}`, "err");
+        notify(`图片「${name}」落盘失败：${String(e)}`, "err");
         return;
       }
     }
@@ -156,6 +203,32 @@ export default function FigureSidebar() {
     void useProjectStore.getState().refresh(); // figure/ 新增文件进资源树
     notify("已生成 subfigure 代码，后台编译自检中…", "ok");
     void startCompile({ live: true });
+  };
+
+  // 同名冲突弹窗的本地状态与操作
+  const [conflicts, setConflicts] = useState<Conflict[] | null>(null);
+  const updateChoice = (index: number, choice: "use" | "rename") =>
+    setConflicts((prev) =>
+      prev ? prev.map((c) => (c.index === index ? { ...c, choice } : c)) : prev,
+    );
+  const allUse = () =>
+    setConflicts((prev) => (prev ? prev.map((c) => ({ ...c, choice: "use" as const })) : prev));
+  const allRename = () =>
+    setConflicts((prev) => (prev ? prev.map((c) => ({ ...c, choice: "rename" as const })) : prev));
+  const confirmConflicts = async () => {
+    if (!conflicts) return;
+    const map = new Map<number, "use" | "rename">();
+    conflicts.forEach((c) => map.set(c.index, c.choice));
+    setConflicts(null);
+    const project = useProjectStore.getState();
+    const root = project.root;
+    const imageDir = project.tree?.imageDir?.trim() || "figure";
+    const texDir = targetTex ? parentOf(targetTex) : "";
+    if (!root || !targetTex) {
+      notify("缺少项目根或目标 .tex，无法生成", "err");
+      return;
+    }
+    await doGenerate(map, root, imageDir, texDir, targetTex);
   };
 
   const handleAddSubcaption = () => {
@@ -281,6 +354,62 @@ export default function FigureSidebar() {
           </button>
         )}
       </div>
+
+      {/* 同名冲突弹窗：生成前 figure/ 已存在同名文件时提示用现有 / 重命名 */}
+      {conflicts && (
+        <div className="figside-modal-overlay">
+          <div className="figside-modal">
+            <div className="figside-modal-head">figure/ 中存在同名文件</div>
+            <p className="figside-modal-sub">
+              以下图片在项目图片目录中已有同名文件，请选择处理方式（仅影响最终进入代码的文件）：
+            </p>
+            <ul className="figside-conflict-list">
+              {conflicts.map((c) => (
+                <li key={c.index} className="figside-conflict-item">
+                  <span className="figside-conflict-name" title={c.fileName}>
+                    {c.fileName}
+                  </span>
+                  <label className={c.choice === "use" ? "figside-radio is-on" : "figside-radio"}>
+                    <input
+                      type="radio"
+                      name={`cf-${c.index}`}
+                      checked={c.choice === "use"}
+                      onChange={() => updateChoice(c.index, "use")}
+                    />
+                    用 figure 中现有的
+                  </label>
+                  <label
+                    className={c.choice === "rename" ? "figside-radio is-on" : "figside-radio"}
+                  >
+                    <input
+                      type="radio"
+                      name={`cf-${c.index}`}
+                      checked={c.choice === "rename"}
+                      onChange={() => updateChoice(c.index, "rename")}
+                    />
+                    重命名复制新文件
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <div className="figside-modal-actions">
+              <button type="button" className="btn" onClick={allUse}>
+                全部用现有
+              </button>
+              <button type="button" className="btn" onClick={allRename}>
+                全部重命名
+              </button>
+              <span className="figside-spacer" />
+              <button type="button" className="btn" onClick={() => setConflicts(null)}>
+                取消
+              </button>
+              <button type="button" className="btn primary" onClick={confirmConflicts}>
+                确定并生成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

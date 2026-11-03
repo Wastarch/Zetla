@@ -3,7 +3,9 @@
 import { useFigureStore } from "./figureStore";
 import { VAlign, FigureCell, subFigureLetter } from "@/types/figure";
 import SubCaptionPreview from "./SubCaptionPreview";
+import { sourceName } from "./figurePreviewUrl";
 
+const basename = (p: string): string => p.split(/[\\/]/).pop() ?? p;
 const clampCrop = (n: number) => Math.min(1, Math.max(0, Number.isFinite(n) ? n : 0));
 const clampScale = (n: number) => Math.min(3, Math.max(0.1, Number.isFinite(n) ? n : 1));
 const cropKeys: (keyof FigureCell["crop"])[] = ["l", "b", "r", "t"];
@@ -19,11 +21,20 @@ export default function CellEditor({ cell, index }: Props) {
   const updateCell = useFigureStore((s) => s.updateCell);
   const setAlign = useFigureStore((s) => s.setAlign);
   const setCrop = useFigureStore((s) => s.setCrop);
+  const removeCell = useFigureStore((s) => s.removeCell);
 
   return (
     <div className="figside-card">
       <div className="figside-card-head">
-        当前子图 ({subFigureLetter(index)}) · {cell.path.split(/[\\/]/).pop()}
+        当前子图 ({subFigureLetter(index)}) · {basename(sourceName(cell.source) || cell.path)}
+        <button
+          type="button"
+          className="figside-card-del"
+          title="移除这张图"
+          onClick={() => removeCell(index)}
+        >
+          移除
+        </button>
       </div>
 
       <label className="figside-edit-col figside-edit-row">

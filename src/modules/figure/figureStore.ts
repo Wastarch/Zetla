@@ -27,6 +27,8 @@ export interface FigureState {
   addImages: (sources: FigureCellSource[]) => void;
   /** 设置网格行列（≥1，向下取整） */
   setGrid: (rows: number, cols: number) => void;
+  /** 删除单个子图（清除这张图），并修正选中索引 */
+  removeCell: (index: number) => void;
   /** 更新单格字段（label 由索引自动生成，不在此覆盖） */
   updateCell: (index: number, patch: Partial<Omit<FigureCell, "label">>) => void;
   /** 设置单格裁剪（四边归一化 0–1） */
@@ -86,6 +88,18 @@ export const useFigureStore = create<FigureState>((set) => ({
     set((s) => ({
       layout: { ...s.layout, rows: clampGrid(rows), cols: clampGrid(cols) },
     })),
+
+  removeCell: (index) =>
+    set((s) => {
+      const cells = s.layout.cells.slice();
+      if (index < 0 || index >= cells.length) return s;
+      cells.splice(index, 1);
+      // 选中索引修正：删除的正是选中项→取消选中；之后的项索引前移
+      const sel = s.layout.selectedIndex;
+      const selectedIndex =
+        sel === index ? -1 : sel > index ? sel - 1 : sel;
+      return { layout: { ...s.layout, cells, selectedIndex } };
+    }),
 
   updateCell: (index, patch) =>
     set((s) => {

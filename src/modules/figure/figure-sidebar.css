@@ -407,3 +407,156 @@
 .figside-empty p {
   margin: 0 0 12px;
 }
+
+/* 列表行删除按钮（×） */
+.figside-cell-del {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: #b6bac1;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+
+.figside-cell-del:hover {
+  background: #fdecec;
+  color: #e23b3b;
+}
+
+/* 编辑器内「移除」按钮 */
+.figside-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.figside-card-del {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid #e0a93b;
+  border-radius: 4px;
+  background: #fff;
+  color: #b4561a;
+  cursor: pointer;
+}
+
+.figside-card-del:hover {
+  background: #fff3e6;
+}
+
+/* 同名冲突弹窗 */
+.figside-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 24, 31, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.figside-modal {
+  width: min(440px, 90vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  padding: 18px 20px;
+  box-sizing: border-box;
+}
+
+.figside-modal-head {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2a2f3a;
+}
+
+.figside-modal-sub {
+  margin: 8px 0 12px;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.5;
+}
+
+.figside-conflict-list {
+  list-style: none;
+  margin: 0 0 14px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.figside-conflict-item {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 8px 10px;
+  border: 1px solid #e4e7ec;
+  border-radius: 6px;
+  background: #fbfcfe;
+}
+
+.figside-conflict-name {
+  flex: 1 1 100%;
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.figside-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #444;
+  cursor: pointer;
+}
+
+.figside-radio.is-on {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+.figside-modal-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.figside-modal-actions .btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid #d4d7dd;
+  border-radius: 5px;
+  background: #fff;
+  color: #333;
+  cursor: pointer;
+}
+
+.figside-modal-actions .btn.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.figside-spacer {
+  flex: 1;
+}
