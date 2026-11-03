@@ -14,9 +14,21 @@ export type VAlign = "t" | "c" | "b";
 /** 统一尺寸模式（§3.4）：统一高度 / 统一宽度 / 保持原比例 */
 export type UniformMode = "height" | "width" | "none";
 
+/**
+ * 子图来源（选图时记录，生成代码时才落盘到项目 figure/ 目录）。
+ * - path：菜单选图 / 拖入的原始磁盘路径 —— 预览零拷贝，生成时再拷入项目；
+ * - file：拖入 / 粘贴得到的 File（无稳定路径）—— 内存预览，生成时读字节落盘。
+ * 这样「选图」与「落盘」解耦：实验性选图不再污染项目目录。
+ */
+export type FigureCellSource =
+  | { kind: "path"; abs: string }
+  | { kind: "file"; file: File };
+
 /** 单个子图格（对应一个 \includegraphics + \subcaption） */
 export interface FigureCell {
-  /** 相对 .tex 的图片路径（slugify 命名，复用 editor/image/pathUtils.relativePath） */
+  /** 原始来源（未落盘）。生成代码时据其把用到的图拷入 figure/ 并回填 path。 */
+  source?: FigureCellSource;
+  /** 相对 .tex 的图片路径（如 figure/xxx.pdf）；仅在生成代码时填充，供 LaTeX 引用。 */
   path: string;
   /** 统一模式之外的微调缩放系数（1 = 不调） */
   scale: number;
@@ -82,10 +94,11 @@ export function subLabel(i: number): string {
   return `fig:sub-${subFigureLetter(i)}`;
 }
 
-/** 创建一个空 cell（给定路径与索引，索引决定自动 label） */
-export function makeCell(path: string, index: number): FigureCell {
+/** 创建一个空 cell（给定来源与索引，索引决定自动 label；path 留空待生成时回填） */
+export function makeCell(source: FigureCellSource, index: number): FigureCell {
   return {
-    path,
+    source,
+    path: "",
     scale: 1,
     crop: { l: 0, b: 0, r: 0, t: 0 },
     align: "t",

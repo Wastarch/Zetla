@@ -1,32 +1,37 @@
-// P2 · subfigure 近似预览（DOM）：绑定 subfigure 模式，反映排版决策
+// P2 后续 · subfigure 近似预览（DOM）：绑定 subfigure 模式，反映排版决策
 // （行列 / 宽度预算 / 间距 / 裁剪 / 对齐 / 编号 / 子标题）。
 // 与 figureGen.computeRowLayout 共用同一宽度算法，保证“近似所见 ≈ 生成所是”。
-// 精度：决策层 ≥95%；像素保真层 70–85%（\textwidth 真实宽度未知），crop 在 naturalSize
-// 存在时按左上角原点精确裁剪，缺失时退化为整图 contain。
-import { convertFileSrc } from "@tauri-apps/api/core";
+// 缩略图按 FigureCell.source 预览（path 零拷贝 / file 对象 URL），PDF 用占位卡。
+import type { SyntheticEvent } from "react";
 import { useFigureStore } from "./figureStore";
 import { computeRowLayout } from "./figureGen";
 import { subFigureLetter, FigureCell } from "@/types/figure";
-import { parentOf } from "@/project/useProject";
 import SubCaptionPreview from "./SubCaptionPreview";
+import { cellPreviewUrl, isPdfSource } from "./figurePreviewUrl";
 
-const basename = (p: string): string => p.split(/[\\/]/).pop() ?? p;
-const absSrc = (texDir: string, rel: string) =>
-  texDir ? convertFileSrc(`${texDir}/${rel}`.replace(/\\/g, "/")) : rel;
+const hideOnErr = (e: SyntheticEvent<HTMLImageElement>) => {
+  (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
+};
 
-/** 子图可见区域（crop 左上角原点）的 DOM 裁剪包装 */
-function CroppedImage({ cell, texDir }: { cell: FigureCell; texDir: string }) {
+/** 子图可见区域（crop 左上角原点）的 DOM 裁剪包装；PDF 显示占位卡 */
+function CroppedImage({ cell }: { cell: FigureCell }) {
   const { l, b, r, t } = cell.crop;
   const anyCrop = l || b || r || t;
   const ns = cell.naturalSize;
+  const pdf = isPdfSource(cell.source);
+  const url = cellPreviewUrl(cell);
+
+  if (pdf || !url) {
+    return <div className="fig-approx-img fig-approx-pdf">PDF</div>;
+  }
   if (!anyCrop || !ns || ns.w === 0 || ns.h === 0) {
     return (
       <img
         className="fig-approx-img"
-        src={absSrc(texDir, cell.path)}
-        alt={basename(cell.path)}
+        src={url}
+        alt=""
         style={{ objectFit: "contain" }}
-        onError={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = "hidden")}
+        onError={hideOnErr}
       />
     );
   }
@@ -36,24 +41,21 @@ function CroppedImage({ cell, texDir }: { cell: FigureCell; texDir: string }) {
   return (
     <img
       className="fig-approx-img"
-      src={absSrc(texDir, cell.path)}
-      alt={basename(cell.path)}
+      src={url}
+      alt=""
       style={{
         width: `${(1 / vw) * 100}%`,
         height: `${(1 / vh) * 100}%`,
         left: `${-(l / vw) * 100}%`,
         top: `${-(t / vh) * 100}%`,
       }}
-      onError={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = "hidden")}
+      onError={hideOnErr}
     />
   );
 }
 
 export default function FigureApproxPreview() {
   const layout = useFigureStore((s) => s.layout);
-  const targetTex = useFigureStore((s) => s.targetTex);
-  const texDir = targetTex ? parentOf(targetTex) : "";
-
   const { cells, cols, gapCol } = layout;
   const totalRows = Math.max(layout.rows, Math.ceil(cells.length / cols));
 
@@ -83,7 +85,7 @@ export default function FigureApproxPreview() {
                     >
                       <span className="fig-approx-letter">{subFigureLetter(gi)}</span>
                       <div className="fig-approx-imgwrap">
-                        <CroppedImage cell={cell} texDir={texDir} />
+                        <CroppedImage cell={cell} />
                       </div>
                       <div className="fig-approx-scap">
                         <SubCaptionPreview text={cell.subCaption} />

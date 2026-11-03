@@ -9,7 +9,9 @@ import { getActiveView, getEditorView } from "@/editor/activeView";
 import { pickImagesToCanvas } from "./figureImport";
 import { generateSubfigure } from "./figureGen";
 import { hasPackage, SUBCAPTION_SNIPPET } from "@/core/preamble";
-import { parentOf, notify } from "@/project/useProject";
+import { parentOf, notify, useProjectStore } from "@/project/useProject";
+import { relativePath } from "@/editor/image/pathUtils";
+import { projectApi } from "@/ipc/invoke";
 import { startCompile } from "@/compile/useCompile";
 import { onKernelEvent, RustEvents } from "@/ipc/events";
 import type { CompileResult } from "@/types";
@@ -63,7 +65,6 @@ export default function FigureSidebar() {
 
   const cells = layout.cells;
   const { rows, cols, gapCol, gapRow, mode, selectedIndex } = layout;
-  const texDir = targetTex ? parentOf(targetTex) : "";
 
   // 目标 tex 内容（用于 subcaption 检测 / 实时高亮）
   const texContent = useBuffersStore(
@@ -95,20 +96,64 @@ export default function FigureSidebar() {
     return () => un?.();
   }, []);
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (cells.length === 0) {
       notify("请先导入图片", "err");
       return;
     }
-    const { code } = generateSubfigure(layout);
-    const target = targetTex ?? useBuffersStore.getState().activePath;
-    const view = (target ? getEditorView(target) : null) ?? getActiveView();
+    const project = useProjectStore.getState();
+    const root = project.root;
+    if (!root || !targetTex) {
+      notify("缺少项目根或目标 .tex，无法生成", "err");
+      return;
+    }
+    const imageDir = project.tree?.imageDir?.trim() || "figure";
+    const texDir = parentOf(targetTex);
+
+    // 1) 生成时才把“用到的图”落盘到 figure/（path 级拷文件；file 级读字节），并回填 LaTeX 相对路径
+    const relPaths: string[] = [];
+    for (let i = 0; i < cells.length; i++) {
+      const cell = cells[i]!;
+      const src = cell.source;
+      if (!src) {
+        // 兜底：已落盘链路（cell.path 已为相对路径）
+        relPaths[i] = cell.path;
+        continue;
+      }
+      try {
+        const res =
+          src.kind === "path"
+            ? await projectApi.importImageFromPath(root, imageDir, src.abs)
+            : await projectApi.importImage(
+                root,
+                imageDir,
+                src.file.name,
+                new Uint8Array(await src.file.arrayBuffer()),
+              );
+        relPaths[i] = relativePath(texDir, res.absPath);
+      } catch (e) {
+        notify(`图片「${src.kind === "path" ? src.abs : src.file.name}」落盘失败：${String(e)}`, "err");
+        return;
+      }
+    }
+
+    // 2) 用回填后的 path 生成代码
+    const genLayout = {
+      ...layout,
+      cells: cells.map((c, i) => ({ ...c, path: relPaths[i] ?? c.path })),
+    };
+    const { code } = generateSubfigure(genLayout);
+
+    // 3) 插入目标 .tex（即便拼图 Tab 当前活动）
+    const target = targetTex;
+    const view = getEditorView(target) ?? getActiveView();
     if (!view) {
       notify("无活动编辑器，无法插入代码", "err");
       return;
     }
     lastInsert.current = { view, ...insertGenerated(view, code) };
-    if (target) useBuffersStore.getState().setActive(target);
+    useBuffersStore.getState().setActive(target);
+    void useProjectStore.getState().refresh(); // figure/ 新增文件进资源树
     notify("已生成 subfigure 代码，后台编译自检中…", "ok");
     void startCompile({ live: true });
   };
@@ -199,7 +244,6 @@ export default function FigureSidebar() {
           <CellList
             cells={cells}
             selectedIndex={selectedIndex}
-            texDir={texDir}
             onSelect={setSelectedIndex}
           />
           {selectedIndex >= 0 && selectedIndex < cells.length ? (

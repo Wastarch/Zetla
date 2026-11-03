@@ -78,9 +78,10 @@ export function base(p: string): string {
   return segs[segs.length - 1] || p;
 }
 
-/** 图片扩展名（PDF/图片 → 查看器，MVP 未实现，仅提示） */
+/** 可插入的图件格式（图片 + PDF；EPS 由 xelatex 直接支持，pdflatex 需 epstopdf）。
+ *  LaTeX graphicx 对 png/jpg/pdf 原生支持，svg 需 svg 包，故 svg 仅作预览/查看。 */
 export const EXT_IMG = new Set([
-  "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "eps", "tif", "tiff", "avif",
+  "png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "eps", "tif", "tiff", "avif", "pdf",
 ]);
 
 export function extOf(name: string): string {

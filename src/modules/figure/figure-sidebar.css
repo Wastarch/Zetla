@@ -180,6 +180,37 @@
   object-fit: contain;
 }
 
+/* PDF 缩略图占位卡（<img> 无法渲染 PDF） */
+.fig-thumb-pdf {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: #f3f0ff;
+  color: #6d4bd1;
+  text-align: center;
+  padding: 1px;
+  box-sizing: border-box;
+}
+
+.fig-thumb-pdf-ico {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.fig-thumb-pdf-name {
+  font-size: 8px;
+  color: #7a6aa8;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .figside-cell-meta {
   flex: 1;
   min-width: 0;

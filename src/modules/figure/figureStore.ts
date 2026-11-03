@@ -6,6 +6,7 @@ import { create } from "zustand";
 import {
   FigureLayout,
   FigureCell,
+  FigureCellSource,
   UniformMode,
   VAlign,
   defaultLayout,
@@ -20,10 +21,10 @@ export interface FigureState {
   /** 导入时的目标 .tex 路径（生成代码时插入此文件，即便拼图 Tab 当前活动） */
   targetTex: string | null;
 
-  /** 用一批图片路径初始化画布（多图导入预填，行优先；F6 调用） */
-  initFromImages: (paths: string[], targetTex?: string | null) => void;
-  /** 追加图片到画布（画布内“添加图片”入口，F6） */
-  addImages: (paths: string[]) => void;
+  /** 用一批图片来源初始化画布（多图导入预填，行优先；F6 调用；选图即记录来源，不落盘） */
+  initFromImages: (sources: FigureCellSource[], targetTex?: string | null) => void;
+  /** 追加图片来源到画布（画布内“添加图片”入口，F6） */
+  addImages: (sources: FigureCellSource[]) => void;
   /** 设置网格行列（≥1，向下取整） */
   setGrid: (rows: number, cols: number) => void;
   /** 更新单格字段（label 由索引自动生成，不在此覆盖） */
@@ -59,24 +60,24 @@ export const useFigureStore = create<FigureState>((set) => ({
   active: false,
   targetTex: null,
 
-  initFromImages: (paths, targetTex) =>
+  initFromImages: (sources, targetTex) =>
     set((s) => ({
       active: true,
       targetTex: targetTex ?? s.targetTex,
       layout: {
         ...s.layout,
-        cells: paths.map((p, i) => makeCell(p, i)),
+        cells: sources.map((src, i) => makeCell(src, i)),
       },
     })),
 
-  addImages: (paths) =>
+  addImages: (sources) =>
     set((s) => ({
       active: true,
       layout: {
         ...s.layout,
         cells: [
           ...s.layout.cells,
-          ...paths.map((p, k) => makeCell(p, s.layout.cells.length + k)),
+          ...sources.map((src, k) => makeCell(src, s.layout.cells.length + k)),
         ],
       },
     })),
