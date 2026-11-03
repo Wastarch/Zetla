@@ -10,12 +10,14 @@ import { getActiveView } from "@/editor/activeView";
 import { insertSnippetSelect } from "@/core/moduleRegistry";
 import { buildFigure } from "@/core/latexTemplates";
 import { relativePath, slugify } from "./pathUtils";
+import { useFigureStore } from "@/modules/figure/figureStore";
+import { useAppStore } from "@/core/store";
 
 /** 默认图片目录（无 .ltex/config.json/imageDir 时回落） */
 const DEFAULT_IMAGE_DIR = "figure";
 
 /** 校验上下文：未打开项目 / 无活动 .tex / 取不到图片目录则提示并返回 null */
-function precheck(): { root: string; imageDir: string; texDir: string } | null {
+export function precheck(): { root: string; imageDir: string; texDir: string } | null {
   const project = useProjectStore.getState();
   const root = project.root;
   if (!root) {
@@ -78,6 +80,20 @@ function finalize(results: ImportImageResult[], texDir: string): void {
   notify(`已插入 ${results.length} 张图片`, "ok");
 }
 
+/**
+ * F6 · 多图导入：落盘后载入拼图画布（预填），不插入编辑器源码。
+ * 单图仍走 finalize 直插（设计约定）；此处仅处理 ≥2 张的分支。
+ */
+function importToCanvas(results: ImportImageResult[], texDir: string): void {
+  if (results.length === 0) return;
+  const rels = results.map((r) => relativePath(texDir, r.absPath));
+  useFigureStore.getState().initFromImages(rels);
+  // 自动切到拼图画布视图（侧栏展开）
+  useAppStore.getState().setSidebarView("figure");
+  void useProjectStore.getState().refresh();
+  notify(`已载入 ${results.length} 张图片到拼图画布`, "ok");
+}
+
 /** 拖拽 / 粘贴入口：直接拿到 File 对象（字节从 File.arrayBuffer 取出） */
 export async function importAndInsert(files: File[]): Promise<void> {
   const ctx = precheck();
@@ -96,6 +112,11 @@ export async function importAndInsert(files: File[]): Promise<void> {
       notify(`导入「${f.name}」失败：${String(e)}`, "err");
     }
   }
+  if (results.length >= 2) {
+    // F6：多图导入 → 路由到拼图画布预填，不插入单图 figure
+    importToCanvas(results, ctx.texDir);
+    return;
+  }
   finalize(results, ctx.texDir);
 }
 
@@ -111,6 +132,11 @@ export async function importImageFromPaths(paths: string[]): Promise<void> {
     } catch (e) {
       notify(`导入「${p}」失败：${String(e)}`, "err");
     }
+  }
+  if (results.length >= 2) {
+    // F6：多图导入 → 路由到拼图画布预填，不插入单图 figure
+    importToCanvas(results, ctx.texDir);
+    return;
   }
   finalize(results, ctx.texDir);
 }

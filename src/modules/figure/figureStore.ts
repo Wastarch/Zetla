@@ -20,6 +20,8 @@ export interface FigureState {
 
   /** 用一批图片路径初始化画布（多图导入预填，行优先；F6 调用） */
   initFromImages: (paths: string[]) => void;
+  /** 追加图片到画布（画布内“添加图片”入口，F6） */
+  addImages: (paths: string[]) => void;
   /** 设置网格行列（≥1，向下取整） */
   setGrid: (rows: number, cols: number) => void;
   /** 更新单格字段（label 由索引自动生成，不在此覆盖） */
@@ -54,6 +56,18 @@ export const useFigureStore = create<FigureState>((set) => ({
       layout: {
         ...s.layout,
         cells: paths.map((p, i) => makeCell(p, i)),
+      },
+    })),
+
+  addImages: (paths) =>
+    set((s) => ({
+      active: true,
+      layout: {
+        ...s.layout,
+        cells: [
+          ...s.layout.cells,
+          ...paths.map((p, k) => makeCell(p, s.layout.cells.length + k)),
+        ],
       },
     })),
 
