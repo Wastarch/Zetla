@@ -57,32 +57,55 @@ export interface FigureState {
 const clampGrid = (n: number) => Math.max(1, Math.floor(n));
 const clampRatio = (n: number) => Math.min(1, Math.max(0, n));
 
+/**
+ * 按图片数量自动给出接近正方形的网格（如 4→2×2、5→3×2、6→3×2）。
+ * 仅在导入时套用；用户之后可手动在侧栏改行列覆盖。
+ */
+export function autoGrid(n: number): { rows: number; cols: number } {
+  const k = Math.max(1, Math.floor(n));
+  const cols = Math.ceil(Math.sqrt(k));
+  const rows = Math.ceil(k / cols);
+  return { rows, cols };
+}
+
 export const useFigureStore = create<FigureState>((set) => ({
   layout: defaultLayout(),
   active: false,
   targetTex: null,
 
   initFromImages: (sources, targetTex) =>
-    set((s) => ({
-      active: true,
-      targetTex: targetTex ?? s.targetTex,
-      layout: {
-        ...s.layout,
-        cells: sources.map((src, i) => makeCell(src, i)),
-      },
-    })),
+    set((s) => {
+      const cells = sources.map((src, i) => makeCell(src, i));
+      const grid = autoGrid(cells.length);
+      return {
+        active: true,
+        targetTex: targetTex ?? s.targetTex,
+        layout: {
+          ...s.layout,
+          cells,
+          rows: grid.rows,
+          cols: grid.cols,
+        },
+      };
+    }),
 
   addImages: (sources) =>
-    set((s) => ({
-      active: true,
-      layout: {
-        ...s.layout,
-        cells: [
-          ...s.layout.cells,
-          ...sources.map((src, k) => makeCell(src, s.layout.cells.length + k)),
-        ],
-      },
-    })),
+    set((s) => {
+      const cells = [
+        ...s.layout.cells,
+        ...sources.map((src, k) => makeCell(src, s.layout.cells.length + k)),
+      ];
+      const grid = autoGrid(cells.length);
+      return {
+        active: true,
+        layout: {
+          ...s.layout,
+          cells,
+          rows: grid.rows,
+          cols: grid.cols,
+        },
+      };
+    }),
 
   setGrid: (rows, cols) =>
     set((s) => ({

@@ -241,6 +241,12 @@ export default function FigureSidebar() {
     addSubcaptionToPreamble(view);
   };
 
+  // 清空：重置画布布局，并关闭已打开的拼图预览 Tab（figure 伪 buffer 永不脏，不弹确认）
+  const handleClear = () => {
+    reset();
+    void useBuffersStore.getState().closeBuffer("figure://preview");
+  };
+
   return (
     <div className="figside">
       <div className="figside-head">
@@ -293,7 +299,7 @@ export default function FigureSidebar() {
         <button type="button" className="btn" onClick={() => void pickImagesToCanvas(false)}>
           选择图片…
         </button>
-        <button type="button" className="btn" onClick={reset} disabled={cells.length === 0}>
+        <button type="button" className="btn" onClick={handleClear} disabled={cells.length === 0}>
           清空
         </button>
         <button
