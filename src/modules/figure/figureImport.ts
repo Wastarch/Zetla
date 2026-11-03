@@ -12,6 +12,7 @@ import { precheck } from "@/editor/image/importImage";
 import { relativePath } from "@/editor/image/pathUtils";
 import { useFigureStore } from "./figureStore";
 import { useAppStore } from "@/core/store";
+import { useBuffersStore } from "@/editor/useBuffers";
 
 /** 从画布内选择图片并载入画布（无论几张都进画布，区别于主管线单图直插） */
 export async function pickImagesToCanvas(append = false): Promise<void> {
@@ -40,8 +41,9 @@ export async function pickImagesToCanvas(append = false): Promise<void> {
   } else {
     useFigureStore.getState().initFromImages(rels);
   }
-  // 确保在拼图画布视图（若从别处触发，自动切过去）
+  // 确保在拼图画布视图（若从别处触发，自动切过去），并打开中心预览 Tab
   useAppStore.getState().setSidebarView("figure");
+  useBuffersStore.getState().openFigure();
   void useProjectStore.getState().refresh();
   notify(`已载入 ${results.length} 张图片`, "ok");
 }

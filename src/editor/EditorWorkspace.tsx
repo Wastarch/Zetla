@@ -10,6 +10,7 @@ import { EditorToolbar } from "./EditorToolbar";
 import { FindReplacePanel } from "./FindReplacePanel";
 import { ImageViewer } from "./ImageViewer";
 import { PdfPreview } from "@/preview/PdfPreview";
+import FigurePreviewTab from "@/modules/figure/FigurePreviewTab";
 import { setActiveView, setActiveEditorHandle, clearAllSearchQueries } from "./activeView";
 import { takePendingJump } from "./jump";
 import { jumpToPdfFromSource } from "@/preview/syncTex";
@@ -220,6 +221,8 @@ export function EditorWorkspace() {
                   <ImageViewer path={b.path} name={b.name} />
                 ) : b.kind === "pdf" ? (
                   <PdfPreview path={b.path} style={{ position: "absolute", inset: 0 }} />
+                ) : b.kind === "figure" ? (
+                  <FigurePreviewTab />
                 ) : (
                   <LaTeXEditor
                     ref={setHandle(b.path)}

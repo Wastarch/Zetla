@@ -33,7 +33,7 @@ export function TabBar({ onFind }: TabBarProps) {
       {buffers.map((b) => {
         const active = b.path === activePath;
         const dirty = b.content !== b.savedContent;
-        const iconName = b.kind === "image" ? "image" : b.kind === "pdf" ? "pdf" : "tex";
+        const iconName = b.kind === "image" ? "image" : b.kind === "pdf" ? "pdf" : b.kind === "figure" ? "image" : "tex";
         return (
           <div
             key={b.path}
@@ -50,7 +50,7 @@ export function TabBar({ onFind }: TabBarProps) {
               name={iconName}
               size={13}
               style={{
-                color: b.kind === "text" ? "var(--accent)" : "var(--txt-3)",
+                color: b.kind === "text" || b.kind === "figure" ? "var(--accent)" : "var(--txt-3)",
                 opacity: 0.75,
               }}
             />

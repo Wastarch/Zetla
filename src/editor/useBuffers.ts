@@ -51,7 +51,7 @@ function scheduleLivePreview(path: string): void {
 }
 
 /** 缓冲类型：`text`=普通文本文档（LaTeX 等，可编辑/可保存）；`image`/`pdf`=只读查看器，不持有文本 */
-export type BufferKind = "text" | "image" | "pdf";
+export type BufferKind = "text" | "image" | "pdf" | "figure";
 
 /** 一个打开的文档（标签页） */
 export interface EditorBuffer {
@@ -122,6 +122,8 @@ export interface BuffersState {
   openFiles: (paths: string[]) => Promise<void>;
   /** 激活指定缓冲 */
   setActive: (path: string) => void;
+  /** 打开拼图预览 Tab（单例伪 buffer；永不脏、不落盘）；P1 */
+  openFigure: () => void;
   /** 关闭缓冲；脏文件先经原生确认，取消返回 false */
   closeBuffer: (path: string, force?: boolean) => Promise<boolean>;
   /** 编辑器内容变更 */
@@ -219,6 +221,26 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
 
   setActive: (path) => {
     if (get().buffers.some((b) => b.path === path)) set({ activePath: path });
+  },
+
+  openFigure: () => {
+    const existing = get().buffers.find((b) => b.kind === "figure");
+    if (existing) {
+      set({ activePath: existing.path });
+      return;
+    }
+    const path = "figure://preview";
+    const buf: EditorBuffer = {
+      path,
+      name: "拼图预览",
+      content: "",
+      savedContent: "",
+      encoding: "utf-8",
+      eol: "lf",
+      mounted: false,
+      kind: "figure",
+    };
+    set((s) => ({ buffers: [...s.buffers, buf], activePath: path }));
   },
 
   closeBuffer: async (path, force) => {

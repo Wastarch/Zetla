@@ -88,8 +88,9 @@ function importToCanvas(results: ImportImageResult[], texDir: string): void {
   if (results.length === 0) return;
   const rels = results.map((r) => relativePath(texDir, r.absPath));
   useFigureStore.getState().initFromImages(rels);
-  // 自动切到拼图画布视图（侧栏展开）
+  // 自动切到拼图画布视图（侧栏展开）+ 打开中心预览 Tab（P1）
   useAppStore.getState().setSidebarView("figure");
+  useBuffersStore.getState().openFigure();
   void useProjectStore.getState().refresh();
   notify(`已载入 ${results.length} 张图片到拼图画布`, "ok");
 }

@@ -28,6 +28,8 @@ export interface FigureCell {
   subCaption: string;
   /** 自动生成的 \label，如 fig:sub-a（行优先，详见 subLabel） */
   label: string;
+  /** 自然尺寸（宽/高像素），用于 §4.2 统一高度预算与近似预览精度；P2 导入时填充 */
+  naturalSize?: { w: number; h: number };
 }
 
 /** 整体拼图布局 */
@@ -44,6 +46,10 @@ export interface FigureLayout {
   gapRow: number;
   /** 统一尺寸模式 */
   uniform: UniformMode;
+  /** 渲染 / 导出模式：subfigure（近似预览 + 代码）| composite（合成预览 + 单图） */
+  mode: "subfigure" | "composite";
+  /** 当前选中子图索引（-1 未选）；v2 侧栏 CellList 选中态 */
+  selectedIndex: number;
   /** 外层 figure 标题（可选） */
   caption: string;
   /** 外层 figure \label（含 fig: 前缀） */
@@ -97,6 +103,8 @@ export function defaultLayout(): FigureLayout {
     gapCol: DEFAULT_GAP,
     gapRow: DEFAULT_GAP,
     uniform: "none",
+    mode: "subfigure",
+    selectedIndex: -1,
     caption: "",
     label: "fig:",
   };
