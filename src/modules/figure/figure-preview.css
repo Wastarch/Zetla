@@ -10,27 +10,26 @@
   background: #eef1f5;
 }
 
-/* 模拟纸张 */
+/* 模拟纸张：左右留白按页面宽度百分比近似真实页边距（\textwidth ≈ 页宽 76–80%） */
 .fig-approx-paper {
   margin: 0 auto;
   width: min(720px, 100%);
   background: #fff;
   border: 1px solid #d9dde3;
   border-radius: 6px;
-  padding: 28px 32px;
+  padding: 24px 10%;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
 }
 
-/* 模拟 \textwidth 版心 */
+/* 模拟 \textwidth 版心：行间距由每组 row 的 margin-top 控制（等价 \vspace{gapRow\textwidth}） */
 .fig-approx-textwidth {
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 
 .fig-approx-row {
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
 }
 
 .fig-approx-sub {
@@ -53,20 +52,27 @@
   padding: 0 3px;
 }
 
+/* 诚实预览：去掉固定 min-height / 边框 / 灰底，子图按真实等比高度展示，
+   参差高度如实暴露给用户（这正是预览的作用之一：提示图片尺寸不一致）。
+   overflow:hidden 仅用于裁剪分支的裁切；非裁剪分支由相对定位的 <img> 撑开高度。 */
 .fig-approx-imgwrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
-  background: #f5f7f9;
-  border: 1px solid #e4e7ec;
-  border-radius: 4px;
   overflow: hidden;
 }
 
+/* PDF 无栅格预览，占位卡需要一个可见高度（不参与“尺寸诚实”语义） */
+.fig-approx-imgwrap.pdf {
+  min-height: 160px;
+}
+
+/* 未裁剪：正常文档流，按列宽等比、保留原始宽高比（贴近 LaTeX \includegraphics[width=...]） */
 .fig-approx-img {
-  position: absolute;
+  position: relative;
+  display: block;
+  width: 100%;
+  height: auto;
   max-width: none;
-  object-fit: fill;
 }
 
 /* PDF 近似预览占位（<img> 无法渲染 PDF；真实保真由 LaTeX 编译给出） */

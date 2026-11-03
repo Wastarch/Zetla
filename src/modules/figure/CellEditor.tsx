@@ -77,7 +77,7 @@ export default function CellEditor({ cell, index }: Props) {
             </button>
           ))}
         </div>
-        <span className="figside-hint">顶/中/底 → subfigure [t]/[c]/[b]</span>
+        <span className="figside-hint">顶/中/底 → [t]/[c]/[b]，行级：整行生效</span>
       </div>
 
       <div className="figside-edit-col figside-edit-row">

@@ -6,11 +6,13 @@
 //        行内子图数 k < 列数时，末尾空槽不占宽度、不生成 subfigure、不占编号。
 //   §4.3 裁剪 canonical 原点 = 图片左上角 (0,0)，x 右 y 下；LaTeX trim= L B R T
 //        （bottom-up）由归一化 crop 换算：L=l·W R=r·W B=b·H T=t·H（W,H=自然像素，
-//        ≈bp，crop 与 DOM/Canvas 三路径同源）；对齐 → subfigure [t]/[c]/[b]。
+//        ≈bp，crop 与 DOM/Canvas 三路径同源）；对齐为**行级**属性（同基线混用 [t]/[b]
+//        会导致 [b] 上飘/[t] 下垂，整行统一，取该行首格 align），映射 subfigure [t]/[c]/[b]，
+//        其中 [t] 需 \raisebox{-\height} 包裹图片（图片基线在底边，裸 [t] 实为底对齐）。
 //   §4.4 间距：列间距以弹性 \hfill 均分（避免硬比例溢出）；行间距 \vspace{gapRow\textwidth}。
 //
 // 同一 `computeRowLayout` 被生成器与 FigureApproxPreview 共用，保证“近似预览所见≈生成所是”。
-import { FigureLayout, FigureCell, subFigureLetter } from "@/types/figure";
+import { FigureLayout, FigureCell, VAlign, subFigureLetter } from "@/types/figure";
 import { INDENT } from "@/core/latexTemplates";
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
@@ -73,18 +75,39 @@ function graphicsOpts(cell: FigureCell): string {
   return "width=\\linewidth";
 }
 
-/** 生成一行的 subfigure 串联（含行内 \hfill 与对齐选项） */
+/**
+ * 行级对齐：LaTeX 中同一行（同一条基线）的子图必须共用一个对齐选项——
+ * 混用 [t]/[b] 会让 [b] 盒子整体升到基线上方、[t] 盒子垂到下方（“飘上天”现象）。
+ * 约定：整行取该行首个子图的 align；store 的 setAlign 也按整行写入。
+ */
+export function rowAlignOf(layout: FigureLayout, indices: number[]): VAlign {
+  const first = indices.length > 0 ? layout.cells[indices[0]!] : undefined;
+  return first?.align ?? "t";
+}
+
+/** 生成一行的 subfigure 串联（含行内 \hfill 与行级对齐选项） */
 function renderRow(layout: FigureLayout, rowIndex: number): string {
   const { indices, widths } = computeRowLayout(layout, rowIndex);
   if (indices.length === 0) return "";
+  const rowAlign = rowAlignOf(layout, indices);
+  const alignOpt = rowAlign === "c" ? "[c]" : rowAlign === "b" ? "[b]" : "[t]";
   const parts = indices.map((gi, i) => {
     const cell = layout.cells[gi]!;
     const w = pct(widths[i]!);
-    const alignOpt = cell.align === "c" ? "[c]" : cell.align === "b" ? "[b]" : "[t]";
+    // [t] 真顶对齐：\includegraphics 的基线在图片底边，裸用 [t] 实际是底边对齐
+    // （高图向上伸、顶边反而更高）。\raisebox{-\height} 把图片下移自身高度，
+    // 使图片顶边落在基线上，subfigure[t] 才是真·顶对齐（与预览 flex-start 一致）。
+    // [c] 盒子垂直中心对齐、[b] 按 caption 基线底对齐，均与预览一致，不需处理。
+    // 对齐为行级属性：整行所有子图用同一 rowAlign。
+    const gfx = `\\includegraphics[${graphicsOpts(cell)}]{${cell.path}}`;
+    const gfxLine =
+      rowAlign === "t"
+        ? `\\raisebox{-\\height}{${gfx}}`
+        : gfx;
     const caption = cell.subCaption.trim();
     const inner = [
       `${INDENT}${INDENT}\\centering`,
-      `${INDENT}${INDENT}\\includegraphics[${graphicsOpts(cell)}]{${cell.path}}`,
+      `${INDENT}${INDENT}${gfxLine}`,
       `${INDENT}${INDENT}\\caption{${caption}}`,
       `${INDENT}${INDENT}\\label{${cell.label}}`,
     ].join("\n");
@@ -123,7 +146,9 @@ export function generateSubfigure(layout: FigureLayout): GenResult {
     rows.push(renderRow(layout, r));
   }
 
-  const body = rows.join(`\n${INDENT}\\vspace{${pct(gapRow)}\\textwidth}\n`);
+  // 行间先插一个空行（段落换行）再放 \vspace：保证第二行另起一段，
+  // 使 [t] 子图真正按“行顶”对齐，与预览“每行独立 margin-top”一致（修复渲染错位）。
+  const body = rows.join(`\n\n${INDENT}\\vspace{${pct(gapRow)}\\textwidth}\n`);
   const cap = caption.trim();
   const lab = label.trim();
 

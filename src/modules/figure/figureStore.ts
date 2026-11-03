@@ -33,7 +33,7 @@ export interface FigureState {
   updateCell: (index: number, patch: Partial<Omit<FigureCell, "label">>) => void;
   /** 设置单格裁剪（四边归一化 0–1） */
   setCrop: (index: number, crop: FigureCell["crop"]) => void;
-  /** 设置单格垂直对齐 */
+  /** 设置垂直对齐（**行级属性**：LaTeX 同行子图共享基线，必须整行统一，故写整行） */
   setAlign: (index: number, align: VAlign) => void;
   /** 设置全局间距（占列宽比例，clamp 0–1） */
   setGaps: (gapCol: number, gapRow: number) => void;
@@ -140,11 +140,15 @@ export const useFigureStore = create<FigureState>((set) => ({
       return { layout: { ...s.layout, cells } };
     }),
 
+  // 对齐是行级属性：同行（同一条 LaTeX 基线）子图必须统一，否则 [b] 上飘/[t] 下垂。
   setAlign: (index, align) =>
     set((s) => {
       const cells = s.layout.cells.slice();
       if (index < 0 || index >= cells.length) return s;
-      cells[index] = { ...cells[index], align };
+      const row = Math.floor(index / s.layout.cols);
+      const start = row * s.layout.cols;
+      const end = Math.min(cells.length, start + s.layout.cols);
+      for (let i = start; i < end; i++) cells[i] = { ...cells[i], align };
       return { layout: { ...s.layout, cells } };
     }),
 
