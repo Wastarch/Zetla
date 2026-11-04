@@ -362,7 +362,7 @@ export default function FigureSidebar() {
   return (
     <div className="figside">
       <div className="figside-head">
-        <span className="figside-title">插图</span>
+        <span className="figside-title">切换拼图模式</span>
       </div>
 
       {/* 模式开关（两模式平级；composite 主操作留待 P3） */}
