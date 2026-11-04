@@ -1,6 +1,6 @@
 // F2 · 拼图功能模块声明（侧栏视图形态，与表格模块同构）。
 // 形态：自带侧栏视图（LatexModule.view）——活动栏图标、视图菜单项由内核按下述声明自动接入，
-// 无需在 ActivityBar/Sidebar/MenuBar 硬编码。组件 FigureCanvas 懒加载（不进首屏）。
+
 import { lazy } from "react";
 import { moduleRegistry } from "@/core/moduleRegistry";
 

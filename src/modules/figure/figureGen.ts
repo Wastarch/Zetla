@@ -124,7 +124,8 @@ function renderRow(layout: FigureLayout, rowIndex: number): string {
 export interface GenResult {
   /** 完整 figure 环境代码 */
   code: string;
-  /** 是否存在（防御性）超宽行（预算已保证不存在，仅作自检标记） */
+  /** 是否存在超宽行（单行子图宽度和 > 1.0\textwidth）；预算已保证 ≤0.98，
+   *  正常不触发，触发时由调用方提示用户可能溢出换行 */
   overwide: boolean;
 }
 
@@ -140,9 +141,12 @@ export function generateSubfigure(layout: FigureLayout): GenResult {
   let overwide = false;
   for (let r = 0; r < totalRows; r++) {
     const rl = computeRowLayout(layout, r);
-    const rowWidthSum = rl.widths.reduce((s, w) => s + w, 0) + (rl.indices.length - 1) * gapRow;
-    if (rowWidthSum > 1.0001) overwide = true;
     if (rl.indices.length === 0) continue;
+    // 防御性自检：单行子图宽度之和 > 1.0\textwidth 即视为超宽。
+    // 宽度预算已保证 Σwidth ≤ 0.98（见 computeRowLayout），正常情况下不会触发；
+    // 一旦触发说明布局异常（如 scale 越界被 clamp），交由调用方提示用户。
+    const rowWidthSum = rl.widths.reduce((s, w) => s + w, 0);
+    if (rowWidthSum > 1.0001) overwide = true;
     rows.push(renderRow(layout, r));
   }
 

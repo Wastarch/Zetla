@@ -1,6 +1,4 @@
 // F1 · 拼图功能会话状态（zustand，不落盘——重启/切项目即清空，与 composeStore 同口径）
-// 仅承载 FigureLayout 与基础变更；网格排布算法见 figureGen.ts（F5），UI 见 FigureCanvas.tsx（F2）。
-//
 // 切片边界：本文件只负责“数据 + 原子变更”，不含画布交互与代码生成。
 import { create } from "zustand";
 import {

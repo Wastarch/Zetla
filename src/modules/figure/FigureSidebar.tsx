@@ -8,7 +8,7 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { getActiveView, getEditorView } from "@/editor/activeView";
 import { pickImagesToCanvas } from "./figureImport";
 import { generateSubfigure } from "./figureGen";
-import { hasPackage, SUBCAPTION_SNIPPET } from "@/core/preamble";
+import { hasPackage, SUBCAPTION_SNIPPET, insertBeforeDocument } from "@/core/preamble";
 import { parentOf, notify, useProjectStore } from "@/project/useProject";
 import { relativePath } from "@/editor/image/pathUtils";
 import { projectApi } from "@/ipc/invoke";
@@ -46,18 +46,23 @@ function insertGenerated(view: EditorView, code: string): { from: number; to: nu
   return { from, to: from + text.length };
 }
 
-/** 在目标 tex 的 \begin{document} 前加入 subcaption 宏包 */
+/** 在目标 tex 的 \begin{document} 前加入 subcaption 宏包（复用 preamble 共享 helper） */
 function addSubcaptionToPreamble(view: EditorView): boolean {
   const text = view.state.doc.toString();
-  const m = text.match(/\\begin\{document\}/);
-  if (!m || m.index === undefined) {
+  if (hasPackage(text, "subcaption")) {
+    notify("导言区已包含 subcaption 宏包", "ok");
+    return true;
+  }
+  if (!text.match(/\\begin\{document\}/)) {
     notify("未找到 \\begin{document}，无法自动加入导言区", "err");
     return false;
   }
-  const lineStart = text.lastIndexOf("\n", m.index - 1) + 1;
+  // 复用核心 helper 计算插入位置（\begin{document} 前独占一行），
+  // 再整体替换文档（仅导言区前新增一行，安全）。
+  const next = insertBeforeDocument(text, SUBCAPTION_SNIPPET);
   view.dispatch({
-    changes: { from: lineStart, insert: SUBCAPTION_SNIPPET + "\n" },
-    selection: { anchor: lineStart },
+    changes: { from: 0, to: view.state.doc.length, insert: next },
+    selection: { anchor: 0 },
   });
   view.focus();
   notify("已加入 \\usepackage{subcaption}", "ok");
@@ -190,7 +195,7 @@ export default function FigureSidebar() {
       ...layout,
       cells: cells.map((c, i) => ({ ...c, path: relPaths[i] ?? c.path })),
     };
-    const { code } = generateSubfigure(genLayout);
+    const { code, overwide } = generateSubfigure(genLayout);
 
     // 3) 插入目标 .tex（即便拼图 Tab 当前活动）
     const target = targetTex;
@@ -203,6 +208,9 @@ export default function FigureSidebar() {
     useBuffersStore.getState().setActive(target);
     void useProjectStore.getState().refresh(); // figure/ 新增文件进资源树
     notify("已生成 subfigure 代码，后台编译自检中…", "ok");
+    if (overwide) {
+      notify("布局存在超宽行（子图总宽 > \\textwidth），编译后可能溢出换行，请减小 scale 或行列数", "err");
+    }
     void startCompile({ live: true });
   };
 
