@@ -228,11 +228,10 @@ export default function FigureSidebar() {
   };
 
   // 合成单张图片：合成 → toBlob → 落盘（同名覆盖）→ 单图直插
-  const handleComposeInsert = async () => {
-    if (cells.length === 0) {
-      notify("请先导入图片", "err");
-      return;
-    }
+  // 真正执行（由 handleComposeInsert 门控或轻确认“确认”后调用）
+  const COMPOSE_NO_CONFIRM_KEY = "zetla.figure.compositeNoConfirm";
+  const runComposeInsert = async () => {
+    setComposeConfirm(false);
     const project = useProjectStore.getState();
     const root = project.root;
     if (!root || !targetTex) {
@@ -318,7 +317,30 @@ export default function FigureSidebar() {
     notify("已合成单图并插入，后台编译自检中…", "ok");
     void startCompile({ live: true });
   };
+
+  // 门控层：首次合成前弹轻确认（localStorage 记忆“不再提示”）；确认后调用 runComposeInsert
+  const handleComposeInsert = () => {
+    if (cells.length === 0) {
+      notify("请先导入图片", "err");
+      return;
+    }
+    let skip = false;
+    try {
+      skip = localStorage.getItem(COMPOSE_NO_CONFIRM_KEY) === "1";
+    } catch {
+      skip = false;
+    }
+    if (skip) {
+      void runComposeInsert();
+    } else {
+      setComposeDontAsk(false);
+      setComposeConfirm(true);
+    }
+  };
   const [conflicts, setConflicts] = useState<Conflict[] | null>(null);
+  // 合成插入前轻确认：首次弹窗提醒（localStorage 记忆“不再提示”）
+  const [composeConfirm, setComposeConfirm] = useState(false);
+  const [composeDontAsk, setComposeDontAsk] = useState(false);
   const updateChoice = (index: number, choice: "use" | "rename") =>
     setConflicts((prev) =>
       prev ? prev.map((c) => (c.index === index ? { ...c, choice } : c)) : prev,
@@ -537,6 +559,50 @@ export default function FigureSidebar() {
               </button>
               <button type="button" className="btn primary" onClick={confirmConflicts}>
                 确定并生成
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 合成插入前轻确认：首次合成提醒子编号/子标题将烘焙为像素（可不再提示） */}
+      {composeConfirm && (
+        <div className="figside-modal-overlay">
+          <div className="figside-modal">
+            <div className="figside-modal-head">合成单图确认</div>
+            <p className="figside-modal-sub">
+              合成后子图将合并为<strong>一张位图</strong>，子编号 (a)(b)… 与子标题会
+              <strong>烘焙为像素</strong>，不再是可在 LaTeX 里单独编辑或用 \subcaption 重排的实体。
+              若需保留可编辑的子标题，请改用 subfigure 模式。
+            </p>
+            <label className="figside-check">
+              <input
+                type="checkbox"
+                checked={composeDontAsk}
+                onChange={(e) => setComposeDontAsk(e.target.checked)}
+              />
+              不再提示
+            </label>
+            <div className="figside-modal-actions">
+              <span className="figside-spacer" />
+              <button type="button" className="btn" onClick={() => setComposeConfirm(false)}>
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn primary"
+                onClick={() => {
+                  if (composeDontAsk) {
+                    try {
+                      localStorage.setItem(COMPOSE_NO_CONFIRM_KEY, "1");
+                    } catch {
+                      /* 忽略：隐私模式等无法写入时仅本次弹窗 */
+                    }
+                  }
+                  void runComposeInsert();
+                }}
+              >
+                确认并合成
               </button>
             </div>
           </div>
