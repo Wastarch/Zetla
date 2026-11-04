@@ -13,7 +13,9 @@ import { hasPackage, SUBCAPTION_SNIPPET, insertBeforeDocument } from "@/core/pre
 import { parentOf, notify, useProjectStore } from "@/project/useProject";
 import { relativePath, slugify } from "@/editor/image/pathUtils";
 import { loadCellImage, composeFigure, DEFAULT_COMPOSE_WIDTH } from "./figureCompose";
+import { renderCaption, type RenderedCaption } from "./captionRender";
 import { sourceName } from "./figurePreviewUrl";
+import { subFigureLetter } from "@/types/figure";
 import { projectApi } from "@/ipc/invoke";
 import { startCompile } from "@/compile/useCompile";
 import { onKernelEvent, RustEvents } from "@/ipc/events";
@@ -257,7 +259,15 @@ export default function FigureSidebar() {
       notify("所有图片加载失败，无法合成", "err");
       return;
     }
-    const canvas = composeFigure(layout, images, DEFAULT_COMPOSE_WIDTH);
+    // 1.5) 渲染子标题（公式 → 图片），与预览共用同一套渲染
+    const captionRenders = await Promise.all(
+      cells.map((cell, i) =>
+        renderCaption(`(${subFigureLetter(i)})`, cell.subCaption ?? "", "#1a1a1a"),
+      ),
+    );
+    const captions = new Map<number, RenderedCaption>();
+    captionRenders.forEach((rc, i) => captions.set(i, rc));
+    const canvas = composeFigure(layout, images, DEFAULT_COMPOSE_WIDTH, captions);
 
     // 2) 导出 PNG（blob → 字节）
     const blob = await new Promise<Blob | null>((resolve) =>

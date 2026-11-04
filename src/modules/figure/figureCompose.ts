@@ -13,6 +13,7 @@
 // 图像预取：raster 走 fetch(asset)/File → blob（同源 blob URL，避免 canvas 被跨源污染，
 // 否则 P3-2 的 toBlob 会抛 SecurityError）；PDF 用 pdf.js 栅格化**首页**（选页后置阶段二）。
 import { FigureCell, FigureLayout, subFigureLetter } from "@/types/figure";
+import type { RenderedCaption } from "./captionRender";
 import { computeRowLayout, rowAlignOf } from "./figureGen";
 import { cellPreviewUrl, isPdfSource } from "./figurePreviewUrl";
 import { getDocument } from "@/preview/pdfjs";
@@ -126,6 +127,25 @@ function visibleAspect(cell: FigureCell, img?: CanvasImageSource): number {
   return (vw * base.w) / (vh * base.h);
 }
 
+interface CaptionRun {
+  kind: "bold" | "text" | "math";
+  text?: string;
+  img?: HTMLImageElement | null;
+  w: number; // 绘制用宽（含公式后留白）
+  h: number;
+}
+
+interface CaptionLine {
+  runs: CaptionRun[];
+  h: number;
+}
+
+interface CaptionLayout {
+  letter: string;
+  lines: CaptionLine[];
+  totalH: number;
+}
+
 interface Placed {
   gi: number;
   x: number;
@@ -133,26 +153,22 @@ interface Placed {
   w: number;
   h: number; // 图片高
   uh: number; // 单元块总高（图片 + 子标题）
-  cap: { lead: string; lines: string[]; totalH: number };
-}
-
-interface CaptionLayout {
-  lead: string;
-  lines: string[];
-  totalH: number;
+  cap: CaptionLayout;
 }
 
 /**
  * 合成整张拼图（同步、纯计算 + drawImage）。
- * 子标题（(a) + 文本）烘焙进 canvas——预览与导出 PNG 共用本函数，所见即产物
+ * 子标题（(a) + 文本 + 公式）烘焙进 canvas——预览与导出 PNG 共用本函数，所见即产物
  * （与 subfigure 模式在图下渲染 (a)(b)… 的语义一致）。
  * @param images 索引 → 已预取的图像（缺失的格子留白，不阻断合成）
+ * @param captions 索引 → 已渲染的子标题（公式已栅格化为图片）；缺省则该格回退纯文本
  * @returns 白底 canvas（宽 = targetWidthPx）
  */
 export function composeFigure(
   layout: FigureLayout,
   images: Map<number, CanvasImageSource>,
   targetWidthPx: number = DEFAULT_COMPOSE_WIDTH,
+  captions?: Map<number, RenderedCaption>,
 ): HTMLCanvasElement {
   const W = Math.max(200, Math.round(targetWidthPx));
   const { cells, cols, gapRow } = layout;
@@ -166,36 +182,82 @@ export function composeFigure(
   const CAP_STACK = `"Times New Roman","Songti SC","SimSun","Noto Serif CJK SC",serif`;
   const capNormalFont = `${capFontPx}px ${CAP_STACK}`;
   const capBoldFont = `bold ${capNormalFont}`;
+  const displayMathH = capFontPx * 0.95; // 公式显示高度（按参考字号等比缩放后）
 
-  // 量测上下文：建正式画布前先算子标题所需高度（逐字符排版以兼容中文无空格换行）
+  // 量测上下文：建正式画布前先算子标题所需高度
   const meas = document.createElement("canvas");
   const mctx = meas.getContext("2d");
 
-  function captionFor(gi: number, subW: number): CaptionLayout {
-    const cell = cells[gi]!;
+  // 把「正文 / 公式图片」混排成行：首行粗体 (a)，正文用衬线字体，公式用预栅格化图片。
+  // 贪心换行：空格作断点、CJK 单字可断、Latin 词整体不断（超宽则整词下挪）。
+  function layoutCaption(
+    mctx: CanvasRenderingContext2D | null,
+    subW: number,
+    gi: number,
+    cell: FigureCell,
+    rendered: RenderedCaption | undefined,
+  ): CaptionLayout {
     const letter = `(${subFigureLetter(gi)})`;
-    const text = (cell.subCaption ?? "").trim();
-    if (text.length === 0 || !mctx) {
-      return { lead: letter, lines: [letter], totalH: CAP_LINE_H + CAP_TOP_GAP };
-    }
-    mctx.font = capNormalFont;
-    const chars: string[] = [];
-    for (const ch of letter) chars.push(ch);
-    chars.push(" ");
-    for (const ch of text) chars.push(ch);
-    const lines: string[] = [];
-    let cur = "";
-    for (const ch of chars) {
-      const test = cur + ch;
-      if (mctx.measureText(test).width > subW && cur.length > 0) {
-        lines.push(cur);
-        cur = ch;
-      } else {
-        cur += ch;
+
+    type Tok = { kind: "bold" | "text" | "math"; text?: string; img?: HTMLImageElement | null; w: number };
+    const toks: Tok[] = [];
+
+    const measure = (bold: boolean, t: string): number =>
+      mctx ? ((mctx.font = bold ? capBoldFont : capNormalFont), mctx.measureText(t).width) : t.length * capFontPx * 0.5;
+
+    const pushText = (text: string, bold: boolean) => {
+      if (!text) return;
+      const runs =
+        text.match(/[⺀-꓏　-〿＀-￯]|[^⺀-꓏　-〿＀-￯\s]+|\s+/g) ?? [];
+      for (const r of runs) {
+        if (/^\s+$/.test(r)) {
+          toks.push({ kind: "text", text: " ", w: measure(false, " ") });
+        } else if (/[⺀-꓏　-〿＀-￯]/.test(r)) {
+          for (const ch of r) toks.push({ kind: bold ? "bold" : "text", text: ch, w: measure(bold, ch) });
+        } else {
+          toks.push({ kind: bold ? "bold" : "text", text: r, w: measure(bold, r) });
+        }
       }
+    };
+
+    toks.push({ kind: "bold", text: letter, w: measure(true, letter) });
+    if (rendered) {
+      for (const seg of rendered.segs) {
+        if (seg.type === "text") {
+          pushText(seg.text, false);
+        } else {
+          const img = seg.img;
+          const ar = img ? img.naturalWidth / Math.max(1, img.naturalHeight) : 1;
+          const w = (img ? displayMathH * ar : measure(false, seg.tex)) + capFontPx * 0.12;
+          toks.push({ kind: "math", img, w });
+        }
+      }
+    } else {
+      pushText(cell.subCaption ?? "", false); // 异步未就绪：回退纯文本
     }
-    if (cur.length > 0) lines.push(cur);
-    return { lead: letter, lines, totalH: lines.length * CAP_LINE_H + CAP_TOP_GAP };
+
+    const lines: CaptionLine[] = [];
+    let cur: CaptionRun[] = [];
+    let curW = 0;
+    let curH = 0;
+    const flush = () => {
+      if (cur.length === 0) return;
+      lines.push({ runs: cur, h: Math.max(CAP_LINE_H, curH) });
+      cur = [];
+      curW = 0;
+      curH = 0;
+    };
+    for (const t of toks) {
+      if (t.text === " " && cur.length === 0) continue; // 行首空格丢弃
+      if (curW + t.w > subW && cur.length > 0) flush();
+      cur.push({ kind: t.kind, text: t.text, img: t.img, w: t.w, h: t.kind === "math" ? displayMathH : capFontPx });
+      curW += t.w;
+      curH = Math.max(curH, t.kind === "math" ? displayMathH : capFontPx);
+    }
+    flush();
+
+    const totalH = lines.reduce((s, l) => s + l.h, 0) + CAP_TOP_GAP;
+    return { letter, lines, totalH };
   }
 
   // 第一遍：逐行排布（宽度按 §4.2 预算 → \hfill 均分剩余 → 实际间距）
@@ -218,7 +280,7 @@ export function composeFigure(
       const w = widthsPx[i]!;
       // 等比：按列宽 × 可见区域宽高比反算高度（与 \includegraphics[width=...] 一致）
       const h = w / Math.max(0.0001, visibleAspect(cell, images.get(gi)));
-      const cap = captionFor(gi, w);
+      const cap = layoutCaption(mctx, w, gi, cell, captions?.get(gi));
       const uh = h + cap.totalH; // 单元块（图片 + 子标题）总高
       placed.push({ gi, x, y: 0, w, h, uh, cap });
       x += w + gapPx;
@@ -265,32 +327,33 @@ export function composeFigure(
         const sh2 = Math.max(1, (1 - Math.min(1, t + b)) * sh);
         ctx.drawImage(img, sx, sy, sw2, sh2, p.x, y + p.y, p.w, p.h);
       }
-      // 子标题（(a) + 文本）居中于子图下方；首行 (a) 粗体，与 subfigure 一致
+      // 子标题（(a) + 文本 + 公式）居中于子图下方；编号粗体，公式用预栅格化图片
       const cap = p.cap;
       ctx.fillStyle = "#1a1a1a";
       ctx.textBaseline = "top";
+      ctx.textAlign = "left";
       let lineY = y + p.y + p.h + CAP_TOP_GAP;
-      for (let li = 0; li < cap.lines.length; li++) {
-        const lineText = cap.lines[li]!;
-        if (li === 0 && lineText.startsWith(cap.lead)) {
-          const rest = lineText.slice(cap.lead.length);
-          ctx.font = capBoldFont;
-          const leadW = ctx.measureText(cap.lead).width;
-          ctx.font = capNormalFont;
-          const restW = ctx.measureText(rest).width;
-          const totalW = leadW + restW;
-          const startX = p.x + p.w / 2 - totalW / 2;
-          ctx.textAlign = "left";
-          ctx.font = capBoldFont;
-          ctx.fillText(cap.lead, startX, lineY);
-          ctx.font = capNormalFont;
-          ctx.fillText(rest, startX + leadW, lineY);
-        } else {
-          ctx.textAlign = "center";
-          ctx.font = capNormalFont;
-          ctx.fillText(lineText, p.x + p.w / 2, lineY);
+      for (const line of cap.lines) {
+        const blockW = line.runs.reduce((s, r) => s + r.w, 0);
+        let rx = p.x + p.w / 2 - blockW / 2;
+        for (const run of line.runs) {
+          if (run.kind === "math" && run.img) {
+            const dw = run.img.naturalWidth / Math.max(1, run.img.naturalHeight) * displayMathH;
+            ctx.drawImage(
+              run.img,
+              rx,
+              lineY + (line.h - displayMathH) / 2,
+              dw,
+              displayMathH,
+            );
+          } else {
+            const text = run.text ?? "";
+            ctx.font = run.kind === "bold" ? capBoldFont : capNormalFont;
+            ctx.fillText(text, rx, lineY + (line.h - capFontPx) / 2);
+          }
+          rx += run.w;
         }
-        lineY += CAP_LINE_H;
+        lineY += line.h;
       }
     }
     y += row.height + rowGapPx;

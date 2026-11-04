@@ -28,6 +28,7 @@
     "codemirror-lang-latex": "^0.6.1",
     "fabric": "^7.4.0",
     "katex": "^0.19.1",
+    "mathjax": "^3.2.2",
     "pdfjs-dist": "^6.4.299",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
