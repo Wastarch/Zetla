@@ -14,6 +14,8 @@
 
 /* 模拟纸张：左右留白按页面宽度百分比近似真实页边距（\textwidth ≈ 页宽 76–80%） */
 .fig-approx-paper {
+  /* 关键：不参与 flex 收缩——内容多高就多高，超出部分交给外层滚动（与 PDF 阅读一致） */
+  flex: 0 0 auto;
   margin: 0 auto;
   width: min(720px, 100%);
   background: #fff;
@@ -125,6 +127,7 @@
 }
 
 .fig-approx-note {
+  flex: 0 0 auto;
   margin: 12px auto 0;
   max-width: 720px;
   font-size: 11px;
@@ -164,6 +167,9 @@
 
 /* 合成图即产物：图片按 \linewidth 铺满版心，这里不加内边距（否则预览会多出白边） */
 .fig-real-paper {
+  /* 关键：不参与 flex 收缩。否则窄高容器里 paper 被压扁、canvas 被 overflow:hidden 裁掉，
+     且说明文字紧贴裁剪边缘——表现为「图被截断、无法滚动」。保持自然高度后由 .fig-real 滚动。 */
+  flex: 0 0 auto;
   position: relative;
   margin: 0 auto;
   width: min(720px, 100%);
@@ -202,6 +208,7 @@
 }
 
 .fig-real-note {
+  flex: 0 0 auto;
   margin: 12px auto 0;
   max-width: 720px;
   font-size: 11px;
