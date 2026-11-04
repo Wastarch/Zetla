@@ -90,11 +90,11 @@
   opacity: 0.6;
 }
 
-/* 图片标题（= 总图 \caption{}；composite 下还作 PNG 命名） */
-.figside-captioncol {
+/* 设置区：一组 figside-card（未选中 = 间距 + 图片标题；选中 = 该子图编辑卡） */
+.figside-edit {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 10px;
 }
 
 /* 通用按钮（窄侧栏不换行、不被压） */

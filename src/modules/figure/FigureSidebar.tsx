@@ -1,7 +1,7 @@
 // P2 · 拼图侧栏控制面板（替代原 F2 侧栏内画布）。
-// 纯控制，不渲染画布：模式开关 / 行列 / 导入清空预览 / CellList / CellEditor ⇄ GapControls /
-// 图片标题（总图 caption，仅已导入图片时出现）/ subcaption 检测横幅 /
-// 底部随模式变化的主操作（subfigure→生成代码；composite→P3 占位）。
+// 纯控制，不渲染画布：模式开关 / 行列 / 导入清空预览 / CellList /
+// 设置区 figside-edit（未选中 → GapControls + CaptionField 两张卡；选中 → 该子图 CellEditor 卡）/
+// subcaption 检测横幅 / 底部随模式变化的主操作（subfigure→生成代码；composite→P3 占位）。
 import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { useFigureStore } from "./figureStore";
@@ -19,6 +19,7 @@ import type { CompileResult } from "@/types";
 import CellList from "./CellList";
 import CellEditor from "./CellEditor";
 import GapControls from "./GapControls";
+import CaptionField from "./CaptionField";
 import "./figure-sidebar.css";
 
 /** 同名冲突项：索引 + 拟落盘文件名 + 处理选择 */
@@ -75,13 +76,12 @@ export default function FigureSidebar() {
   const targetTex = useFigureStore((s) => s.targetTex);
   const setGrid = useFigureStore((s) => s.setGrid);
   const setMode = useFigureStore((s) => s.setMode);
-  const setCaption = useFigureStore((s) => s.setCaption);
   const setSelectedIndex = useFigureStore((s) => s.setSelectedIndex);
   const reorder = useFigureStore((s) => s.reorder);
   const reset = useFigureStore((s) => s.reset);
 
   const cells = layout.cells;
-  const { rows, cols, gapCol, gapRow, mode, selectedIndex, caption } = layout;
+  const { rows, cols, gapCol, gapRow, mode, selectedIndex } = layout;
 
   // 目标 tex 内容（用于 subcaption 检测 / 实时高亮）
   const texContent = useBuffersStore(
@@ -337,28 +337,19 @@ export default function FigureSidebar() {
             onSelect={setSelectedIndex}
             onReorder={reorder}
           />
-          {selectedIndex >= 0 && selectedIndex < cells.length ? (
-            <CellEditor cell={cells[selectedIndex]!} index={selectedIndex} />
-          ) : (
-            <GapControls gapCol={gapCol} gapRow={gapRow} />
-          )}
-
-          {/* 图片标题：= 总图 \caption{}（subfigure 生成即写入）；composite 模式还用作 PNG 命名。
-              仅在已导入图片时出现（空态下无意义），位置紧跟间距/子图编辑卡片。 */}
-          <label className="figside-captioncol">
-            <span className="figside-label">图片标题</span>
-            <input
-              type="text"
-              className="figside-input"
-              value={caption}
-              placeholder={
-                mode === "composite"
-                  ? "总图标题；留空则命名 fig-<slug>-composite.png"
-                  : "总图 \\caption{}，可留空"
-              }
-              onChange={(e) => setCaption(e.target.value)}
-            />
-          </label>
+          {/* 设置区：未选中子图 = 间距 + 图片标题（两个 figside-card）；
+              选中子图 = 该子图的编辑卡（同一 figside-card 外观，整体替换组内容）。 */}
+          <div className="figside-edit">
+            {selectedIndex >= 0 && selectedIndex < cells.length ? (
+              <CellEditor cell={cells[selectedIndex]!} index={selectedIndex} />
+            ) : (
+            <>
+                <CaptionField />
+                <GapControls gapCol={gapCol} gapRow={gapRow} />
+                
+              </>
+            )}
+          </div>
         </>
       )}
 
