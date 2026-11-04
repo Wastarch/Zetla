@@ -12,7 +12,7 @@
 //
 // 图像预取：raster 走 fetch(asset)/File → blob（同源 blob URL，避免 canvas 被跨源污染，
 // 否则 P3-2 的 toBlob 会抛 SecurityError）；PDF 用 pdf.js 栅格化**首页**（选页后置阶段二）。
-import { FigureCell, FigureLayout } from "@/types/figure";
+import { FigureCell, FigureLayout, subFigureLetter } from "@/types/figure";
 import { computeRowLayout, rowAlignOf } from "./figureGen";
 import { cellPreviewUrl, isPdfSource } from "./figurePreviewUrl";
 import { getDocument } from "@/preview/pdfjs";
@@ -129,13 +129,23 @@ function visibleAspect(cell: FigureCell, img?: CanvasImageSource): number {
 interface Placed {
   gi: number;
   x: number;
-  y: number;
+  y: number; // 单元块（图片 + 子标题）顶偏移，对齐在此块上做
   w: number;
-  h: number;
+  h: number; // 图片高
+  uh: number; // 单元块总高（图片 + 子标题）
+  cap: { lead: string; lines: string[]; totalH: number };
+}
+
+interface CaptionLayout {
+  lead: string;
+  lines: string[];
+  totalH: number;
 }
 
 /**
  * 合成整张拼图（同步、纯计算 + drawImage）。
+ * 子标题（(a) + 文本）烘焙进 canvas——预览与导出 PNG 共用本函数，所见即产物
+ * （与 subfigure 模式在图下渲染 (a)(b)… 的语义一致）。
  * @param images 索引 → 已预取的图像（缺失的格子留白，不阻断合成）
  * @returns 白底 canvas（宽 = targetWidthPx）
  */
@@ -147,6 +157,46 @@ export function composeFigure(
   const W = Math.max(200, Math.round(targetWidthPx));
   const { cells, cols, gapRow } = layout;
   const totalRows = Math.max(layout.rows, Math.ceil(cells.length / cols));
+
+  // 子标题排版：字号随总宽等比例（≈ LaTeX \subcaption 占 \textwidth 2.4%），含兜底
+  const CAP_FONT_RATIO = 0.024;
+  const capFontPx = Math.max(11, Math.round(W * CAP_FONT_RATIO));
+  const CAP_LINE_H = Math.round(capFontPx * 1.25);
+  const CAP_TOP_GAP = Math.round(capFontPx * 0.4); // 图片底 → 子标题首行
+  const CAP_STACK = `"Times New Roman","Songti SC","SimSun","Noto Serif CJK SC",serif`;
+  const capNormalFont = `${capFontPx}px ${CAP_STACK}`;
+  const capBoldFont = `bold ${capNormalFont}`;
+
+  // 量测上下文：建正式画布前先算子标题所需高度（逐字符排版以兼容中文无空格换行）
+  const meas = document.createElement("canvas");
+  const mctx = meas.getContext("2d");
+
+  function captionFor(gi: number, subW: number): CaptionLayout {
+    const cell = cells[gi]!;
+    const letter = `(${subFigureLetter(gi)})`;
+    const text = (cell.subCaption ?? "").trim();
+    if (text.length === 0 || !mctx) {
+      return { lead: letter, lines: [letter], totalH: CAP_LINE_H + CAP_TOP_GAP };
+    }
+    mctx.font = capNormalFont;
+    const chars: string[] = [];
+    for (const ch of letter) chars.push(ch);
+    chars.push(" ");
+    for (const ch of text) chars.push(ch);
+    const lines: string[] = [];
+    let cur = "";
+    for (const ch of chars) {
+      const test = cur + ch;
+      if (mctx.measureText(test).width > subW && cur.length > 0) {
+        lines.push(cur);
+        cur = ch;
+      } else {
+        cur += ch;
+      }
+    }
+    if (cur.length > 0) lines.push(cur);
+    return { lead: letter, lines, totalH: lines.length * CAP_LINE_H + CAP_TOP_GAP };
+  }
 
   // 第一遍：逐行排布（宽度按 §4.2 预算 → \hfill 均分剩余 → 实际间距）
   const rows: { placed: Placed[]; height: number }[] = [];
@@ -168,15 +218,18 @@ export function composeFigure(
       const w = widthsPx[i]!;
       // 等比：按列宽 × 可见区域宽高比反算高度（与 \includegraphics[width=...] 一致）
       const h = w / Math.max(0.0001, visibleAspect(cell, images.get(gi)));
-      placed.push({ gi, x, y: 0, w, h });
+      const cap = captionFor(gi, w);
+      const uh = h + cap.totalH; // 单元块（图片 + 子标题）总高
+      placed.push({ gi, x, y: 0, w, h, uh, cap });
       x += w + gapPx;
     }
 
-    // 行级对齐：整行共用（同 subfigure 的 [t]/[c]/[b]）
+    // 行级对齐：整行共用（同 subfigure 的 [t]/[c]/[b]），对齐的是「图片+子标题」单元块
     const align = rowAlignOf(layout, rl.indices);
-    const rowH = Math.max(...placed.map((p) => p.h));
+    const rowH = Math.max(...placed.map((p) => p.uh));
     for (const p of placed) {
-      p.y = align === "t" ? 0 : align === "c" ? (rowH - p.h) / 2 : rowH - p.h;
+      const extra = rowH - p.uh;
+      p.y = align === "t" ? 0 : align === "c" ? extra / 2 : extra;
     }
     rows.push({ placed, height: rowH });
   }
@@ -202,15 +255,43 @@ export function composeFigure(
   for (const row of rows) {
     for (const p of row.placed) {
       const img = images.get(p.gi);
-      if (!img) continue; // 图未就绪/加载失败：留白，不阻断其余部分
       const cell = cells[p.gi]!;
-      const { w: sw, h: sh } = sourceSize(img);
-      const { l, b, r, t } = cell.crop;
-      const sx = Math.max(0, l) * sw;
-      const sy = Math.max(0, t) * sh;
-      const sw2 = Math.max(1, (1 - Math.min(1, l + r)) * sw);
-      const sh2 = Math.max(1, (1 - Math.min(1, t + b)) * sh);
-      ctx.drawImage(img, sx, sy, sw2, sh2, p.x, y + p.y, p.w, p.h);
+      if (img) {
+        const { w: sw, h: sh } = sourceSize(img);
+        const { l, b, r, t } = cell.crop;
+        const sx = Math.max(0, l) * sw;
+        const sy = Math.max(0, t) * sh;
+        const sw2 = Math.max(1, (1 - Math.min(1, l + r)) * sw);
+        const sh2 = Math.max(1, (1 - Math.min(1, t + b)) * sh);
+        ctx.drawImage(img, sx, sy, sw2, sh2, p.x, y + p.y, p.w, p.h);
+      }
+      // 子标题（(a) + 文本）居中于子图下方；首行 (a) 粗体，与 subfigure 一致
+      const cap = p.cap;
+      ctx.fillStyle = "#1a1a1a";
+      ctx.textBaseline = "top";
+      let lineY = y + p.y + p.h + CAP_TOP_GAP;
+      for (let li = 0; li < cap.lines.length; li++) {
+        const lineText = cap.lines[li]!;
+        if (li === 0 && lineText.startsWith(cap.lead)) {
+          const rest = lineText.slice(cap.lead.length);
+          ctx.font = capBoldFont;
+          const leadW = ctx.measureText(cap.lead).width;
+          ctx.font = capNormalFont;
+          const restW = ctx.measureText(rest).width;
+          const totalW = leadW + restW;
+          const startX = p.x + p.w / 2 - totalW / 2;
+          ctx.textAlign = "left";
+          ctx.font = capBoldFont;
+          ctx.fillText(cap.lead, startX, lineY);
+          ctx.font = capNormalFont;
+          ctx.fillText(rest, startX + leadW, lineY);
+        } else {
+          ctx.textAlign = "center";
+          ctx.font = capNormalFont;
+          ctx.fillText(lineText, p.x + p.w / 2, lineY);
+        }
+        lineY += CAP_LINE_H;
+      }
     }
     y += row.height + rowGapPx;
   }

@@ -82,7 +82,7 @@ export default function FigureRealPreview() {
         cells
           .map(
             (c) =>
-              `${cellImageKey(c)}@${c.scale}|${c.crop.l},${c.crop.b},${c.crop.r},${c.crop.t}|${c.align}`,
+              `${cellImageKey(c)}@${c.scale}|${c.crop.l},${c.crop.b},${c.crop.r},${c.crop.t}|${c.align}|${c.subCaption}`,
           )
           .join("~"),
       ].join("/"),
@@ -125,8 +125,8 @@ export default function FigureRealPreview() {
       <div className="fig-real-note">
         合成预览（Canvas）：<b>所见即产物</b>——与导出 PNG 共用同一合成函数，零漂移。
         白底、按列宽等比缩放、行内剩余空间按 \hfill 均分（与 LaTeX 一致）；
-        编号 / 子标题不烘焙进图（合成后即一张位图，丢失可编辑性），外层图题由 LaTeX \caption 生成。
-        PDF 仅取首页。
+        子标题（(a) + 文本）烘焙进图，居中于子图下方、首行编号粗体，与 subfigure 模式图下标注一致；
+        外层总图题仍由 LaTeX \caption 生成（见左侧「图片标题」）。PDF 仅取首页。
       </div>
     </div>
   );
