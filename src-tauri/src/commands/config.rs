@@ -402,6 +402,15 @@ pub struct BuildConfig {
     /// 空=使用内置默认清单（见 fsdoc::DEFAULT_AUX_SUFFIXES）
     #[serde(default)]
     pub clean_aux_extensions: Vec<String>,
+    /// 编译流程编排：用户自定义工具（Tool/Recipe 系统；见 docs/dev/compile-recipe-system.md）
+    #[serde(default)]
+    pub tools: Vec<ToolDef>,
+    /// 编译流程：有序工具列表；元素可为工具名字符串或 { tool, when? }
+    #[serde(default)]
+    pub recipes: Vec<RecipeDef>,
+    /// 默认编译流程名（None = 内置 latexmk）；须匹配 recipes 中某 name 或内置 Recipe
+    #[serde(default)]
+    pub default_recipe: Option<String>,
 }
 
 impl Default for BuildConfig {
@@ -415,6 +424,9 @@ impl Default for BuildConfig {
             live_preview_delay_ms: LIVE_PREVIEW_DELAY_DEFAULT,
             clean_aux_after_compile: false,
             clean_aux_extensions: Vec::new(),
+            tools: Vec::new(),
+            recipes: Vec::new(),
+            default_recipe: None,
         }
     }
 }
@@ -450,6 +462,187 @@ pub fn normalize_build_steps(steps: Vec<String>) -> Vec<String> {
         }
     }
     out
+}
+
+// ─────────────────────────────────────────────────────────────
+// 编译流程编排系统（Tool / Recipe）——见 docs/dev/compile-recipe-system.md
+// ─────────────────────────────────────────────────────────────
+
+/// 编排系统上限（防呆）
+pub const MAX_TOOLS: usize = 32;
+pub const MAX_RECIPES: usize = 32;
+pub const MAX_RECIPE_STEPS: usize = 32;
+fn default_repeat_max() -> u32 {
+    10
+}
+
+/// 工具（Tool）：单个可执行编译步骤（命令 + 参数 + 工作目录 + 环境变量）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ToolDef {
+    /// 唯一名称（Recipe 通过此名引用；内置工具不可删）
+    pub name: String,
+    /// 可执行命令（或内置 token："latex" 表示用 build.engine 解析的引擎）
+    pub command: String,
+    #[serde(default)]
+    pub args: Vec<String>,
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub env: std::collections::BTreeMap<String, String>,
+    #[serde(default)]
+    pub ignore_errors: bool,
+}
+
+impl Default for ToolDef {
+    fn default() -> Self {
+        ToolDef {
+            name: String::new(),
+            command: String::new(),
+            args: Vec::new(),
+            cwd: None,
+            env: std::collections::BTreeMap::new(),
+            ignore_errors: false,
+        }
+    }
+}
+
+/// 条件触发（when）：每步执行前即时求值
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase")]
+pub enum BuildCondition {
+    /// 文件存在（path 先展开占位符，如 %OUTDIR%/%DOCFILE%.bcf）
+    FileExists { path: String },
+    /// 主引擎 .log 含子串（pattern 简化匹配；覆盖常见 Rerun 警告）
+    LogRegex { pattern: String },
+    /// 环境变量存在（可选 value 精确匹配）
+    Env { name: String, value: Option<String> },
+}
+
+/// Recipe 单步：工具名字符串，或带条件的细化对象
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum RecipeStep {
+    Named(String),
+    Detailed(RecipeStepDetailed),
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RecipeStepDetailed {
+    pub tool: String,
+    pub when: Option<BuildCondition>,
+}
+
+impl Default for RecipeStepDetailed {
+    fn default() -> Self {
+        RecipeStepDetailed {
+            tool: String::new(),
+            when: None,
+        }
+    }
+}
+
+/// 自动重跑配置（解析主引擎 .log 的 Rerun 警告，仅重跑引擎步）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RepeatConfig {
+    #[serde(default)]
+    pub until_stable: bool,
+    #[serde(default = "default_repeat_max")]
+    pub max: u32,
+}
+
+impl Default for RepeatConfig {
+    fn default() -> Self {
+        RepeatConfig {
+            until_stable: false,
+            max: default_repeat_max(),
+        }
+    }
+}
+
+/// 流程（Recipe）：有序工具列表 + 可选 repeat/fallback
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RecipeDef {
+    pub name: String,
+    #[serde(default)]
+    pub tools: Vec<RecipeStep>,
+    #[serde(default)]
+    pub repeat: Option<RepeatConfig>,
+    pub fallback: Option<String>,
+}
+
+impl Default for RecipeDef {
+    fn default() -> Self {
+        RecipeDef {
+            name: String::new(),
+            tools: Vec::new(),
+            repeat: None,
+            fallback: None,
+        }
+    }
+}
+
+/// 编译流程编排归一化：剔非法工具/步骤、去重、截断上限。
+/// fallback / defaultRecipe 的交叉校验与防环在运行时（resolve_recipe）完成，
+/// 因为内置 Recipe 名不存于配置、只在运行时补充。
+pub fn normalize_build_recipes(mut build: BuildConfig) -> BuildConfig {
+    // 工具：去空（无 name/无 command）、按 name 去重（保留首个）、截断上限
+    let mut seen_tools = std::collections::HashSet::new();
+    let mut tools: Vec<ToolDef> = Vec::new();
+    for t in build.tools {
+        if t.name.trim().is_empty() || t.command.trim().is_empty() {
+            continue;
+        }
+        if seen_tools.contains(&t.name) {
+            continue;
+        }
+        seen_tools.insert(t.name.clone());
+        tools.push(t);
+    }
+    if tools.len() > MAX_TOOLS {
+        tools.truncate(MAX_TOOLS);
+    }
+    build.tools = tools;
+
+    // 流程：去空（无 name）、按 name 去重；步骤剔空 tool 名、截断步数
+    let mut seen_recipes = std::collections::HashSet::new();
+    let mut recipes: Vec<RecipeDef> = Vec::new();
+    for mut r in build.recipes {
+        if r.name.trim().is_empty() {
+            continue;
+        }
+        if seen_recipes.contains(&r.name) {
+            continue;
+        }
+        seen_recipes.insert(r.name.clone());
+        let mut steps: Vec<RecipeStep> = Vec::new();
+        for s in r.tools {
+            match &s {
+                RecipeStep::Named(n) => {
+                    if !n.trim().is_empty() {
+                        steps.push(s);
+                    }
+                }
+                RecipeStep::Detailed(d) => {
+                    if !d.tool.trim().is_empty() {
+                        steps.push(s);
+                    }
+                }
+            }
+            if steps.len() >= MAX_RECIPE_STEPS {
+                break;
+            }
+        }
+        r.tools = steps;
+        recipes.push(r);
+    }
+    if recipes.len() > MAX_RECIPES {
+        recipes.truncate(MAX_RECIPES);
+    }
+    build.recipes = recipes;
+    build
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -663,6 +856,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
         cfg.build.engine = "auto".to_string();
     }
     cfg.build.steps = normalize_build_steps(cfg.build.steps);
+    // 编译流程编排（Tool/Recipe）归一化
+    cfg.build = normalize_build_recipes(cfg.build);
     // M1-18：实时预览防抖延迟钳制（手改配置/旧值越界兜底）
     cfg.build.live_preview_delay_ms = cfg
         .build
@@ -987,6 +1182,39 @@ mod tests {
         // 超上限截断（10 个 latex → 8 个）
         let many: Vec<String> = (0..10).map(|_| "latex".to_string()).collect();
         assert_eq!(normalize_build_steps(many).len(), MAX_STEPS);
+    }
+
+    #[test]
+    fn normalize_build_recipes_cleans_and_dedupes() {
+        // 工具：去空 name/command、按 name 去重（保留首个）
+        let mut b = BuildConfig::default();
+        b.tools = vec![
+            ToolDef { name: "x".into(), command: "xelatex".into(), ..Default::default() },
+            ToolDef { name: "".into(), command: "bad".into(), ..Default::default() },
+            ToolDef { name: "x".into(), command: "dup".into(), ..Default::default() },
+        ];
+        // 流程：去空 name；步骤剔空 tool 名与空字符串步
+        b.recipes = vec![
+            RecipeDef {
+                name: "r1".into(),
+                tools: vec![
+                    RecipeStep::Named("x".into()),
+                    RecipeStep::Named("".into()),
+                    RecipeStep::Detailed(RecipeStepDetailed { tool: "".into(), when: None }),
+                    RecipeStep::Named("y".into()),
+                ],
+                repeat: None,
+                fallback: None,
+            },
+            RecipeDef { name: "".into(), tools: vec![], repeat: None, fallback: None },
+        ];
+        let n = normalize_build_recipes(b);
+        assert_eq!(n.tools.len(), 1);
+        assert_eq!(n.tools[0].name, "x");
+        assert_eq!(n.recipes.len(), 1);
+        assert_eq!(n.recipes[0].name, "r1");
+        // 空 tool 名与空字符串步被剔；仅 "x" 与 "y" 保留
+        assert_eq!(n.recipes[0].tools.len(), 2);
     }
 
     #[test]

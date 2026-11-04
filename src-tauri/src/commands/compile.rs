@@ -17,6 +17,12 @@ use which::which;
 
 use crate::commands::logparse::{parse_log_text, parse_run_number};
 
+use crate::commands::config::{
+    BuildConfig, BuildCondition, RecipeDef, RecipeStep, RecipeStepDetailed, ToolDef,
+};
+use crate::commands::placeholders::{self, Ctx};
+use std::collections::{BTreeMap, HashSet};
+
 /// 发行版检测结果（与 src/types/compile.ts TexDistInfo 对齐）
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -407,8 +413,12 @@ struct Job {
     root: PathBuf,
     main: PathBuf,
     engine: String,
-    /// M1-3：固定流程步骤序列（空=自动 latexmk；非空=按序直跑，见 config::BUILD_STEPS）
-    steps: Vec<String>,
+    /// M2：已解析的编译流程（内置或用户级）
+    recipe: RecipeDef,
+    /// 用户自定义工具（按名查找；内置引擎 token 优先）
+    user_tools: Vec<ToolDef>,
+    /// 用户自定义流程（fallback 引用可能指向用户级 Recipe）
+    user_recipes: Vec<RecipeDef>,
     /// 引擎搜索目录（受管/注册表），find_engine 与子进程 PATH 注入共用
     search_dirs: Vec<PathBuf>,
 }
@@ -461,6 +471,7 @@ pub async fn compile_project(
     main_file: String,
     engine: Option<String>,
     steps: Option<Vec<String>>,
+    recipe: Option<String>,
 ) -> Result<(), String> {
     let st = state.inner().clone();
 
@@ -479,12 +490,34 @@ pub async fn compile_project(
     }
 
     let sig = JobSig::new(seq);
+    // 读取应用配置（含用户级工具/流程，已归一化）；缺配置时回退默认（工具为空）
+    let cfg = crate::commands::config::read_config(
+        &crate::commands::config::config_path(&app).unwrap_or_default(),
+    );
+    // 引擎：前端已解析（effectiveEngine）；缺省回退 auto→xelatex
+    let resolved_engine = match engine {
+        Some(e) => e,
+        None => cfg.build.engine.clone(),
+    };
+    let resolved_engine = if resolved_engine == "auto" {
+        "xelatex".to_string()
+    } else {
+        resolved_engine
+    };
+    // 解析编译流程：按名查用户级/内置；否则由旧 steps 合成或回退内置 latexmk
+    let recipe_def = resolve_recipe(
+        recipe.as_deref(),
+        &cfg.build,
+        &resolved_engine,
+        &steps.unwrap_or_default(),
+    );
     let job = Job {
         root: PathBuf::from(root),
         main: PathBuf::from(main_file),
-        engine: engine.unwrap_or_else(|| "xelatex".to_string()),
-        // 归一化与 Rust 配置同源：剔非法步骤、超限截断（防呆，前端已保证合法）
-        steps: crate::commands::config::normalize_build_steps(steps.unwrap_or_default()),
+        engine: resolved_engine,
+        recipe: recipe_def,
+        user_tools: cfg.build.tools.clone(),
+        user_recipes: cfg.build.recipes.clone(),
         search_dirs: engine_search_dirs(Some(&app)),
     };
 
@@ -533,7 +566,418 @@ pub fn cancel_compile(state: State<'_, Arc<CompileState>>) -> Result<(), String>
     Ok(())
 }
 
-/// 执行完整编译流程，返回最终结果
+/// 流程信息（前端设置页展示：名称 / 是否内置 / 是否可删 / 步骤）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecipeInfo {
+    pub name: String,
+    pub builtin: bool,
+    pub deletable: bool,
+    pub tools: Vec<String>,
+}
+
+/// 取 Recipe 的步骤工具名列表（Named 直接取；Detailed 取 tool 字段）
+fn recipe_step_names(r: &RecipeDef) -> Vec<String> {
+    r.tools
+        .iter()
+        .map(|s| match s {
+            RecipeStep::Named(n) => n.clone(),
+            RecipeStep::Detailed(d) => d.tool.clone(),
+        })
+        .collect()
+}
+
+/// 列出可用编译流程（内置 + 用户级；内置不可删）
+#[tauri::command]
+pub fn list_recipes(app: AppHandle, engine: String) -> Vec<RecipeInfo> {
+    let cfg = crate::commands::config::read_config(
+        &crate::commands::config::config_path(&app).unwrap_or_default(),
+    );
+    let resolved_engine = if engine == "auto" { "xelatex" } else { engine.as_str() };
+    let builtins = builtin_recipes(resolved_engine);
+    let mut out: Vec<RecipeInfo> = Vec::new();
+    for r in &builtins {
+        out.push(RecipeInfo {
+            name: r.name.clone(),
+            builtin: true,
+            deletable: false,
+            tools: recipe_step_names(r),
+        });
+    }
+    for r in &cfg.build.recipes {
+        out.push(RecipeInfo {
+            name: r.name.clone(),
+            builtin: false,
+            deletable: true,
+            tools: recipe_step_names(r),
+        });
+    }
+    out
+}
+
+// ─────────────────────────────────────────────────────────────
+// M2：Recipe / Tool 通用化编排
+// ─────────────────────────────────────────────────────────────
+
+/// 内置 Recipe（不可删）：latexmk（默认）+ engine-direct（latexmk 不可用时的兜底管线）。
+/// 名固定、不存于配置，仅运行时合成；latexmk 的引擎 flag 与 Perl 检测在 resolve_command 运行时完成。
+fn builtin_recipes(_engine: &str) -> Vec<RecipeDef> {
+    vec![
+        RecipeDef {
+            name: "latexmk".to_string(),
+            tools: vec![RecipeStep::Named("latexmk".to_string())],
+            repeat: None,
+            fallback: Some("engine-direct".to_string()),
+        },
+        RecipeDef {
+            name: "engine-direct".to_string(),
+            tools: vec![
+                RecipeStep::Named("latex".to_string()),
+                RecipeStep::Detailed(RecipeStepDetailed {
+                    tool: "biber".to_string(),
+                    when: Some(BuildCondition::FileExists {
+                        path: "%OUTDIR%/%DOCFILE%.bcf".to_string(),
+                    }),
+                }),
+                RecipeStep::Named("latex".to_string()),
+                RecipeStep::Named("latex".to_string()),
+            ],
+            repeat: None,
+            fallback: None,
+        },
+    ]
+}
+
+/// 解析编译流程：按名查用户级/内置；否则由旧 steps 合成或回退内置 latexmk。
+/// 仅合成数据，不执行；fallback 防环在 run_job 运行时处理。
+fn resolve_recipe(
+    recipe: Option<&str>,
+    build: &BuildConfig,
+    engine: &str,
+    legacy_steps: &[String],
+) -> RecipeDef {
+    let builtins = builtin_recipes(engine);
+    let find = |name: &str| -> Option<RecipeDef> {
+        build
+            .recipes
+            .iter()
+            .find(|r| r.name == name)
+            .cloned()
+            .or_else(|| builtins.iter().find(|r| r.name == name).cloned())
+    };
+    if let Some(name) = recipe {
+        if let Some(r) = find(name) {
+            return r;
+        }
+    }
+    if let Some(def) = &build.default_recipe {
+        if let Some(r) = find(def) {
+            return r;
+        }
+    }
+    if !legacy_steps.is_empty() {
+        return RecipeDef {
+            name: "(legacy steps)".to_string(),
+            tools: legacy_steps
+                .iter()
+                .map(|s| RecipeStep::Named(s.clone()))
+                .collect(),
+            repeat: None,
+            fallback: None,
+        };
+    }
+    find("latexmk").expect("内置 latexmk 流程始终存在")
+}
+
+/// 工具解析结果
+enum ToolResolution {
+    /// 正常可执行：命令路径 + 展开后参数 + 工具自带 env + 是否忽略错误
+    Run {
+        exe: PathBuf,
+        args: Vec<String>,
+        env: BTreeMap<String, String>,
+        ignore_errors: bool,
+    },
+    /// 工具不可用（找不到 exe / latexmk 缺 Perl）：触发当前 Recipe 的 fallback
+    Unavailable(String),
+    /// 工具可选缺失（biber/bibtex 未装）：直接跳过该步
+    Skip(String),
+}
+
+/// 解析一个命令字符串为可执行命令。command 可为内置 token（latex/latexmk/biber/bibtex）
+/// 或字面命令（先按引擎名/程序名在搜索目录找，否则当文件路径处理）。
+fn resolve_command(
+    command: &str,
+    args: &[String],
+    env: &BTreeMap<String, String>,
+    ignore_errors: bool,
+    job: &Job,
+    ctx: &Ctx<'_>,
+) -> ToolResolution {
+    match command.trim() {
+        "latex" => match find_engine(&job.engine, &job.search_dirs) {
+            Some(exe) => {
+                let mut a = vec![
+                    "-synctex=1".to_string(),
+                    "-interaction=nonstopmode".to_string(),
+                    "-file-line-error".to_string(),
+                    placeholders::expand_str("%DOCFILE_EXT%", ctx),
+                ];
+                a.extend(placeholders::expand_args(args, ctx));
+                ToolResolution::Run {
+                    exe,
+                    args: a,
+                    env: env.clone(),
+                    ignore_errors,
+                }
+            }
+            None => ToolResolution::Unavailable(format!(
+                "未找到编译引擎 {}，请检查 TeX 发行版安装",
+                job.engine
+            )),
+        },
+        "latexmk" => match find_engine("latexmk", &job.search_dirs) {
+            Some(exe) => {
+                // latexmk 是 Perl 脚本，必须有可用 Perl 才能跑；否则交给 fallback（engine-direct）
+                if crate::commands::perl::find_working_perl_in(&job.search_dirs).is_none() {
+                    return ToolResolution::Unavailable(
+                        "未检测到可用 Perl，latexmk 无法运行，改用引擎直接管线".to_string(),
+                    );
+                }
+                let mut a = vec![
+                    latexmk_flag(&job.engine).to_string(),
+                    "-synctex=1".to_string(),
+                    "-interaction=nonstopmode".to_string(),
+                    "-file-line-error".to_string(),
+                    placeholders::expand_str("%DOCFILE_EXT%", ctx),
+                ];
+                a.extend(placeholders::expand_args(args, ctx));
+                ToolResolution::Run {
+                    exe,
+                    args: a,
+                    env: env.clone(),
+                    ignore_errors,
+                }
+            }
+            None => ToolResolution::Unavailable("未找到 latexmk，改用引擎直接管线".to_string()),
+        },
+        "biber" | "bibtex" => match find_engine(command.trim(), &job.search_dirs) {
+            Some(exe) => {
+                let mut a = vec![placeholders::expand_str("%DOCFILE%", ctx)];
+                a.extend(placeholders::expand_args(args, ctx));
+                ToolResolution::Run {
+                    exe,
+                    args: a,
+                    env: env.clone(),
+                    ignore_errors,
+                }
+            }
+            None => ToolResolution::Skip(format!("未找到 {}，跳过该步骤", command.trim())),
+        },
+        other => {
+            if let Some(exe) = find_engine(other, &job.search_dirs) {
+                ToolResolution::Run {
+                    exe,
+                    args: placeholders::expand_args(args, ctx),
+                    env: env.clone(),
+                    ignore_errors,
+                }
+            } else {
+                let p = PathBuf::from(other);
+                if p.is_file() {
+                    ToolResolution::Run {
+                        exe: p,
+                        args: placeholders::expand_args(args, ctx),
+                        env: env.clone(),
+                        ignore_errors,
+                    }
+                } else {
+                    ToolResolution::Unavailable(format!("未找到命令：{other}"))
+                }
+            }
+        }
+    }
+}
+
+/// 按工具名解析工具（先查用户级，再查内置 token）
+fn resolve_tool(tool_name: &str, job: &Job, ctx: &Ctx<'_>) -> ToolResolution {
+    if let Some(t) = job.user_tools.iter().find(|t| t.name == tool_name) {
+        return resolve_command(&t.command, &t.args, &t.env, t.ignore_errors, job, ctx);
+    }
+    resolve_command(tool_name, &[], &BTreeMap::new(), false, job, ctx)
+}
+
+/// 条件触发即时求值；LogRegex 读主引擎 .log（含子串即匹配）
+fn evaluate_condition(cond: &BuildCondition, ctx: &Ctx<'_>, log: &Path) -> bool {
+    match cond {
+        BuildCondition::FileExists { path } => {
+            let p = placeholders::expand_str(path, ctx);
+            Path::new(&p).is_file()
+        }
+        BuildCondition::LogRegex { pattern } => std::fs::read_to_string(log)
+            .map(|t| t.contains(pattern.as_str()))
+            .unwrap_or(false),
+        BuildCondition::Env { name, value } => match std::env::var(name) {
+            Ok(v) => value.as_ref().map_or(true, |w| v == *w),
+            Err(_) => false,
+        },
+    }
+}
+
+/// 主引擎 .log 是否提示需要再编一遍（交叉引用 / 参考文献 / 页码未收敛）
+fn log_needs_rerun(log: &Path) -> bool {
+    let text = match std::fs::read_to_string(log) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    [
+        "Rerun to get cross-references right",
+        "Rerun to get citations correct",
+        "Rerun to get bibliographical references",
+        "LaTeX Warning: Label(s) may have changed",
+        "Package natbib Warning",
+        "Package biblatex Warning",
+        "Warning: There were undefined references",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+}
+
+/// 进度展示用的简短参数摘要（避免把超长路径铺满面板）
+fn short_args(args: &[String]) -> String {
+    args.last().cloned().unwrap_or_default()
+}
+
+/// Recipe 执行结果
+enum RecipeOutcome {
+    Ok,
+    StepFailed,
+    Cancelled,
+    /// 工具无法启动（找不到 exe / latexmk 缺 Perl / spawn 失败）→ 调用方据 fallback 决策
+    Unavailable(String),
+}
+
+/// 执行单个 Recipe：逐步求值 when → 解析工具 → run_cmd；并处理 repeat.untilStable。
+/// 返回执行结果；passes / cancelled 由调用方持有并在失败时透传。
+async fn run_recipe(
+    app: &AppHandle,
+    st: &Arc<CompileState>,
+    sig: &JobSig,
+    job: &Job,
+    ctx: &Ctx<'_>,
+    recipe: &RecipeDef,
+    dir: &Path,
+    log: &Path,
+    engine_exe: &Option<PathBuf>,
+    passes: &mut u32,
+    cancelled: &mut bool,
+) -> RecipeOutcome {
+    // 记录引擎步（用于 repeat.untilStable 仅重跑引擎）
+    let mut engine_steps: Vec<RecipeStep> = Vec::new();
+
+    for step in &recipe.tools {
+        if *cancelled || st.is_cancelled(sig.seq) {
+            return RecipeOutcome::Cancelled;
+        }
+        let (tool_name, when) = match step {
+            RecipeStep::Named(n) => (n.clone(), None),
+            RecipeStep::Detailed(d) => (d.tool.clone(), d.when.clone()),
+        };
+        if let Some(when) = &when {
+            if !evaluate_condition(when, ctx, log) {
+                continue;
+            }
+        }
+        let res = resolve_tool(&tool_name, job, ctx);
+        match res {
+            ToolResolution::Skip(msg) => {
+                emit_progress(app, "running", 0, msg);
+                continue;
+            }
+            ToolResolution::Unavailable(msg) => return RecipeOutcome::Unavailable(msg),
+            ToolResolution::Run {
+                exe,
+                args,
+                env,
+                ignore_errors,
+            } => {
+                if engine_exe.as_ref().map_or(false, |e| e == &exe) {
+                    engine_steps.push(step.clone());
+                }
+                *passes += 1;
+                emit_progress(
+                    app,
+                    "running",
+                    0,
+                    format!("{} · {}", tool_name, short_args(&args)),
+                );
+                match run_cmd(app, st, sig, &exe, &args, dir, &job.search_dirs, &env).await {
+                    CmdOutcome::Ok => {}
+                    CmdOutcome::Failed => {
+                        if !ignore_errors {
+                            return RecipeOutcome::StepFailed;
+                        }
+                    }
+                    CmdOutcome::Cancelled => return RecipeOutcome::Cancelled,
+                    CmdOutcome::SpawnError(msg) => return RecipeOutcome::Unavailable(msg),
+                }
+            }
+        }
+    }
+
+    // repeat.untilStable：仅重跑引擎步，直到 .log 不再提示 Rerun 或达到 max
+    if let Some(rep) = &recipe.repeat {
+        if rep.until_stable {
+            let mut reruns = 0u32;
+            while reruns < rep.max
+                && !*cancelled
+                && !st.is_cancelled(sig.seq)
+                && log_needs_rerun(log)
+            {
+                for step in &engine_steps {
+                    if *cancelled || st.is_cancelled(sig.seq) {
+                        return RecipeOutcome::Cancelled;
+                    }
+                    let (tool_name, when) = match step {
+                        RecipeStep::Named(n) => (n.clone(), None),
+                        RecipeStep::Detailed(d) => (d.tool.clone(), d.when.clone()),
+                    };
+                    if let Some(when) = &when {
+                        if !evaluate_condition(when, ctx, log) {
+                            continue;
+                        }
+                    }
+                    let res = resolve_tool(&tool_name, job, ctx);
+                    if let ToolResolution::Run {
+                        exe,
+                        args,
+                        env,
+                        ignore_errors,
+                    } = res
+                    {
+                        *passes += 1;
+                        emit_progress(app, "running", 0, format!("{} · 收敛重跑", tool_name));
+                        match run_cmd(app, st, sig, &exe, &args, dir, &job.search_dirs, &env).await {
+                            CmdOutcome::Ok => {}
+                            CmdOutcome::Failed => {
+                                if !ignore_errors {
+                                    return RecipeOutcome::StepFailed;
+                                }
+                            }
+                            CmdOutcome::Cancelled => return RecipeOutcome::Cancelled,
+                            CmdOutcome::SpawnError(msg) => return RecipeOutcome::Unavailable(msg),
+                        }
+                    }
+                }
+                reruns += 1;
+            }
+        }
+    }
+
+    RecipeOutcome::Ok
+}
+
+/// 执行完整编译流程（Recipe 驱动 + fallback 链），返回最终结果
 async fn run_job(
     app: &AppHandle,
     st: &Arc<CompileState>,
@@ -565,207 +1009,83 @@ async fn run_job(
 
     emit_progress(app, "prepare", 0, format!("准备编译 · {main_name}"));
 
+    // 占位符上下文
+    let ctx = Ctx {
+        doc: &job.main,
+        dir: &dir,
+        out: &dir,
+        aux: &dir,
+        ws: &job.root,
+    };
+
+    let engine_exe = find_engine(&job.engine, &job.search_dirs);
+
     let mut passes: u32 = 0;
     let mut failed = false;
     let mut cancelled = false;
 
-    // latexmk 是 Perl 脚本：没有可用 Perl 时不要硬跑，直接走引擎自带管线
-    let latexmk = find_engine("latexmk", &job.search_dirs);
-    // 没有 latexmk 就不必探测 Perl；只有准备走 latexmk 时才做 smoke
-    let perl_ok = latexmk.is_none()
-        || crate::commands::perl::find_working_perl_in(&job.search_dirs).is_some();
-    // M1-3：自定义固定流程时绕过 latexmk（它自行判定遍数、无法指定），按 steps 直跑
-    let use_latexmk = job.steps.is_empty() && latexmk.is_some() && perl_ok;
-
-    // 引擎直跑参数（固定遍数分支与兜底管线共用）
-    let tex_args = |name: &str| {
-        vec![
-            "-synctex=1".to_string(),
-            "-interaction=nonstopmode".to_string(),
-            "-file-line-error".to_string(),
-            name.to_string(),
-        ]
-    };
-
-    if !job.steps.is_empty() {
-        // M1-3：自定义固定流程（如 LaTeX → BibTeX → LaTeX → LaTeX），绕过 latexmk 按序直跑
-        let total = job.steps.len();
-        for (i, step) in job.steps.iter().enumerate() {
-            if cancelled || st.is_cancelled(sig.seq) {
+    // fallback 链：tried 防环；当前 Recipe 不可用（Unavailable）时切到 fallback
+    let mut tried: HashSet<String> = HashSet::new();
+    let mut current: RecipeDef = job.recipe.clone();
+    loop {
+        tried.insert(current.name.clone());
+        match run_recipe(
+            app,
+            st,
+            sig,
+            job,
+            &ctx,
+            &current,
+            &dir,
+            &log,
+            &engine_exe,
+            &mut passes,
+            &mut cancelled,
+        )
+        .await
+        {
+            RecipeOutcome::Ok => {
+                failed = false;
+                break;
+            }
+            RecipeOutcome::StepFailed => {
+                failed = true;
+                break;
+            }
+            RecipeOutcome::Cancelled => {
                 cancelled = true;
                 break;
             }
-            let pos = i + 1;
-            match step.as_str() {
-                "latex" => match find_engine(&job.engine, &job.search_dirs) {
-                    Some(exe) => {
-                        passes += 1;
-                        emit_progress(
-                            app,
-                            "running",
-                            0,
-                            format!("{} · 第 {pos}/{total} 步（LaTeX）", job.engine),
-                        );
-                        match run_cmd(app, st, sig, &exe, &tex_args(&main_name), &dir, &job.search_dirs)
-                            .await
-                        {
-                            CmdOutcome::Ok => {}
-                            CmdOutcome::Failed => failed = true,
-                            CmdOutcome::Cancelled => {
-                                cancelled = true;
-                                break;
-                            }
-                            CmdOutcome::SpawnError(msg) => {
+            RecipeOutcome::Unavailable(msg) => {
+                emit_progress(app, "running", 0, msg.clone());
+                match &current.fallback {
+                    Some(fb) if !tried.contains(fb) => {
+                        // 解析 fallback Recipe（用户级优先，再内置）
+                        let next = job
+                            .user_recipes
+                            .iter()
+                            .find(|r| &r.name == fb)
+                            .cloned()
+                            .or_else(|| {
+                                builtin_recipes(&job.engine)
+                                    .into_iter()
+                                    .find(|r| &r.name == fb)
+                            });
+                        match next {
+                            Some(r) => current = r,
+                            None => {
                                 failed = true;
-                                emit_progress(app, "running", 0, msg);
+                                break;
                             }
                         }
                     }
-                    None => {
+                    _ => {
                         failed = true;
-                        emit_progress(
-                            app,
-                            "running",
-                            0,
-                            format!("未找到编译引擎 {}，请检查 TeX 发行版安装", job.engine),
-                        );
                         break;
                     }
-                },
-                // bibtex / biber：用户显式排入流程，但本机没装时不致命——跳过该步骤并提示
-                "bibtex" | "biber" => match find_engine(step, &job.search_dirs) {
-                    Some(exe) => {
-                        emit_progress(
-                            app,
-                            "running",
-                            0,
-                            format!("{step} · 处理参考文献（第 {pos}/{total} 步）"),
-                        );
-                        match run_cmd(app, st, sig, &exe, &[stem.clone()], &dir, &job.search_dirs).await
-                        {
-                            CmdOutcome::Ok => {}
-                            CmdOutcome::Failed => failed = true,
-                            CmdOutcome::Cancelled => {
-                                cancelled = true;
-                                break;
-                            }
-                            CmdOutcome::SpawnError(msg) => {
-                                failed = true;
-                                emit_progress(app, "running", 0, msg);
-                            }
-                        }
-                    }
-                    None => {
-                        emit_progress(
-                            app,
-                            "running",
-                            0,
-                            format!("未找到 {step}，跳过该步骤（第 {pos}/{total} 步）"),
-                        );
-                    }
-                },
-                // 归一化已剔非法步骤；双保险忽略
-                _ => {}
-            }
-        }
-    } else if use_latexmk {
-        let lmk = latexmk.as_ref().expect("latexmk checked above");
-        // 首选 latexmk：交叉引用 / 参考文献 / 多遍由它自己调度
-        passes += 1;
-        let args = vec![
-            latexmk_flag(&job.engine).to_string(),
-            "-synctex=1".to_string(),
-            "-interaction=nonstopmode".to_string(),
-            "-file-line-error".to_string(),
-            main_name.clone(),
-        ];
-        emit_progress(
-            app,
-            "running",
-            0,
-            format!("latexmk {}", latexmk_flag(&job.engine)),
-        );
-        match run_cmd(app, st, sig, lmk, &args, &dir, &job.search_dirs).await {
-            CmdOutcome::Ok => {}
-            CmdOutcome::Failed => failed = true,
-            CmdOutcome::Cancelled => cancelled = true,
-            CmdOutcome::SpawnError(msg) => {
-                failed = true;
-                emit_progress(app, "running", 0, msg);
-            }
-        }
-    } else if let Some(exe) = find_engine(&job.engine, &job.search_dirs) {
-        if latexmk.is_some() && !perl_ok {
-            emit_progress(
-                app,
-                "running",
-                0,
-                "未检测到可用 Perl，跳过 latexmk，改用直接引擎管线",
-            );
-        }
-        // 兜底：引擎自带管线（第 1 遍 → biber（有 .bcf）→ 再两遍收敛）
-        passes += 1;
-        emit_progress(app, "running", 0, format!("{} · 第 1 遍", job.engine));
-        match run_cmd(app, st, sig, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
-            CmdOutcome::Ok => {}
-            CmdOutcome::Failed => failed = true,
-            CmdOutcome::Cancelled => cancelled = true,
-            CmdOutcome::SpawnError(msg) => {
-                failed = true;
-                emit_progress(app, "running", 0, msg);
-            }
-        }
-
-        // 参考文献：biblatex 会写 .bcf
-        if !cancelled && dir.join(format!("{stem}.bcf")).is_file() {
-            if let Some(biber) = find_engine("biber", &job.search_dirs) {
-                emit_progress(app, "running", 0, "biber · 处理参考文献");
-                match run_cmd(app, st, sig, &biber, &[stem.clone()], &dir, &job.search_dirs).await {
-                    CmdOutcome::Ok => {}
-                    CmdOutcome::Failed => failed = true,
-                    CmdOutcome::Cancelled => cancelled = true,
-                    CmdOutcome::SpawnError(msg) => {
-                        failed = true;
-                        emit_progress(app, "running", 0, msg);
-                    }
                 }
             }
         }
-
-        // 再跑两遍，让 \ref / \cite 收敛
-        for i in 0..2 {
-            if cancelled || st.is_cancelled(sig.seq) {
-                cancelled = true;
-                break;
-            }
-            passes += 1;
-            emit_progress(
-                app,
-                "running",
-                0,
-                format!("{} · 第 {} 遍", job.engine, i + 2),
-            );
-            match run_cmd(app, st, sig, &exe, &tex_args(&main_name), &dir, &job.search_dirs).await {
-                CmdOutcome::Ok => {}
-                CmdOutcome::Failed => failed = true,
-                CmdOutcome::Cancelled => {
-                    cancelled = true;
-                    break;
-                }
-                CmdOutcome::SpawnError(msg) => {
-                    failed = true;
-                    emit_progress(app, "running", 0, msg);
-                }
-            }
-        }
-    } else {
-        failed = true;
-        emit_progress(
-            app,
-            "running",
-            0,
-            format!("未找到编译引擎 {}，请检查 TeX 发行版安装", job.engine),
-        );
     }
 
     cancelled |= st.is_cancelled(sig.seq);
@@ -854,6 +1174,7 @@ async fn run_cmd(
     args: &[String],
     cwd: &Path,
     path_dirs: &[PathBuf],
+    extra_env: &BTreeMap<String, String>,
 ) -> CmdOutcome {
     // 取消可能发生在两条命令之间（尚未 spawn）
     if st.is_cancelled(sig.seq) {
@@ -873,6 +1194,10 @@ async fn run_cmd(
     cmd.env("max_print_line", "10000")
         .env("error_line", "254")
         .env("half_error_line", "238");
+    // M2：工具自定义环境变量（用户级 Tool.env 透传进子进程）
+    for (k, v) in extra_env {
+        cmd.env(k, v);
+    }
     if !path_dirs.is_empty() {
         let mut joined: Vec<PathBuf> = path_dirs.to_vec();
         joined.extend(std::env::split_paths(

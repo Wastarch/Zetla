@@ -46,6 +46,8 @@ pub fn run() {
             // 多遍编译（M0-9）
             commands::compile::compile_project,
             commands::compile::cancel_compile,
+            // M2：编译流程（Recipe）枚举（设置页展示 / 选择）
+            commands::compile::list_recipes,
             // 日志解析（M0-11）
             commands::logparse::parse_tex_log,
             // SyncTeX 双向跳转（M1-4）
