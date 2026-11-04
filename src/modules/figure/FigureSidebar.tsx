@@ -1,6 +1,7 @@
 // P2 · 拼图侧栏控制面板（替代原 F2 侧栏内画布）。
 // 纯控制，不渲染画布：模式开关 / 行列 / 导入清空预览 / CellList / CellEditor ⇄ GapControls /
-// subcaption 检测横幅 / 底部随模式变化的主操作（subfigure→生成代码；composite→P3 占位）。
+// 图片标题（总图 caption，仅已导入图片时出现）/ subcaption 检测横幅 /
+// 底部随模式变化的主操作（subfigure→生成代码；composite→P3 占位）。
 import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { useFigureStore } from "./figureStore";
@@ -321,20 +322,6 @@ export default function FigureSidebar() {
         </button>
       </div>
 
-      {/* 图片标题：= 总图 \caption{}（subfigure 生成即写入）；composite 模式还用作 PNG 命名 */}
-      <label className="figside-captioncol">
-        <span className="figside-label">图片标题</span>
-        <input
-          type="text"
-          className="figside-input"
-          value={caption}
-          placeholder={
-            mode === "composite" ? "总图标题；留空则命名 fig-<slug>-composite.png" : "总图 \\caption{}，可留空"
-          }
-          onChange={(e) => setCaption(e.target.value)}
-        />
-      </label>
-
       {cells.length === 0 ? (
         <div className="figside-empty">
           <p>尚未载入图片。点击「选择图片…」选本地图片，或拖入 / 粘贴多张图片自动进入。</p>
@@ -355,6 +342,23 @@ export default function FigureSidebar() {
           ) : (
             <GapControls gapCol={gapCol} gapRow={gapRow} />
           )}
+
+          {/* 图片标题：= 总图 \caption{}（subfigure 生成即写入）；composite 模式还用作 PNG 命名。
+              仅在已导入图片时出现（空态下无意义），位置紧跟间距/子图编辑卡片。 */}
+          <label className="figside-captioncol">
+            <span className="figside-label">图片标题</span>
+            <input
+              type="text"
+              className="figside-input"
+              value={caption}
+              placeholder={
+                mode === "composite"
+                  ? "总图标题；留空则命名 fig-<slug>-composite.png"
+                  : "总图 \\caption{}，可留空"
+              }
+              onChange={(e) => setCaption(e.target.value)}
+            />
+          </label>
         </>
       )}
 
