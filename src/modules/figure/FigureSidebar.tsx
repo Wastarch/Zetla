@@ -1,17 +1,19 @@
 // P2 · 拼图侧栏控制面板（替代原 F2 侧栏内画布）。
 // 纯控制，不渲染画布：模式开关 / 行列 / 导入清空预览 / CellList /
 // 设置区 figside-edit（未选中 → GapControls + CaptionField 两张卡；选中 → 该子图 CellEditor 卡）/
-// subcaption 检测横幅 / 底部随模式变化的主操作（subfigure→生成代码；composite→P3 占位）。
+// subcaption 检测横幅 / 底部随模式变化的主操作（subfigure→生成代码；composite→合成落盘 + 单图直插）。
 import { useEffect, useRef, useState } from "react";
 import type { EditorView } from "@codemirror/view";
 import { useFigureStore } from "./figureStore";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { getActiveView, getEditorView } from "@/editor/activeView";
 import { pickImagesToCanvas } from "./figureImport";
-import { generateSubfigure } from "./figureGen";
+import { generateSubfigure, generateComposite } from "./figureGen";
 import { hasPackage, SUBCAPTION_SNIPPET, insertBeforeDocument } from "@/core/preamble";
 import { parentOf, notify, useProjectStore } from "@/project/useProject";
-import { relativePath } from "@/editor/image/pathUtils";
+import { relativePath, slugify } from "@/editor/image/pathUtils";
+import { loadCellImage, composeFigure, DEFAULT_COMPOSE_WIDTH } from "./figureCompose";
+import { sourceName } from "./figurePreviewUrl";
 import { projectApi } from "@/ipc/invoke";
 import { startCompile } from "@/compile/useCompile";
 import { onKernelEvent, RustEvents } from "@/ipc/events";
@@ -30,6 +32,13 @@ interface Conflict {
 }
 
 const basename = (p: string): string => p.split(/[\\/]/).pop() ?? p;
+
+/** 图片标题 → 文件名（保留中文，剔除文件系统非法字符 / \ : * ? " < > | 与 ASCII 控制符） */
+const sanitizeFileName = (name: string): string => {
+  // 使用 \x00-\x1f / \x7f 匹配控制符，避免源文件里塞入不可见字符
+  const cleaned = name.replace(/[\x00-\x1f\x7f\\/:*?"<>|]/g, "").trim();
+  return cleaned.length > 0 ? cleaned : "figure";
+};
 
 /** 把生成代码插入到指定视图光标处（活动缓冲非 tex 时仍可用目标 tex 视图） */
 function insertGenerated(view: EditorView, code: string): { from: number; to: number } {
@@ -216,7 +225,89 @@ export default function FigureSidebar() {
     void startCompile({ live: true });
   };
 
-  // 同名冲突弹窗的本地状态与操作
+  // 合成单张图片：合成 → toBlob → 落盘（同名覆盖）→ 单图直插
+  const handleComposeInsert = async () => {
+    if (cells.length === 0) {
+      notify("请先导入图片", "err");
+      return;
+    }
+    const project = useProjectStore.getState();
+    const root = project.root;
+    if (!root || !targetTex) {
+      notify("缺少项目根或目标 .tex，无法合成", "err");
+      return;
+    }
+    const imageDir = project.tree?.imageDir?.trim() || "figure";
+    const texDir = parentOf(targetTex);
+
+    // 1) 预取所有图（同源缓存；PDF 取首页），合成到白底 canvas
+    const images = new Map<number, CanvasImageSource>();
+    let failed = 0;
+    await Promise.all(
+      cells.map(async (cell, i) => {
+        try {
+          images.set(i, await loadCellImage(cell));
+        } catch (e) {
+          console.warn("[figure compose] 图片加载失败", e);
+          failed += 1;
+        }
+      }),
+    );
+    if (failed === cells.length) {
+      notify("所有图片加载失败，无法合成", "err");
+      return;
+    }
+    const canvas = composeFigure(layout, images, DEFAULT_COMPOSE_WIDTH);
+
+    // 2) 导出 PNG（blob → 字节）
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/png"),
+    );
+    if (!blob) {
+      notify("合成图导出失败（toBlob 返回空）", "err");
+      return;
+    }
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+
+    // 3) 命名：图片标题填了 → <标题>.png；未填 → fig-<首个来源slug>-composite.png
+    const captionText = layout.caption.trim();
+    let fileName: string;
+    if (captionText) {
+      fileName = `${sanitizeFileName(captionText)}.png`;
+    } else {
+      const first = cells[0]!;
+      const rawName = first.source ? sourceName(first.source) : first.path;
+      const slug = rawName ? slugify(basename(rawName)) : "figure";
+      fileName = `fig-${slug}-composite.png`;
+    }
+
+    // 4) 落盘：import_image 为去重语义（冲突会改名），合成模式要求同名直接覆盖 → 先删后写
+    const absPath = `${root}/${imageDir}/${fileName}`;
+    let res: { absPath: string };
+    try {
+      if (await projectApi.imageExists(root, imageDir, fileName)) {
+        await projectApi.removeEntry(absPath);
+      }
+      res = await projectApi.importImage(root, imageDir, fileName, bytes);
+    } catch (e) {
+      notify(`合成图落盘失败：${String(e)}`, "err");
+      return;
+    }
+    const relPath = relativePath(texDir, res.absPath);
+
+    // 5) 生成单图直插代码（\includegraphics[width=\linewidth] + \caption{图片标题}）并插入
+    const code = generateComposite(layout, relPath);
+    const view = getEditorView(targetTex) ?? getActiveView();
+    if (!view) {
+      notify("无活动编辑器，无法插入代码", "err");
+      return;
+    }
+    lastInsert.current = { view, ...insertGenerated(view, code) };
+    useBuffersStore.getState().setActive(targetTex);
+    void useProjectStore.getState().refresh(); // figure/ 新增文件进资源树
+    notify("已合成单图并插入，后台编译自检中…", "ok");
+    void startCompile({ live: true });
+  };
   const [conflicts, setConflicts] = useState<Conflict[] | null>(null);
   const updateChoice = (index: number, choice: "use" | "rename") =>
     setConflicts((prev) =>
@@ -378,10 +469,10 @@ export default function FigureSidebar() {
           <button
             type="button"
             className="btn primary"
-            disabled
-            title="合成落盘与单图直插在 P3-2 接入；当前可先看 Canvas 合成预览"
+            disabled={cells.length === 0}
+            onClick={handleComposeInsert}
           >
-            合成单图并插入（P3-2 接入）
+            合成单图并插入
           </button>
         )}
       </div>

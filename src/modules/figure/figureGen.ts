@@ -177,3 +177,22 @@ export function describeLayout(layout: FigureLayout): string {
   }
   return out.join(" | ");
 }
+
+/**
+ * 生成合成单张图片模式的直插代码：外层单 figure 环境，内部仅一张 \includegraphics
+ * （width=\linewidth）+ 总图 \caption{图片标题}。编号 / 子标题不烘焙进图（合成后即位图）。
+ * @param relPath 合成 PNG 相对目标 .tex 的路径（已用 relativePath 折算）
+ */
+export function generateComposite(layout: FigureLayout, relPath: string): string {
+  const cap = layout.caption.trim();
+  const lab = layout.label.trim();
+  const lines = [
+    "\\begin{figure}[htbp]",
+    `${INDENT}\\centering`,
+    `${INDENT}\\includegraphics[width=\\linewidth]{${relPath}}`,
+    cap ? `${INDENT}\\caption{${cap}}` : `${INDENT}\\caption{}`,
+    lab ? `${INDENT}\\label{${lab}}` : `${INDENT}\\label{fig:}`,
+    "\\end{figure}",
+  ];
+  return lines.join("\n");
+}
