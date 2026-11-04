@@ -5990,6 +5990,24 @@ body.row-resizing {
   line-height: 1;
 }
 
+.math-tool-clear{
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    height: 22px;
+    padding: 0 8px;
+    font-size: 11px;
+    color: #f81e0a;
+    background: var(--bg-3);
+    border: 1px solid var(--line-soft);
+    border-radius: var(--r-sm);
+    cursor: pointer;
+}
+.math-tool-clear:hover,
+.math-tool-clear.on {
+    color: #f81e0a;
+    border-color: #f81e0a;
+}
 /* 下拉面板（fixed 定位——.math-region 有 overflow:hidden，absolute 会被区域边缘裁掉；
    左/上由 JS 夹取，视口右溢左收、下溢上翻） */
 .math-drop {

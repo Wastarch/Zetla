@@ -151,7 +151,7 @@ export default function MathToolbar() {
         <Drop label="环境" items={envItems} />
         <button
           type="button"
-          className="math-tool"
+          className="math-tool-clear"
           title="清空编写区（Ctrl+Z 可撤销）"
           onClick={() => clear()}
         >
