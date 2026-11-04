@@ -74,12 +74,13 @@ export default function FigureSidebar() {
   const targetTex = useFigureStore((s) => s.targetTex);
   const setGrid = useFigureStore((s) => s.setGrid);
   const setMode = useFigureStore((s) => s.setMode);
+  const setCaption = useFigureStore((s) => s.setCaption);
   const setSelectedIndex = useFigureStore((s) => s.setSelectedIndex);
   const reorder = useFigureStore((s) => s.reorder);
   const reset = useFigureStore((s) => s.reset);
 
   const cells = layout.cells;
-  const { rows, cols, gapCol, gapRow, mode, selectedIndex } = layout;
+  const { rows, cols, gapCol, gapRow, mode, selectedIndex, caption } = layout;
 
   // 目标 tex 内容（用于 subcaption 检测 / 实时高亮）
   const texContent = useBuffersStore(
@@ -320,6 +321,20 @@ export default function FigureSidebar() {
         </button>
       </div>
 
+      {/* 图片标题：= 总图 \caption{}（subfigure 生成即写入）；composite 模式还用作 PNG 命名 */}
+      <label className="figside-captioncol">
+        <span className="figside-label">图片标题</span>
+        <input
+          type="text"
+          className="figside-input"
+          value={caption}
+          placeholder={
+            mode === "composite" ? "总图标题；留空则命名 fig-<slug>-composite.png" : "总图 \\caption{}，可留空"
+          }
+          onChange={(e) => setCaption(e.target.value)}
+        />
+      </label>
+
       {cells.length === 0 ? (
         <div className="figside-empty">
           <p>尚未载入图片。点击「选择图片…」选本地图片，或拖入 / 粘贴多张图片自动进入。</p>
@@ -365,8 +380,13 @@ export default function FigureSidebar() {
             生成 subfigure 代码
           </button>
         ) : (
-          <button type="button" className="btn primary" disabled title="将在 P3 实现">
-            合成单图并插入（P3）
+          <button
+            type="button"
+            className="btn primary"
+            disabled
+            title="合成落盘与单图直插在 P3-2 接入；当前可先看 Canvas 合成预览"
+          >
+            合成单图并插入（P3-2 接入）
           </button>
         )}
       </div>

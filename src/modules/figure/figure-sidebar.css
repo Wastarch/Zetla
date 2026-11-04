@@ -90,6 +90,13 @@
   opacity: 0.6;
 }
 
+/* 图片标题（= 总图 \caption{}；composite 下还作 PNG 命名） */
+.figside-captioncol {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 /* 通用按钮（窄侧栏不换行、不被压） */
 .figside .btn {
   flex: 0 0 auto;

@@ -146,3 +146,67 @@
   opacity: 0.65;
   text-align: center;
 }
+
+/* ------------------------------------------------------------------ *
+ * P3-1 · 合成单张图片预览（Canvas，所见即产物）
+ * 外围容器/说明走主题 token；「纸张」保持白底（白底是产物的一部分，不随主题反转）。
+ * ------------------------------------------------------------------ */
+.fig-real {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  box-sizing: border-box;
+  overflow: auto;
+  background: var(--bg);
+}
+
+/* 合成图即产物：图片按 \linewidth 铺满版心，这里不加内边距（否则预览会多出白边） */
+.fig-real-paper {
+  position: relative;
+  margin: 0 auto;
+  width: min(720px, 100%);
+  background: #fff;
+  border: 1px solid #d9dde3;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  line-height: 0;
+}
+
+.fig-real-canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* 加载中 / 部分失败：轻量覆盖提示（不遮挡合成结果的可读性） */
+.fig-real-overlay {
+  position: absolute;
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.62);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.fig-real-overlay.is-warn {
+  background: rgba(227, 165, 76, 0.92);
+  color: #2a2f3a;
+}
+
+.fig-real-note {
+  margin: 12px auto 0;
+  max-width: 720px;
+  font-size: 11px;
+  color: var(--txt);
+  opacity: 0.62;
+  text-align: center;
+  line-height: 1.5;
+}
