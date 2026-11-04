@@ -1,16 +1,16 @@
 {
-    "version": "0.2.5",
-    "notes": "拼图（subfigure）· 环境反向编辑 · 公式库增强",
-    "pubDate": "2026-11-03T00:00:00+08:00",
-    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.5",
+    "version": "0.2.6",
+    "notes": "拼图合成单张图片 · 子标题烘焙 · 深色适配",
+    "pubDate": "2026-11-04T00:00:00+08:00",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.6",
     "installers": [
         {
-            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.5/Zetla_0.2.5_x64-setup.exe",
-            "sha256": "9D6B8D70DB896DFCE78F9B769323534C930BEBC9E15F79AF88350D2CDCB34728"
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.6/Zetla_0.2.6_x64-setup.exe",
+            "sha256": "4811C075EEB4F0E55EAD44EB1C2100C4FC4CD4EA88DAE1EC4D310501894DFE13"
         },
         {
-            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.5/Zetla_0.2.5_x64-setup.exe",
-            "sha256": "9D6B8D70DB896DFCE78F9B769323534C930BEBC9E15F79AF88350D2CDCB34728"
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.6/Zetla_0.2.6_x64-setup.exe",
+            "sha256": "4811C075EEB4F0E55EAD44EB1C2100C4FC4CD4EA88DAE1EC4D310501894DFE13"
         }
     ],
     "minVersion": "0.1.0",
