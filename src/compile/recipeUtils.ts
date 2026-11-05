@@ -59,37 +59,6 @@ export function recipeToolOptions(d: AppSettings): string[] {
   return [...names];
 }
 
-function uniqueName(existing: RecipeDef[], base: string): string {
-  if (!existing.some((r) => r.name === base)) return base;
-  let i = 2;
-  while (existing.some((r) => r.name === `${base}-${i}`)) i += 1;
-  return `${base}-${i}`;
-}
-
-/**
- * steps → recipe 迁移：把 M1-3 的旧固定流程合成一个用户级 Recipe、设为默认，并清空 steps。
- * 迁移后旧 steps 不再参与 resolve_recipe（后端优先 recipe / defaultRecipe）。
- */
-export function migrateLegacySteps(d: AppSettings): AppSettings {
-  if (d.build.steps.length === 0) return d;
-  const name = uniqueName(d.build.recipes, "legacy-pipeline");
-  const recipe: RecipeDef = {
-    name,
-    tools: [...d.build.steps],
-    repeat: null,
-    fallback: null,
-  };
-  return {
-    ...d,
-    build: {
-      ...d.build,
-      recipes: [...d.build.recipes, recipe],
-      defaultRecipe: name,
-      steps: [],
-    },
-  };
-}
-
 /** JSON 编辑器处理的完整配置束 */
 export interface RecipeBundle {
   tools: ToolDef[];

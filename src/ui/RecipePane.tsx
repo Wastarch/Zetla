@@ -5,7 +5,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { compileApi } from "@/ipc/invoke";
 import { notify } from "@/project/useProject";
-import { stepsLabel } from "@/types";
 import type { AppSettings, RecipeDef, RecipeInfo, RepeatConfig, ToolDef } from "@/types";
 import {
   BUILTIN_FALLBACK,
@@ -15,7 +14,6 @@ import {
   bundleFromSettings,
   bundleToSettings,
   isBuiltinRecipe,
-  migrateLegacySteps,
   parseRecipeBundle,
   recipeStepNames,
   recipeToolOptions,
@@ -466,23 +464,6 @@ export function RecipePane({ draft, update }: Props) {
           + 新建工具
         </button>
       </div>
-
-      {/* 旧 steps → recipe 迁移 */}
-      {draft.build.steps.length > 0 && (
-        <div className="recipe-migrate set-note">
-          旧版固定流程（{stepsLabel(draft.build.steps)}）仍在生效：后端会把它合成兼容 Recipe。
-          <button
-            type="button"
-            className="btn"
-            onClick={() => {
-              update(migrateLegacySteps);
-              notify("已迁移为独立 Recipe 并设为默认，请保存设置", "ok");
-            }}
-          >
-            迁移为 Recipe
-          </button>
-        </div>
-      )}
 
       {/* JSON 高级编辑：when 条件 / env / repeat.max / 占位符等完整字段 */}
       <div className="recipe-json-head">

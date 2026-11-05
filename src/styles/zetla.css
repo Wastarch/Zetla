@@ -3782,7 +3782,7 @@ body.row-resizing {
   width: 88px;
 }
 
-/* M1-3：编译流程步骤编辑器（设置页「编译流程 → 自定义」） */
+/* 步骤编辑器（M2：RecipePane 的用户级流程步骤编排） */
 .steps-editor {
   display: flex;
   flex-direction: column;
@@ -3883,7 +3883,6 @@ body.row-resizing {
   font-family: var(--font-mono); background: var(--bg-4);
   padding: 1px 4px; border-radius: var(--r-sm); font-size: 10.5px;
 }
-.recipe-migrate { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
 .recipe-json-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 10px 0 6px; }
 .recipe-json { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
 .recipe-json-area {
@@ -3895,12 +3894,6 @@ body.row-resizing {
 .recipe-json-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .recipe-err { font-family: var(--font-mono); font-size: 11px; color: var(--danger, #c0392b); }
 .recipe-ok { font-size: 11px; color: var(--accent); }
-/* 旧 M1-3 固定流程折叠区（兼容路径，默认收起） */
-.recipe-legacy { margin: 10px 0 4px; border-top: 1px dashed var(--line); padding-top: 8px; }
-.recipe-legacy > summary { cursor: pointer; font-size: 11.5px; color: var(--txt-3); user-select: none; }
-.recipe-legacy > summary:hover { color: var(--txt); }
-.recipe-legacy[open] > summary { margin-bottom: 8px; color: var(--txt); }
-
 /* M1-9c：自定义清理辅助文件后缀编辑器（设置页「编译设置」） */
 .aux-editor {
   display: flex;

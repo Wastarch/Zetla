@@ -61,7 +61,7 @@ function currentCursor(): { file: string; line: number; col: number } | null {
 
 /**
  * 开始编译（项目 + 主文件来自 useProjectStore；引擎 = 设置页显式值 ?? 项目 config；
- * 流程步骤来自设置页，空=自动 —— M1-3）
+ * M2 起流程由 Tool / Recipe 决定，旧 build.steps 仅作后端静默兼容）
  *
  * M2：`opts.recipe` 为状态栏「选择流程」的**临时覆盖**（只影响本次编译）；未指定时
  * 取设置页 `build.defaultRecipe` 传入后端，让设置页未保存的草稿也能即时预览（后端
@@ -121,8 +121,9 @@ export async function startCompile(opts?: {
     // 手动编译不参与锚定；清掉上一轮 live 的锚点，避免 PDF 重载时被旧锚点拽走
     useAppStore.setState({ pdfAnchor: null });
   }
-  // M1-3：生效引擎 = 设置页显式值 ?? 项目 config（缺省 xelatex）；
+  // 生效引擎 = 设置页显式值 ?? 项目 config（缺省 xelatex）；
   // M2：流程 = 临时指定（状态栏）?? 设置页 defaultRecipe ?? 后端按旧 steps / 内置 latexmk 兜底
+  // （旧 steps 只可能来自历史 config.json，设置页已无编辑入口）
   const { build } = useSettingsStore.getState().settings;
   const engine = effectiveEngine(build.engine, tree.engine);
   const steps = build.steps;
@@ -130,7 +131,7 @@ export async function startCompile(opts?: {
   const flowLabel = recipe
     ? `流程 ${recipe}`
     : steps.length > 0
-      ? `旧流程 ${stepsLabel(steps)}`
+      ? `旧配置流程 ${stepsLabel(steps)}`
       : "内置 latexmk（默认）";
   st.appendLog([`$ ${engineLabel(engine)} · ${base(tree.mainFile)} · ${flowLabel}`]);
   st.setCompiling(0, "准备编译…");

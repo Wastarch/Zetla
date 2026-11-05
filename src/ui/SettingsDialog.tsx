@@ -3,7 +3,7 @@
 // 交互：改动即时预览（setSettings → 运行时立即生效），「保存设置」落盘并关闭，「取消」回滚快照
 // 未接通项按硬约定置灰 + tooltip 标注接通切片（小地图/折叠 M1、Synctex M3；
 // 暗色主题 M1-2 已接：外观页「主题」下拉 + 菜单「切换明暗主题」；
-// 多编译引擎 / 自定义编译流程 M1-3 已接：编译页「默认编译引擎」「编译流程」（预设 + 步骤编辑器）；
+// 多编译引擎 M1-3 已接：编译页「默认编译引擎」；M2 起编译流程统一由 Tool / Recipe 面板编排；
 // 界面密度经用户确认取消，不占位）
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { getVersion } from "@tauri-apps/api/app";
@@ -21,12 +21,11 @@ import { SyntaxHighlightDialog } from "@/ui/SyntaxHighlightDialog";
 import { RecipePane } from "@/ui/RecipePane";
 import { SnippetsPane, resetSnippetsDraft } from "@/ui/SnippetsPane";
 import { flushSnippets, hasDirtySnippets } from "@/ui/snippetsPaneBridge";
-import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel, DEFAULT_AUX_EXTENSIONS, LIVE_PREVIEW_DELAY_PRESETS } from "@/types/settings";
+import { DEFAULT_AUX_EXTENSIONS, LIVE_PREVIEW_DELAY_PRESETS } from "@/types/settings";
 import type {
   AppSettings,
   AppTheme,
   CompileEngine,
-  CompileStep,
   EditorFontFamily,
   PdfDefaultZoom,
 } from "@/types/settings";
@@ -46,12 +45,6 @@ const FONT_OPTIONS: EditorFontFamily[] = ["IBM Plex Mono", "Consolas", "Cascadia
 /** 字号可选值 8–32（M0-14a 用户追加：Ctrl+滚轮缩放后为连续范围） */
 const FONT_SIZE_OPTIONS = Array.from({ length: 25 }, (_, i) => i + 8);
 const INTERVAL_OPTIONS = [5, 15, 30, 60];
-/** M1-3：编译流程步骤可选项（设置页步骤编辑器） */
-const STEP_OPTIONS: { value: CompileStep; label: string }[] = [
-  { value: "latex", label: "LaTeX（跑一次引擎）" },
-  { value: "bibtex", label: "BibTeX（传统参考文献）" },
-  { value: "biber", label: "Biber（biblatex 参考文献）" },
-];
 const ZOOM_OPTIONS: { value: PdfDefaultZoom; label: string }[] = [
   { value: "fit-width", label: "适合宽度" },
   { value: "100", label: "100%" },
@@ -374,133 +367,6 @@ export function SettingsDialog() {
                 </Fld>
                 {/* M2：数据驱动的 Tool / Recipe 编排（主入口） */}
                 <RecipePane draft={draft} update={update} />
-                {/* 旧 M1-3 固定流程保留为兼容路径，默认收起；迁移入口在 RecipePane 内 */}
-                <details className="recipe-legacy">
-                  <summary>旧版固定流程（M1-3 兼容）· {stepsLabel(draft.build.steps)}</summary>
-                  <div className="set-note">
-                    旧 steps 会由后端合成兼容 Recipe，优先级低于上方「默认编译流程」；
-                    建议用上方「迁移为 Recipe」把它转为可编排的独立流程。
-                  </div>
-                <Fld
-                  label="步骤序列（旧）"
-                  hint={
-                    draft.build.steps.length === 0
-                      ? "latexmk 自动循环直到收敛"
-                      : stepsLabel(draft.build.steps)
-                  }
-                  tip="自动：latexmk 自行判定遍数与参考文献工具；固定流程：按步骤序列直跑（绕过 latexmk），可用预设或自定义增删调整"
-                >
-                  <select
-                    value={matchPipelinePreset(draft.build.steps)}
-                    onChange={(e) => {
-                      const preset = PIPELINE_PRESETS.find((p) => p.id === e.target.value);
-                      // 「自定义」：从当前序列出发；自动（空序列）时给一个常见起点再增删
-                      const seed: CompileStep[] = preset
-                        ? [...preset.steps]
-                        : draft.build.steps.length > 0
-                          ? draft.build.steps
-                          : ["latex", "bibtex", "latex", "latex"];
-                      update((d) => ({ ...d, build: { ...d.build, steps: seed } }));
-                    }}
-                  >
-                    {PIPELINE_PRESETS.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.label}
-                      </option>
-                    ))}
-                    <option value="custom">自定义…</option>
-                  </select>
-                </Fld>
-                {draft.build.steps.length > 0 && (
-                  <div className="steps-editor">
-                    {draft.build.steps.map((s, i) => (
-                      <div className="step-row" key={i}>
-                        <span className="step-pos">{i + 1}</span>
-                        <select
-                          className="step-sel"
-                          value={s}
-                          onChange={(e) =>
-                            update((d) => {
-                              const steps = [...d.build.steps];
-                              steps[i] = e.target.value as CompileStep;
-                              return { ...d, build: { ...d.build, steps } };
-                            })
-                          }
-                        >
-                          {STEP_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>
-                              {o.label}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          className="btn step-btn"
-                          disabled={i === 0}
-                          title="上移"
-                          onClick={() =>
-                            update((d) => {
-                              const steps = [...d.build.steps];
-                              [steps[i - 1], steps[i]] = [steps[i], steps[i - 1]];
-                              return { ...d, build: { ...d.build, steps } };
-                            })
-                          }
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          className="btn step-btn"
-                          disabled={i === draft.build.steps.length - 1}
-                          title="下移"
-                          onClick={() =>
-                            update((d) => {
-                              const steps = [...d.build.steps];
-                              [steps[i + 1], steps[i]] = [steps[i], steps[i + 1]];
-                              return { ...d, build: { ...d.build, steps } };
-                            })
-                          }
-                        >
-                          ↓
-                        </button>
-                        <button
-                          type="button"
-                          className="btn step-btn"
-                          title="删除该步骤"
-                          onClick={() =>
-                            update((d) => ({
-                              ...d,
-                              build: {
-                                ...d.build,
-                                steps: d.build.steps.filter((_, j) => j !== i),
-                              },
-                            }))
-                          }
-                        >
-                          ✕
-                        </button>
-                      </div>
-                    ))}
-                    <div className="step-row">
-                      <button
-                        type="button"
-                        className="btn"
-                        onClick={() =>
-                          update((d) => ({
-                            ...d,
-                            build: { ...d.build, steps: [...d.build.steps, "latex" as CompileStep] },
-                          }))
-                        }
-                      >
-                        + 添加步骤
-                      </button>
-                      <span className="set-note" style={{ margin: 0 }}>
-                        预览：{stepsLabel(draft.build.steps)}
-                      </span>
-                    </div>
-                  </div>
-                )}
-                </details>
                 <Fld
                   label="latexmk 路径"
                   hint="当前使用 PATH 中的版本"

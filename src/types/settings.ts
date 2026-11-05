@@ -19,10 +19,9 @@ export type EffectiveTheme = "light" | "dark";
  */
 export type CompileEngine = "auto" | "xelatex" | "pdflatex" | "lualatex";
 /**
- * M1-3：编译流程步骤。"latex"=跑一次引擎；"bibtex"=传统参考文献工具；
- * "biber"=biblatex 参考文献工具。
- * steps 为空数组 = 自动（latexmk 自行调度）；非空 = 按序直跑的固定流程，
- * 如 ["latex","bibtex","latex","latex"] 即 LaTeX → BibTeX → LaTeX → LaTeX
+ * M1-3 旧固定流程步骤（"latex" / "bibtex" / "biber"）。
+ * M2 起该字段**仅有数据兼容意义**：设置页不再提供编辑入口，
+ * 老 config.json 里残留的 steps 仍由后端静默合成兼容 Recipe（优先级低于 defaultRecipe）。
  */
 export type CompileStep = "latex" | "bibtex" | "biber";
 
@@ -350,45 +349,17 @@ export const FONT_STACKS: Record<EditorFontFamily, string> = {
   "Cascadia Mono": "'Cascadia Mono', Consolas, monospace",
 };
 
-/** M1-3：步骤显示名（设置页步骤编辑器 / 编译日志共用） */
+/** 旧 steps 步骤显示名（仅编译日志用） */
 export const STEP_LABELS: Record<CompileStep, string> = {
   latex: "LaTeX",
   bibtex: "BibTeX",
   biber: "Biber",
 };
 
-/** M1-3：编译流程预设（设置页「编译流程」下拉；custom 不在列，由编辑器匹配得出） */
-export const PIPELINE_PRESETS: ReadonlyArray<{
-  id: string;
-  label: string;
-  steps: CompileStep[];
-}> = [
-  { id: "auto", label: "自动（latexmk 调度）", steps: [] },
-  { id: "single", label: "单遍 LaTeX", steps: ["latex"] },
-  {
-    id: "bibtex",
-    label: "LaTeX → BibTeX → LaTeX → LaTeX（传统参考文献）",
-    steps: ["latex", "bibtex", "latex", "latex"],
-  },
-  {
-    id: "biber",
-    label: "LaTeX → Biber → LaTeX → LaTeX（biblatex）",
-    steps: ["latex", "biber", "latex", "latex"],
-  },
-];
-
-/** M1-3：步骤序列 → 可读串（编译日志 / 预览用；空序列 = 自动） */
+/** 旧 steps 序列 → 可读串（仅编译日志用；空序列 = 自动） */
 export function stepsLabel(steps: readonly CompileStep[]): string {
   if (steps.length === 0) return "自动（latexmk）";
   return steps.map((s) => STEP_LABELS[s]).join(" → ");
-}
-
-/** M1-3：当前 steps 是否恰好等于某预设（相等则下拉显示该预设，否则显示「自定义」） */
-export function matchPipelinePreset(steps: readonly CompileStep[]): string {
-  const hit = PIPELINE_PRESETS.find(
-    (p) => p.steps.length === steps.length && p.steps.every((s, i) => s === steps[i]),
-  );
-  return hit ? hit.id : "custom";
 }
 
 /** 深拷贝（设置页快照/草稿与 persisted 用；结构固定无循环引用） */

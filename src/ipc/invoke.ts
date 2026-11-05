@@ -30,9 +30,8 @@ export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T>
 export const compileApi = {
   detectTexDistribution: () => call<TexDistInfo>("detect_tex_distribution"),
   /** 开始编译（立即返回；进度/结果走 compile_progress / compile_finished 事件）
-   *  M1-3：steps=空数组=自动（latexmk 判定）；非空=按序直跑的固定流程，
-   *  如 ["latex","bibtex","latex","latex"] = LaTeX → BibTeX → LaTeX → LaTeX。
-   *  M2：新增可选 recipe —— null/缺省时由后端按 defaultRecipe → 内置 latexmk 解析；
+   *  steps 仅作旧配置兼容透传（设置页已无编辑入口；老 config.json 残留时由后端合成兼容 Recipe）；
+   *  M2：流程由可选 recipe 决定 —— null/缺省时由后端按 defaultRecipe → 内置 latexmk 解析；
    *  显式传 null 保证 IPC 参数键存在，避免 Tauri 对 Option 缺键的实现差异。 */
   compileProject: (
     root: string,
