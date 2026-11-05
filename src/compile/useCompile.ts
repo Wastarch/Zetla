@@ -63,6 +63,10 @@ function currentCursor(): { file: string; line: number; col: number } | null {
  * 开始编译（项目 + 主文件来自 useProjectStore；引擎 = 设置页显式值 ?? 项目 config；
  * 流程步骤来自设置页，空=自动 —— M1-3）
  *
+ * M2：`opts.recipe` 为状态栏「选择流程」的**临时覆盖**（只影响本次编译）；未指定时
+ * 取设置页 `build.defaultRecipe` 传入后端，让设置页未保存的草稿也能即时预览（后端
+ * resolve_recipe 优先级：recipe 参数 → defaultRecipe → 旧 steps 合成 → 内置 latexmk）。
+ *
  * M1-18b：不再用「已在编译中就直接返回」的哨兵。后端已改为 latest-wins——
  * 新请求会顶掉旧任务并杀掉其子进程，所以重叠触发（实时预览的常态）总是落到最新内容，
  * 也不会再出现「已有编译任务在进行中」的误报。
@@ -70,7 +74,11 @@ function currentCursor(): { file: string; line: number; col: number } | null {
  * M1-18c：`opts.live` 标记「实时预览触发的编译」——不展开/不清空日志面板、失败不弹窗，
  * 成功后按光标行做 PDF 静默锚定（见 `anchorPdfToSource`）。
  */
-export async function startCompile(opts?: { live?: boolean }): Promise<void> {
+export async function startCompile(opts?: {
+  live?: boolean;
+  /** 临时指定本次使用的 Recipe 名；null/缺省 = 按设置页默认流程 */
+  recipe?: string | null;
+}): Promise<void> {
   const live = !!opts?.live;
   const st = useAppStore.getState();
 
@@ -114,13 +122,17 @@ export async function startCompile(opts?: { live?: boolean }): Promise<void> {
     useAppStore.setState({ pdfAnchor: null });
   }
   // M1-3：生效引擎 = 设置页显式值 ?? 项目 config（缺省 xelatex）；
-  // steps 空=自动（latexmk），非空=按序直跑的固定流程（如 LaTeX → BibTeX → LaTeX → LaTeX）
+  // M2：流程 = 临时指定（状态栏）?? 设置页 defaultRecipe ?? 后端按旧 steps / 内置 latexmk 兜底
   const { build } = useSettingsStore.getState().settings;
   const engine = effectiveEngine(build.engine, tree.engine);
   const steps = build.steps;
-  st.appendLog([
-    `$ ${engineLabel(engine)} · ${base(tree.mainFile)}${steps.length > 0 ? ` · ${stepsLabel(steps)}` : ""}`,
-  ]);
+  const recipe = opts?.recipe ?? build.defaultRecipe ?? null;
+  const flowLabel = recipe
+    ? `流程 ${recipe}`
+    : steps.length > 0
+      ? `旧流程 ${stepsLabel(steps)}`
+      : "内置 latexmk（默认）";
+  st.appendLog([`$ ${engineLabel(engine)} · ${base(tree.mainFile)} · ${flowLabel}`]);
   st.setCompiling(0, "准备编译…");
 
   // M1-18c：标记本次是否由实时预览触发，并记录光标（成功后据此做 PDF 锚定）
@@ -128,7 +140,7 @@ export async function startCompile(opts?: { live?: boolean }): Promise<void> {
   liveAnchorAt = live ? currentCursor() : null;
 
   try {
-    await compileApi.compileProject(root, tree.mainFile, engine, steps);
+    await compileApi.compileProject(root, tree.mainFile, engine, steps, recipe);
   } catch (e) {
     // 命令本身失败（主文件不存在 / 引擎缺失 / 环境异常）；
     // M1-18b 起「已有任务在跑」不再是错误（后端 latest-wins 顶替旧任务）

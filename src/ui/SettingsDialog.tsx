@@ -18,6 +18,7 @@ import type { UpdateProgress } from "@/modules/updater/types";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Icon } from "@/ui/Icon";
 import { SyntaxHighlightDialog } from "@/ui/SyntaxHighlightDialog";
+import { RecipePane } from "@/ui/RecipePane";
 import { SnippetsPane, resetSnippetsDraft } from "@/ui/SnippetsPane";
 import { flushSnippets, hasDirtySnippets } from "@/ui/snippetsPaneBridge";
 import { PIPELINE_PRESETS, matchPipelinePreset, stepsLabel, DEFAULT_AUX_EXTENSIONS, LIVE_PREVIEW_DELAY_PRESETS } from "@/types/settings";
@@ -371,8 +372,17 @@ export function SettingsDialog() {
                     <option value="lualatex">LuaLaTeX</option>
                   </select>
                 </Fld>
+                {/* M2：数据驱动的 Tool / Recipe 编排（主入口） */}
+                <RecipePane draft={draft} update={update} />
+                {/* 旧 M1-3 固定流程保留为兼容路径，默认收起；迁移入口在 RecipePane 内 */}
+                <details className="recipe-legacy">
+                  <summary>旧版固定流程（M1-3 兼容）· {stepsLabel(draft.build.steps)}</summary>
+                  <div className="set-note">
+                    旧 steps 会由后端合成兼容 Recipe，优先级低于上方「默认编译流程」；
+                    建议用上方「迁移为 Recipe」把它转为可编排的独立流程。
+                  </div>
                 <Fld
-                  label="编译流程"
+                  label="步骤序列（旧）"
                   hint={
                     draft.build.steps.length === 0
                       ? "latexmk 自动循环直到收敛"
@@ -490,10 +500,11 @@ export function SettingsDialog() {
                     </div>
                   </div>
                 )}
+                </details>
                 <Fld
                   label="latexmk 路径"
                   hint="当前使用 PATH 中的版本"
-                  tip="自定义 latexmk 路径 M1 接通"
+                  tip="M2 起可在上方「自定义工具（Tool）」新建工具并填 command 指定路径，再把它排进流程"
                 >
                   <input className="txt-in" disabled placeholder="使用 PATH 中的 latexmk" />
                 </Fld>

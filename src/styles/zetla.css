@@ -3835,6 +3835,72 @@ body.row-resizing {
   cursor: not-allowed;
 }
 
+/* M2：设置页「编译流程（Tool / Recipe）」面板 */
+.recipe-pane { margin: 6px 0 4px; }
+.recipe-title { font-size: 12px; font-weight: 600; color: var(--txt); margin: 12px 0 6px; }
+.set-pane .recipe-pane .set-note { margin: 0 0 8px; }
+.recipe-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.recipe-block { display: flex; flex-direction: column; gap: 6px; }
+.recipe-item {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 7px 10px; background: var(--bg-3);
+  border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.recipe-name { flex: none; font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--txt); }
+.recipe-steps {
+  flex: 1 1 180px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--font-mono); font-size: 10.5px; color: var(--txt-3);
+}
+.recipe-tag {
+  flex: none; padding: 1px 7px; border-radius: 99px;
+  background: var(--bg-4); border: 1px solid var(--line); font-size: 10px; color: var(--txt-3);
+}
+.recipe-tag.on { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.recipe-item .btn { flex: none; height: 26px; padding: 0 9px; font-size: 11px; }
+.recipe-detail { padding: 0 10px 8px; }
+.recipe-detail .steps-editor { margin-top: 0; }
+.recipe-opts {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 14px;
+  margin-top: 8px; font-size: 11px; color: var(--txt-3);
+}
+.recipe-opts label { display: inline-flex; align-items: center; gap: 6px; }
+.recipe-opts input[type="checkbox"] { accent-color: var(--accent); }
+.recipe-opts select {
+  height: 26px; min-width: 120px; background: var(--editor-bg);
+  border: 1px solid var(--line); color: var(--txt); border-radius: var(--r-sm);
+  padding: 0 6px; font-family: var(--font-mono); font-size: 11px;
+}
+.recipe-opts .txt-in.recipe-max { width: 62px; min-width: 0; height: 26px; padding: 0 6px; }
+.recipe-add-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 14px; }
+.recipe-add-row .txt-in {
+  flex: 1; min-width: 0; height: 30px; padding: 0 10px;
+  background: var(--editor-bg); border: 1px solid var(--line); color: var(--txt);
+  border-radius: var(--r-sm); font-family: var(--font-mono); font-size: 11.5px; outline: none;
+}
+.recipe-add-row .txt-in:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.recipe-pane h5 { font-size: 11.5px; font-weight: 600; color: var(--txt); margin: 14px 0 6px; }
+.recipe-pane code {
+  font-family: var(--font-mono); background: var(--bg-4);
+  padding: 1px 4px; border-radius: var(--r-sm); font-size: 10.5px;
+}
+.recipe-migrate { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.recipe-json-head { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 10px 0 6px; }
+.recipe-json { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.recipe-json-area {
+  width: 100%; min-height: 190px; resize: vertical; padding: 9px 11px;
+  background: var(--editor-bg); border: 1px solid var(--line); border-radius: var(--r-sm);
+  color: var(--txt); font-family: var(--font-mono); font-size: 11px; line-height: 1.55; outline: none;
+}
+.recipe-json-area:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.recipe-json-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.recipe-err { font-family: var(--font-mono); font-size: 11px; color: var(--danger, #c0392b); }
+.recipe-ok { font-size: 11px; color: var(--accent); }
+/* 旧 M1-3 固定流程折叠区（兼容路径，默认收起） */
+.recipe-legacy { margin: 10px 0 4px; border-top: 1px dashed var(--line); padding-top: 8px; }
+.recipe-legacy > summary { cursor: pointer; font-size: 11.5px; color: var(--txt-3); user-select: none; }
+.recipe-legacy > summary:hover { color: var(--txt); }
+.recipe-legacy[open] > summary { margin-bottom: 8px; color: var(--txt); }
+
 /* M1-9c：自定义清理辅助文件后缀编辑器（设置页「编译设置」） */
 .aux-editor {
   display: flex;

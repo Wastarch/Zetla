@@ -5,9 +5,11 @@
 // M0-9：编译文案按钮触发编译/取消、日志按钮开合面板、引擎 chip 显示生效引擎
 // M1-3：引擎 chip 显示「设置页显式值 ?? 项目 config」的生效引擎，点击打开设置→编译设置切换
 // M1-14j：文档语言 chip 不再写死 LaTeX——按扩展名识别（langByExt），点击可手动切换/恢复自动
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/ui/Icon";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
+import { getLastUsedRecipe, loadRecipes, setLastUsedRecipe } from "@/compile/recipePicker";
+import type { RecipeInfo } from "@/types";
 import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { base, extOf, useProjectStore } from "@/project/useProject";
@@ -51,6 +53,26 @@ export function StatusBar() {
             : "已取消";
   const dirty = !!active && active.content !== active.savedContent;
 
+  // M2：编译按钮右键 / 长按 → 临时指定本次编译流程；lastUsed 存 localStorage（不进配置协议）
+  const [recipeMenu, setRecipeMenu] = useState<{ x: number; y: number } | null>(null);
+  const [recipes, setRecipes] = useState<RecipeInfo[]>([]);
+  const [lastUsed, setLastUsed] = useState<string | null>(getLastUsedRecipe());
+  const holdTimer = useRef<number | undefined>(undefined);
+  const longPressed = useRef(false);
+  const clearHold = () => {
+    if (holdTimer.current !== undefined) {
+      window.clearTimeout(holdTimer.current);
+      holdTimer.current = undefined;
+    }
+  };
+  const openRecipeMenu = (x: number, y: number) => {
+    setRecipeMenu({ x, y });
+    setLastUsed(getLastUsedRecipe());
+    // 每次打开都重新查，保证设置页新增/删除流程后立即反映（无缓存 stale）
+    void loadRecipes(engineSetting).then(setRecipes);
+  };
+  useEffect(() => () => clearHold(), []);
+
   // M1-14j：文档语言 = 手动指定 ?? 按扩展名识别；点击 chip 切换/恢复自动
   const [langMenu, setLangMenu] = useState<{ x: number; y: number } | null>(null);
   const setLang = useLangOverride((s) => s.setLang);
@@ -82,12 +104,38 @@ export function StatusBar() {
         disabled={!running && !hasMain}
         title={
           running
-            ? "取消编译"
+            ? "取消编译 · 右键/长按可选择编译流程"
             : hasMain
-              ? "开始编译 (Ctrl+B)"
+              ? "开始编译 (Ctrl+B) · 右键/长按可选择编译流程"
               : "未打开项目或未识别主文件"
         }
-        onClick={() => void (running ? cancelCompile() : startCompile())}
+        onClick={() => {
+          // 长按已弹出菜单，随后的 click 不再触发普通编译
+          if (longPressed.current) {
+            longPressed.current = false;
+            return;
+          }
+          void (running ? cancelCompile() : startCompile());
+        }}
+        onContextMenu={(e) => {
+          e.preventDefault();
+          clearHold();
+          openRecipeMenu(e.clientX, e.clientY);
+        }}
+        onPointerDown={(e) => {
+          if (e.button !== 0) return;
+          longPressed.current = false;
+          const rect = e.currentTarget.getBoundingClientRect();
+          clearHold();
+          holdTimer.current = window.setTimeout(() => {
+            longPressed.current = true;
+            holdTimer.current = undefined;
+            openRecipeMenu(rect.left, rect.top);
+          }, 480);
+        }}
+        onPointerUp={clearHold}
+        onPointerLeave={clearHold}
+        onPointerCancel={clearHold}
       >
         {statusText}
       </button>
@@ -169,6 +217,43 @@ export function StatusBar() {
             {active.eol === "crlf" ? "CRLF" : "LF"}
           </button>
         </>
+      )}
+      {/* M2：编译流程选择菜单（右键 / 长按触发；内置与自定义分组显示，主项 = 上次临时选择） */}
+      {recipeMenu && (
+        <InsertCtxMenu
+          x={recipeMenu.x}
+          y={recipeMenu.y}
+          onClose={() => setRecipeMenu(null)}
+          actions={[
+            {
+              label: "按默认流程编译",
+              hint: lastUsed
+                ? `使用设置 → 编译设置中的默认流程（上次临时选择：${lastUsed}）`
+                : "使用设置 → 编译设置中的默认流程",
+              primary: !lastUsed,
+              onClick: () => {
+                setLastUsedRecipe(null);
+                setLastUsed(null);
+                void startCompile();
+              },
+            },
+            ...recipes.map<CtxAction>((r) => ({
+              label: `${r.name}${r.builtin ? " · 内置" : " · 自定义"}`,
+              hint: `步骤：${r.tools.join(" → ") || "（空流程）"}${r.builtin ? " · 不可删" : ""}`,
+              primary: r.name === lastUsed,
+              onClick: () => {
+                setLastUsedRecipe(r.name);
+                setLastUsed(r.name);
+                void startCompile({ recipe: r.name });
+              },
+            })),
+            {
+              label: "管理编译流程…",
+              hint: "打开 设置 → 编译设置，增删工具与流程",
+              onClick: () => useAppStore.getState().openSettings("build"),
+            },
+          ]}
+        />
       )}
       {/* M1-14j：文档语言切换菜单（复用项目树右键菜单样式；视口夹取由 InsertCtxMenu 负责） */}
       {langMenu && active && (

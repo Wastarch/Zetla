@@ -80,7 +80,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   load: async () => {
     try {
       const cfg = await configApi.loadAppConfig();
-      const next = { ...DEFAULT_SETTINGS, ...cfg };
+      // M2：build 子对象深合并 —— 旧版配置缺 tools/recipes/defaultRecipe 时补默认值，
+      // 避免设置页整对象回写时把这些字段丢掉（camelCase 协议与 Rust BuildConfig 一一对应）
+      const next: AppSettings = {
+        ...DEFAULT_SETTINGS,
+        ...cfg,
+        build: { ...DEFAULT_SETTINGS.build, ...(cfg.build ?? {}) },
+      };
       // M1-9c：空列表 = 使用内置默认清单（语义统一）；旧配置缺字段时回退默认，UI 不显示空白列表
       if (
         !Array.isArray(next.build.cleanAuxExtensions) ||
