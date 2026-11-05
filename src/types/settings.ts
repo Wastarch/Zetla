@@ -26,6 +26,48 @@ export type CompileEngine = "auto" | "xelatex" | "pdflatex" | "lualatex";
  */
 export type CompileStep = "latex" | "bibtex" | "biber";
 
+// ── M2：Tool / Recipe 通用化编译编排（与 src-tauri/src/commands/config.rs 一一对应，camelCase）──
+// 设计文档：docs/dev/compile-recipe-system.md。仅全局配置，不做项目级配置。
+
+/** 条件触发（when）：每步执行前即时求值；Rust 侧 #[serde(tag="type", rename_all="camelCase")] */
+export type BuildCondition =
+  | { type: "fileExists"; path: string }
+  | { type: "logRegex"; pattern: string }
+  | { type: "env"; name: string; value?: string | null };
+
+/** Recipe 单步：工具名字符串，或带条件的细化对象（Rust #[serde(untagged)]） */
+export type RecipeStep = string | RecipeStepDetailed;
+
+export interface RecipeStepDetailed {
+  tool: string;
+  when?: BuildCondition | null;
+}
+
+/** 自动重跑：解析主引擎 .log 的 Rerun 警告，仅重跑引擎步（Rust 默认 max=10） */
+export interface RepeatConfig {
+  untilStable: boolean;
+  max: number;
+}
+
+/** 流程（Recipe）：有序工具列表 + 可选 repeat / fallback */
+export interface RecipeDef {
+  name: string;
+  tools: RecipeStep[];
+  repeat?: RepeatConfig | null;
+  fallback?: string | null;
+}
+
+/** 工具（Tool）：单个可执行编译步骤（命令 + 参数 + 工作目录 + 环境变量） */
+export interface ToolDef {
+  name: string;
+  /** 可执行命令或内置 token（"latex" 表示用 build.engine 解析出的引擎） */
+  command: string;
+  args: string[];
+  cwd?: string | null;
+  env: Record<string, string>;
+  ignoreErrors: boolean;
+}
+
 /**
  * M1-10：公式定义（内置库 formulas.json + 用户自定义共用）。
  * latex 为公式**内部片段**（不含外层 $ 或 equation 环境）；
@@ -82,8 +124,15 @@ export interface AppSettings {
     saveBeforeCompile: boolean;
     /** M1-3：默认编译引擎（"auto"=跟随项目 .ltex/config.json；显式值全局覆盖） */
     engine: CompileEngine;
-    /** M1-3：编译流程步骤序列（空=自动 latexmk；非空=按序直跑，见 CompileStep） */
+    /** M1-3：编译流程步骤序列（空=自动 latexmk；非空=按序直跑，见 CompileStep）。
+     *  M2 起为向后兼容字段：新流程走 defaultRecipe / recipes，旧 steps 由后端合成 Recipe */
     steps: CompileStep[];
+    /** M2：用户自定义工具（全局配置；仅全局，不做项目级配置） */
+    tools: ToolDef[];
+    /** M2：用户自定义编译流程（内置 latexmk / engine-direct 由后端提供，不存此列） */
+    recipes: RecipeDef[];
+    /** M2：默认流程名（null = 内置 latexmk）；须匹配 recipes 中某 name 或内置 Recipe */
+    defaultRecipe: string | null;
     /**
      * 保存时自动编译：手动保存（Ctrl+S / 保存菜单 / 保存按钮，不含自动保存）
      * 一个 .tex 文件成功后触发编译；自动保存到旧内容不触发，避免频繁编译。
@@ -261,7 +310,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
   editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true, minimap: true },
   autosave: { enabled: true, intervalSeconds: 30, pauseWhileCompiling: true },
-  build: { saveBeforeCompile: true, engine: "auto", steps: [], compileOnSave: false, livePreview: false, livePreviewDelayMs: 600, cleanAuxAfterCompile: false, cleanAuxExtensions: DEFAULT_AUX_EXTENSIONS },
+  build: { saveBeforeCompile: true, engine: "auto", steps: [], tools: [], recipes: [], defaultRecipe: null, compileOnSave: false, livePreview: false, livePreviewDelayMs: 600, cleanAuxAfterCompile: false, cleanAuxExtensions: DEFAULT_AUX_EXTENSIONS },
   pdf: { defaultZoom: "fit-width" },
   window: { width: null, height: null, x: null, y: null, maximized: false },
   session: { lastProject: null, openFiles: [], activeFile: null },

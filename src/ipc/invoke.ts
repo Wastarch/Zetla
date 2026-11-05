@@ -10,6 +10,7 @@ import type {
   ProjectEntry,
   ProjectInfo,
   ProjectTree,
+  RecipeInfo,
   SnippetDef,
   SyncTexHit,
   TemplateManifest,
@@ -30,11 +31,27 @@ export const compileApi = {
   detectTexDistribution: () => call<TexDistInfo>("detect_tex_distribution"),
   /** 开始编译（立即返回；进度/结果走 compile_progress / compile_finished 事件）
    *  M1-3：steps=空数组=自动（latexmk 判定）；非空=按序直跑的固定流程，
-   *  如 ["latex","bibtex","latex","latex"] = LaTeX → BibTeX → LaTeX → LaTeX */
-  compileProject: (root: string, mainFile: string, engine: string, steps: string[]) =>
-    call<void>("compile_project", { root, mainFile, engine, steps }),
+   *  如 ["latex","bibtex","latex","latex"] = LaTeX → BibTeX → LaTeX → LaTeX。
+   *  M2：新增可选 recipe —— null/缺省时由后端按 defaultRecipe → 内置 latexmk 解析；
+   *  显式传 null 保证 IPC 参数键存在，避免 Tauri 对 Option 缺键的实现差异。 */
+  compileProject: (
+    root: string,
+    mainFile: string,
+    engine: string,
+    steps: string[],
+    recipe?: string | null,
+  ) =>
+    call<void>("compile_project", {
+      root,
+      mainFile,
+      engine,
+      steps,
+      recipe: recipe ?? null,
+    }),
   /** 取消当前编译（杀掉子进程） */
   cancelCompile: () => call<void>("cancel_compile"),
+  /** M2：列出可用编译流程（内置 + 用户级；内置 builtin=true / deletable=false） */
+  listRecipes: (engine: string) => call<RecipeInfo[]>("list_recipes", { engine }),
   /** M0-11：解析 .log → 结构化错误（编译结果已内联 errors，此入口供 M0-12 复用） */
   parseTexLog: (logPath: string) => call<TexError[]>("parse_tex_log", { logPath }),
   /** M0-15b/c：开始自动安装 TeX Live（立即返回；进度/结果走 tex_install_* 事件） */

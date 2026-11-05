@@ -91,6 +91,18 @@ export interface TexInstallProgress {
   message: string;
 }
 
+/**
+ * M2：可用编译流程信息（list_recipes 返回；与 Rust commands/compile.rs 的 RecipeInfo 一一对应）。
+ * 内置流程（latexmk / engine-direct）builtin=true、deletable=false，设置页不可删。
+ */
+export interface RecipeInfo {
+  name: string;
+  builtin: boolean;
+  deletable: boolean;
+  /** 步骤工具名序列（Detailed 步取 tool 字段） */
+  tools: string[];
+}
+
 /** 自动安装最终结果（Rust → 前端 tex_install_finished） */
 export interface TexInstallResult {
   ok: boolean;
