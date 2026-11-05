@@ -1196,6 +1196,42 @@ body {
   background: var(--bg-2);
 }
 
+/* M2：标签栏编译拆分按钮「▶ | ▾」——参考图式无外框、两段独立 hover，
+   ▶ 编译/终止，▾ 打开流程菜单。两段共享圆角，中间不画分隔线。 */
+.compile-split {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+.compile-split .ibtn {
+  width: 25px;
+  height: 27px;
+  border-color: transparent;
+}
+.compile-split .compile-run {
+  border-radius: var(--r-sm) 0 0 var(--r-sm);
+}
+.compile-split .compile-more {
+  width: 17px;
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  color: var(--txt-3);
+}
+.compile-split .compile-more .ic {
+  width: 11px;
+  height: 11px;
+  /* sprite 只有右向 chev，顺时针转 90° 得到向下箭头 */
+  transform: rotate(90deg);
+}
+.compile-split .ibtn:hover {
+  border-color: transparent;
+  color: var(--txt);
+}
+.compile-split .ibtn.on {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-color: transparent;
+}
+
 /* ── 控件 ───────────────────────────────── */
 .ibtn {
   width: 27px;
