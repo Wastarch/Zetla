@@ -3,6 +3,7 @@ name = "zetla"
 version = "0.2.7"
 description = "A Tauri App"
 authors = ["Max"]
+license = "AGPL-3.0-or-later"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

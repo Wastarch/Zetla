@@ -9,7 +9,7 @@
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?logo=windows&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-In%20Progress-FCC624?logo=linux&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![Version](https://img.shields.io/badge/Version-v0.2.7-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
-[![License](https://img.shields.io/badge/License-Noncommercial-9F7AE0)](LICENSE)
+[![License](https://img.shields.io/badge/License-AGPL--3.0-0E4C92)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
 [![Language](https://img.shields.io/badge/Language-Rust%20%2F%20TS-DEA584)](https://www.rust-lang.org)
 [![Made for LaTeX](https://img.shields.io/badge/Made%20for-LaTeX-2CA5E0?logo=latex&logoColor=white)](https://www.latex-project.org)
@@ -44,13 +44,9 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 | 🗂️ 项目管理 | ✍️ 编辑器 | ⚙️ 可编排编译 |
 | :---: | :---: | :---: |
 | 模板库 · 多标签 · 自动保存 · GBK 不乱码 | 语法高亮 · 代码片段 · 公式/符号面板 | Tool/Recipe · 实时预览 · 双向跳转 |
-
 | 🧮 公式表格 | 🖼️ 图片拼图 | 📚 参考文献 |
-| :---: | :---: | :---: |
 | 公式/符号面板 · 表格编辑 | 图片附件 · 拼图布局 | BibTeX 引用管理 |
-
 | 🔄 自动更新 | 🎨 主题外观 | 🪟 桌面体验 |
-| :---: | :---: | :---: |
 | 自动更新 · 环境引导 | 亮暗主题 · 自定义标题栏 | 原生窗口 · 全局快捷键 |
 
 > [!NOTE]
@@ -94,13 +90,13 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 
 ## 许可证 📄
 
-本项目采用 **PolyForm Noncommercial License 1.0.0**。
+本项目采用 **GNU Affero General Public License v3（AGPLv3）**
 
-- 允许个人学习、研究、实验、爱好项目等非商业用途
-- 商业使用需要获得版权持有人的单独书面授权
-- 商业授权暂通过 [GitHub Issues](https://github.com/Wastarch/Zetla/issues) 联系
+- 你可以自由使用、研究、修改和分发本软件，包括商业用途
+- 若你修改了 Zetla 并**通过网络服务器向公众提供服务**，必须向用户提供你所修改版本的完整源代码
+- 衍生作品必须以 AGPLv3 发布，保持开源
 - 完整许可证文本见 [LICENSE](LICENSE)
-- 官方许可证地址：<https://polyformproject.org/licenses/noncommercial/1.0.0>
+- 官方许可证文本：<https://www.gnu.org/licenses/agpl-3.0.txt>
 
 Copyright (c) 2026 Zetla contributors
 

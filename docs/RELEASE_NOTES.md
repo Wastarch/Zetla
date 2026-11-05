@@ -77,7 +77,7 @@ SHA256：`1EB71927989E852A85DB81AEDD3841E08B701BD67569097BED9A7250BAB307B9`
 - **单活动项目**：当前一次只打开一个项目，未支持同时打开多个项目工作区；项目切换保留的标签页为本次运行内有效
 - 模板库仅管理本地用户模板，不含在线模板市场
 - BibTeX 解析为轻量实现，Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -152,7 +152,7 @@ SHA256：待打包后补填（以 GitHub Releases 页面为准）
 - 项目设置中的「输出目录」仍为置灰占位，编译产物固定落在主文件同目录
 - 模板库仅管理本地用户模板，不含在线模板市场
 - BibTeX 解析为轻量实现，Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -229,7 +229,7 @@ SHA256：`9D6B8D70DB896DFCE78F9B769323534C930BEBC9E15F79AF88350D2CDCB34728`
 - 项目设置中的「输出目录」仍为置灰占位，编译产物固定落在主文件同目录
 - 模板库仅管理本地用户模板，不含在线模板市场
 - BibTeX 解析为轻量实现，Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -346,7 +346,7 @@ SHA256：待打包后补填（以 GitHub Releases 页面为准）
 - 项目设置中的「输出目录」仍为置灰占位，编译产物固定落在主文件同目录
 - 模板库仅管理本地用户模板，不含在线模板市场
 - BibTeX 解析为轻量实现，Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -437,7 +437,7 @@ SHA256: `97A22BA261E1D8FED433005AE27B4ECBFA0A59C65DD45558E893E809E0233F04`
 - 项目设置中的「输出目录」仍为置灰占位，编译产物固定落在主文件同目录
 - 模板库仅管理本地用户模板，不含在线模板市场
 - BibTeX 解析为轻量实现，Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -514,7 +514,7 @@ SHA256：待打包后补填（以 GitHub Releases 页面为准）
 - 项目设置中的「输出目录」仍为置灰占位，编译产物固定落在主文件同目录
 - 模板库仅管理本地用户模板，不含在线模板市场
 - BibTeX 解析为轻量实现，Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -599,7 +599,7 @@ SHA256：待打包后补填（以 GitHub Releases 页面为准）
 - 图片 / PDF 标签为只读查看器，PDF 标签为打开时快照；图片目录只支持项目内相对路径
 - 模板库仅管理本地用户模板，不含在线模板市场
 - BibTeX 解析为轻量实现，Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -688,7 +688,7 @@ SHA256：待打包后补填（以 GitHub Releases 页面为准）
 - 表格编辑器上限 100 行 × 20 列；`.xlsx` 需先另存为 CSV；反向回填针对常见 `tabular`，复杂自定义宏或非标准写法可能无法解析；合并单元格与撑满页宽依赖 `multirow` / `tabularx` 等宏包
 - 图片 / PDF 标签为只读查看器，PDF 标签为打开时快照；图片目录只支持项目内相对路径
 - 模板库仅管理本地用户模板，不含在线模板市场；导入支持目录或 zip
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -747,7 +747,7 @@ SHA256：待打包后补填（以 GitHub Releases 页面为准）
 - BibTeX 解析为轻量实现，重点提取 key / 作者 / 标题 / 年份与常用字段；复杂 `@string` 宏与自定义字段不会完整展开
 - Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步；引用面板只读文献，编辑 `.bib` 仍通过编辑器或项目树
 - 当前版本暂不含：绘图组件、拖拽图片、表格编辑器、外部文件变更监听、多套内置模板（仍为 `article` / `ctex-cn` 两套）
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -804,7 +804,7 @@ SHA256：`341a38d62cb438d24d4fc013d760e1935b867a2c83fb6a6572627ea0b33e9947`
 - 安装包未签名；应用内更新拉起安装向导时，若被 SmartScreen 拦截需点「仍要运行」
 - 自动更新自 0.1.4 起生效，0.1.3 及更早版本需手动升级一次
 - 当前版本暂不含：绘图组件、引用自动补全、外部文件变更监听、多套内置模板（仍为 `article` / `ctex-cn` 两套）；拖拽图片、表格编辑器、外围补齐仍待后续
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -850,7 +850,7 @@ SHA256：待打包后补填（以 GitHub Releases 页面为准）
 - 暂无自动更新，新版本需手动下载覆盖安装（配置与偏好会保留）
 - 当前版本暂不含：绘图组件、引用自动补全、外部文件变更监听、多套内置模板（仍为 `article` / `ctex-cn` 两套）
 - 暗色主题下启动首帧可能有一次短暂的亮色闪烁（设置异步加载所致）
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -897,7 +897,7 @@ SHA256：`b5a887d9d851441fe41ee35b9d57451d00db81168b236b85fc7f0bb5990b2291`
 - 安装包未签名
 - 暂无自动更新，新版本需手动下载覆盖安装（配置与偏好会保留）
 - 当前版本暂不含：绘图组件、SyncTeX 正反向搜索、外部文件变更监听、多套内置模板
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
@@ -934,7 +934,7 @@ SHA256：`1EBB534E165B4CCAB31A43B69A1AB539101C71F698C2F506ADDC04F44C09447F`
 - 安装包未签名
 - 暂无自动更新，新版本需手动下载覆盖安装（配置与偏好会保留）
 - 当前版本暂不含：绘图组件、SyncTeX 正反向搜索、外部文件变更监听、多套内置模板
-- 许可证：PolyForm Noncommercial License 1.0.0（源码可见，非 OSI 开源；商业使用需另行授权）
+- 许可证：AGPLv3（GNU Affero General Public License v3，强 copyleft 开源协议）
 
 ### 反馈
 
