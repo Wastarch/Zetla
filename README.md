@@ -2,11 +2,12 @@
 
 # 📝 Zetla
 
-### 面向 Windows 的桌面 LaTeX 工作台
+### 跨平台的桌面 LaTeX 工作台
 
-> 把项目管理、代码编辑、编译日志与 PDF 预览，收进同一个窗口。
+> Windows 已发布 · Linux 适配中 · macOS 短期暂不支持（作者暂无 Mac 设备 😅）
 
-[![Platform](https://img.shields.io/badge/Platform-Windows-0078D6?logo=windows&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?logo=windows&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
+[![Linux](https://img.shields.io/badge/Linux-In%20Progress-FCC624?logo=linux&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![Version](https://img.shields.io/badge/Version-v0.2.7-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
 [![License](https://img.shields.io/badge/License-Noncommercial-9F7AE0)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
