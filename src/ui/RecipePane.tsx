@@ -352,13 +352,14 @@ export function RecipePane({ draft, update }: Props) {
       <div className="set-note">
         流程 = 有序的工具步骤；步骤直接写<b>真实编译引擎名</b>（XeLaTeX / pdfLaTeX / LuaLaTeX）或辅助工具
         （latexmk / biber / bibtex）。选具体引擎即固定该引擎，不受全局引擎设置影响。仅保存在全局配置，
-        <b>不做项目级配置</b>。内置流程不可删；状态栏编译按钮右键 / 长按可临时指定本次流程。
+        <b>不做项目级配置</b>。内置流程不可删；标签栏 ▶|▾ 或状态栏右键 / 长按可切换当前流程，
+        之后所有编译都跟随它。
       </div>
 
       <Row
         label="默认编译流程"
         hint={draft.build.defaultRecipe ? `当前：${draft.build.defaultRecipe}` : "当前：内置 latexmk（默认）"}
-        tip="留空 = 后端按内置 latexmk 解析（latexmk 不可用时自动回退 engine-direct）；也可用状态栏临时指定"
+        tip="留空 = 后端按内置 latexmk 解析（latexmk 不可用时自动回退 engine-direct）；也可用标签栏 ▾ / 状态栏菜单切换当前流程（优先级高于此处）"
       >
         <select
           value={draft.build.defaultRecipe ?? ""}
