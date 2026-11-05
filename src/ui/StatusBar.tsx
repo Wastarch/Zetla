@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/ui/Icon";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
 import { getLastUsedRecipe, loadRecipes, setLastUsedRecipe } from "@/compile/recipePicker";
+import { toolLabel } from "@/compile/recipeUtils";
 import type { RecipeInfo } from "@/types";
 import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -69,7 +70,8 @@ export function StatusBar() {
     setRecipeMenu({ x, y });
     setLastUsed(getLastUsedRecipe());
     // 每次打开都重新查，保证设置页新增/删除流程后立即反映（无缓存 stale）
-    void loadRecipes(engineSetting).then(setRecipes);
+    // 传生效引擎（已按项目 config 解析），后端据此生成内置流程的真实引擎步名
+    void loadRecipes(activeEngine ?? "xelatex").then(setRecipes);
   };
   useEffect(() => () => clearHold(), []);
 
@@ -239,7 +241,7 @@ export function StatusBar() {
             },
             ...recipes.map<CtxAction>((r) => ({
               label: `${r.name}${r.builtin ? " · 内置" : " · 自定义"}`,
-              hint: `步骤：${r.tools.join(" → ") || "（空流程）"}${r.builtin ? " · 不可删" : ""}`,
+              hint: `步骤：${r.tools.map(toolLabel).join(" → ") || "（空流程）"}${r.builtin ? " · 不可删" : ""}`,
               primary: r.name === lastUsed,
               onClick: () => {
                 setLastUsedRecipe(r.name);

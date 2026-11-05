@@ -620,8 +620,13 @@ pub fn list_recipes(app: AppHandle, engine: String) -> Vec<RecipeInfo> {
 // ─────────────────────────────────────────────────────────────
 
 /// 内置 Recipe（不可删）：latexmk（默认）+ engine-direct（latexmk 不可用时的兜底管线）。
-/// 名固定、不存于配置，仅运行时合成；latexmk 的引擎 flag 与 Perl 检测在 resolve_command 运行时完成。
-fn builtin_recipes(_engine: &str) -> Vec<RecipeDef> {
+/// 名固定、不存于配置，仅运行时合成；engine-direct 的引擎步写成**真实引擎名**
+/// （跟随当前生效引擎），由 resolve_command 的引擎 token 分支解析。
+/// latexmk 的引擎 flag 与 Perl 检测在 resolve_command 运行时完成。
+fn builtin_recipes(engine: &str) -> Vec<RecipeDef> {
+    // compile_project / list_recipes 已把 auto 解析成具体引擎；这里再兜一层防误传
+    let engine = if engine == "auto" { "xelatex" } else { engine };
+    let engine_step = || RecipeStep::Named(engine.to_string());
     vec![
         RecipeDef {
             name: "latexmk".to_string(),
@@ -632,20 +637,29 @@ fn builtin_recipes(_engine: &str) -> Vec<RecipeDef> {
         RecipeDef {
             name: "engine-direct".to_string(),
             tools: vec![
-                RecipeStep::Named("latex".to_string()),
+                engine_step(),
                 RecipeStep::Detailed(RecipeStepDetailed {
                     tool: "biber".to_string(),
                     when: Some(BuildCondition::FileExists {
                         path: "%OUTDIR%/%DOCFILE%.bcf".to_string(),
                     }),
                 }),
-                RecipeStep::Named("latex".to_string()),
-                RecipeStep::Named("latex".to_string()),
+                engine_step(),
+                engine_step(),
             ],
             repeat: None,
             fallback: None,
         },
     ]
+}
+
+/// repeat.untilStable 只重跑引擎步（latexmk 自行循环，不算引擎步；辅助工具也不重跑）。
+/// 用工具名判断而非 exe 路径比较：流程里显式指定了与全局引擎不同的引擎时仍能识别。
+fn is_engine_tool(name: &str) -> bool {
+    matches!(
+        name.trim(),
+        "latex" | "xelatex" | "pdflatex" | "lualatex"
+    )
 }
 
 /// 解析编译流程：按名查用户级/内置；否则由旧 steps 合成或回退内置 latexmk。
@@ -704,8 +718,42 @@ enum ToolResolution {
     Skip(String),
 }
 
-/// 解析一个命令字符串为可执行命令。command 可为内置 token（latex/latexmk/biber/bibtex）
-/// 或字面命令（先按引擎名/程序名在搜索目录找，否则当文件路径处理）。
+/// 引擎步解析：真实引擎名（xelatex / pdflatex / lualatex）或兼容别名 latex（跟随 job.engine）。
+/// 统一补 `-synctex=1 -interaction=nonstopmode -file-line-error <主文件>`，再追加 Tool.args。
+fn engine_resolution(
+    engine: &str,
+    args: &[String],
+    env: &BTreeMap<String, String>,
+    ignore_errors: bool,
+    job: &Job,
+    ctx: &Ctx<'_>,
+) -> ToolResolution {
+    match find_engine(engine, &job.search_dirs) {
+        Some(exe) => {
+            let mut a = vec![
+                "-synctex=1".to_string(),
+                "-interaction=nonstopmode".to_string(),
+                "-file-line-error".to_string(),
+                placeholders::expand_str("%DOCFILE_EXT%", ctx),
+            ];
+            a.extend(placeholders::expand_args(args, ctx));
+            ToolResolution::Run {
+                exe,
+                args: a,
+                env: env.clone(),
+                ignore_errors,
+            }
+        }
+        None => ToolResolution::Unavailable(format!(
+            "未找到编译引擎 {}，请检查 TeX 发行版安装",
+            engine
+        )),
+    }
+}
+
+/// 解析一个命令字符串为可执行命令。command 可为内置 token
+/// （xelatex/pdflatex/lualatex/latex/latexmk/biber/bibtex）或字面命令
+/// （先按程序名在搜索目录找，否则当文件路径处理）。
 fn resolve_command(
     command: &str,
     args: &[String],
@@ -715,27 +763,12 @@ fn resolve_command(
     ctx: &Ctx<'_>,
 ) -> ToolResolution {
     match command.trim() {
-        "latex" => match find_engine(&job.engine, &job.search_dirs) {
-            Some(exe) => {
-                let mut a = vec![
-                    "-synctex=1".to_string(),
-                    "-interaction=nonstopmode".to_string(),
-                    "-file-line-error".to_string(),
-                    placeholders::expand_str("%DOCFILE_EXT%", ctx),
-                ];
-                a.extend(placeholders::expand_args(args, ctx));
-                ToolResolution::Run {
-                    exe,
-                    args: a,
-                    env: env.clone(),
-                    ignore_errors,
-                }
-            }
-            None => ToolResolution::Unavailable(format!(
-                "未找到编译引擎 {}，请检查 TeX 发行版安装",
-                job.engine
-            )),
-        },
+        // 兼容别名：跟随当前生效引擎（老配置 / 旧 JSON 里可能仍有 "latex"）
+        "latex" => engine_resolution(&job.engine, args, env, ignore_errors, job, ctx),
+        // 真实引擎名：固定用该引擎，不受全局引擎设置影响
+        e @ ("xelatex" | "pdflatex" | "lualatex") => {
+            engine_resolution(e, args, env, ignore_errors, job, ctx)
+        }
         "latexmk" => match find_engine("latexmk", &job.search_dirs) {
             Some(exe) => {
                 // latexmk 是 Perl 脚本，必须有可用 Perl 才能跑；否则交给 fallback（engine-direct）
@@ -868,7 +901,6 @@ async fn run_recipe(
     recipe: &RecipeDef,
     dir: &Path,
     log: &Path,
-    engine_exe: &Option<PathBuf>,
     passes: &mut u32,
     cancelled: &mut bool,
 ) -> RecipeOutcome {
@@ -901,7 +933,7 @@ async fn run_recipe(
                 env,
                 ignore_errors,
             } => {
-                if engine_exe.as_ref().map_or(false, |e| e == &exe) {
+                if is_engine_tool(&tool_name) {
                     engine_steps.push(step.clone());
                 }
                 *passes += 1;
@@ -1018,8 +1050,6 @@ async fn run_job(
         ws: &job.root,
     };
 
-    let engine_exe = find_engine(&job.engine, &job.search_dirs);
-
     let mut passes: u32 = 0;
     let mut failed = false;
     let mut cancelled = false;
@@ -1038,7 +1068,6 @@ async fn run_job(
             &current,
             &dir,
             &log,
-            &engine_exe,
             &mut passes,
             &mut cancelled,
         )
@@ -1332,6 +1361,43 @@ mod tests {
         assert_eq!(latexmk_flag("lualatex"), "-lualatex");
         // 未知引擎回退 xelatex
         assert_eq!(latexmk_flag("tectonic"), "-xelatex");
+    }
+
+    /// M2：内置兜底流程的引擎步必须是真实引擎名（跟随当前生效引擎），
+    /// 而不是抽象的 "latex"；auto 兜底到 xelatex。
+    #[test]
+    fn builtin_recipes_use_real_engine_names() {
+        let direct_steps = |engine: &str| {
+            let rs = builtin_recipes(engine);
+            let r = rs.iter().find(|r| r.name == "engine-direct").unwrap();
+            recipe_step_names(r).join(",")
+        };
+        assert_eq!(
+            direct_steps("pdflatex"),
+            "pdflatex,biber,pdflatex,pdflatex"
+        );
+        assert_eq!(
+            direct_steps("lualatex"),
+            "lualatex,biber,lualatex,lualatex"
+        );
+        assert_eq!(
+            direct_steps("auto"),
+            "xelatex,biber,xelatex,xelatex"
+        );
+        let rs = builtin_recipes("xelatex");
+        let lmk = rs.iter().find(|r| r.name == "latexmk").unwrap();
+        assert_eq!(recipe_step_names(lmk).join(","), "latexmk");
+    }
+
+    /// repeat.untilStable 只重跑引擎步；latexmk 自行循环、辅助工具不重跑。
+    #[test]
+    fn engine_tool_tokens_recognized() {
+        for name in ["latex", "xelatex", "pdflatex", "lualatex"] {
+            assert!(is_engine_tool(name), "{name} 应算引擎步");
+        }
+        for name in ["latexmk", "biber", "bibtex", "makeglossaries"] {
+            assert!(!is_engine_tool(name), "{name} 不应算引擎步");
+        }
     }
 
     /// M1-18b：latest-wins 状态机——新任务顶掉旧任务后，旧任务必须被判为「取消」，

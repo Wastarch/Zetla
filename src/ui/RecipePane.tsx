@@ -13,11 +13,13 @@ import {
   MAX_TOOLS,
   bundleFromSettings,
   bundleToSettings,
+  defaultEngineTool,
   isBuiltinRecipe,
   parseRecipeBundle,
   recipeStepNames,
   recipeToolOptions,
   stepToolName,
+  toolLabel,
 } from "@/compile/recipeUtils";
 
 interface Props {
@@ -54,7 +56,7 @@ export function RecipePane({ draft, update }: Props) {
   useEffect(() => {
     let alive = true;
     void compileApi
-      .listRecipes(draft.build.engine)
+      .listRecipes(draft.build.engine === "auto" ? "xelatex" : draft.build.engine)
       .then((list) => {
         if (alive && list.length > 0) setBuiltins(list.filter((r) => r.builtin));
       })
@@ -62,9 +64,10 @@ export function RecipePane({ draft, update }: Props) {
     return () => {
       alive = false;
     };
-    // 只在面板挂载（设置页打开）时拉一次；用户级流程以 draft 为准，草稿即时可见
+    // 引擎下拉变化时重拉：后端内置流程的引擎步名跟随生效引擎；
+    // 用户级流程以 draft 为准，草稿即时可见
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [draft.build.engine]);
 
   const [editingRecipe, setEditingRecipe] = useState<string | null>(null);
   const [newRecipeName, setNewRecipeName] = useState("");
@@ -113,7 +116,12 @@ export function RecipePane({ draft, update }: Props) {
     if (draft.build.recipes.length >= MAX_RECIPES) {
       return notify(`自定义流程最多 ${MAX_RECIPES} 个`, "err");
     }
-    const recipe: RecipeDef = { name, tools: ["latex"], repeat: null, fallback: null };
+    const recipe: RecipeDef = {
+      name,
+      tools: [defaultEngineTool(draft)],
+      repeat: null,
+      fallback: null,
+    };
     update((d) => ({
       ...d,
       build: { ...d.build, recipes: [...d.build.recipes, recipe] },
@@ -213,10 +221,12 @@ export function RecipePane({ draft, update }: Props) {
                   value={tool}
                   onChange={(e) => setStepTool(i, e.target.value)}
                 >
-                  {!toolOptions.includes(tool) && <option value={tool}>{tool}</option>}
+                  {!toolOptions.includes(tool) && (
+                    <option value={tool}>{toolLabel(tool)}</option>
+                  )}
                   {toolOptions.map((o) => (
                     <option key={o} value={o}>
-                      {o}
+                      {toolLabel(o)}
                     </option>
                   ))}
                 </select>
@@ -267,14 +277,14 @@ export function RecipePane({ draft, update }: Props) {
               onClick={() =>
                 updateRecipe(r.name, (cur) => ({
                   ...cur,
-                  tools: [...cur.tools, "latex"],
+                  tools: [...cur.tools, defaultEngineTool(draft)],
                 }))
               }
             >
               + 添加步骤
             </button>
             <span className="set-note" style={{ margin: 0 }}>
-              预览：{recipeStepNames(r).join(" → ") || "（空流程）"}
+              预览：{recipeStepNames(r).map(toolLabel).join(" → ") || "（空流程）"}
             </span>
           </div>
         </div>
@@ -340,7 +350,8 @@ export function RecipePane({ draft, update }: Props) {
     <div className="recipe-pane">
       <div className="recipe-title">编译流程（Tool / Recipe）</div>
       <div className="set-note">
-        流程 = 有序的工具步骤；工具 = 命令 + 参数 + 环境变量。仅保存在全局配置，
+        流程 = 有序的工具步骤；步骤直接写<b>真实编译引擎名</b>（XeLaTeX / pdfLaTeX / LuaLaTeX）或辅助工具
+        （latexmk / biber / bibtex）。选具体引擎即固定该引擎，不受全局引擎设置影响。仅保存在全局配置，
         <b>不做项目级配置</b>。内置流程不可删；状态栏编译按钮右键 / 长按可临时指定本次流程。
       </div>
 
@@ -373,7 +384,7 @@ export function RecipePane({ draft, update }: Props) {
           <div className="recipe-item" key={r.name}>
             <span className="recipe-name">{r.name}</span>
             <span className="recipe-tag">内置 · 不可删</span>
-            <span className="recipe-steps">{r.tools.join(" → ")}</span>
+            <span className="recipe-steps">{r.tools.map(toolLabel).join(" → ")}</span>
             <button type="button" className="btn" onClick={() => setDefault(r.name)}>
               设为默认
             </button>
@@ -387,7 +398,9 @@ export function RecipePane({ draft, update }: Props) {
               {draft.build.defaultRecipe === r.name && (
                 <span className="recipe-tag on">默认</span>
               )}
-              <span className="recipe-steps">{recipeStepNames(r).join(" → ")}</span>
+              <span className="recipe-steps">
+                {recipeStepNames(r).map(toolLabel).join(" → ")}
+              </span>
               <button
                 type="button"
                 className="btn"
@@ -427,12 +440,13 @@ export function RecipePane({ draft, update }: Props) {
 
       <h5>自定义工具（Tool）</h5>
       <div className="set-note">
-        步骤下拉里的 <code>latex / latexmk / biber / bibtex</code> 是内置 token；
+        步骤下拉里的 <code>xelatex / pdflatex / lualatex</code> 是真实编译引擎（选中即固定该引擎），
+        <code>latexmk / biber / bibtex</code> 是辅助工具；老配置里的 <code>latex</code> 仍由后端兼容为「跟随当前引擎」。
         自定义工具的 <code>command / args / cwd / env / ignoreErrors</code> 在下方 JSON 编辑器里填写。
       </div>
       <div className="recipe-list">
         {draft.build.tools.length === 0 && (
-          <div className="set-note">（暂无自定义工具；可直接用内置 token 编排流程）</div>
+          <div className="set-note">（暂无自定义工具；可直接用真实引擎名与辅助工具编排流程）</div>
         )}
         {draft.build.tools.map((t) => (
           <div className="recipe-item" key={t.name}>

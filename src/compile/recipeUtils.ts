@@ -16,9 +16,34 @@ export const MAX_TOOLS = 32;
 export const MAX_RECIPES = 32;
 export const MAX_RECIPE_STEPS = 32;
 
+/** 真实编译引擎名（内置 token；与 Rust resolve_command 的引擎分支一一对应，选中即固定该引擎） */
+export const ENGINE_TOOL_NAMES = ["xelatex", "pdflatex", "lualatex"] as const;
+/** 辅助工具 token（本来就是真实命令名，保持不变） */
+export const AUX_TOOL_NAMES = ["latexmk", "biber", "bibtex"] as const;
+/** 兼容别名：老配置 / 旧 JSON 里可能仍有 "latex"，后端仍支持（跟随当前引擎），UI 不再列出 */
+export const LEGACY_ENGINE_ALIAS = "latex";
+
+/** 工具名 → 展示名（引擎用规范大小写，其余保持命令名） */
+export const TOOL_LABELS: Record<string, string> = {
+  xelatex: "XeLaTeX",
+  pdflatex: "pdfLaTeX",
+  lualatex: "LuaLaTeX",
+  [LEGACY_ENGINE_ALIAS]: "latex（跟随当前引擎）",
+};
+
+export function toolLabel(name: string): string {
+  return TOOL_LABELS[name] ?? name;
+}
+
+/** 新建流程 / 新增步骤时的默认引擎步：跟随设置里的生效引擎（auto → xelatex） */
+export function defaultEngineTool(d: AppSettings): string {
+  return d.build.engine === "auto" ? "xelatex" : d.build.engine;
+}
+
 /**
  * list_recipes IPC 失败时的兜底（正常路径以 IPC 返回为单源，防 UI 与执行器漂移）。
- * 与 compile.rs::builtin_recipes 保持一致：latexmk（fallback→engine-direct）与 engine-direct。
+ * 与 compile.rs::builtin_recipes 保持一致：latexmk（fallback→engine-direct）与 engine-direct；
+ * 引擎步按 auto 的缺省值写成真实引擎名 xelatex。
  */
 export const BUILTIN_FALLBACK: RecipeInfo[] = [
   { name: "latexmk", builtin: true, deletable: false, tools: ["latexmk"] },
@@ -26,7 +51,7 @@ export const BUILTIN_FALLBACK: RecipeInfo[] = [
     name: "engine-direct",
     builtin: true,
     deletable: false,
-    tools: ["latex", "biber", "latex", "latex"],
+    tools: ["xelatex", "biber", "xelatex", "xelatex"],
   },
 ];
 
@@ -46,13 +71,13 @@ export function recipeStepNames(r: RecipeDef): string[] {
 }
 
 export function recipeStepPreview(r: RecipeDef): string {
-  const names = recipeStepNames(r);
+  const names = recipeStepNames(r).map(toolLabel);
   return names.length > 0 ? names.join(" → ") : "（空流程）";
 }
 
-/** 步骤下拉可选工具：内置 token + 用户自定义 Tool 名（去重） */
+/** 步骤下拉可选工具：真实引擎名 + 辅助工具 + 用户自定义 Tool 名（去重） */
 export function recipeToolOptions(d: AppSettings): string[] {
-  const names = new Set<string>(["latex", "latexmk", "biber", "bibtex"]);
+  const names = new Set<string>([...ENGINE_TOOL_NAMES, ...AUX_TOOL_NAMES]);
   for (const t of d.build.tools) {
     if (t.name.trim()) names.add(t.name);
   }
