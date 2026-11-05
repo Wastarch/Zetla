@@ -2,7 +2,7 @@
 // runEnvCheck：探测发行版并写全局 store（设置页内联显示也订阅它）
 // checkEnvOnStartup：启动预检测 —— 未找到 TeX 时自动打开引导（每次启动一次，会话内关闭后不再自动弹）
 // ensureEnv：编译前预检 —— 已知有 TeX 直接放行；检测命令失败不拦截（让编译命令报具体错）
-// openEnvGuide：手动入口（帮助菜单 / 状态栏 chip）—— 每次重新检测并打开引导面板
+// openEnvGuide：手动入口（帮助菜单 / 设置页）—— 每次重新检测并打开引导面板
 // pickEngineDir：指定/接管已有安装（TeX Live 优先接管并写台账；其他发行版回退 engineBinDir）
 import { open as pickDialog } from "@tauri-apps/plugin-dialog";
 import { compileApi } from "@/ipc/invoke";

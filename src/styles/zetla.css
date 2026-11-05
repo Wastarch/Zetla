@@ -3589,6 +3589,25 @@ body.row-resizing {
   animation: slide 1.2s ease-in-out infinite;
 }
 
+/* M2：编译进度条旁的流程步骤 chip（XeLaTeX（1/4）），仅编译中显示 */
+.compile-step {
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  max-width: 210px;
+  padding: 0 7px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @keyframes slide {
   0% {
     margin-left: -32%;
@@ -3596,11 +3615,6 @@ body.row-resizing {
   100% {
     margin-left: 102%;
   }
-}
-
-.engine-chip {
-  font-family: var(--font-mono);
-  color: var(--accent);
 }
 
 .caret-info {

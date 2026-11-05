@@ -1,20 +1,23 @@
 // M0-6 · 全局状态栏（对齐 mockup UI.html .statusbar）
-// 左：状态点 + 编译文案 + 进度条 + 日志⛔ + 引擎 chip⛔
-// 右（.right 组）：行/列 · LaTeX 语言 · 当前文件/脏 · 编码 · 换行
-// M0-13 前移：光标位置从编辑器内部状态行上提到此处；移除设置/主题按钮（设置 M1 · 主题 M3）
-// M0-9：编译文案按钮触发编译/取消、日志按钮开合面板、引擎 chip 显示生效引擎
-// M1-3：引擎 chip 显示「设置页显式值 ?? 项目 config」的生效引擎，点击打开设置→编译设置切换
+// 左：状态点 + 编译文案 + 进度条 + 流程步骤 chip（编译中，如 XeLaTeX（1/4））+ 日志；
+// 右（.right 组）：行/列 · 文档语言 · 当前文件/脏 · 编码 · 换行
+// 2026-11-05 精简：移除「引擎」「TeX 发行版」「设置」三个状态栏入口（仅去掉入口，功能不删）。
+//   替代入口：菜单「设置 → 偏好设置」(Ctrl+,) /「设置 → 项目设置…」、「帮助 → TeX 环境检测…」、
+//   以及偏好设置 → 编译设置里的引擎选择；环境自动检测与编译前预检照常运行。
+// M0-13 前移：光标位置从编辑器内部状态行上提到此处
+// M0-9：编译文案按钮触发编译/取消、日志按钮开合面板
 // M1-14j：文档语言 chip 不再写死 LaTeX——按扩展名识别（langByExt），点击可手动切换/恢复自动
+// M2：编译文案按钮右键 / 长按打开共用的流程菜单（标签栏 ▾ 同款）
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/ui/Icon";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
 import { RecipeMenu } from "@/compile/RecipeMenu";
 import { useCurrentRecipe } from "@/compile/recipePicker";
+import { formatStepChip, stepChipTitle } from "@/compile/recipeUtils";
 import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { base, extOf, useProjectStore } from "@/project/useProject";
-import { cancelCompile, effectiveEngine, engineLabel, startCompile } from "@/compile/useCompile";
-import { openEnvGuide } from "@/env/useEnvCheck";
+import { cancelCompile, effectiveEngine, startCompile } from "@/compile/useCompile";
 import { useSettingsStore } from "@/core/settings";
 import { LANG_META, LANG_ORDER, isKnownExt, langLabel, langOf } from "@/editor/langByExt";
 import { useLangOverride } from "@/editor/langOverride";
@@ -27,6 +30,8 @@ const DOT_CLASS: Record<string, string> = {
 
 export function StatusBar() {
   const compileStatus = useAppStore((s) => s.compileStatus);
+  // M2：当前 Recipe 步骤（进度条旁 XeLaTeX（1/4）），仅编译中显示
+  const compileStep = useAppStore((s) => s.compileStep);
   const active = useBuffersStore((s) =>
     s.activePath ? s.buffers.find((b) => b.path === s.activePath) ?? null : null,
   );
@@ -35,7 +40,7 @@ export function StatusBar() {
   const toggleLog = useAppStore((s) => s.toggleLog);
   const tree = useProjectStore((s) => s.tree);
   const hasMain = !!tree?.mainFile;
-  const env = useAppStore((s) => s.env);
+  // 生效引擎仍用于流程菜单（内置流程按引擎展开），只是不再在状态栏展示
   // M1-3：设置页显式引擎覆盖项目 config（"auto" 时跟随项目）
   const engineSetting = useSettingsStore((s) => s.settings.build.engine);
   const defaultRecipe = useSettingsStore((s) => s.settings.build.defaultRecipe);
@@ -139,6 +144,16 @@ export function StatusBar() {
       <div className={running ? "bar-progress on" : "bar-progress"}>
         <i />
       </div>
+      {running && compileStep && (
+        <span className="compile-step" title={stepChipTitle(compileStep)}>
+          {formatStepChip(
+            compileStep.tool,
+            compileStep.index,
+            compileStep.total,
+            compileStep.rerun,
+          )}
+        </span>
+      )}
 
       <span className="divider" />
       <button
@@ -149,34 +164,6 @@ export function StatusBar() {
       >
         <Icon name="terminal" />
         日志
-      </button>
-
-      <span className="divider" />
-      <button
-        type="button"
-        className="sbtn"
-        title="当前生效的编译引擎 · 点击在 设置 → 编译设置 中切换（默认跟随项目 .ltex/config.json）"
-        onClick={() => useAppStore.getState().openSettings("build")}
-      >
-        引擎 <span className="engine-chip">{tree ? engineLabel(activeEngine) : "—"}</span>
-      </button>
-
-      {/* M0-15a：TeX 环境 chip（点击打开环境引导） */}
-      <span className="divider" />
-      <button
-        type="button"
-        className="sbtn"
-        title={
-          env === null
-            ? "尚未检测 TeX 环境 · 点击检测"
-            : env.found
-              ? `${env.distribution ?? "TeX"}${env.version ? ` · ${env.version}` : ""} · 点击查看详情`
-              : "未检测到 TeX 发行版 · 点击打开环境引导"
-        }
-        onClick={() => void openEnvGuide()}
-      >
-        <Icon name="tex" />
-        {env === null ? "TeX 未检测" : env.found ? env.distribution ?? "TeX" : "无 TeX"}
       </button>
 
       {/* 右侧：光标 / 语言 / 文件 / 编码 / 换行 */}
@@ -251,16 +238,6 @@ export function StatusBar() {
           ]}
         />
       )}
-      {/* M0-14a：偏好设置入口（mockup 状态栏右端「设置」按钮） */}
-      <button
-        type="button"
-        className="sbtn"
-        title="偏好设置 (Ctrl+,)"
-        onClick={() => useAppStore.getState().openSettings()}
-      >
-        <Icon name="sliders" />
-        设置
-      </button>
     </footer>
   );
 }

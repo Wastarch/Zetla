@@ -281,6 +281,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         compileStatus: "idle",
         compilePct: 0,
         compileCurrent: "",
+        compileStep: null,
       });
       useAppStore.getState().clearLog();
       // M0-10b：主文件同目录已有编译产物时直接加载，不必先编译（不强制展开预览栏）

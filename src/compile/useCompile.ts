@@ -1,5 +1,6 @@
 // M0-9 · 编译桥接 —— 前端唯一订阅内核编译事件的地方
-// 职责：listen compile_progress / compile_finished → 写全局 store；
+// M2：新增 compile_step → 写 compileStep（状态栏进度条旁展示当前 Recipe 步骤）
+// 职责：listen compile_progress / compile_step / compile_finished → 写全局 store；
 //      暴露 startCompile() / cancelCompile() 给按钮、菜单、快捷键共用。
 import { useEffect } from "react";
 import { RustEvents, onKernelEvent } from "@/ipc/events";
@@ -14,7 +15,7 @@ import { ensureEnv } from "@/env/useEnvCheck";
 import { resolveRecipeSelection } from "@/compile/recipePicker";
 import { DEFAULT_AUX_EXTENSIONS, liveSafeAuxExtensions, stepsLabel } from "@/types";
 import type { CompileEngine } from "@/types";
-import type { CompileProgress, CompileResult } from "@/types";
+import type { CompileProgress, CompileResult, CompileStepProgress } from "@/types";
 
 /** 引擎显示名（状态栏 chip 用真实引擎） */
 const ENGINE_LABELS: Record<string, string> = {
@@ -136,6 +137,8 @@ export async function startCompile(opts?: {
       ? `旧配置流程 ${stepsLabel(steps)}`
       : "内置 latexmk（默认）";
   st.appendLog([`$ ${engineLabel(engine)} · ${base(tree.mainFile)} · ${flowLabel}`]);
+  // M2：新一轮编译先清掉上一轮的步骤 chip（保留已见任务代号，防旧任务迟到事件回填）
+  st.setCompileStep(null);
   st.setCompiling(0, "准备编译…");
 
   // M1-18c：标记本次是否由实时预览触发，并记录光标（成功后据此做 PDF 锚定）
@@ -177,6 +180,16 @@ export function useCompileBridge(): void {
       const st = useAppStore.getState();
       st.setCompiling(p.pct, p.current);
       if (p.current.trim()) st.appendLog([p.current]);
+    }).then((un) => {
+      if (alive) unlisteners.push(un);
+      else un();
+    });
+
+    // M2：当前 Recipe 步骤（每个 Tool 开跑前推一条）。只写 store，不进日志面板；
+    // 旧任务的迟到事件由 store.setCompileStep 按任务代号丢弃。
+    void onKernelEvent<CompileStepProgress>(RustEvents.compileStep, (s) => {
+      if (!alive) return;
+      useAppStore.getState().setCompileStep(s);
     }).then((un) => {
       if (alive) unlisteners.push(un);
       else un();

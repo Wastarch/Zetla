@@ -1,6 +1,6 @@
 // 全局状态（zustand）—— 项目、编译、编辑器的共享状态
 import { create } from "zustand";
-import type { CompileResult, ProjectInfo, TexDistInfo } from "@/types";
+import type { CompileResult, CompileStepProgress, ProjectInfo, TexDistInfo } from "@/types";
 
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
@@ -84,7 +84,12 @@ export interface AppState {
   compilePct: number;
   compileCurrent: string;
   lastResult: CompileResult | null;
+  /** M2：当前正在跑的 Recipe 步骤（null = 未开始 / 已结束），状态栏进度条旁展示 */
+  compileStep: CompileStepProgress | null;
+  /** 已接受的最大任务代号：latest-wins 下旧任务的迟到事件不得覆盖新任务 */
+  compileStepSeq: number;
   setCompiling: (pct: number, current: string) => void;
+  setCompileStep: (s: CompileStepProgress | null) => void;
   setCompileDone: (r: CompileResult) => void;
   resetCompile: () => void;
 
@@ -168,6 +173,7 @@ export const useAppStore = create<AppState>((set) => ({
       project: p,
       lastResult: null,
       compileStatus: "idle",
+      compileStep: null,
       previewPdf: null,
       previewRev: 0,
     }),
@@ -177,6 +183,7 @@ export const useAppStore = create<AppState>((set) => ({
       lastResult: null,
       compileStatus: "idle",
       compilePct: 0,
+      compileStep: null,
       previewPdf: null,
       previewRev: 0,
     }),
@@ -185,8 +192,18 @@ export const useAppStore = create<AppState>((set) => ({
   compilePct: 0,
   compileCurrent: "",
   lastResult: null,
+  compileStep: null,
+  compileStepSeq: 0,
   setCompiling: (pct, current) =>
     set({ compileStatus: "running", compilePct: pct, compileCurrent: current }),
+  setCompileStep: (s) =>
+    set((state) => {
+      // 清显示时保留已见代号：否则被顶替的旧任务事件又能重新写进来
+      if (s === null) return { compileStep: null };
+      // 旧任务（代号更小）的迟到事件一律丢弃
+      if (s.seq < state.compileStepSeq) return {};
+      return { compileStep: s, compileStepSeq: s.seq };
+    }),
   setCompileDone: (r) =>
     set((s) => {
       // 只有成功且拿到产物才更新预览；失败保留上一次成功的 PDF
@@ -197,11 +214,13 @@ export const useAppStore = create<AppState>((set) => ({
         lastResult: r,
         compilePct: 100,
         compileCurrent: "",
+        compileStep: null,
         previewPdf: fresh ? r.pdfPath! : s.previewPdf,
         previewRev: fresh ? s.previewRev + 1 : s.previewRev,
       };
     }),
-  resetCompile: () => set({ compileStatus: "idle", compilePct: 0, compileCurrent: "" }),
+  resetCompile: () =>
+    set({ compileStatus: "idle", compilePct: 0, compileCurrent: "", compileStep: null }),
 
   logVisible: false,
   toggleLog: () => set((s) => ({ logVisible: !s.logVisible })),

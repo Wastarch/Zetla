@@ -3,6 +3,7 @@
 import type {
   AppSettings,
   BuildCondition,
+  CompileStepProgress,
   RecipeDef,
   RecipeInfo,
   RecipeStep,
@@ -33,6 +34,30 @@ export const TOOL_LABELS: Record<string, string> = {
 
 export function toolLabel(name: string): string {
   return TOOL_LABELS[name] ?? name;
+}
+
+/** 状态栏流程步骤文案：XeLaTeX（1/4）；收敛重跑追加「· 重跑」 */
+export function formatStepChip(
+  tool: string,
+  index: number,
+  total: number,
+  rerun: boolean,
+): string {
+  const n = Math.max(0, Math.trunc(index));
+  const d = Math.max(0, Math.trunc(total));
+  return `${toolLabel(tool)}（${n}/${d}）${rerun ? " · 重跑" : ""}`;
+}
+
+/** 状态栏流程步骤 tooltip：交代流程名、位置、跳号原因与重跑 */
+export function stepChipTitle(s: CompileStepProgress): string {
+  const parts = [`流程 ${s.recipe}`, `第 ${s.index}/${s.total} 步 · ${toolLabel(s.tool)}`];
+  if (s.skipped > 0) {
+    parts.push(`此前跳过 ${s.skipped} 个条件步骤（故序号会跳号）`);
+  }
+  if (s.rerun) {
+    parts.push("repeat.untilStable 收敛重跑");
+  }
+  return parts.join(" · ");
 }
 
 /** 新建流程 / 新增步骤时的默认引擎步：跟随设置里的生效引擎（auto → xelatex） */

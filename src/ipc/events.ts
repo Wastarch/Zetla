@@ -3,10 +3,12 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 /** Rust 内核推送到前端的事件名（与 src-tauri 侧常量一致） */
 export const RustEvents = {
-  /** 编译进度 */
+  /** 编译进度（日志行 / 阶段） */
   compileProgress: "compile_progress",
   /** 编译完成 */
   compileFinished: "compile_finished",
+  /** 当前 Recipe 步骤（M2：状态栏「XeLaTeX（1/4）」） */
+  compileStep: "compile_step",
   /** 项目目录文件增减（M0-9a，防抖后推送） */
   projectChanged: "project_changed",
   /** 文件被外部改动（notify） */

@@ -41,6 +41,27 @@ export interface CompileProgress {
   current: string;
 }
 
+/**
+ * M2：当前编译流程步骤进度（Rust → 前端 `compile_step`）。
+ * 每个 Tool 真正开跑前推一条，状态栏进度条旁显示「XeLaTeX（1/4）」。
+ */
+export interface CompileStepProgress {
+  /** 任务代号：latest-wins 下前端只接受代号更大的事件，避免旧任务覆盖新任务 */
+  seq: number;
+  /** 当前执行的 Recipe 名（fallback 后会变） */
+  recipe: string;
+  /** 工具 / 引擎名（前端 toolLabel 转成 XeLaTeX 等规范大小写） */
+  tool: string;
+  /** 1-based 步骤位置（按 Recipe 原始步骤列表；条件跳过时序号会跳号） */
+  index: number;
+  /** Recipe 步骤总数 */
+  total: number;
+  /** repeat.untilStable 收敛重跑 */
+  rerun: boolean;
+  /** 本流程中此前被跳过的条件步骤数（供 tooltip 解释跳号） */
+  skipped: number;
+}
+
 /** Perl 运行时检测结果（M0-15b/c） */
 export interface PerlInfo {
   found: boolean;

@@ -339,9 +339,31 @@ pub struct CompileProgress {
     pub current: String,
 }
 
+/// 编译流程步骤事件负载（与 src/types/compile.ts CompileStepProgress 对齐）
+/// 每个 Tool 真正开跑前推一条，供状态栏显示「XeLaTeX（1/4）」这类流程进度。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompileStep {
+    /// 任务代号：latest-wins 下前端只接受代号更大的事件，避免旧任务覆盖新任务
+    pub seq: u64,
+    /// 当前执行的 Recipe 名（fallback 后会变）
+    pub recipe: String,
+    /// 工具 / 引擎名（前端 toolLabel 转成 XeLaTeX 等规范大小写）
+    pub tool: String,
+    /// 1-based 步骤位置（按 Recipe 原始步骤列表；条件跳过时序号会跳号）
+    pub index: u32,
+    /// Recipe 步骤总数
+    pub total: u32,
+    /// repeat.untilStable 收敛重跑
+    pub rerun: bool,
+    /// 本流程中此前被跳过（when 不满足 / 工具 Skip）的步数，供 tooltip 解释跳号
+    pub skipped: u32,
+}
+
 /// 事件名（必须与 src/ipc/events.ts RustEvents 一致）
 pub const EV_PROGRESS: &str = "compile_progress";
 pub const EV_FINISHED: &str = "compile_finished";
+pub const EV_STEP: &str = "compile_step";
 
 /// 槽位里的子进程：记录它属于哪个任务（代号）。
 /// 只有「代号匹配」的任务才允许对它 try_wait / kill，
@@ -456,6 +478,48 @@ fn emit_progress(app: &AppHandle, stage: &str, pct: u32, current: impl Into<Stri
             pct,
             current: current.into(),
         },
+    );
+}
+
+/// 构造一条流程步骤事件负载（纯数据，便于单测守护前后端协议）
+fn step_progress(
+    seq: u64,
+    recipe: &str,
+    tool: &str,
+    index: u32,
+    total: u32,
+    rerun: bool,
+    skipped: u32,
+) -> CompileStep {
+    CompileStep {
+        seq,
+        recipe: recipe.to_string(),
+        tool: tool.to_string(),
+        index,
+        total,
+        rerun,
+        skipped,
+    }
+}
+
+/// 推一条「当前流程步骤」事件（失败不致命；被顶替的旧任务不再推送）
+fn emit_step(
+    app: &AppHandle,
+    st: &Arc<CompileState>,
+    sig: &JobSig,
+    recipe: &str,
+    tool: &str,
+    index: u32,
+    total: u32,
+    rerun: bool,
+    skipped: u32,
+) {
+    if st.is_stale(sig.seq) {
+        return;
+    }
+    let _ = app.emit(
+        EV_STEP,
+        step_progress(sig.seq, recipe, tool, index, total, rerun, skipped),
     );
 }
 
@@ -904,10 +968,12 @@ async fn run_recipe(
     passes: &mut u32,
     cancelled: &mut bool,
 ) -> RecipeOutcome {
-    // 记录引擎步（用于 repeat.untilStable 仅重跑引擎）
-    let mut engine_steps: Vec<RecipeStep> = Vec::new();
+    // 记录引擎步（用于 repeat.untilStable 仅重跑引擎），同时记住它在流程中的原始序号
+    let mut engine_steps: Vec<(u32, RecipeStep)> = Vec::new();
+    let total = recipe.tools.len() as u32;
+    let mut skipped = 0u32;
 
-    for step in &recipe.tools {
+    for (idx, step) in recipe.tools.iter().enumerate() {
         if *cancelled || st.is_cancelled(sig.seq) {
             return RecipeOutcome::Cancelled;
         }
@@ -917,12 +983,14 @@ async fn run_recipe(
         };
         if let Some(when) = &when {
             if !evaluate_condition(when, ctx, log) {
+                skipped += 1;
                 continue;
             }
         }
         let res = resolve_tool(&tool_name, job, ctx);
         match res {
             ToolResolution::Skip(msg) => {
+                skipped += 1;
                 emit_progress(app, "running", 0, msg);
                 continue;
             }
@@ -933,10 +1001,14 @@ async fn run_recipe(
                 env,
                 ignore_errors,
             } => {
+                let index = idx as u32 + 1;
                 if is_engine_tool(&tool_name) {
-                    engine_steps.push(step.clone());
+                    engine_steps.push((index, step.clone()));
                 }
                 *passes += 1;
+                emit_step(
+                    app, st, sig, &recipe.name, &tool_name, index, total, false, skipped,
+                );
                 emit_progress(
                     app,
                     "running",
@@ -966,7 +1038,7 @@ async fn run_recipe(
                 && !st.is_cancelled(sig.seq)
                 && log_needs_rerun(log)
             {
-                for step in &engine_steps {
+                for (index, step) in &engine_steps {
                     if *cancelled || st.is_cancelled(sig.seq) {
                         return RecipeOutcome::Cancelled;
                     }
@@ -988,6 +1060,9 @@ async fn run_recipe(
                     } = res
                     {
                         *passes += 1;
+                        emit_step(
+                            app, st, sig, &recipe.name, &tool_name, *index, total, true, skipped,
+                        );
                         emit_progress(app, "running", 0, format!("{} · 收敛重跑", tool_name));
                         match run_cmd(app, st, sig, &exe, &args, dir, &job.search_dirs, &env).await {
                             CmdOutcome::Ok => {}
@@ -1504,5 +1579,39 @@ mod tests {
             parse_version_line("MiKTeX-mt 25.1"),
             Some("25.1".to_string())
         );
+    }
+
+    #[test]
+    fn compile_step_payload_matches_frontend_protocol() {
+        let p = step_progress(7, "engine-direct", "xelatex", 1, 4, false, 0);
+        let v = serde_json::to_value(p).unwrap();
+        // 字段名/数量必须与 src/types/compile.ts CompileStepProgress 完全一致
+        assert_eq!(v.as_object().unwrap().len(), 7);
+        assert_eq!(v["seq"], 7);
+        assert_eq!(v["recipe"], "engine-direct");
+        assert_eq!(v["tool"], "xelatex");
+        assert_eq!(v["index"], 1);
+        assert_eq!(v["total"], 4);
+        assert_eq!(v["rerun"], false);
+        assert_eq!(v["skipped"], 0);
+    }
+
+    #[test]
+    fn engine_direct_chip_counts_four_steps() {
+        // 用户示例流程：XeLaTeX → biber（有 .bcf 才跑）→ XeLaTeX → XeLaTeX
+        let r = builtin_recipes("xelatex")
+            .into_iter()
+            .find(|r| r.name == "engine-direct")
+            .unwrap();
+        assert_eq!(r.tools.len(), 4);
+        assert!(matches!(&r.tools[1], RecipeStep::Detailed(d) if d.when.is_some()));
+        let total = r.tools.len() as u32;
+        let first = step_progress(1, &r.name, "xelatex", 1, total, false, 0);
+        assert_eq!((first.index, first.total, first.skipped), (1, 4, 0));
+        // biber 条件不满足时跳号到 3/4，skipped 记 1 供 tooltip 解释
+        let third = step_progress(1, &r.name, "xelatex", 3, total, false, 1);
+        assert_eq!((third.index, third.total, third.skipped), (3, 4, 1));
+        let rerun = step_progress(2, &r.name, "xelatex", 1, total, true, 1);
+        assert!(rerun.rerun);
     }
 }
