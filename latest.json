@@ -1,16 +1,16 @@
 {
-    "version": "0.2.6",
-    "notes": "拼图合成单张图片 · 子标题烘焙 · 深色适配",
-    "pubDate": "2026-11-04T00:00:00+08:00",
-    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.6",
+    "version": "0.2.7",
+    "notes": "新增可编排编译流程（Tool / Recipe）;\n标签栏支持切换流程;\n编译时状态栏显示步骤进度并精简入口;\n修复自定义流程配置被覆盖问题;\n清除旧版流程编辑器",
+    "pubDate": "2026-11-05T00:00:00+08:00",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.7",
     "installers": [
         {
-            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.6/Zetla_0.2.6_x64-setup.exe",
-            "sha256": "4811C075EEB4F0E55EAD44EB1C2100C4FC4CD4EA88DAE1EC4D310501894DFE13"
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.7/Zetla_0.2.7_x64-setup.exe",
+            "sha256": "1EB71927989E852A85DB81AEDD3841E08B701BD67569097BED9A7250BAB307B9"
         },
         {
-            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.6/Zetla_0.2.6_x64-setup.exe",
-            "sha256": "4811C075EEB4F0E55EAD44EB1C2100C4FC4CD4EA88DAE1EC4D310501894DFE13"
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.7/Zetla_0.2.7_x64-setup.exe",
+            "sha256": "1EB71927989E852A85DB81AEDD3841E08B701BD67569097BED9A7250BAB307B9"
         }
     ],
     "minVersion": "0.1.0",
