@@ -13,7 +13,7 @@
 [![Language](https://img.shields.io/badge/Language-Rust%20%2F%20TS-DEA584)](https://www.rust-lang.org)
 [![Made for LaTeX](https://img.shields.io/badge/Made%20for-LaTeX-2CA5E0?logo=latex&logoColor=white)](https://www.latex-project.org)
 
-[🚀 快速上手](#快速上手) · [✨ 功能](#功能) · [📚 详细文档](#详细文档) · [🤝 贡献](#贡献) · [📄 许可证](#许可证)
+[🚀 快速上手](#快速上手) · [✨ 功能](#功能) · [🆚 为什么选 Zetla](#为什么选-zetla) · [📚 详细文档](#详细文档) · [🤝 贡献](#贡献) · [📄 许可证](#许可证) · [🌟 Star History](#star-history)
 
 ⭐ 如果这个项目对你有帮助，欢迎 [Star 支持](https://github.com/Wastarch/Zetla)！
 
@@ -38,7 +38,7 @@
 
 ## 功能 ✨
 
-Zetla 覆盖项目管理、编辑器、可编排编译、公式 / 表格 / 图片 / 拼图、参考文献与 PDF 预览等完整能力。
+Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编辑器、可编排编译、公式 / 表格 / 图片 / 拼图、参考文献与 PDF 预览。
 
 | 🗂️ 项目管理 | ✍️ 编辑器 | ⚙️ 可编排编译 |
 | :---: | :---: | :---: |
@@ -54,6 +54,24 @@ Zetla 覆盖项目管理、编辑器、可编排编译、公式 / 表格 / 图�
 
 > [!NOTE]
 > 完整功能逐项说明见 [功能介绍](docs/功能介绍.md)。
+
+## 为什么选 Zetla 🆚
+
+不拼"能不能编译"，拼的是**开箱即用的面板化工作流**：
+
+| 能力 | Zetla | Overleaf | TeXstudio | VS Code + LaTeX Workshop |
+| :--- | :---: | :---: | :---: | :---: |
+| 拼图 · 多图论文插图可视化排版 | ✅ 专属面板 | ❌ | ❌ | ⚠️ 需手写 |
+| 首次启动 TeX 环境引导（一键装 / 接管 TeX Live） | ✅ 引导 | ✅ 云端内置 | ❌ 需自备 | ❌ 需自备 |
+| 可编排编译流程（Tool / Recipe 可视化） | ✅ 可视化 | ⚠️ 仅云端 | ⚠️ 单命令 | ⚠️ 需配置 |
+| 公式 / 符号可视化面板（KaTeX 实时渲染） | ✅ 面板 | ✅ Web | ⚠️ 基础 | ⚠️ 插件 |
+| 内置项目模板库（一键新建） | ✅ 内置 | ✅ 模板 | ⚠️ 较弱 | ⚠️ 插件 |
+| 中文 / GBK 编码零乱码（自动处理） | ✅ 自动 | ⚠️ | ⚠️ 手动 | ⚠️ 手动 |
+| 自定义标题栏 + 全局快捷键（Tauri 原生） | ✅ 原生 | ❌ 浏览器 | ⚠️ 通用 | ⚠️ 通用 |
+| 代码片段面板（可复用块管理） | ✅ 内置 | ⚠️ | ✅ | ✅ snippets |
+
+> [!TIP]
+> Zetla 的核心差异：**把公式、符号、拼图、编译、参考文献都做成开箱即用的面板**，加上首次启动自动引导 TeX 环境、中文 / GBK 零乱码——专为"不想折腾环境、又要桌面级体验"的中文 LaTeX 用户设计。
 
 ## 详细文档 📚
 
@@ -84,3 +102,12 @@ Zetla 覆盖项目管理、编辑器、可编排编译、公式 / 表格 / 图�
 - 官方许可证地址：<https://polyformproject.org/licenses/noncommercial/1.0.0>
 
 Copyright (c) 2026 Zetla contributors
+
+## Star History 🌟
+
+<a href="https://star-history.com/#Wastarch/Zetla&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Wastarch/Zetla&type=Date&theme=dark" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=Wastarch/Zetla&type=Date" />
+ </picture>
+</a>
