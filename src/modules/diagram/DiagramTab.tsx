@@ -1,55 +1,72 @@
-// M2·F1-1：绘图工作台 Tab 内容根（挂在 `diagram://editor` 伪 buffer 上，见 useBuffers.openDiagram）。
-// 本切片只搭骨架：顶部布局工具条占位 + 空态说明，保证「侧栏 → 独立 Tab」链路打通。
-// F1-2 接三布局与复用既有 LaTeXEditor；F1-3 接 vendored tikz-editor 的 SVG 画布；
-// F1-4 接「编辑完成 → 选导出方式 → 插入目标 .tex」。
+// M2·F1-2：绘图工作台 Tab 内容根（挂在 `diagram://editor` 伪 buffer 上，见 useBuffers.openDiagram）。
+// 三布局 canvas | code | split 全在**本 Tab 内部**切换：不新建 Tab、不替换主编辑区，
+// .tex 编辑器 / 其它 Tab / PDF 预览始终可用。F1-3 接画布 SVG，F1-4 接插入主文档。
+import { useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
+import { DiagramLayoutBar } from "./DiagramLayoutBar";
+import { DiagramCanvas } from "./DiagramCanvas";
+import { DiagramCodePane } from "./DiagramCodePane";
 import { useDiagramStore } from "./store";
 import "./diagram.css";
 
-function basename(p: string): string {
-  return p.split(/[\\/]/).pop() || p;
-}
-
 export default function DiagramTab() {
-  const source = useDiagramStore((s) => s.source);
-  const targetTex = useDiagramStore((s) => s.targetTex);
-  const lineCount = source.split("\n").length;
+  const layoutMode = useDiagramStore((s) => s.layoutMode);
+  const splitRatio = useDiagramStore((s) => s.splitRatio);
+  const setSplitRatio = useDiagramStore((s) => s.setSplitRatio);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const draggingRef = useRef(false);
+
+  // 分屏分隔条：沿用 App.tsx 侧栏/预览的 window 级拖拽范式（body.col-resizing 抑制选中）。
+  // 比例按容器实际宽度换算，窗口缩放后仍按比例分配；钳取在 store 的 0.2–0.8。
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const rect = bodyRef.current?.getBoundingClientRect();
+      if (!rect || rect.width <= 0) return;
+      setSplitRatio((e.clientX - rect.left) / rect.width);
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.classList.remove("col-resizing");
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      document.body.classList.remove("col-resizing");
+    };
+  }, [setSplitRatio]);
+
+  const startResize = useCallback((e: ReactMouseEvent) => {
+    e.preventDefault();
+    draggingRef.current = true;
+    document.body.classList.add("col-resizing");
+  }, []);
+
+  const split = layoutMode === "split";
 
   return (
     <div className="dg-tab">
-      <div className="dg-tab-bar">
-        <span className="dg-tab-title">绘图工作台 · TikZ</span>
-        <div className="dg-tab-layouts" role="group" aria-label="画布布局（F1-2 接入）">
-          <button type="button" className="dg-tab-layout" disabled title="F1-2 接入">
-            仅画布
-          </button>
-          <button type="button" className="dg-tab-layout" disabled title="F1-2 接入">
-            仅源码
-          </button>
-          <button type="button" className="dg-tab-layout" disabled title="F1-2 接入">
-            分屏
-          </button>
+      <DiagramLayoutBar />
+      <div className="dg-tab-body" ref={bodyRef} data-layout={layoutMode}>
+        {/* 两个 pane 常驻挂载，用 hidden 隐藏：切布局不丢 CM 的撤销栈与光标位置 */}
+        <div
+          className="dg-pane dg-pane-canvas"
+          hidden={layoutMode === "code"}
+          style={split ? { width: `calc(${splitRatio * 100}% - 2.5px)` } : undefined}
+        >
+          <DiagramCanvas />
         </div>
-        <span className="dg-tab-meta">三布局开关 · F1-2 接入</span>
-      </div>
-
-      <div className="dg-tab-body">
-        <div className="dg-tab-empty">
-          <h3 className="dg-tab-empty-title">TikZ 绘图工作台</h3>
-          <p className="dg-tab-empty-sub">
-            这是一个独立标签页，与左侧「绘图」侧栏、.tex 编辑器和 PDF 预览并存，不替换主编辑区。
-          </p>
-          <ul className="dg-tab-list">
-            <li>F1-2：Tab 内三布局（仅画布 / 仅源码 / 左右分屏）+ 复用既有 LaTeXEditor</li>
-            <li>F1-3：vendoring tikz-editor 引擎，把源码实时渲染为 SVG</li>
-            <li>F1-4：编辑完成后选导出方式，插入目标 .tex（图片/代码插入复用既有管线）</li>
-          </ul>
-          <div className="dg-tab-status">
-            <span>当前源码 {lineCount} 行</span>
-            <span>
-              目标文档：
-              {targetTex ? basename(targetTex) : "未锁定（请先打开 .tex 再打开绘图 Tab）"}
-            </span>
-          </div>
+        {split && (
+          <div
+            className="resizer dg-splitter"
+            title="拖拽调整画布 / 源码宽度"
+            onMouseDown={startResize}
+          />
+        )}
+        <div className="dg-pane dg-pane-code" hidden={layoutMode === "canvas"}>
+          <DiagramCodePane />
         </div>
       </div>
     </div>

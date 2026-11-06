@@ -9,6 +9,11 @@ import { useDiagramStore } from "./store";
 import "./diagram.css";
 
 const DIAGRAM_TAB_PATH = "diagram://editor";
+const LAYOUT_LABEL: Record<string, string> = {
+  canvas: "仅画布",
+  code: "仅源码",
+  split: "左右分屏",
+};
 
 function basename(p: string): string {
   return p.split(/[\\/]/).pop() || p;
@@ -17,6 +22,7 @@ function basename(p: string): string {
 export function DiagramSidebar() {
   const source = useDiagramStore((s) => s.source);
   const targetTex = useDiagramStore((s) => s.targetTex);
+  const layoutMode = useDiagramStore((s) => s.layoutMode);
   const diagramOpen = useBuffersStore((s) => s.buffers.some((b) => b.kind === "diagram"));
   const diagramActive = useBuffersStore((s) => s.activePath === DIAGRAM_TAB_PATH);
   const lineCount = source.split("\n").length;
@@ -54,7 +60,8 @@ export function DiagramSidebar() {
       <section className="dg-side-card">
         <h3 className="dg-side-card-title">画布与布局</h3>
         <p className="dg-side-card-sub">
-          在独立 Tab 中提供「仅画布 / 仅源码 / 左右分屏」三种布局，由 Tab 内开关切换（F1-2 接入）。
+          独立 Tab 内提供「仅画布 / 仅源码 / 左右分屏」三种布局，开关在 Tab 顶部工具条；
+          源码栏复用 Zetla 既有 LaTeXEditor。
         </p>
         <button type="button" className="btn" onClick={handleOpenDiagram}>
           {diagramOpen ? "切换到绘图 Tab" : "打开绘图 Tab"}
@@ -66,6 +73,7 @@ export function DiagramSidebar() {
             : diagramActive
               ? "绘图 Tab 已激活"
               : "绘图 Tab 已打开（未激活）"}
+          {diagramOpen && ` · 当前布局：${LAYOUT_LABEL[layoutMode] ?? layoutMode}`}
         </p>
       </section>
 

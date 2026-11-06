@@ -1,5 +1,7 @@
-/* M2 · 绘图模块侧栏样式（组件库 / 布局选项 / 导出方式分区）。
-   画布与源码 Tab 内的三布局样式在 F1-2 切片另行添加。 */
+/* M2 · 绘图模块样式
+   - 侧栏（DiagramSidebar）：组件库 / 布局选项 / 导出方式分区
+   - Tab（diagram://editor）：顶部布局开关 + 三布局容器（F1-2 起）
+   画布 SVG 渲染在 F1-3 接入，本文件届时不需大改。 */
 
 .dg-side {
   flex: 1;
@@ -60,9 +62,12 @@
   color: var(--fg-muted, #999);
 }
 
-/* ── M2·F1-1：绘图工作台 Tab（diagram://editor 伪 buffer） ──
-   顶部布局工具条占位 + 空态说明；F1-2 起在此容器内实现三布局。 */
+/* ── M2·F1-2：绘图工作台 Tab（diagram://editor 伪 buffer） ──
+   顶部布局工具条 + 三布局容器。父级 .buffer-pane 是 absolute inset:0 的 flex row，
+   故 .dg-tab 必须 flex:1 才能填满主编辑区。 */
 .dg-tab {
+  flex: 1;
+  min-width: 0;
   height: 100%;
   min-height: 0;
   display: flex;
@@ -83,6 +88,7 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--fg, #222);
+  white-space: nowrap;
 }
 .dg-tab-layouts {
   display: flex;
@@ -95,63 +101,146 @@
   border-radius: 4px;
   background: var(--bg, #fff);
   color: var(--fg, #222);
+  cursor: pointer;
 }
-.dg-tab-layout:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.dg-tab-layout:hover {
+  border-color: var(--fg-muted, #999);
+}
+.dg-tab-layout.active {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+  font-weight: 600;
 }
 .dg-tab-meta {
   margin-left: auto;
   font-size: 11px;
   color: var(--fg-muted, #888);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+
 .dg-tab-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+}
+.dg-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+}
+.dg-pane[hidden] {
+  display: none;
+}
+/* 分屏：左栏按 splitRatio 定宽（减去分隔条半宽），右栏吃掉剩余空间 */
+.dg-tab-body[data-layout="split"] .dg-pane-canvas {
+  flex: 0 0 auto;
+}
+.dg-tab-body[data-layout="split"] .dg-pane-code {
+  flex: 1 1 0;
+}
+
+/* 复用全局 .resizer 的 5px 命中区放大与拖拽光标，只补一条可见分隔线 */
+.dg-tab-body .resizer.dg-splitter::after {
+  background: var(--line, #e0e0e0);
+}
+.dg-tab-body .resizer.dg-splitter:hover::after,
+body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
+  background: var(--accent, #2d7ff9);
+  opacity: 0.5;
+}
+
+/* 源码栏：内层必须是确定高度的 flex 容器，.latex-editor 的 flex:1 才会生效 */
+.dg-pane-code-inner {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  background: var(--editor-bg, #fff);
+}
+
+/* ── 画布占位（F1-2；F1-3 换成 SVG 画布后保留外壳） ── */
+.dg-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg, #fff);
+}
+.dg-canvas-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line, #e0e0e0);
+}
+.dg-canvas-badge {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--accent, #2d7ff9);
+  border-radius: 10px;
+  color: var(--accent, #2d7ff9);
+}
+.dg-canvas-hint {
+  font-size: 11px;
+  color: var(--fg-muted, #888);
+}
+.dg-canvas-body {
   flex: 1;
   min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: auto;
+  padding: 20px;
   background: repeating-linear-gradient(
     45deg,
     var(--bg-2, #f6f6f6) 0 12px,
     transparent 12px 24px
   );
 }
-.dg-tab-empty {
-  max-width: 520px;
-  margin: 24px;
-  padding: 26px 30px;
-  text-align: left;
+.dg-canvas-card {
+  max-width: min(680px, 100%);
+  padding: 16px 18px;
   border: 1px solid var(--line, #e0e0e0);
   border-radius: 8px;
   background: var(--bg, #fff);
   box-shadow: 0 4px 20px rgb(0 0 0 / 6%);
 }
-.dg-tab-empty-title {
-  margin: 0 0 8px;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--fg, #222);
+.dg-canvas-card-label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 11px;
+  color: var(--fg-muted, #888);
 }
-.dg-tab-empty-sub {
-  margin: 0 0 12px;
+.dg-canvas-source {
+  margin: 0;
+  font-family: var(--font-mono, monospace);
   font-size: 12px;
   line-height: 1.6;
+  color: var(--fg, #333);
+  white-space: pre;
+  overflow: auto;
+}
+.dg-canvas-empty {
+  margin: 0;
+  font-size: 12px;
   color: var(--fg-muted, #777);
 }
-.dg-tab-list {
-  margin: 0 0 16px;
-  padding-left: 18px;
-  font-size: 12px;
-  line-height: 1.8;
-  color: var(--fg, #444);
-}
-.dg-tab-status {
+.dg-canvas-foot {
+  flex: none;
   display: flex;
   flex-wrap: wrap;
   gap: 6px 16px;
-  padding-top: 12px;
+  padding: 8px 12px;
   border-top: 1px solid var(--line, #e0e0e0);
   font-size: 11px;
   color: var(--fg-muted, #888);
