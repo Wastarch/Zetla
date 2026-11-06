@@ -29,7 +29,7 @@ export function useModuleRuntime(): void {
     // 拼图模块（F2 起）：自带侧栏视图「拼图」，活动栏图标/视图菜单由协议自动接入
     registerFigureModule();
 
-    // M2·绘图模块（F1 起）：主区面板形态（tabMode），活动栏/视图菜单/Ctrl+B 由协议自动接入
+    // 绘图模块（M2 起）：自带侧栏视图「绘图」，活动栏图标/视图菜单由协议自动接入
     registerDiagramModule();
 
     // 设置页覆盖值 → 注册表：

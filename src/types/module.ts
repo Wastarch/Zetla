@@ -23,13 +23,6 @@ export interface ModuleViewDecl {
   hint?: string;
   /** 活动栏排序位次（同数字按注册序；缺省排在全部内置视图之后） */
   order?: number;
-  /**
-   * 主区面板形态（M2·绘图模块引入）：声明后，点击活动栏图标不再切换侧栏，
-   * 而是在主编辑区（替换 EditorWorkspace + PdfPreview）渲染本模块自带工作台面板，
-   * 关闭后恢复编辑器与预览。与纯侧栏视图（figure/table）互斥，二选一。
-   * 用于需要「左源码 + 右画布 + 竖工具栏 + 右坞检查器」的大画布工作台。
-   */
-  tabMode?: boolean;
 }
 
 /** 模块运行上下文 —— 内核经 hooks 传给模块的能力集合 */

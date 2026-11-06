@@ -33,17 +33,11 @@ export function ActivityBar() {
   const visible = useAppStore((s) => s.sidebarVisible);
   const select = useAppStore((s) => s.selectSidebarView);
   const toggle = useAppStore((s) => s.toggleSidebar);
-  // M2·绘图工作台：tabMode 模块面板开关状态
-  const panelId = useAppStore((s) => s.activeModulePanel);
-  const togglePanel = useAppStore((s) => s.toggleModulePanel);
   // M1-8：模块自带视图（按 view.order → 注册序，见 registry.listViews）
   const moduleViews = useModuleViews();
-  // tabMode 视图作为主区面板按钮（与侧栏视图互斥），其余作为侧栏视图项
-  const sidebarModViews = moduleViews.filter((mv) => !mv.view.tabMode);
-  const panelModViews = moduleViews.filter((mv) => !!mv.view.tabMode);
   const items: Item[] = [
     ...ITEMS,
-    ...sidebarModViews.map(({ view: v }) => ({
+    ...moduleViews.map(({ view: v }) => ({
       view: v.id,
       icon: v.icon,
       label: v.label,
@@ -66,24 +60,6 @@ export function ActivityBar() {
             onClick={() => select(it.view)}
           >
             <Icon name={it.icon} size={18} />
-          </button>
-        );
-      })}
-
-      {/* M2·绘图工作台：主区面板入口（高亮 = 当前激活面板） */}
-      {panelModViews.map(({ view: v }) => {
-        const active = panelId === v.id;
-        const hint = v.hint ? `（${v.hint}）` : "";
-        return (
-          <button
-            key={v.id}
-            type="button"
-            className={active ? "activity-btn active" : "activity-btn"}
-            title={`${v.label}${hint}${active ? " · 点击关闭工作台" : ""}`}
-            aria-pressed={active}
-            onClick={() => togglePanel(v.id)}
-          >
-            <Icon name={v.icon} size={18} />
           </button>
         );
       })}

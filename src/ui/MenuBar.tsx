@@ -75,8 +75,6 @@ export function MenuBar() {
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
   // M1-5a：侧栏视图（驱动菜单勾选与切换项）
   const sidebarView = useAppStore((s) => s.sidebarView);
-  // M2·绘图工作台：主区面板激活态（驱动视图菜单勾选）
-  const panelId = useAppStore((s) => s.activeModulePanel);
   const logVisible = useAppStore((s) => s.logVisible);
   const previewVisible = useAppStore((s) => s.previewVisible);
   const running = useAppStore((s) => s.compileStatus === "running");
@@ -379,21 +377,11 @@ export function MenuBar() {
           onClick: () => useAppStore.getState().setSidebarView("references"),
         },
         // M1-8：模块自带视图动态项（表格等）；编号 5 起与 Ctrl+B 5/6/7… 顺序一致
-        // M2·绘图工作台：tabMode 模块改为主区面板开关，勾选状态读 activeModulePanel
-        ...moduleViews.map((mv, i) => {
-          const isPanel = !!mv.view.tabMode;
-          const active = isPanel
-            ? panelId === mv.view.id
-            : sidebarVisible && sidebarView === mv.view.id;
-          return {
-            label: `${active ? "✓ " : ""}${mv.view.label}`,
-            sc: `Ctrl+B ${5 + i}`,
-            onClick: () =>
-              isPanel
-                ? useAppStore.getState().toggleModulePanel(mv.view.id)
-                : useAppStore.getState().setSidebarView(mv.view.id),
-          };
-        }),
+        ...moduleViews.map((mv, i) => ({
+          label: `${sidebarVisible && sidebarView === mv.view.id ? "✓ " : ""}${mv.view.label}`,
+          sc: `Ctrl+B ${5 + i}`,
+          onClick: () => useAppStore.getState().setSidebarView(mv.view.id),
+        })),
         {
           label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
           onClick: () => useAppStore.getState().togglePreview(),
@@ -588,14 +576,12 @@ export function MenuBar() {
           return;
         }
         // M1-8：Ctrl+B 5/6/7… 直达模块自带视图（顺序与「视图」菜单动态项一致）
-        // M2·绘图工作台：tabMode 模块改为主区面板开关
         if (e.key >= "5" && e.key <= "9") {
           const mv = moduleRegistry.listViews()[Number(e.key) - 5];
           if (mv) {
             e.preventDefault();
             clearChord();
-            if (mv.view.tabMode) useAppStore.getState().toggleModulePanel(mv.view.id);
-            else useAppStore.getState().setSidebarView(mv.view.id);
+            useAppStore.getState().setSidebarView(mv.view.id);
             return;
           }
         }

@@ -1,13 +1,14 @@
-// M2·绘图模块（F1-1）：模块内 zustand 状态（最小骨架）。
-// F1-1 仅持有 source / selectedId；后续切片扩展：
-//   F1-2 接 CodeMirror 双向同步、F2-1 拖拽写回、F2-2 属性面板、F3 组件库插入。
+// M2·绘图模块：模块内 zustand 状态（最小骨架）。
+// 当前仅持有 source / selectedId；后续切片扩展：
+//   F1-2 加 layoutMode（三布局）、复用 LaTeXEditor 双向同步；F3 组件库插入；
+//   F4 拖拽写回与属性面板。
 import { create } from "zustand";
 
 export interface DiagramState {
-  /** 当前绘图源码（tikzpicture 环境内代码；F1-1 占位，F1-2 接 CodeMirror） */
+  /** 当前绘图源码（完整 tikzpicture 环境；F1-2 起由 Tab 内 LaTeXEditor 受控驱动） */
   source: string;
   setSource: (s: string) => void;
-  /** 当前选中图元 id（F2-2 属性面板用；F1-1 占位） */
+  /** 当前选中图元 id（F4 属性面板用；当前占位） */
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
 }

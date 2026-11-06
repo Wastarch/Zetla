@@ -1,7 +1,7 @@
 // LaTeX 工作台 · 应用入口
 // M0-5：mockup 全屏结构 .app > .workspace > .center（M0-6 加 sidebar、M0-13 加 titlebar/menubar/preview）
 // M0-13：三栏宽度/显隐进 store（useWindowMemory 负责持久化与启动恢复），验收抽屉 LabDrawer 已移除
-import { useCallback, useEffect, useRef, useState, Suspense, type LazyExoticComponent, type ComponentType } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAppStore } from "@/core/store";
 import { useSettingsEffects, useSettingsStore } from "@/core/settings";
 import { checkEnvOnStartup } from "@/env/useEnvCheck";
@@ -28,7 +28,6 @@ import { EnvSetupWizard } from "@/env/EnvSetupWizard";
 import { PdfPreview } from "@/preview/PdfPreview";
 import { useCompileBridge } from "@/compile/useCompile";
 import { useModuleRuntime } from "@/core/useModuleRuntime";
-import { moduleRegistry } from "@/core/moduleRegistry";
 import { useProjectWatch } from "@/project/useProjectWatch";
 import { useUpdateCheck } from "@/modules/updater/useUpdateCheck";
 import { startReferenceWatcher } from "@/modules/reference/useReferenceStore";
@@ -41,25 +40,6 @@ import "./App.css";
 /** M1-5a：活动栏固定宽度（常驻左侧；须与 zetla.css 中 .activity 的 width 一致） */
 const ACTIVITY_W = 44;
 
-/**
- * M2·绘图工作台：主区面板宿主。
- * 仅当 activeModulePanel 指向某个声明了 tabMode 的模块视图时渲染——取该模块的懒加载
- * component（即工作台面板，如 DiagramTab）替换常规「编辑器 + PDF 预览」。模块停用或
- * 未注册时 viewModule 返回 null，由调用方回退到常规编辑区。
- */
-function ModulePanelHost({ panelId }: { panelId: string }) {
-  const mod = moduleRegistry.viewModule(panelId);
-  const Comp = mod?.view?.tabMode ? (mod.component as LazyExoticComponent<ComponentType> | undefined) : undefined;
-  if (!Comp) return null;
-  return (
-    <div className="module-panel-host">
-      <Suspense fallback={<div className="module-panel-loading">加载工作台…</div>}>
-        <Comp />
-      </Suspense>
-    </div>
-  );
-}
-
 function App() {
   // M0-13：侧栏/预览宽度与显隐进全局 store（useWindowMemory 启动恢复 + 防抖持久化）
   const sidebarVisible = useAppStore((s) => s.sidebarVisible);
@@ -67,10 +47,6 @@ function App() {
   const previewVisible = useAppStore((s) => s.previewVisible);
   const previewRatio = useAppStore((s) => s.previewRatio);
   const settingsPane = useAppStore((s) => s.settingsDialog);
-  // M2·绘图工作台：当前激活的 tabMode 模块面板（替换编辑器+预览）
-  const panelId = useAppStore((s) => s.activeModulePanel);
-  const panelMod = panelId ? moduleRegistry.viewModule(panelId) : null;
-  const showPanel = !!panelMod && !!panelMod.view?.tabMode;
   // M1-15a：无活动项目且无打开文档 → 欢迎页（替换编辑区；见 WelcomeScreen）
   // loaded 门控：设置加载完成前不显示，避免启动恢复上次项目时欢迎页闪现
   const loaded = useSettingsStore((s) => s.loaded);
@@ -198,9 +174,7 @@ function App() {
         {/* M1-16：右侧主列（VSCode 式）—— 日志面板停靠在主列底部，
             不横跨侧栏；侧栏保持整列高度 */}
         <div className="main-col">
-          {showPanel ? (
-            <ModulePanelHost panelId={panelId!} />
-          ) : showWelcome ? (
+          {showWelcome ? (
             <WelcomeScreen />
           ) : (
             <div className="main-row">
