@@ -39,6 +39,16 @@ export interface AppState {
   selectSidebarView: (v: SidebarView) => void;
   /** M1-5a：菜单/快捷键直接指定视图（总是展开，不折叠） */
   setSidebarView: (v: SidebarView) => void;
+
+  // ── M2·绘图工作台：主区面板（tabMode 模块视图，替换 EditorWorkspace + PdfPreview） ──
+  /** 当前在主编辑区激活的 tabMode 模块视图 id；null = 显示常规编辑器 + 预览 */
+  activeModulePanel: string | null;
+  /** 打开指定 tabMode 模块面板（主区切换为工作台，关标签后恢复预览） */
+  openModulePanel: (id: string) => void;
+  /** 关闭主区面板，恢复编辑器 + 预览 */
+  closeModulePanel: () => void;
+  /** 切换：已开则关，未开则开 */
+  toggleModulePanel: (id: string) => void;
   /** M0-13：侧栏宽度（170–560，拖拽写入，偏好设置持久化） */
   sidebarWidth: number;
   /** M0-13：编辑区/预览比例（0.2–0.75，拖拽写入，偏好设置持久化） */
@@ -135,6 +145,12 @@ export const useAppStore = create<AppState>((set) => ({
         : { sidebarView: v, sidebarVisible: true },
     ),
   setSidebarView: (v) => set({ sidebarView: v, sidebarVisible: true }),
+  // ── M2·绘图工作台：主区面板状态 ──
+  activeModulePanel: null,
+  openModulePanel: (id) => set({ activeModulePanel: id }),
+  closeModulePanel: () => set({ activeModulePanel: null }),
+  toggleModulePanel: (id) =>
+    set((s) => ({ activeModulePanel: s.activeModulePanel === id ? null : id })),
   sidebarWidth: 258,
   previewRatio: 0.5,
   pvSideWidth: 132,

@@ -8,6 +8,7 @@ import { registerMathModule } from "@/modules/formula/mathModule";
 import { registerTableModule } from "@/modules/table/tableModule";
 import { registerSnippetsModule } from "@/modules/snippets/snippetsModule";
 import { registerFigureModule } from "@/modules/figure/figureModule";
+import { registerDiagramModule } from "@/modules/diagram/diagramModule";
 
 export function useModuleRuntime(): void {
   useEffect(() => {
@@ -27,6 +28,9 @@ export function useModuleRuntime(): void {
 
     // 拼图模块（F2 起）：自带侧栏视图「拼图」，活动栏图标/视图菜单由协议自动接入
     registerFigureModule();
+
+    // M2·绘图模块（F1 起）：主区面板形态（tabMode），活动栏/视图菜单/Ctrl+B 由协议自动接入
+    registerDiagramModule();
 
     // 设置页覆盖值 → 注册表：
     // - 配置未加载完成前传 null（各模块走 defaultEnabled）

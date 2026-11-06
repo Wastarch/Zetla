@@ -45,7 +45,9 @@ function ModuleViewHost({
 export function Sidebar({ style }: SidebarProps) {
   const view = useAppStore((s) => s.sidebarView);
   const moduleViews = useModuleViews();
-  const modEntry = moduleViews.find((mv) => mv.view.id === view) as
+  // M2·绘图工作台：tabMode 模块视图由主区面板承载，不进入侧栏视图列表
+  const sidebarModViews = moduleViews.filter((mv) => !mv.view.tabMode);
+  const modEntry = sidebarModViews.find((mv) => mv.view.id === view) as
     | { module: LatexModule; view: ModuleViewDecl }
     | undefined;
 
