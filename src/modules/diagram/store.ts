@@ -11,6 +11,12 @@ export interface DiagramState {
   /** 当前选中图元 id（F4 属性面板用；当前占位） */
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
+  /**
+   * 编辑完成后代码要插入的目标 .tex 绝对路径（F1-1 打开绘图 Tab 时锁定）。
+   * 伪 buffer Tab 活动时 getActiveView() 会失效，F1-4 必须靠此路径取 getEditorView(targetTex)。
+   */
+  targetTex: string | null;
+  setTargetTex: (p: string | null) => void;
 }
 
 /** 默认示例源码：标准 TikZ，含矩形/圆节点/箭头，供后续切片渲染与拖拽演示 */
@@ -26,4 +32,6 @@ export const useDiagramStore = create<DiagramState>((set) => ({
   setSource: (s) => set({ source: s }),
   selectedId: null,
   setSelectedId: (id) => set({ selectedId: id }),
+  targetTex: null,
+  setTargetTex: (p) => set({ targetTex: p }),
 }));

@@ -50,8 +50,9 @@ function scheduleLivePreview(path: string): void {
   }, delay);
 }
 
-/** 缓冲类型：`text`=普通文本文档（LaTeX 等，可编辑/可保存）；`image`/`pdf`=只读查看器，不持有文本 */
-export type BufferKind = "text" | "image" | "pdf" | "figure";
+/** 缓冲类型：`text`=普通文本文档（LaTeX 等，可编辑/可保存）；`image`/`pdf`=只读查看器，不持有文本；
+ *  `figure`/`diagram`=模块单例伪 buffer（画布 Tab，content/savedContent 恒为 ""，不脏、不落盘） */
+export type BufferKind = "text" | "image" | "pdf" | "figure" | "diagram";
 
 /** 一个打开的文档（标签页） */
 export interface EditorBuffer {
@@ -124,6 +125,8 @@ export interface BuffersState {
   setActive: (path: string) => void;
   /** 打开拼图预览 Tab（单例伪 buffer；永不脏、不落盘）；P1 */
   openFigure: () => void;
+  /** 打开绘图工作台 Tab（单例伪 buffer `diagram://editor`；永不脏、不落盘）；M2·F1-1 */
+  openDiagram: () => void;
   /** 关闭缓冲；脏文件先经原生确认，取消返回 false */
   closeBuffer: (path: string, force?: boolean) => Promise<boolean>;
   /** 编辑器内容变更 */
@@ -239,6 +242,29 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
       eol: "lf",
       mounted: false,
       kind: "figure",
+    };
+    set((s) => ({ buffers: [...s.buffers, buf], activePath: path }));
+  },
+
+  // M2·F1-1：绘图工作台伪 buffer，与 openFigure 同构。
+  // 单例：已存在则仅激活（不重复开 Tab）；content/savedContent 恒为 ""，
+  // 因此 closeBuffer 不弹未保存确认、saveBuffer/saveAllBuffers 直接跳过（只处理 kind==="text"）。
+  openDiagram: () => {
+    const existing = get().buffers.find((b) => b.kind === "diagram");
+    if (existing) {
+      set({ activePath: existing.path });
+      return;
+    }
+    const path = "diagram://editor";
+    const buf: EditorBuffer = {
+      path,
+      name: "绘图",
+      content: "",
+      savedContent: "",
+      encoding: "utf-8",
+      eol: "lf",
+      mounted: false,
+      kind: "diagram",
     };
     set((s) => ({ buffers: [...s.buffers, buf], activePath: path }));
   },

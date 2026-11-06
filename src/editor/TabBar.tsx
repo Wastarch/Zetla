@@ -48,13 +48,18 @@ export function TabBar({ onFind }: TabBarProps) {
         {buffers.map((b) => {
           const active = b.path === activePath;
           const dirty = b.content !== b.savedContent;
-          const iconName = b.kind === "image" ? "image" : b.kind === "pdf" ? "pdf" : b.kind === "figure" ? "image" : "tex";
+          const iconName =
+            b.kind === "image" ? "image"
+              : b.kind === "pdf" ? "pdf"
+                : b.kind === "figure" ? "image"
+                  : b.kind === "diagram" ? "wand"
+                    : "tex";
           return (
             <div
               key={b.path}
               role="tab"
               aria-selected={active}
-              title={b.path}
+              title={b.kind === "diagram" ? "绘图工作台（TikZ）" : b.path}
               className={active ? "tab active" : "tab"}
               onClick={() => setActive(b.path)}
               onAuxClick={(e) => {
@@ -65,7 +70,10 @@ export function TabBar({ onFind }: TabBarProps) {
                 name={iconName}
                 size={13}
                 style={{
-                  color: b.kind === "text" || b.kind === "figure" ? "var(--accent)" : "var(--txt-3)",
+                  color:
+                    b.kind === "text" || b.kind === "figure" || b.kind === "diagram"
+                      ? "var(--accent)"
+                      : "var(--txt-3)",
                   opacity: 0.75,
                 }}
               />

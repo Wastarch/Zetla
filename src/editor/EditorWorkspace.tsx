@@ -2,7 +2,7 @@
 // 方案 A：每个缓冲区一个 LaTeXEditor 实例，首次激活后常驻、切走仅 hidden 隐藏 ——
 // 撤销栈 / 光标 / 滚动由 CM 原生状态天然隔离，切回无状态搬运。
 // M0-13 前移：移除编辑器内部状态行，光标位置经 useBuffers.cursor 上提到全局状态栏。
-import { useCallback, useEffect, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
 import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
@@ -19,6 +19,10 @@ import { useSettingsStore } from "@/core/settings";
 import { useAppStore } from "@/core/store";
 import { useFindStore } from "./findStore";
 import { findPanelBridge } from "./findStore";
+
+// M2·F1-1：绘图工作台挂在 diagram://editor 伪 buffer 上。
+// 懒加载：F1-3 起 Tab 内会引入 vendored tikz-editor 引擎，避免打进主 bundle。
+const DiagramTab = lazy(() => import("@/modules/diagram/DiagramTab"));
 
 export function EditorWorkspace() {
   const buffers = useBuffersStore((s) => s.buffers);
@@ -223,6 +227,16 @@ export function EditorWorkspace() {
                   <PdfPreview path={b.path} style={{ position: "absolute", inset: 0 }} />
                 ) : b.kind === "figure" ? (
                   <FigurePreviewTab />
+                ) : b.kind === "diagram" ? (
+                  <Suspense
+                    fallback={
+                      <div style={{ padding: 24, color: "var(--fg-muted, #888)" }}>
+                        加载绘图工作台…
+                      </div>
+                    }
+                  >
+                    <DiagramTab />
+                  </Suspense>
                 ) : (
                   <LaTeXEditor
                     ref={setHandle(b.path)}

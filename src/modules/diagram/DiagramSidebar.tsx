@@ -2,14 +2,37 @@
 // 形态：活动栏「绘图」→ 侧栏显示组件库 / 布局选项 / 导出方式；画布与源码放在
 // 主编辑区的独立 Tab（diagram://editor 伪 buffer），两者并存、互不遮挡。
 //
-// 本文件当前为占位骨架：列出新形态的入口分区，功能由后续切片接入。
+// F1-1 已接通「打开/聚焦绘图 Tab + 锁定 targetTex」；其余入口按切片陆续接入。
 // 切片编号见 docs/dev/绘图模块开发计划.md。
+import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
 import "./diagram.css";
 
+const DIAGRAM_TAB_PATH = "diagram://editor";
+
+function basename(p: string): string {
+  return p.split(/[\\/]/).pop() || p;
+}
+
 export function DiagramSidebar() {
   const source = useDiagramStore((s) => s.source);
+  const targetTex = useDiagramStore((s) => s.targetTex);
+  const diagramOpen = useBuffersStore((s) => s.buffers.some((b) => b.kind === "diagram"));
+  const diagramActive = useBuffersStore((s) => s.activePath === DIAGRAM_TAB_PATH);
   const lineCount = source.split("\n").length;
+
+  /**
+   * 打开 / 聚焦绘图 Tab。打开时把当前活动 .tex 锁定为插入目标
+   * （同 figureImport.ts:30 的做法）：伪 buffer Tab 激活时 getActiveView() 会失效，
+   * F1-4 插入必须靠 targetTex 取 getEditorView(targetTex)。
+   */
+  const handleOpenDiagram = () => {
+    const activePath = useBuffersStore.getState().activePath;
+    if (activePath && /\.tex$/i.test(activePath)) {
+      useDiagramStore.getState().setTargetTex(activePath);
+    }
+    useBuffersStore.getState().openDiagram();
+  };
 
   return (
     <div className="dg-side">
@@ -31,11 +54,19 @@ export function DiagramSidebar() {
       <section className="dg-side-card">
         <h3 className="dg-side-card-title">画布与布局</h3>
         <p className="dg-side-card-sub">
-          在独立 Tab 中提供「仅画布 / 仅源码 / 左右分屏」三种布局，由 Tab 内开关切换。
+          在独立 Tab 中提供「仅画布 / 仅源码 / 左右分屏」三种布局，由 Tab 内开关切换（F1-2 接入）。
         </p>
-        <button type="button" className="btn" disabled>
-          打开绘图 Tab（F1-1 接入）
+        <button type="button" className="btn" onClick={handleOpenDiagram}>
+          {diagramOpen ? "切换到绘图 Tab" : "打开绘图 Tab"}
         </button>
+        <p className="dg-side-card-sub">
+          状态：
+          {!diagramOpen
+            ? "未打开"
+            : diagramActive
+              ? "绘图 Tab 已激活"
+              : "绘图 Tab 已打开（未激活）"}
+        </p>
       </section>
 
       <section className="dg-side-card">
@@ -45,8 +76,11 @@ export function DiagramSidebar() {
           后按图片插入（复用 Zetla 既有的图片落盘与 figure 片段管线）。
         </p>
         <button type="button" className="btn" disabled>
-          插入到文档（F1-4 / F2 接入）
+          插入到文档（F1-4 接入）
         </button>
+        <p className="dg-side-card-sub">
+          目标文档：{targetTex ? basename(targetTex) : "未锁定（需先打开 .tex 文档）"}
+        </p>
       </section>
 
       <p className="dg-side-note">
