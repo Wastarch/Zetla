@@ -201,6 +201,44 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   color: var(--txt-2, #888);
   white-space: nowrap;
 }
+/* 引擎覆盖缺口的常驻提示条：不遮挡画布，位于工具条与舞台之间 */
+.dg-canvas-alert {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--warn, #a86a12);
+  background: var(--bg-2, #f3f3f3);
+  background: color-mix(in srgb, var(--warn, #a86a12) 12%, var(--bg, #fff));
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--txt, #353333);
+}
+.dg-canvas-alert strong {
+  flex: none;
+  color: var(--warn, #a86a12);
+}
+.dg-canvas-alert span {
+  flex: 1;
+  min-width: 0;
+}
+.dg-canvas-alert code {
+  padding: 0 3px;
+  font-family: var(--font-mono, monospace);
+  background: var(--bg-3, #fff);
+  border-radius: 3px;
+}
+.dg-canvas-alert button {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--warn, #a86a12);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--warn, #a86a12);
+  cursor: pointer;
+}
 .dg-diag-toggle {
   padding: 2px 8px;
   font-size: 11px;

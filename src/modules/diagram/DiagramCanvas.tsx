@@ -29,7 +29,8 @@ export function DiagramCanvas() {
   const [busy, setBusy] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [showDiags, setShowDiags] = useState(false);
+  // null = 跟随默认（有覆盖缺口就自动展开）；true/false = 用户手动展开/收起
+  const [diagOpen, setDiagOpen] = useState<boolean | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
   const empty = source.trim().length === 0;
@@ -100,10 +101,17 @@ export function DiagramCanvas() {
     stage.replaceChildren(node);
   }, [result, zoom]);
 
+  // 每次拿到新结果都回到「自动」模式，避免上一次手动收起延续到下一张图
+  useEffect(() => {
+    setDiagOpen(null);
+  }, [result]);
+
   const zoomIndex = ZOOM_STEPS.indexOf(zoom);
   const canZoomOut = zoomIndex > 0;
   const canZoomIn = zoomIndex >= 0 && zoomIndex < ZOOM_STEPS.length - 1;
   const diags = result?.diagnostics ?? [];
+  const unsupported = result?.unsupported ?? [];
+  const showDiags = diagOpen ?? unsupported.length > 0;
   const hasErrorDiag = diags.some((d) => d.severity === "error");
   const blankSvg = !!result && !error && !hasDrawableContent(result.svg);
 
@@ -115,8 +123,8 @@ export function DiagramCanvas() {
         {diags.length > 0 && (
           <button
             type="button"
-            className={`dg-diag-toggle${hasErrorDiag ? " is-error" : ""}`}
-            onClick={() => setShowDiags((v) => !v)}
+            className={`dg-diag-toggle${hasErrorDiag || unsupported.length > 0 ? " is-error" : ""}`}
+            onClick={() => setDiagOpen(!showDiags)}
             title="展开 / 收起解析诊断"
           >
             {diags.length} 条诊断
@@ -147,6 +155,21 @@ export function DiagramCanvas() {
           <span className="dg-zoom-val">{Math.round(zoom * 100)}%</span>
         </div>
       </div>
+
+      {/* 覆盖缺口会被引擎静默丢弃（如 \pic{angle} / angles 库），画布看起来"正常"但少元素。
+          必须常驻一条显式提示，并自动展开诊断，避免用户以为是自己代码写错。 */}
+      {unsupported.length > 0 && !error && (
+        <div className="dg-canvas-alert" role="status">
+          <strong>预览不完整</strong>
+          <span>
+            {unsupported.length} 处构造引擎暂不支持，画布已省略；导出仍以 XeLaTeX 编译结果为准。
+            建议改用 <code>\draw ... arc</code> 等基础语法，或切到源码模式编辑。
+          </span>
+          <button type="button" onClick={() => setDiagOpen(true)}>
+            查看诊断
+          </button>
+        </div>
+      )}
 
       <div className="dg-canvas-body">
         <div className="dg-canvas-stage" ref={stageRef} />

@@ -28,6 +28,12 @@ export interface TikzRender {
   svg: string;
   viewBox: TikzViewBox;
   diagnostics: TikzDiagnostic[];
+  /**
+   * 引擎覆盖缺口（诊断 code 以 unsupported 开头，如 unsupported-pic-operation）。
+   * 这类构造会被**静默丢弃**，导致预览缺元素但画布看起来"正常"；
+   * UI 必须显式提示「预览不完整，导出以 XeLaTeX 为准」，不能只给一个可折叠的诊断按钮。
+   */
+  unsupported: TikzDiagnostic[];
   elapsedMs: number;
   fromCache: boolean;
 }
@@ -173,10 +179,12 @@ export async function renderTikz(source: string): Promise<TikzRender> {
     throw new Error("TikZ 引擎未返回 SVG 内容。");
   }
 
+  const diagnostics = collectDiagnostics(raw);
   const render: TikzRender = {
     svg,
     viewBox: readViewBox(raw),
-    diagnostics: collectDiagnostics(raw),
+    diagnostics,
+    unsupported: diagnostics.filter((d) => /^unsupported/i.test(d.code ?? "")),
     elapsedMs: performance.now() - started,
     fromCache: false,
   };

@@ -54,6 +54,37 @@ check(
 );
 check(hasDrawableContent(good.svg) && !hasDrawableContent(bad.svg), "空画布识别正确");
 
+// 用户 2026-11-07 实测反馈：\pic{angle} + angles/quotes 库被引擎静默丢弃，
+// 三角形画出来了但角度标记与三个点没出来，只留一个可折叠的「1 条诊断」。
+// 现在把 unsupported-* 单独抽出，供 UI 常驻提示。
+console.log("F1-3 · 引擎覆盖缺口（unsupported-*）");
+const PIC = String.raw`\begin{tikzpicture}
+\coordinate (A) at (2,0);
+\coordinate (B) at (0,0);
+\coordinate (C) at (2,2);
+\pic[draw, "$\theta$", angle radius=0.8cm] {angle = C--A--B};
+\end{tikzpicture}`;
+const pic = await renderTikz(PIC);
+check(pic.unsupported.length === 1, "unsupported-pic-operation 被识别为覆盖缺口");
+check(pic.unsupported[0]?.code === "unsupported-pic-operation", "缺口诊断 code 正确");
+check(!hasDrawableContent(pic.svg), "\\pic 被丢弃时画布确实为空");
+const FIXED = String.raw`\begin{tikzpicture}
+  \def\L{6}
+  \def\H{3.5}
+  \draw[thick] (0,0) -- (\L,0) -- (\L,\H) -- cycle;
+  \fill[gray!20] (0,0) -- (\L,0) -- (\L,\H) -- cycle;
+  \coordinate (A) at (\L,0);
+  \coordinate (B) at (0,0);
+  \coordinate (C) at (\L,\H);
+  \foreach \p in {A,B,C} \fill (\p) circle (2pt);
+  \draw (A) ++(180:0.8cm) arc (180:90:0.8cm);
+  \node at (5.35,0.55) {theta};
+\end{tikzpicture}`;
+const fixed = await renderTikz(FIXED);
+check(fixed.unsupported.length === 0, "改用基础语法后无覆盖缺口");
+check((fixed.svg.match(/<path/g) ?? []).length >= 6, "三角形 + 三个圆点 + 角度弧全部渲染");
+check(fixed.svg.includes("<text"), "角度文字标签渲染");
+
 console.log("F1-3 · sanitizeSvg（白名单消毒 / 注入）");
 g.document = dom.window.document;
 const clean = sanitizeSvg(good.svg, good.viewBox, 1);
