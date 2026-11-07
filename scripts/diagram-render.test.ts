@@ -7,6 +7,20 @@ import {
   hasDrawableContent,
   sanitizeSvg,
 } from "../src/modules/diagram/tikzEditor/svg.ts";
+import { insertBeforeDocument } from "../src/core/preamble.ts";
+import {
+  buildDiagramInsertCode,
+  collectTikzLibraries,
+  ensureTikzPreamble,
+} from "../src/modules/diagram/diagramSnippet.ts";
+import {
+  MAX_PREVIEW_CACHE,
+  clearPrecisePreviewCache,
+  getCachedPreview,
+  previewKey,
+  setCachedPreview,
+  svgDataUrl,
+} from "../src/modules/diagram/previewCache.ts";
 
 // svg.ts 只在函数内部访问 DOM API，模块加载时不碰 DOM，故可先 import 再注入全局。
 const dom = new JSDOM("<!doctype html><html><body><div id=\"host\"></div></body></html>");
@@ -126,6 +140,69 @@ check(safe?.textContent?.includes("escaped") === true, "转义后的文字内容
 
 const broken = sanitizeSvg("<svg><path d=", good.viewBox, 1);
 check(broken === null, "无法解析的 SVG 返回 null（阻止注入）");
+
+console.log("F1-4 · 插入主文档（导言区幂等 / 片段组装）");
+const LIB_SRC = String.raw`\usetikzlibrary{arrows.meta,angles,quotes}
+\usetikzlibrary{calc, angles}
+\begin{tikzpicture}
+  \draw (0,0) -- (1,1);
+\end{tikzpicture}`;
+const libs = collectTikzLibraries(LIB_SRC);
+check(
+  libs.join(",") === "arrows.meta,angles,quotes,calc",
+  "\\usetikzlibrary 跨行去重合并"
+);
+const bareTex = String.raw`\documentclass{article}
+\begin{document}
+hello
+\end{document}`;
+const addition = ensureTikzPreamble(bareTex, libs);
+check(addition.includes("\\usepackage{tikz}"), "缺 tikz 宏包时补齐");
+check(addition.includes("\\usetikzlibrary{arrows.meta,angles,quotes,calc}"), "缺库时补齐");
+const patched = insertBeforeDocument(bareTex, addition);
+check(ensureTikzPreamble(patched, libs) === "", "补齐后再次计算为空串（幂等）");
+check(
+  patched.indexOf(addition) < patched.indexOf("\\begin{document}"),
+  "导言区片段插在 \\begin{document} 之前"
+);
+const plainCode = buildDiagramInsertCode(LIB_SRC, false, "", "");
+check(plainCode === LIB_SRC.trim(), "不套 figure 时原样插入（仅去首尾空白）");
+const figCode = buildDiagramInsertCode(LIB_SRC, true, "  斜面受力  ", "fig:slope");
+check(figCode.startsWith("\\begin{figure}[htbp]"), "figure 包裹起始正确");
+check(figCode.includes("  \\centering"), "figure 内含 \\centering");
+check(figCode.includes("\\caption{斜面受力}"), "caption 去空白生效");
+check(figCode.includes("\\label{fig:slope}"), "label 生效");
+check(figCode.trimEnd().endsWith("\\end{figure}"), "figure 环境闭合");
+check(figCode.includes("  \\begin{tikzpicture}"), "figure 内源码缩进但不改内容");
+
+console.log("F1-6 · 精确预览缓存 / key / data URL");
+clearPrecisePreviewCache();
+const keyA = previewKey(LIB_SRC, "xelatex");
+check(keyA === previewKey(LIB_SRC, "xelatex"), "同源码同引擎 key 稳定");
+check(keyA !== previewKey(LIB_SRC + " ", "xelatex"), "源码变化 key 变化");
+check(keyA !== previewKey(LIB_SRC, "lualatex"), "引擎变化 key 变化");
+const okResult = {
+  status: "ok" as const,
+  svg: "<svg xmlns='http://www.w3.org/2000/svg'/>",
+  elapsedMs: 123,
+  preambleLines: 6,
+  errors: [],
+};
+setCachedPreview(keyA, { ...okResult, status: "error", svg: undefined });
+check(getCachedPreview(keyA) === undefined, "失败结果不进缓存（环境修好后可重试）");
+setCachedPreview(keyA, okResult);
+check(getCachedPreview(keyA)?.svg === okResult.svg, "成功结果写入并命中缓存");
+for (let i = 0; i < MAX_PREVIEW_CACHE + 2; i += 1) {
+  setCachedPreview(previewKey(`src-${i}`, "xelatex"), okResult);
+}
+check(getCachedPreview(keyA) === undefined, "超出上限后最旧条目被 LRU 淘汰");
+clearPrecisePreviewCache();
+check(getCachedPreview(keyA) === undefined, "清空缓存生效");
+const evilData = svgDataUrl("<svg><script>alert(1)</script></svg>");
+check(evilData.startsWith("data:image/svg+xml;charset=utf-8,"), "data URL 前缀正确");
+check(!evilData.includes("<script"), "SVG 内容整体编码，无裸标签");
+check(decodeURIComponent(evilData.split(",")[1] ?? "").includes("<script>"), "解码后可还原原文");
+check(!evilData.includes("\n"), "换行也被编码，不会截断属性");
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

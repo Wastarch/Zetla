@@ -46,6 +46,8 @@ pub fn run() {
             // 多遍编译（M0-9）
             commands::compile::compile_project,
             commands::compile::cancel_compile,
+            // M2 · 绘图模块 F1-6：XeLaTeX 只编译 TikZ 片段（精确预览内核）
+            commands::tikz_export::tikz_preview,
             // M2：编译流程（Recipe）枚举（设置页展示 / 选择）
             commands::compile::list_recipes,
             // 日志解析（M0-11）

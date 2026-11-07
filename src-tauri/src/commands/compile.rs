@@ -57,7 +57,7 @@ fn engine_exe_name(name: &str) -> String {
 ///
 /// 目录优先级由调用方保证：受管目录（config.tex）→ 注册表 PATH → 进程 PATH。
 /// 这样「Zetla 代装完成 / 用户手动装而进程 PATH 未刷新」时，无需重启就能检测到。
-fn find_engine(name: &str, search_dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+pub(crate) fn find_engine(name: &str, search_dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
     let exe = engine_exe_name(name);
     for dir in search_dirs {
         let candidate = dir.join(&exe);
@@ -118,7 +118,7 @@ pub(crate) fn registry_path_dirs() -> Vec<std::path::PathBuf> {
 }
 
 /// 引擎搜索目录（优先级序）：受管目录（config.tex）→ 注册表 PATH → 进程 PATH
-fn engine_search_dirs(app: Option<&tauri::AppHandle>) -> Vec<std::path::PathBuf> {
+pub(crate) fn engine_search_dirs(app: Option<&tauri::AppHandle>) -> Vec<std::path::PathBuf> {
     let mut dirs: Vec<std::path::PathBuf> = Vec::new();
     if let Some(app) = app {
         let path = crate::commands::config::config_path(app).unwrap_or_default();

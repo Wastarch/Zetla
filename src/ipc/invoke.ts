@@ -20,6 +20,7 @@ import type {
   TexInstallResult,
   WriteOptions,
 } from "@/types";
+import type { TikzPreviewResult } from "@/types/diagram";
 
 /** 底层透传（未封装的命令临时入口） */
 export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -158,6 +159,13 @@ export const configApi = {
     call<ProjectEntry[]>("pin_project", { path, pinned }),
   archiveProject: (path: string, archived: boolean) =>
     call<ProjectEntry[]>("archive_project", { path, archived }),
+};
+
+// ── 绘图模块（M2 · F1-6 XeLaTeX 精确预览）────────────────────
+export const diagramApi = {
+  /** 只编译 tikzpicture 片段 → standalone PDF → SVG 文本；失败以 status:"error" 返回 */
+  tikzPreview: (source: string, engine: string) =>
+    call<TikzPreviewResult>("tikz_preview", { source, engine }),
 };
 
 // ── 用户自定义快捷输入片段（M2-5a，独立 snippets.json）──────

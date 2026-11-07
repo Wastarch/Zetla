@@ -25,7 +25,8 @@ export type SettingsPane =
   | "look"
   | "snippets"
   | "about"
-  | "modules";
+  | "modules"
+  | "diagram";
 
 /** 全局状态接口（M0-13：useWindowMemory 订阅布局字段需要类型） */
 export interface AppState {

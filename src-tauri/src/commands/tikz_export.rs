@@ -1,0 +1,508 @@
+// M2 · 绘图模块 F1-6（原 F2-1 内核前移）：XeLaTeX 只编译 TikZ 片段 → PDF → SVG。
+//
+// 与 compile_project 的区别：
+//  - 不编译主文档、不写主文档、不产生 synctex / 辅助文件到项目目录；
+//  - 每次在系统临时目录建一个独立工作区，编译完成（成功或失败）即整目录删除；
+//  - 强制 -no-shell-escape，并在源码层拒绝 \write18 / \input / \openout 等任意文件读写；
+//  - 返回 SVG **文本**而非磁盘路径：前端用 <img src="data:..."> 显示，绕开 asset scope
+//    与浏览器缓存，也不需要为临时产物设计生命周期。
+//
+// 导言区是包了一层的，所以 log 里的行号要减去 preamble_lines 才对应绘图 Tab 的源码行。
+// F2 导出落盘 / PNG 输出复用本文件的编译内核，不另起一套。
+
+use serde::Serialize;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tauri::AppHandle;
+use tokio::process::Command;
+use tokio::time::timeout;
+
+use crate::commands::compile::{engine_search_dirs, find_engine, TexError};
+use crate::commands::logparse::parse_log_text;
+
+const COMPILE_TIMEOUT_SECS: u64 = 30;
+const CONVERT_TIMEOUT_SECS: u64 = 15;
+/// 单张 SVG 上限，避免异常 PDF 转出几十 MB 把 WebView 卡死
+const MAX_SVG_BYTES: usize = 8 * 1024 * 1024;
+static WORK_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// 片段里禁止出现的构造（小写化后匹配）。
+/// -no-shell-escape 只挡 \write18 执行，挡不住 \input / \openout 读写任意文件；
+/// \documentclass / \begin{document} 会破坏 standalone 包装，也一并拒绝。
+const FORBIDDEN: [&str; 12] = [
+    "\\write18",
+    "\\immediate",
+    "\\openout",
+    "\\openin",
+    "\\directlua",
+    "\\catcode",
+    "\\csname",
+    "\\input",
+    "\\include{",
+    "\\documentclass",
+    "\\begin{document}",
+    "\\end{document}",
+];
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TikzPreviewResult {
+    /// "ok" | "error"
+    pub status: String,
+    /// 成功时的 SVG 文本（前端转成 data URL 塞进 <img>，不内联注入 DOM）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub svg: Option<String>,
+    pub elapsed_ms: u64,
+    /// standalone 导言区行数；log 行号减去它 = 绘图 Tab 源码行号
+    pub preamble_lines: u32,
+    pub errors: Vec<TexError>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+fn failure(
+    message: impl Into<String>,
+    started: Instant,
+    preamble_lines: u32,
+    errors: Vec<TexError>,
+) -> TikzPreviewResult {
+    TikzPreviewResult {
+        status: "error".to_string(),
+        svg: None,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        preamble_lines,
+        errors,
+        message: Some(message.into()),
+    }
+}
+
+fn validate_source(source: &str) -> Result<(), String> {
+    if source.trim().is_empty() {
+        return Err("TikZ 源码为空".to_string());
+    }
+    // 只匹配环境名前缀：\begin{tikzpicture}[scale=2] 这类带可选参数的写法同样合法。
+    if !source.contains("\\begin{tikzpicture") {
+        return Err("源码缺少 \\begin{tikzpicture}，精确预览只编译 TikZ 片段".to_string());
+    }
+    let lower = source.to_ascii_lowercase();
+    for pat in FORBIDDEN {
+        if lower.contains(pat) {
+            return Err(format!(
+                "出于安全考虑拒绝编译含 {} 的片段；精确预览在隔离临时目录中只画 TikZ 片段",
+                pat
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// 收集源码里所有 \usetikzlibrary{...} 的库名，去重后合并进导言区。
+/// 源码原文一字不改（保留行号对应关系），重复加载库对 TikZ 无害。
+fn collect_libraries(source: &str) -> Vec<String> {
+    const MARK: &str = "\\usetikzlibrary{";
+    let mut out: Vec<String> = Vec::new();
+    let mut rest = source;
+    while let Some(i) = rest.find(MARK) {
+        let after = &rest[i + MARK.len()..];
+        let Some(end) = after.find('}') else { break };
+        for lib in after[..end].split(',') {
+            let l = lib.trim().to_string();
+            if !l.is_empty() && !out.contains(&l) {
+                out.push(l);
+            }
+        }
+        rest = &after[end + 1..];
+    }
+    out
+}
+
+/// 源码里的 \usetikzlibrary{...} 已由 collect_libraries 合并进导言区；若原样留在
+/// \begin{document} 之后，TikZ 会在正文里重复加载 .code.tex 而报错。
+/// 这里只把「独占整行」的加载语句改成注释，行数不变 —— 保证 log 行号减
+/// preamble_lines 后仍精确对应绘图 Tab 的源码行。
+fn strip_library_lines(source: &str) -> String {
+    source
+        .lines()
+        .map(|line| {
+            let t = line.trim();
+            if t.starts_with("\\usetikzlibrary{") && t.ends_with('}') {
+                format!("% {t}")
+            } else {
+                line.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// 生成最小 standalone 文档；返回 (文档文本, 导言区行数)。
+/// 只有 Unicode 引擎且源码含非 ASCII 时才加载 ctex，避免纯英文图因缺 ctex 编译失败。
+fn build_document(source: &str, unicode_engine: bool) -> (String, u32) {
+    let mut doc = String::new();
+    doc.push_str("\\documentclass[tikz,border=4pt]{standalone}\n");
+    doc.push_str("\\usepackage{tikz}\n");
+    doc.push_str("\\usepackage{amsmath,amssymb}\n");
+    if unicode_engine && source.chars().any(|c| !c.is_ascii()) {
+        doc.push_str("\\usepackage[UTF8]{ctex}\n");
+    }
+    let libs = collect_libraries(source);
+    if !libs.is_empty() {
+        doc.push_str(&format!("\\usetikzlibrary{{{}}}\n", libs.join(",")));
+    }
+    doc.push_str("\\begin{document}\n");
+    let preamble_lines = doc.lines().count() as u32;
+    doc.push_str(&strip_library_lines(source.trim_end()));
+    doc.push_str("\n\\end{document}\n");
+    (doc, preamble_lines)
+}
+
+fn pick_engine(requested: &str, dirs: &[PathBuf]) -> Option<(String, PathBuf)> {
+    let mut order: Vec<&str> = Vec::new();
+    if matches!(requested, "xelatex" | "lualatex" | "pdflatex") {
+        order.push(requested);
+    }
+    for e in ["xelatex", "lualatex", "pdflatex"] {
+        if !order.contains(&e) {
+            order.push(e);
+        }
+    }
+    for e in order {
+        if let Some(p) = find_engine(e, dirs) {
+            return Some((e.to_string(), p));
+        }
+    }
+    None
+}
+
+fn temp_workdir() -> PathBuf {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let seq = WORK_SEQ.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "zetla-tikz-{}-{}-{}",
+        std::process::id(),
+        nanos,
+        seq
+    ))
+}
+
+/// 统一子进程：隐藏黑框、注入受管 TeX PATH、放宽日志折行、超时 kill_on_drop。
+async fn run_tool(
+    exe: &Path,
+    args: &[String],
+    cwd: &Path,
+    dirs: &[PathBuf],
+    secs: u64,
+) -> Result<std::process::Output, String> {
+    let mut cmd = Command::new(exe);
+    cmd.args(args)
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // CREATE_NO_WINDOW：不弹控制台黑框
+        cmd.as_std_mut().creation_flags(0x0800_0000);
+    }
+    cmd.env("max_print_line", "10000")
+        .env("error_line", "254")
+        .env("half_error_line", "238");
+    if !dirs.is_empty() {
+        let mut joined = dirs.to_vec();
+        joined.extend(std::env::split_paths(
+            &std::env::var_os("PATH").unwrap_or_default(),
+        ));
+        if let Ok(paths) = std::env::join_paths(&joined) {
+            cmd.env("PATH", paths);
+        }
+    }
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("无法启动 {}：{}", exe.display(), e))?;
+    let out = timeout(Duration::from_secs(secs), child.wait_with_output())
+        .await
+        .map_err(|_| format!("{} 执行超过 {}s，已终止", exe.display(), secs))?
+        .map_err(|e| format!("{} 执行失败：{}", exe.display(), e))?;
+    Ok(out)
+}
+
+/// logparse 的结构化错误 → 减去导言区偏移，映射回绘图 Tab 源码行。
+fn parse_errors(log: &str, work: &Path, preamble_lines: u32) -> Vec<TexError> {
+    let default_file = work.join("snippet.tex");
+    let mut out = parse_log_text(log, work, &default_file);
+    for e in &mut out {
+        e.line = e.line.saturating_sub(preamble_lines).max(1);
+        e.file = "绘图源码".to_string();
+    }
+    out.into_iter()
+        .filter(|e| e.severity == "error")
+        .take(12)
+        .collect()
+}
+
+fn brief_failure(log: &str, out: &std::process::Output) -> String {
+    for line in log.lines() {
+        let t = line.trim();
+        if t.starts_with('!') && t.len() > 2 {
+            return t.to_string();
+        }
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let text = if stderr.trim().is_empty() {
+        stdout.trim()
+    } else {
+        stderr.trim()
+    };
+    if text.is_empty() {
+        "未生成 PDF，且日志为空".to_string()
+    } else {
+        text.chars().take(240).collect()
+    }
+}
+
+/// 单页时 pdftocairo 输出 <name>.svg，多页时可能输出 <name>-1.svg，兜底扫目录。
+fn find_svg(work: &Path) -> Option<PathBuf> {
+    std::fs::read_dir(work).ok().and_then(|it| {
+        for entry in it.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) == Some("svg") {
+                return Some(p);
+            }
+        }
+        None
+    })
+}
+
+/// XeLaTeX 精确预览：把 tikzpicture 片段单独编译成矢量 SVG。
+/// 所有可预期的失败都以 status:"error" 返回（前端统一渲染错误态），只有临时目录 IO
+/// 异常才走 Err(String)。
+#[tauri::command]
+pub async fn tikz_preview(
+    app: AppHandle,
+    source: String,
+    engine: String,
+) -> Result<TikzPreviewResult, String> {
+    let started = Instant::now();
+    if let Err(e) = validate_source(&source) {
+        return Ok(failure(e, started, 0, Vec::new()));
+    }
+    let dirs = engine_search_dirs(Some(&app));
+    let (engine_name, exe) = match pick_engine(&engine, &dirs) {
+        Some(v) => v,
+        None => {
+            return Ok(failure(
+                "未找到 XeLaTeX / LuaLaTeX / pdfLaTeX，请先在「环境引导」配置 TeX 发行版",
+                started,
+                0,
+                Vec::new(),
+            ))
+        }
+    };
+    let converter = match find_engine("pdftocairo", &dirs) {
+        Some(p) => p,
+        None => {
+            return Ok(failure(
+                "未找到 pdftocairo（Poppler / TeX Live 自带），无法把 PDF 转成矢量预览",
+                started,
+                0,
+                Vec::new(),
+            ))
+        }
+    };
+
+    let work = temp_workdir();
+    if let Err(e) = std::fs::create_dir_all(&work) {
+        return Err(format!("创建临时编译目录失败：{e}"));
+    }
+    let (doc, preamble_lines) = build_document(&source, engine_name != "pdflatex");
+    if let Err(e) = std::fs::write(work.join("snippet.tex"), &doc) {
+        let _ = std::fs::remove_dir_all(&work);
+        return Err(format!("写入临时 .tex 失败：{e}"));
+    }
+
+    // 1) 编译：-no-shell-escape 是硬约束；nonstopmode 保证不会等交互输入。
+    let args = vec![
+        "-no-shell-escape".to_string(),
+        "-interaction=nonstopmode".to_string(),
+        "-file-line-error".to_string(),
+        "-halt-on-error".to_string(),
+        format!("-output-directory={}", work.display()),
+        "snippet.tex".to_string(),
+    ];
+    let out = match run_tool(&exe, &args, &work, &dirs, COMPILE_TIMEOUT_SECS).await {
+        Ok(o) => o,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&work);
+            return Ok(failure(e, started, preamble_lines, Vec::new()));
+        }
+    };
+    let pdf = work.join("snippet.pdf");
+    if !out.status.success() || !pdf.is_file() {
+        let log = std::fs::read_to_string(work.join("snippet.log"))
+            .unwrap_or_else(|_| String::from_utf8_lossy(&out.stdout).into_owned());
+        let errors = parse_errors(&log, &work, preamble_lines);
+        let brief = brief_failure(&log, &out);
+        let _ = std::fs::remove_dir_all(&work);
+        return Ok(failure(
+            format!("{} 编译失败：{}", engine_name, brief),
+            started,
+            preamble_lines,
+            errors,
+        ));
+    }
+
+    // 2) PDF → SVG（矢量；来自真 TeX 引擎，包含 \pic{angle} / ctex / 数学公式）
+    let cargs = vec![
+        "-svg".to_string(),
+        "-f".to_string(),
+        "1".to_string(),
+        "-l".to_string(),
+        "1".to_string(),
+        "snippet.pdf".to_string(),
+        "preview.svg".to_string(),
+    ];
+    let cout = match run_tool(&converter, &cargs, &work, &dirs, CONVERT_TIMEOUT_SECS).await {
+        Ok(o) => o,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&work);
+            return Ok(failure(e, started, preamble_lines, Vec::new()));
+        }
+    };
+    let named = work.join("preview.svg");
+    let svg_path = if named.is_file() {
+        Some(named)
+    } else {
+        find_svg(&work)
+    };
+    let Some(path) = svg_path else {
+        let brief = String::from_utf8_lossy(&cout.stderr).trim().to_string();
+        let _ = std::fs::remove_dir_all(&work);
+        return Ok(failure(
+            format!(
+                "pdftocairo 未生成 SVG{}",
+                if brief.is_empty() {
+                    String::new()
+                } else {
+                    format!("：{}", brief.chars().take(160).collect::<String>())
+                }
+            ),
+            started,
+            preamble_lines,
+            Vec::new(),
+        ));
+    };
+    let svg = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&work);
+            return Ok(failure(
+                format!("读取 SVG 产物失败：{e}"),
+                started,
+                preamble_lines,
+                Vec::new(),
+            ));
+        }
+    };
+    let _ = std::fs::remove_dir_all(&work);
+    if svg.len() > MAX_SVG_BYTES {
+        return Ok(failure(
+            "SVG 产物过大（>8MB），已丢弃以免拖慢界面；请精简图形后重试",
+            started,
+            preamble_lines,
+            Vec::new(),
+        ));
+    }
+    Ok(TikzPreviewResult {
+        status: "ok".to_string(),
+        svg: Some(svg),
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        preamble_lines,
+        errors: Vec::new(),
+        message: None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SRC: &str = "\\begin{tikzpicture}\n  \\draw (0,0) -- (1,1);\n\\end{tikzpicture}";
+
+    #[test]
+    fn accepts_plain_tikzpicture() {
+        assert!(validate_source(SRC).is_ok());
+    }
+
+    #[test]
+    fn accepts_tikzpicture_with_options() {
+        let src = "\\begin{tikzpicture}[>=Stealth, font=\\small]\n  \\draw (0,0)--(1,1);\n\\end{tikzpicture}";
+        assert!(validate_source(src).is_ok());
+        let (doc, n) = build_document(src, true);
+        assert_eq!(doc.lines().nth(n as usize), Some("\\begin{tikzpicture}[>=Stealth, font=\\small]"));
+    }
+
+    #[test]
+    fn rejects_empty_and_full_document() {
+        assert!(validate_source("  ").is_err());
+        assert!(validate_source("\\draw (0,0)--(1,1);").is_err());
+        assert!(validate_source("\\documentclass{article}\n\\begin{document}x\\end{document}").is_err());
+    }
+
+    #[test]
+    fn rejects_unsafe_tex_constructs() {
+        for pat in ["\\write18{whoami}", "\\input{/etc/passwd}", "\\openout", "\\directlua{os.execute()}"] {
+            let src = format!("{}\n{}", SRC, pat);
+            assert!(validate_source(&src).is_err(), "应拒绝 {pat}");
+        }
+    }
+
+    #[test]
+    fn libraries_are_merged_and_deduped() {
+        let src = "\\usetikzlibrary{arrows.meta,calc}\n\\usetikzlibrary{angles, calc}\n\\begin{tikzpicture}\\end{tikzpicture}";
+        assert_eq!(
+            collect_libraries(src),
+            vec!["arrows.meta", "calc", "angles"]
+        );
+    }
+
+    #[test]
+    fn preamble_lines_map_back_to_source() {
+        let (doc, n) = build_document(SRC, false);
+        let lines: Vec<&str> = doc.lines().collect();
+        assert_eq!(lines[n as usize], "\\begin{tikzpicture}");
+        assert_eq!(lines[(n + 1) as usize], "  \\draw (0,0) -- (1,1);");
+        assert_eq!(lines.last().copied(), Some("\\end{document}"));
+    }
+
+    #[test]
+    fn library_lines_are_commented_without_shifting_source_lines() {
+        let src = "\\usetikzlibrary{angles,quotes}\n\\begin{tikzpicture}\n  \\draw (0,0)--(1,1);\n\\end{tikzpicture}";
+        let (doc, n) = build_document(src, true);
+        let lines: Vec<&str> = doc.lines().collect();
+        assert!(doc.contains("\\usetikzlibrary{angles,quotes}\n"));
+        assert_eq!(lines[n as usize], "% \\usetikzlibrary{angles,quotes}");
+        assert_eq!(lines[(n + 1) as usize], "\\begin{tikzpicture}");
+        assert_eq!(lines[(n + 2) as usize], "  \\draw (0,0)--(1,1);");
+    }
+
+    #[test]
+    fn ctex_only_for_unicode_engine_and_non_ascii_source() {
+        let cn = format!("{SRC}\n% 中文注释");
+        assert!(build_document(&cn, true).0.contains("ctex"));
+        assert!(!build_document(&cn, false).0.contains("ctex"));
+        assert!(!build_document(SRC, true).0.contains("ctex"));
+    }
+
+    #[test]
+    fn workdirs_are_unique() {
+        assert_ne!(temp_workdir(), temp_workdir());
+    }
+}

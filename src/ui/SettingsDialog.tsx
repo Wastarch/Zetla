@@ -29,6 +29,8 @@ import type {
   EditorFontFamily,
   PdfDefaultZoom,
 } from "@/types/settings";
+import { useDiagramStore, type LayoutMode } from "@/modules/diagram/store";
+import type { PreviewMode } from "@/types/diagram";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "general", icon: "layout", label: "通用" },
@@ -38,6 +40,7 @@ const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "look", icon: "sun", label: "外观与保存" },
   { id: "snippets", icon: "list", label: "代码片段" },
   { id: "modules", icon: "wand", label: "模块" },
+  { id: "diagram", icon: "image", label: "绘图" },
   { id: "about", icon: "book", label: "关于 Zetla" },
 ];
 
@@ -203,6 +206,14 @@ export function SettingsDialog() {
 
   // M1-1：模块开关（写设置页草稿；经 useModuleRuntime 订阅即时启停，保存后落盘）
   const modules = useModuleList();
+  // M2 · 绘图模块 F1-5：轻量 UI 偏好走 diagram store（localStorage），不进 AppSettings draft
+  const diagramLayout = useDiagramStore((s) => s.layoutMode);
+  const setDiagramLayout = useDiagramStore((s) => s.setLayoutMode);
+  const diagramRatio = useDiagramStore((s) => s.splitRatio);
+  const setDiagramRatio = useDiagramStore((s) => s.setSplitRatio);
+  const diagramPreview = useDiagramStore((s) => s.previewMode);
+  const setDiagramPreview = useDiagramStore((s) => s.setPreviewMode);
+  const resetDiagramPreferences = useDiagramStore((s) => s.resetDiagramPreferences);
   const moduleNames: Record<string, string> = {};
   for (const m of modules) moduleNames[m.id] = m.name;
   const toggleModule = useCallback(
@@ -689,6 +700,74 @@ export function SettingsDialog() {
             )}
 
             {/* M2-5c：代码片段双栏管理（独立 snippets.json，页内自带保存） */}
+            {/* M2 · F1-5：绘图偏好（即时生效、本机保存，不随底部保存/取消回滚） */}
+            {pane === "diagram" && (
+              <div className="set-pane" role="tabpanel">
+                <h4>绘图 · TikZ</h4>
+                <p className="set-note">
+                  此页改动<strong>即时生效并保存在本机</strong>，不受底部「保存设置 / 取消」影响。
+                  XeLaTeX 精确预览需要本机安装 TeX 发行版与 pdftocairo。
+                </p>
+                <Fld label="Tab 内默认布局" hint="仅画布 / 仅源码 / 左右分屏，重启后保留">
+                  <select
+                    value={diagramLayout}
+                    onChange={(e) => setDiagramLayout(e.target.value as LayoutMode)}
+                  >
+                    <option value="split">左右分屏</option>
+                    <option value="canvas">仅画布</option>
+                    <option value="code">仅源码</option>
+                  </select>
+                </Fld>
+                <Fld label="分屏比例" hint="左右分屏时画布栏占比（20%–80%）">
+                  <select
+                    value={
+                      [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8].includes(diagramRatio)
+                        ? String(diagramRatio)
+                        : "custom"
+                    }
+                    onChange={(e) => {
+                      if (e.target.value !== "custom") setDiagramRatio(Number(e.target.value));
+                    }}
+                  >
+                    {![0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8].includes(diagramRatio) && (
+                      <option value="custom">
+                        {Math.round(diagramRatio * 100)}%（自定义）
+                      </option>
+                    )}
+                    {[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8].map((v) => (
+                      <option key={v} value={String(v)}>
+                        {Math.round(v * 100)}%
+                      </option>
+                    ))}
+                  </select>
+                </Fld>
+                <Fld
+                  label="默认预览通道"
+                  hint="本地即时（毫秒级，覆盖集有限）/ XeLaTeX 精确（秒级，100% 还原）"
+                >
+                  <select
+                    value={diagramPreview}
+                    onChange={(e) => setDiagramPreview(e.target.value as PreviewMode)}
+                  >
+                    <option value="local">本地即时</option>
+                    <option value="precise">XeLaTeX 精确</option>
+                  </select>
+                </Fld>
+                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道一次性重置">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      resetDiagramPreferences();
+                      notify("绘图偏好已恢复默认", "ok");
+                    }}
+                  >
+                    重置
+                  </button>
+                </Fld>
+              </div>
+            )}
+
             {pane === "snippets" && <SnippetsPane />}
 
             {pane === "modules" && (

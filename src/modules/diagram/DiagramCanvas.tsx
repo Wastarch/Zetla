@@ -1,14 +1,28 @@
-// M2·F1-3：TikZ 只读 SVG 画布（替换 F1-2 的源码摘要占位）。
-// 链路：diagram store 的 source → debounce 160ms → engine.renderTikz（动态加载 vendor
-// bundle + LRU 缓存 + 诊断归一化）→ svg.sanitizeSvg（白名单消毒）→ importNode 挂载。
+// M2·F1-3 / F1-6：TikZ 双通道只读画布。
+//  本地通道：source → debounce 160ms → engine.renderTikz（动态加载 vendor bundle + LRU
+//            缓存 + 诊断归一化）→ svg.sanitizeSvg 白名单消毒 → importNode 挂载。
+//  精确通道：source → debounce 800ms → Rust tikz_preview（XeLaTeX standalone → PDF → SVG）
+//            → data URL 交给 <img>（隔离文档，不内联注入、不受白名单限制）。
 // 三布局下本组件常驻挂载（DiagramTab 用 hidden 切换），故不会因布局切换重复拉引擎。
+// 精确通道只在绘图 Tab 真实激活时编译，Tab 隐藏/切到别的缓冲时不跑 XeLaTeX。
 // F4 起在此叠加拖拽层；v1 只读。
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useBuffersStore } from "@/editor/useBuffers";
+import { useSettingsStore } from "@/core/settings";
 import { useDiagramStore } from "./store";
 import { preloadTikzEngine, renderTikz, type TikzRender } from "./tikzEditor/engine";
 import { hasDrawableContent, sanitizeSvg } from "./tikzEditor/svg";
+import {
+  getCachedPreview,
+  previewKey,
+  requestPrecisePreview,
+  svgDataUrl,
+} from "./precisePreview";
+import type { TikzPreviewResult } from "@/types/diagram";
 
-const DEBOUNCE_MS = 160;
+const LOCAL_DEBOUNCE_MS = 160;
+const PRECISE_DEBOUNCE_MS = 800;
+const DIAGRAM_PATH = "diagram://editor";
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3];
 const MAX_DIAG = 5;
 
@@ -23,6 +37,10 @@ function errorText(err: unknown): string {
 export function DiagramCanvas() {
   const source = useDiagramStore((s) => s.source);
   const targetTex = useDiagramStore((s) => s.targetTex);
+  const previewMode = useDiagramStore((s) => s.previewMode);
+  const setPreviewMode = useDiagramStore((s) => s.setPreviewMode);
+  const activePath = useBuffersStore((s) => s.activePath);
+  const tabVisible = activePath === DIAGRAM_PATH;
 
   const [result, setResult] = useState<TikzRender | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +49,8 @@ export function DiagramCanvas() {
   const [zoom, setZoom] = useState(1);
   // null = 跟随默认（有覆盖缺口就自动展开）；true/false = 用户手动展开/收起
   const [diagOpen, setDiagOpen] = useState<boolean | null>(null);
+  const [precise, setPrecise] = useState<TikzPreviewResult | null>(null);
+  const [preciseBusy, setPreciseBusy] = useState(false);
   const stageRef = useRef<HTMLDivElement>(null);
 
   const empty = source.trim().length === 0;
@@ -44,14 +64,15 @@ export function DiagramCanvas() {
       },
       (err: unknown) => {
         if (alive) setError(`渲染引擎加载失败：${errorText(err)}`);
-      }
+      },
     );
     return () => {
       alive = false;
     };
   }, []);
 
-  // source 变化 → debounce → 渲染。旧请求用 cancelled 标志丢弃，避免乱序覆盖新结果。
+  // 本地通道：source 变化 → debounce → 渲染。旧请求用 cancelled 标志丢弃。
+  // 精确模式下也保持结果最新（引擎有 LRU 缓存，开销极小），切回本地可立即出图。
   useEffect(() => {
     if (empty) {
       setResult(null);
@@ -74,21 +95,49 @@ export function DiagramCanvas() {
           setError(errorText(err));
           setResult(null);
           setBusy(false);
-        }
+        },
       );
-    }, DEBOUNCE_MS);
+    }, LOCAL_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
   }, [source, empty]);
 
-  // 消毒后挂载。stage 由 React 渲染为**空容器**（JSX 中无 children），
-  // 这里的 replaceChildren 不与 React 的子节点协调冲突；overlay 是同级兄弟节点。
+  // 精确通道：只在 Tab 激活 + 精确模式 + 有源码时编译。
+  // 缓存命中直接出图；同 key 并发由 precisePreview 单飞；旧结果用 cancelled 丢弃。
+  useEffect(() => {
+    if (previewMode !== "precise" || empty || !tabVisible) {
+      setPreciseBusy(false);
+      return;
+    }
+    const engine = useSettingsStore.getState().settings.build.engine;
+    const hit = getCachedPreview(previewKey(source, engine));
+    if (hit) {
+      setPrecise(hit);
+      setPreciseBusy(false);
+      return;
+    }
+    let cancelled = false;
+    setPreciseBusy(true);
+    const timer = window.setTimeout(() => {
+      requestPrecisePreview(source, engine).then((r) => {
+        if (cancelled) return;
+        setPrecise(r);
+        setPreciseBusy(false);
+      });
+    }, PRECISE_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [source, empty, previewMode, tabVisible]);
+
+  // 消毒后挂载本地 SVG。精确模式下清空 stage（改由 <img> 显示，不内联注入）。
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
-    if (!result) {
+    if (!result || previewMode === "precise") {
       stage.replaceChildren();
       return;
     }
@@ -99,35 +148,65 @@ export function DiagramCanvas() {
       return;
     }
     stage.replaceChildren(node);
-  }, [result, zoom]);
+  }, [result, zoom, previewMode]);
 
   // 每次拿到新结果都回到「自动」模式，避免上一次手动收起延续到下一张图
   useEffect(() => {
     setDiagOpen(null);
   }, [result]);
 
+  const preciseImg = useMemo(
+    () => (precise?.status === "ok" && precise.svg ? svgDataUrl(precise.svg) : null),
+    [precise],
+  );
+
   const zoomIndex = ZOOM_STEPS.indexOf(zoom);
   const canZoomOut = zoomIndex > 0;
   const canZoomIn = zoomIndex >= 0 && zoomIndex < ZOOM_STEPS.length - 1;
-  const diags = result?.diagnostics ?? [];
+  const localDiags = result?.diagnostics ?? [];
   const unsupported = result?.unsupported ?? [];
   const showDiags = diagOpen ?? unsupported.length > 0;
-  const hasErrorDiag = diags.some((d) => d.severity === "error");
-  const blankSvg = !!result && !error && !hasDrawableContent(result.svg);
+  const hasErrorDiag = localDiags.some((d) => d.severity === "error");
+  const blankSvg =
+    previewMode === "local" && !!result && !error && !hasDrawableContent(result.svg);
+  const preciseFailed = previewMode === "precise" && precise?.status === "error";
+  const preciseErrors = precise?.status === "error" ? precise.errors ?? [] : [];
 
   return (
     <div className="dg-canvas">
       <div className="dg-canvas-head">
         <span className="dg-canvas-badge">画布预览</span>
-        <span className="dg-canvas-hint">tikz-editor · 只读</span>
-        {diags.length > 0 && (
+        <div className="dg-mode-switch" role="group" aria-label="预览通道">
+          <button
+            type="button"
+            className={previewMode === "local" ? "on" : ""}
+            aria-pressed={previewMode === "local"}
+            title="tikz-editor 即时预览（毫秒级，覆盖集有限）"
+            onClick={() => setPreviewMode("local")}
+          >
+            本地即时
+          </button>
+          <button
+            type="button"
+            className={previewMode === "precise" ? "on" : ""}
+            aria-pressed={previewMode === "precise"}
+            title="XeLaTeX 编译 TikZ 片段（秒级，100% 还原）"
+            onClick={() => setPreviewMode("precise")}
+          >
+            XeLaTeX 精确
+          </button>
+        </div>
+        <span className="dg-canvas-hint">
+          {previewMode === "local" ? "tikz-editor · 只读" : "standalone · 100% 还原"}
+        </span>
+        {previewMode === "local" && localDiags.length > 0 && (
           <button
             type="button"
             className={`dg-diag-toggle${hasErrorDiag || unsupported.length > 0 ? " is-error" : ""}`}
             onClick={() => setDiagOpen(!showDiags)}
             title="展开 / 收起解析诊断"
           >
-            {diags.length} 条诊断
+            {localDiags.length} 条诊断
           </button>
         )}
         <div className="dg-zoom">
@@ -157,50 +236,89 @@ export function DiagramCanvas() {
       </div>
 
       {/* 覆盖缺口会被引擎静默丢弃（如 \pic{angle} / angles 库），画布看起来"正常"但少元素。
-          必须常驻一条显式提示，并自动展开诊断，避免用户以为是自己代码写错。 */}
+          常驻显式提示 + 一键切 XeLaTeX 精确预览，避免用户以为是自己代码写错。 */}
       {unsupported.length > 0 && !error && (
         <div className="dg-canvas-alert" role="status">
-          <strong>预览不完整</strong>
+          <strong>{previewMode === "precise" ? "已用 XeLaTeX 还原" : "预览不完整"}</strong>
           <span>
-            {unsupported.length} 处构造引擎暂不支持，画布已省略；导出仍以 XeLaTeX 编译结果为准。
-            建议改用 <code>\draw ... arc</code> 等基础语法，或切到源码模式编辑。
+            {previewMode === "precise"
+              ? `本地引擎不支持的 ${unsupported.length} 处构造已由 XeLaTeX 编译还原，与导出结果一致。`
+              : `${unsupported.length} 处构造本地引擎暂不支持，画布已省略；导出仍以 XeLaTeX 编译结果为准。`}
           </span>
-          <button type="button" onClick={() => setDiagOpen(true)}>
-            查看诊断
-          </button>
+          {previewMode === "local" ? (
+            <button type="button" onClick={() => setPreviewMode("precise")}>
+              用 XeLaTeX 精确预览
+            </button>
+          ) : (
+            <button type="button" onClick={() => setDiagOpen(true)}>
+              查看诊断
+            </button>
+          )}
         </div>
       )}
 
       <div className="dg-canvas-body">
-        <div className="dg-canvas-stage" ref={stageRef} />
+        <div className="dg-canvas-stage" ref={stageRef} hidden={previewMode === "precise"} />
+        {previewMode === "precise" && preciseImg && (
+          <img
+            className="dg-precise-img"
+            src={preciseImg}
+            alt="XeLaTeX 精确预览"
+            style={{ transform: `scale(${zoom})` }}
+          />
+        )}
         {empty && (
           <div className="dg-canvas-overlay">
             源码为空。请切到「仅源码」或「左右分屏」编写 TikZ 代码。
           </div>
         )}
-        {!empty && error && (
+        {!empty && previewMode === "local" && error && (
           <div className="dg-canvas-overlay dg-canvas-error">
             <strong>渲染失败</strong>
             <p>{error}</p>
             <span>修正源码后会自动重渲染；主文档不受影响。</span>
           </div>
         )}
-        {!empty && !error && !result && (
+        {!empty && previewMode === "local" && !error && !result && (
           <div className="dg-canvas-overlay">
             {engineReady ? "正在渲染…" : "正在加载渲染引擎（首次约 3.3 MB）…"}
           </div>
         )}
-        {!empty && !error && result && blankSvg && (
+        {!empty && blankSvg && (
           <div className="dg-canvas-overlay dg-canvas-warn">
-            画布为空：未识别到可绘制对象。请检查 TikZ 语法或展开诊断。
+            画布为空：本地引擎未识别到可绘制对象。请检查 TikZ 语法、展开诊断，或切到 XeLaTeX 精确预览。
           </div>
         )}
-        {busy && result && !error && <div className="dg-canvas-busy">渲染中…</div>}
+        {!empty && previewMode === "precise" && !preciseImg && !preciseFailed && (
+          <div className="dg-canvas-overlay">
+            {preciseBusy
+              ? "正在用 XeLaTeX 编译 TikZ 片段（首次可能较慢）…"
+              : "等待精确预览…"}
+          </div>
+        )}
+        {!empty && preciseFailed && (
+          <div className="dg-canvas-overlay dg-canvas-error">
+            <strong>XeLaTeX 编译失败</strong>
+            <p>{precise?.message ?? "未知错误"}</p>
+            <span>
+              {preciseErrors.length > 0
+                ? `报错行号已换算为绘图源码行号（共 ${preciseErrors.length} 条）。`
+                : "请检查 TeX 发行版是否安装、以及片段是否自包含（不引用主文档宏）。"}
+              主文档不受影响。
+            </span>
+          </div>
+        )}
+        {previewMode === "local" && busy && result && !error && (
+          <div className="dg-canvas-busy">渲染中…</div>
+        )}
+        {previewMode === "precise" && preciseBusy && preciseImg && (
+          <div className="dg-canvas-busy">XeLaTeX 编译中…</div>
+        )}
       </div>
 
-      {showDiags && diags.length > 0 && (
+      {previewMode === "local" && showDiags && localDiags.length > 0 && (
         <ul className="dg-diag-list">
-          {diags.slice(0, MAX_DIAG).map((d, i) => (
+          {localDiags.slice(0, MAX_DIAG).map((d, i) => (
             <li key={`${d.offset ?? -1}-${i}`} className={d.severity === "error" ? "is-error" : ""}>
               <span className="dg-diag-sev">{d.severity === "error" ? "错误" : "警告"}</span>
               {d.message}
@@ -208,15 +326,34 @@ export function DiagramCanvas() {
               {d.code && <em> [{d.code}]</em>}
             </li>
           ))}
-          {diags.length > MAX_DIAG && <li className="dg-diag-more">…另有 {diags.length - MAX_DIAG} 条</li>}
+          {localDiags.length > MAX_DIAG && (
+            <li className="dg-diag-more">…另有 {localDiags.length - MAX_DIAG} 条</li>
+          )}
+        </ul>
+      )}
+      {previewMode === "precise" && preciseErrors.length > 0 && (
+        <ul className="dg-diag-list">
+          {preciseErrors.slice(0, MAX_DIAG).map((e, i) => (
+            <li key={`${e.line}-${i}`} className={e.severity === "error" ? "is-error" : ""}>
+              <span className="dg-diag-sev">XeLaTeX</span>
+              {e.readable || e.raw}
+              <em> 第 {e.line} 行</em>
+            </li>
+          ))}
         </ul>
       )}
 
       <div className="dg-canvas-foot">
         <span>
-          {result
-            ? `${result.fromCache ? "缓存命中" : `渲染 ${result.elapsedMs.toFixed(0)} ms`} · ${result.viewBox.width.toFixed(0)}×${result.viewBox.height.toFixed(0)}`
-            : "—"}
+          {previewMode === "local"
+            ? result
+              ? `${result.fromCache ? "缓存命中" : `渲染 ${result.elapsedMs.toFixed(0)} ms`} · ${result.viewBox.width.toFixed(0)}×${result.viewBox.height.toFixed(0)}`
+              : "—"
+            : precise?.status === "ok"
+              ? `XeLaTeX 编译 ${precise.elapsedMs} ms · 矢量 SVG`
+              : precise?.status === "error"
+                ? "编译失败"
+                : "—"}
         </span>
         <span>v1 画布为只读预览，拖拽编辑属 F4</span>
         <span>插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>
