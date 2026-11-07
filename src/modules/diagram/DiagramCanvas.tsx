@@ -171,6 +171,11 @@ export function DiagramCanvas() {
     previewMode === "local" && !!result && !error && !hasDrawableContent(result.svg);
   const preciseFailed = previewMode === "precise" && precise?.status === "error";
   const preciseErrors = precise?.status === "error" ? precise.errors ?? [] : [];
+  // 提示条按编译结果分态：只有 XeLaTeX 真正成功出图才显示绿色「已还原」，
+  // 编译中 / 等待 / 失败都不能谎报成功。颜色由 CSS 的 --alert-tone 驱动。
+  const preciseOk = previewMode === "precise" && precise?.status === "ok" && !!preciseImg;
+  const alertTone = preciseFailed ? "err" : preciseOk ? "ok" : "warn";
+  const unsupportedCount = unsupported.length;
 
   return (
     <div className="dg-canvas">
@@ -236,22 +241,30 @@ export function DiagramCanvas() {
       </div>
 
       {/* 覆盖缺口会被引擎静默丢弃（如 \pic{angle} / angles 库），画布看起来"正常"但少元素。
-          常驻显式提示 + 一键切 XeLaTeX 精确预览，避免用户以为是自己代码写错。 */}
-      {unsupported.length > 0 && !error && (
-        <div className="dg-canvas-alert" role="status">
-          <strong>{previewMode === "precise" ? "已用 XeLaTeX 还原" : "预览不完整"}</strong>
+          常驻显式提示 + 一键切 XeLaTeX 精确预览，避免用户以为是自己代码写错。
+          精确通道下不再挂按钮：成功已还原无需操作，失败时下方 XeLaTeX 报错列表本来就常驻，
+          原「查看诊断」调用的 setDiagOpen 在精确通道没有任何可见效果（死点击）。 */}
+      {unsupportedCount > 0 && !error && (
+        <div className={`dg-canvas-alert is-${alertTone}`} role="status">
+          <strong>
+            {preciseFailed
+              ? "XeLaTeX 编译失败"
+              : preciseOk
+                ? "已用 XeLaTeX 还原"
+                : previewMode === "precise"
+                  ? "正在用 XeLaTeX 编译…"
+                  : "预览不完整"}
+          </strong>
           <span>
-            {previewMode === "precise"
-              ? `本地引擎不支持的 ${unsupported.length} 处构造已由 XeLaTeX 编译还原，与导出结果一致。`
-              : `${unsupported.length} 处构造本地引擎暂不支持，画布已省略；导出仍以 XeLaTeX 编译结果为准。`}
+            {preciseOk
+              ? `本地引擎不支持的 ${unsupportedCount} 处构造已完整呈现，与导出结果一致。`
+              : preciseFailed
+                ? `本地引擎不支持的 ${unsupportedCount} 处构造仍未还原，请查看下方 XeLaTeX 报错。`
+                : `${unsupportedCount} 处构造本地引擎暂不支持，画布已省略；导出仍以 XeLaTeX 编译结果为准。`}
           </span>
-          {previewMode === "local" ? (
+          {previewMode === "local" && (
             <button type="button" onClick={() => setPreviewMode("precise")}>
               用 XeLaTeX 精确预览
-            </button>
-          ) : (
-            <button type="button" onClick={() => setDiagOpen(true)}>
-              查看诊断
             </button>
           )}
         </div>

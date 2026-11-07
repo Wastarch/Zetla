@@ -201,23 +201,34 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   color: var(--txt-2, #888);
   white-space: nowrap;
 }
-/* 引擎覆盖缺口的常驻提示条：不遮挡画布，位于工具条与舞台之间 */
+/* 引擎覆盖缺口的常驻提示条：不遮挡画布，位于工具条与舞台之间。
+   颜色统一由 --alert-tone 驱动：warn（本地缺口 / 编译中）· ok（XeLaTeX 已还原）· err（编译失败）。
+   --warn / --ok / --err 都是 zetla.css 的双主题 token，亮暗自动适配；
+   color-mix 写法与 .setup-result.ok / .env-status.ok 保持一致，前面留纯色声明作渐进回退。 */
 .dg-canvas-alert {
+  --alert-tone: var(--warn, #a86a12);
   flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 7px 12px;
-  border-bottom: 1px solid var(--warn, #a86a12);
-  background: var(--bg-2, #f3f3f3);
-  background: color-mix(in srgb, var(--warn, #a86a12) 12%, var(--bg, #fff));
+  border-bottom: 1px solid var(--alert-tone);
+  border-bottom: 1px solid color-mix(in srgb, var(--alert-tone) 55%, var(--line));
+  background: var(--bg-3, #fff);
+  background: color-mix(in srgb, var(--alert-tone) 9%, var(--bg-3, #fff));
   font-size: 11px;
   line-height: 1.5;
   color: var(--txt, #353333);
 }
+.dg-canvas-alert.is-ok {
+  --alert-tone: var(--ok, #218a5c);
+}
+.dg-canvas-alert.is-err {
+  --alert-tone: var(--err, #c2382f);
+}
 .dg-canvas-alert strong {
   flex: none;
-  color: var(--warn, #a86a12);
+  color: var(--alert-tone);
 }
 .dg-canvas-alert span {
   flex: 1;
@@ -233,10 +244,10 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   flex: none;
   padding: 2px 8px;
   font-size: 11px;
-  border: 1px solid var(--warn, #a86a12);
+  border: 1px solid var(--alert-tone);
   border-radius: 4px;
   background: transparent;
-  color: var(--warn, #a86a12);
+  color: var(--alert-tone);
   cursor: pointer;
 }
 .dg-diag-toggle {
