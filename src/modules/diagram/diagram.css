@@ -1,7 +1,8 @@
 /* M2 · 绘图模块样式
    - 侧栏（DiagramSidebar）：组件库 / 布局选项 / 导出方式分区
    - Tab（diagram://editor）：顶部布局开关 + 三布局容器（F1-2 起）
-   画布 SVG 渲染在 F1-3 接入，本文件届时不需大改。 */
+   - 画布（DiagramCanvas）：F1-3 起渲染 tikz-editor 的 SVG（白纸底 + 消毒注入）
+   主题 token 统一用 zetla.css 的 --txt / --txt-2 / --bg / --line / --paper / --accent。 */
 
 .dg-side {
   flex: 1;
@@ -23,11 +24,12 @@
 .dg-side-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--fg, #222);
+  color: var(--txt, #353333);
 }
 .dg-side-meta {
   font-size: 11px;
-  color: var(--fg-muted, #888);
+  color: var(--txt-2, #6b6b6b);
+  opacity: 0.8;
 }
 
 .dg-side-card {
@@ -43,13 +45,14 @@
   margin: 0;
   font-size: 12px;
   font-weight: 600;
-  color: var(--fg, #222);
+  color: var(--txt, #353333);
 }
 .dg-side-card-sub {
   margin: 0;
   font-size: 11px;
   line-height: 1.6;
-  color: var(--fg-muted, #888);
+  color: var(--txt-2, #6b6b6b);
+  opacity: 0.85;
 }
 .dg-side-card .btn {
   align-self: flex-start;
@@ -59,7 +62,8 @@
   margin: 4px 0 0;
   font-size: 11px;
   line-height: 1.6;
-  color: var(--fg-muted, #999);
+  color: var(--txt-2, #6b6b6b);
+  opacity: 0.75;
 }
 
 /* ── M2·F1-2：绘图工作台 Tab（diagram://editor 伪 buffer） ──
@@ -87,7 +91,7 @@
 .dg-tab-title {
   font-size: 12px;
   font-weight: 600;
-  color: var(--fg, #222);
+  color: var(--txt, #353333);
   white-space: nowrap;
 }
 .dg-tab-layouts {
@@ -100,11 +104,11 @@
   border: 1px solid var(--line, #e0e0e0);
   border-radius: 4px;
   background: var(--bg, #fff);
-  color: var(--fg, #222);
+  color: var(--txt, #353333);
   cursor: pointer;
 }
 .dg-tab-layout:hover {
-  border-color: var(--fg-muted, #999);
+  border-color: var(--txt-2, #999);
 }
 .dg-tab-layout.active {
   border-color: var(--accent, #2d7ff9);
@@ -114,7 +118,7 @@
 .dg-tab-meta {
   margin-left: auto;
   font-size: 11px;
-  color: var(--fg-muted, #888);
+  color: var(--txt-2, #888);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -165,7 +169,9 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   background: var(--editor-bg, #fff);
 }
 
-/* ── 画布占位（F1-2；F1-3 换成 SVG 画布后保留外壳） ── */
+/* ── M2·F1-3：SVG 画布 ─────────────────────────────────────────
+   画布恒用「纸色」背景：引擎输出黑色文字/线条，与 XeLaTeX 导出的白纸一致，
+   顺带避开暗色主题下黑字不可读的问题（F5-2 再做主题化配色）。 */
 .dg-canvas {
   flex: 1;
   min-width: 0;
@@ -188,53 +194,166 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   border: 1px solid var(--accent, #2d7ff9);
   border-radius: 10px;
   color: var(--accent, #2d7ff9);
+  white-space: nowrap;
 }
 .dg-canvas-hint {
   font-size: 11px;
-  color: var(--fg-muted, #888);
+  color: var(--txt-2, #888);
+  white-space: nowrap;
 }
-.dg-canvas-body {
-  flex: 1;
-  min-height: 0;
+.dg-diag-toggle {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--warn, #a86a12);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--warn, #a86a12);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dg-diag-toggle.is-error {
+  border-color: var(--err, #c2382f);
+  color: var(--err, #c2382f);
+}
+.dg-zoom {
+  margin-left: auto;
   display: flex;
   align-items: center;
-  justify-content: center;
-  overflow: auto;
-  padding: 20px;
+  gap: 4px;
+}
+.dg-zoom-btn {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 6px;
+  font-size: 11px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+  cursor: pointer;
+}
+.dg-zoom-btn:hover:not(:disabled) {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-zoom-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.dg-zoom-val {
+  min-width: 38px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--txt-2, #888);
+  font-variant-numeric: tabular-nums;
+}
+
+.dg-canvas-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  /* 舞台外围：浅色网格，暗示这是一张「纸」而不是编辑器背景 */
   background: repeating-linear-gradient(
     45deg,
     var(--bg-2, #f6f6f6) 0 12px,
     transparent 12px 24px
   );
 }
-.dg-canvas-card {
-  max-width: min(680px, 100%);
-  padding: 16px 18px;
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: 8px;
-  background: var(--bg, #fff);
-  box-shadow: 0 4px 20px rgb(0 0 0 / 6%);
+/* stage 由 DiagramCanvas 的 useEffect 用 replaceChildren 注入 <svg>；
+   React 不管理其 children。display:flex + 子 svg 的 margin:auto：
+   内容小于容器时居中，放大后溢出时不会把左上裁掉。 */
+.dg-canvas-stage {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  overflow: auto;
+  background: var(--paper, #fbfaf7);
+  color: var(--paper-ink, #22242a);
 }
-.dg-canvas-card-label {
-  display: block;
-  margin-bottom: 10px;
-  font-size: 11px;
-  color: var(--fg-muted, #888);
+.dg-canvas-stage > svg {
+  flex: none;
+  user-select: none;
 }
-.dg-canvas-source {
-  margin: 0;
-  font-family: var(--font-mono, monospace);
+
+.dg-canvas-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  text-align: center;
   font-size: 12px;
   line-height: 1.6;
-  color: var(--fg, #333);
-  white-space: pre;
-  overflow: auto;
+  color: var(--txt-2, #777);
+  pointer-events: none;
 }
-.dg-canvas-empty {
+.dg-canvas-overlay strong {
+  font-size: 13px;
+  color: var(--err, #c2382f);
+}
+.dg-canvas-overlay p {
   margin: 0;
-  font-size: 12px;
-  color: var(--fg-muted, #777);
+  max-width: min(560px, 100%);
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  word-break: break-word;
+  color: var(--txt, #353333);
 }
+.dg-canvas-overlay span {
+  font-size: 11px;
+  opacity: 0.8;
+}
+.dg-canvas-error,
+.dg-canvas-warn {
+  background: var(--bg, #fff);
+  opacity: 0.96;
+}
+.dg-canvas-busy {
+  position: absolute;
+  top: 8px;
+  right: 10px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 10px;
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  color: var(--accent, #2b62cf);
+  pointer-events: none;
+}
+
+.dg-diag-list {
+  flex: none;
+  max-height: 128px;
+  margin: 0;
+  padding: 6px 12px;
+  list-style: none;
+  overflow: auto;
+  border-top: 1px solid var(--line, #e0e0e0);
+  background: var(--bg-2, #f3f3f3);
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--txt, #353333);
+}
+.dg-diag-sev {
+  display: inline-block;
+  min-width: 30px;
+  margin-right: 6px;
+  color: var(--warn, #a86a12);
+}
+.dg-diag-list li.is-error .dg-diag-sev {
+  color: var(--err, #c2382f);
+}
+.dg-diag-list em {
+  font-style: normal;
+  opacity: 0.6;
+}
+.dg-diag-more {
+  opacity: 0.7;
+}
+
 .dg-canvas-foot {
   flex: none;
   display: flex;
@@ -243,5 +362,5 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   padding: 8px 12px;
   border-top: 1px solid var(--line, #e0e0e0);
   font-size: 11px;
-  color: var(--fg-muted, #888);
+  color: var(--txt-2, #888);
 }
