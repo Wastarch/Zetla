@@ -1,4 +1,4 @@
-// M2·F1-3 / F1-6 / F2-1：TikZ 双通道画布 + 拖拽写回。
+// M2·F1-3 / F1-6 / F2-1 / F2-2：TikZ 双通道画布 + 拖拽写回 + 点选图元。
 //  本地通道：source → debounce 160ms → engine.renderTikz（动态加载 vendor bundle + LRU
 //            缓存 + 诊断归一化 + editHandles）→ svg.sanitizeSvg 白名单消毒 → importNode 挂载
 //            → 追加控制点 <circle> 图层（DOM API 创建，不经过 innerHTML）。
@@ -8,6 +8,8 @@
 //  拖拽写回：pointerdown 命中控制点 → window 级 pointermove（屏幕 px 经 getScreenCTM 反算
 //            world 位移）→ pointerup 调上游 applyEditIntent 得到新源码 → 求最小 span 补丁
 //            → 经 sourceBridge dispatch 到 CM6 视图（与键盘改源码共用撤销栈）。
+//  点选图元：F2-2 pointerdown 从 data-source-id / 控制点 sourceRef 取 id 写入 store，
+//            侧栏属性区据此定位语句选项；选中态只 toggle class，不重建 SVG、不打断拖拽。
 // 三布局下本组件常驻挂载（DiagramTab 用 hidden 切换），故不会因布局切换重复拉引擎。
 // 精确通道只在绘图 Tab 真实激活时编译，Tab 隐藏/切到别的缓冲时不跑 XeLaTeX。
 import {
@@ -142,6 +144,9 @@ export function DiagramCanvas() {
   const targetTex = useDiagramStore((s) => s.targetTex);
   const previewMode = useDiagramStore((s) => s.previewMode);
   const setPreviewMode = useDiagramStore((s) => s.setPreviewMode);
+  const selectedId = useDiagramStore((s) => s.selectedId);
+  const setSelectedId = useDiagramStore((s) => s.setSelectedId);
+  const setRenderMeta = useDiagramStore((s) => s.setRenderMeta);
   const activePath = useBuffersStore((s) => s.activePath);
   const tabVisible = activePath === DIAGRAM_PATH;
 
@@ -193,6 +198,7 @@ export function DiagramCanvas() {
       setResult(null);
       setError(null);
       setBusy(false);
+      setRenderMeta(null);
       return;
     }
     let cancelled = false;
@@ -204,12 +210,14 @@ export function DiagramCanvas() {
           setResult(r);
           setError(null);
           setBusy(false);
+          setRenderMeta({ source, statements: r.statements });
         },
         (err: unknown) => {
           if (cancelled) return;
           setError(errorText(err));
           setResult(null);
           setBusy(false);
+          setRenderMeta(null);
         },
       );
     }, LOCAL_DEBOUNCE_MS);
@@ -270,6 +278,16 @@ export function DiagramCanvas() {
     }
     stage.replaceChildren(node);
   }, [result, zoom, previewMode, handlesOn]);
+
+  // F2-2 选中高亮：只 toggle class，不重建 SVG —— 重建会丢弃正在拖拽的 DOM 引用，
+  // 也会让 CM6 视图之外的画布状态抖动。drop-shadow 不改变实际描边颜色，避免误以为改了色。
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || previewMode !== "local") return;
+    for (const el of Array.from(stage.querySelectorAll("[data-source-id]"))) {
+      el.classList.toggle("dg-selected", el.getAttribute("data-source-id") === selectedId);
+    }
+  }, [selectedId, result, zoom, previewMode, handlesOn]);
 
   // 每次拿到新结果都回到「自动」模式，避免上一次手动收起延续到下一张图
   useEffect(() => {
@@ -447,10 +465,25 @@ export function DiagramCanvas() {
     }
   }
 
+  /** F2-2：点图元本体或控制点都选中同一条语句；点空白清除选中。 */
+  function resolveSelectedId(target: EventTarget | null): string | null {
+    if (!(target instanceof Element)) return null;
+    const shape = target.closest("[data-source-id]");
+    if (shape) return shape.getAttribute("data-source-id");
+    const marker = target.closest("[data-dg-handle-id]");
+    if (marker) {
+      const id = marker.getAttribute("data-dg-handle-id");
+      return resultRef.current?.handles.find((h) => h.id === id)?.sourceRef?.sourceId ?? null;
+    }
+    return null;
+  }
+
   function onStagePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
     if (e.button !== 0) return;
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
+    const sid = resolveSelectedId(e.target);
+    if (useDiagramStore.getState().selectedId !== sid) setSelectedId(sid);
     startDragFromEvent(e.target);
     if (dragRef.current) e.preventDefault();
   }
@@ -711,7 +744,7 @@ export function DiagramCanvas() {
         </span>
         <span>
           {previewMode === "local"
-            ? `拖动控制点写回坐标 · ${handleCount} 个控制点（F2-1）`
+            ? `拖动控制点写回坐标 · ${handleCount} 个控制点 · 选中 ${selectedId ?? "无"}（侧栏改属性）`
             : "精确预览只读 · 切回本地即时可拖拽"}
         </span>
         <span>插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>

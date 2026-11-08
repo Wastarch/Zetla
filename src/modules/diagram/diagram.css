@@ -643,3 +643,146 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   transform-origin: center center;
   user-select: none;
 }
+
+/* ── M2·F2-2：画布点选高亮 + 侧栏属性区 ───────────────────────
+   drop-shadow 只加外发光，不覆盖 stroke，避免用户误以为线条颜色被改。 */
+.dg-canvas-stage [data-source-id] {
+  cursor: pointer;
+}
+.dg-canvas-stage .dg-selected {
+  filter: drop-shadow(0 0 2px var(--accent, #2d7ff9));
+}
+
+.dg-prop-card {
+  gap: 8px;
+}
+.dg-prop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 132px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.dg-prop-item {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 4px 6px;
+  text-align: left;
+  font-size: 11px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+  cursor: pointer;
+}
+.dg-prop-item:hover {
+  border-color: var(--accent, #2d7ff9);
+}
+.dg-prop-item.is-on {
+  border-color: var(--accent, #2d7ff9);
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  color: var(--accent, #2d7ff9);
+}
+.dg-prop-item.is-off {
+  opacity: 0.55;
+}
+.dg-prop-item-id {
+  flex: none;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  opacity: 0.75;
+}
+.dg-prop-item-code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, monospace);
+}
+
+.dg-prop-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line, #e0e0e0);
+}
+.dg-prop-snippet {
+  margin: 0;
+  padding: 5px 6px;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-prop-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.dg-prop-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt, #353333);
+}
+.dg-prop-select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  font-size: 11px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+}
+.dg-prop-select:focus {
+  border-color: var(--accent, #2d7ff9);
+  outline: none;
+}
+.dg-prop-custom {
+  display: flex;
+  gap: 4px;
+}
+.dg-prop-custom .dg-side-input {
+  flex: 1;
+  min-width: 0;
+}
+.dg-prop-custom .btn {
+  flex: none;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+.dg-prop-current {
+  font-size: 10px;
+  color: var(--txt-2, #6b6b6b);
+  opacity: 0.8;
+}
+.dg-prop-clear {
+  align-self: flex-start;
+  font-size: 11px;
+}
+.dg-prop-notice {
+  margin: 0;
+  padding: 5px 7px;
+  font-size: 11px;
+  line-height: 1.5;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+}
+.dg-prop-notice.is-ok {
+  border-color: var(--ok, #218a5c);
+  color: var(--ok, #218a5c);
+}
+.dg-prop-notice.is-warn {
+  border-color: var(--warn, #a86a12);
+  color: var(--warn, #a86a12);
+}

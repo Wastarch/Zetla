@@ -1,7 +1,8 @@
-// M2·F1-3 / F2-1：tikz-editor 引擎封装。
+// M2·F1-3 / F2-1 / F2-2：tikz-editor 引擎封装。
 // 职责：动态加载 vendor bundle（3.4MB，只在绘图 Tab 首次渲染时拉取）、
 //       按源码内容做 LRU 缓存、把上游多种 diagnostics 归一化给 UI、
-//       把语义层 editHandles 透出给画布、把一次拖拽落成最小源码补丁。
+//       把语义层 editHandles 透出给画布、把一次拖拽落成最小源码补丁、
+//       F2-2 把 parse.figure.body 归一化为属性面板可用的语句清单。
 // 不做：debounce（在 DiagramCanvas）、SVG 消毒（在 ./svg.ts）、DOM 控制点绘制（在 ../DiagramCanvas）。
 import type {
   VendorDiagnostic,
@@ -10,6 +11,7 @@ import type {
   VendorRenderResult,
   VendorViewBox,
 } from "./vendor/engine.bundle.js";
+import { collectStatements, type TikzStatement } from "../optionsEdit.ts";
 
 export interface TikzDiagnostic {
   severity: "warning" | "error";
@@ -46,6 +48,11 @@ export interface TikzRender {
    * sourceFingerprint 不匹配返回 stale handle。
    */
   handles: TikzEditHandle[];
+  /**
+   * F2-2：与这份 svg 同一次解析得到的语句清单（id 与 SVG 的 data-source-id 一致）。
+   * 侧栏属性面板按 selectedId 查语句，再用 optionsEdit 生成最小选项补丁。
+   */
+  statements: TikzStatement[];
   elapsedMs: number;
   fromCache: boolean;
 }
@@ -213,6 +220,7 @@ export async function renderTikz(source: string): Promise<TikzRender> {
     diagnostics,
     unsupported: diagnostics.filter((d) => /^unsupported/i.test(d.code ?? "")),
     handles,
+    statements: collectStatements(raw.parse?.figure, source),
     elapsedMs: performance.now() - started,
     fromCache: false,
   };

@@ -3,9 +3,9 @@
 // bare 开关屏蔽主文档专属扩展（✎ 徽标 / 图片拖入 / 引用跳转 / synctex 等）；
 // 不传 path → 不向全局 activeView 注册，不污染主文档的命令桥与查找替换。
 //
-// F2-1：把本栏的 CM6 视图注册到 sourceBridge，供画布拖拽写回用最小 span dispatch。
-// 这样「键盘直接改源码」与「画布拖控制点」共享同一条 CM6 history，
-// 前者 Ctrl+Z、后者画布上的撤销按钮，都能一次撤销一次拖拽。
+// F2-1 / F2-2：把本栏的 CM6 视图注册到 sourceBridge，供画布拖拽与侧栏属性编辑
+// 用最小 span dispatch。这样「键盘直接改源码」「拖控制点」「改属性」共享同一条
+// CM6 history，Ctrl+Z / 画布撤销按钮都能一次撤销一次改动。
 import { useEffect, useRef } from "react";
 import { redo, undo } from "@codemirror/commands";
 import { EditorView } from "@codemirror/view";
@@ -31,8 +31,8 @@ export function DiagramCodePane() {
     return () => ro.disconnect();
   }, []);
 
-  // F2-1：源码栏在三种布局下都常驻挂载（仅 hidden），所以画布始终能拿到视图。
-  // patch 前校验 expectedSource === 当前文档，杜绝把补丁打到用户在拖拽期间改过的源码上。
+  // F2-1 / F2-2：源码栏在三种布局下都常驻挂载（仅 hidden），画布与侧栏始终能拿到视图。
+  // patch 前校验 expectedSource === 当前文档，杜绝把补丁打到用户在操作期间改过的源码上。
   useEffect(
     () =>
       registerDiagramSourceBridge({
@@ -48,7 +48,7 @@ export function DiagramCodePane() {
             changes: { from: patch.from, to: patch.to, insert: patch.insert },
             selection: { anchor: caret },
             effects: EditorView.scrollIntoView(caret, { y: "nearest" }),
-            userEvent: "input.diagram-drag",
+            userEvent: "input.diagram",
           });
           return true;
         },

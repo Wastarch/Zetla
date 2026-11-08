@@ -1,13 +1,16 @@
 // M2·绘图模块：模块内 zustand 状态。
 // F1-1 起持有 source / targetTex；F1-2 增三布局 layoutMode 与分屏比例 splitRatio；
 // F1-4 增导出方式与 figure 包裹选项；F1-5 增精确预览通道偏好，并把这些轻量 UI 偏好
-// 统一收敛到本模块的读写入口（设置页「绘图」分区直接调用，见 resetDiagramPreferences）。
+// 统一收敛到本模块的读写入口（设置页「绘图」分区直接调用，见 resetDiagramPreferences）；
+// F2-2 把 F1-1 预留的 selectedId 接上画布点选，并新增 renderMeta（渲染派生的语句清单）。
 //
 // 存储口径：绘图布局/预览模式是低风险 UI 状态，沿用 localStorage（键集中在此文件），
 // 不扩全局 AppSettings schema（那需要同步改 Rust AppConfig + 归一化 + 迁移，收益不抵风险）。
-// 后续切片扩展：F2-2 属性面板（selectedId 仍是占位）；F5 组件库插入。
+// renderMeta / selectedId 是会话态，不持久化；renderMeta 自带 source 便于侧栏校验是否过期。
+// 后续切片扩展：F5 组件库插入。
 import { create } from "zustand";
 import type { ExportMode, PreviewMode } from "@/types/diagram";
+import type { TikzStatement } from "./optionsEdit.ts";
 
 /** Tab 内三种布局：仅画布 / 仅源码 / 左右分屏（都是同一个 diagram://editor Tab 内的视图状态） */
 export type LayoutMode = "canvas" | "code" | "split";
@@ -70,9 +73,15 @@ export interface DiagramState {
   /** 当前绘图源码（完整 tikzpicture 环境；由 Tab 内 LaTeXEditor 受控驱动） */
   source: string;
   setSource: (s: string) => void;
-  /** 当前选中图元 id（F2-2 属性面板用；当前占位） */
+  /** F2-2：画布点选 / 侧栏列表选中的图元 id（与 SVG 的 data-source-id 一致） */
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
+  /**
+   * F2-2：最近一次本地渲染派生的语句清单。带上 source 让侧栏在 debounce 期间
+   * 能识别「源码已改但还没重渲染」，避免把补丁打到过期的选项 span 上。
+   */
+  renderMeta: { source: string; statements: TikzStatement[] } | null;
+  setRenderMeta: (m: { source: string; statements: TikzStatement[] } | null) => void;
   /**
    * 编辑完成后代码要插入的目标 .tex 绝对路径（F1-1 打开绘图 Tab 时锁定）。
    * 伪 buffer Tab 活动时 getActiveView() 会失效，F1-4 必须靠此路径取 getEditorView(targetTex)。
@@ -115,6 +124,8 @@ export const useDiagramStore = create<DiagramState>((set) => ({
   setSource: (s) => set({ source: s }),
   selectedId: null,
   setSelectedId: (id) => set({ selectedId: id }),
+  renderMeta: null,
+  setRenderMeta: (m) => set({ renderMeta: m }),
   targetTex: null,
   setTargetTex: (p) => set({ targetTex: p }),
   layoutMode: readLayout(),

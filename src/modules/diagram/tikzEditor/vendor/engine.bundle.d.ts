@@ -51,7 +51,8 @@ export interface VendorEditHandle {
 }
 
 export interface VendorRenderResult {
-  parse?: { diagnostics?: VendorDiagnostic[] };
+  /** F2-2：parse.figure.body 里每条语句带 options.span / entries，供属性面板定位选项 */
+  parse?: { diagnostics?: VendorDiagnostic[]; figure?: unknown };
   semantic?: {
     diagnostics?: VendorDiagnostic[];
     /** 可拖拽控制点；与 svg 字符串来自同一次渲染 */

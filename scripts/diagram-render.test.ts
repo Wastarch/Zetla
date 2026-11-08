@@ -21,6 +21,14 @@ import {
   hasDrawableContent,
   sanitizeSvg,
 } from "../src/modules/diagram/tikzEditor/svg.ts";
+import {
+  applyPatchToSource,
+  isColorFlag,
+  normalizeCustomValue,
+  planPropertyPatch,
+  readProperty,
+  statementEditability,
+} from "../src/modules/diagram/optionsEdit.ts";
 import { insertBeforeDocument } from "../src/core/preamble.ts";
 import {
   buildDiagramInsertCode,
@@ -296,6 +304,147 @@ if (nodeHandle) {
   check(!named || !isDraggableHandle(named), "命名坐标引用默认锁定，不静默脱离引用");
   if (named) check(lockedHandleReason(named).includes("命名"), "锁定控制点给出可读原因");
 }
+
+console.log("F2-2 · 属性语句解析 / 可编辑性 / 当前值读取");
+const PROP_SRC = String.raw`\begin{tikzpicture}
+  % 保留这一行注释
+  \draw[thick, blue, ->, dashed] (0,0) rectangle (3,2);
+  \node[draw, circle, fill=red!20] (a) at (1,1) {A};
+  \draw (2,0) -- (3,1);
+\end{tikzpicture}`;
+const propRender = await renderTikz(PROP_SRC);
+const stmts = propRender.statements;
+check(stmts.length === 3, "三条语句（含有 / 无选项）都被归一化");
+check(stmts[0]?.id === "path:0" && stmts[0]?.command === "draw", "draw 语句 id / command 正确");
+check(stmts[0]?.optionsRaw === "[thick, blue, ->, dashed]", "draw 顶层选项块原文正确");
+check(
+  stmts[1]?.command === "node" && stmts[1]?.optionsRaw === "[draw, circle, fill=red!20]",
+  "node 的选项从 items[].Node.options 取到"
+);
+check(stmts[2]?.optionsSpan === null && (stmts[2]?.insertOffset ?? -1) > 0, "无选项语句给出插入位置");
+check(statementEditability(stmts[0]).editable, "\\draw 可编辑属性");
+check(statementEditability(stmts[0]).keys.includes("arrow"), "\\draw 开放箭头属性");
+check(
+  statementEditability(stmts[1]).editable && !statementEditability(stmts[1]).keys.includes("arrow"),
+  "\\node 可编辑但不显示箭头属性"
+);
+check(readProperty(stmts[0], "lineWidth") === "thick", "读到线宽 thick");
+check(readProperty(stmts[0], "stroke") === "blue", "读到裸颜色 blue");
+check(readProperty(stmts[0], "arrow") === "->", "读到箭头 ->");
+check(readProperty(stmts[0], "dash") === "dashed", "读到线型 dashed");
+check(readProperty(stmts[1], "fill") === "red!20", "读到 node 的 fill=red!20");
+check(readProperty(stmts[2], "stroke") === null, "未显式设置的属性返回 null");
+check(isColorFlag("red!50!white") && isColorFlag("blue!20"), "xcolor 混色写法被识别为颜色");
+check(!isColorFlag("thick") && !isColorFlag("dashed"), "线宽 / 线型不会被误判成颜色");
+
+console.log("F2-2 · 最小选项补丁（替换 / 插入 / 移除 / 格式保留）");
+const pReplace = planPropertyPatch(PROP_SRC, stmts[0], "lineWidth", "very thick");
+check(pReplace.status === "ok", "替换线宽生成补丁");
+if (pReplace.status === "ok") {
+  const next = applyPatchToSource(PROP_SRC, pReplace.patch);
+  check(next.includes("[very thick, blue, ->, dashed]"), "只替换 thick，其余选项原样保留");
+  check(pReplace.patch.to - pReplace.patch.from === 5, "补丁跨度恰为 thick 的 5 个字符");
+  check(next.split("\n").length === PROP_SRC.split("\n").length, "换行数量不变");
+  check(next.includes("% 保留这一行注释"), "注释一字不改");
+  const rr = await renderTikz(next);
+  check(readProperty(rr.statements[0], "lineWidth") === "very thick", "重渲染后新源码属性已生效");
+  check(rr.svg.includes("<path"), "补丁后源码仍可渲染");
+}
+const pColor = planPropertyPatch(PROP_SRC, stmts[0], "stroke", "red");
+check(pColor.status === "ok", "替换裸颜色生成补丁");
+if (pColor.status === "ok") {
+  const next = applyPatchToSource(PROP_SRC, pColor.patch);
+  check(next.includes("[thick, red, ->, dashed]"), "blue → red 保持裸颜色写法");
+  const rr = await renderTikz(next);
+  check(rr.svg !== propRender.svg, "画布 SVG 随颜色变化（即时反映）");
+}
+const pInsertNew = planPropertyPatch(PROP_SRC, stmts[2], "stroke", "green");
+check(pInsertNew.status === "ok", "无选项语句可插入新选项");
+if (pInsertNew.status === "ok") {
+  check(pInsertNew.patch.insert === "[green]", "插入完整方括号选项");
+  check(
+    applyPatchToSource(PROP_SRC, pInsertNew.patch).includes("\\draw[green] (2,0) -- (3,1);"),
+    "[green] 精确插在 \\draw 之后"
+  );
+}
+const pAppend = planPropertyPatch(PROP_SRC, stmts[0], "fill", "gray!20");
+check(pAppend.status === "ok", "已有选项块可追加新属性");
+if (pAppend.status === "ok") {
+  check(
+    applyPatchToSource(PROP_SRC, pAppend.patch).includes("[thick, blue, ->, dashed, fill=gray!20]"),
+    "追加 fill=gray!20 且保留原有逗号风格"
+  );
+}
+const pRemoveLast = planPropertyPatch(PROP_SRC, stmts[0], "dash", null);
+check(pRemoveLast.status === "ok", "移除末位选项生成补丁");
+if (pRemoveLast.status === "ok") {
+  check(
+    applyPatchToSource(PROP_SRC, pRemoveLast.patch).includes("[thick, blue, ->]"),
+    "移除 dashed 时连前面的逗号一起删掉"
+  );
+}
+const pRemoveMid = planPropertyPatch(PROP_SRC, stmts[0], "stroke", null);
+check(pRemoveMid.status === "ok", "移除中间选项生成补丁");
+if (pRemoveMid.status === "ok") {
+  check(
+    applyPatchToSource(PROP_SRC, pRemoveMid.patch).includes("[thick, ->, dashed]"),
+    "移除 blue 时连后面的逗号一起删掉"
+  );
+}
+const pRemoveFill = planPropertyPatch(PROP_SRC, stmts[1], "fill", null);
+check(
+  pRemoveFill.status === "ok" &&
+    applyPatchToSource(PROP_SRC, pRemoveFill.patch).includes("[draw, circle]"),
+  "node 的 fill=... 可单独移除"
+);
+check(
+  planPropertyPatch(PROP_SRC, stmts[2], "stroke", null).status === "noop",
+  "原本就没设置时移除不产生补丁"
+);
+check(
+  planPropertyPatch(PROP_SRC, stmts[0], "lineWidth", "thick").status === "noop",
+  "设为当前值不产生补丁"
+);
+
+console.log("F2-2 · 歧义 / 锁定 / 过期 / 输入安全");
+const AMB_SRC = String.raw`\begin{tikzpicture}
+  \draw[thick, line width=1pt] (0,0) -- (1,1);
+\end{tikzpicture}`;
+const ambRender = await renderTikz(AMB_SRC);
+const ambPlan = planPropertyPatch(AMB_SRC, ambRender.statements[0], "lineWidth", "thin");
+check(ambPlan.status === "error", "同类选项出现多个时拒绝猜测");
+if (ambPlan.status === "error") check(ambPlan.reason.includes("同类选项"), "歧义理由可读");
+const FOREACH_SRC = String.raw`\begin{tikzpicture}
+  \foreach \x in {1,2} \draw (\x,0) circle (2pt);
+\end{tikzpicture}`;
+const foreachRender = await renderTikz(FOREACH_SRC);
+const foreachStmt = foreachRender.statements.find((s) => s.kind === "Foreach");
+check(!!foreachStmt && !statementEditability(foreachStmt).editable, "\\foreach 展开语句被锁定");
+if (foreachStmt) {
+  check(statementEditability(foreachStmt).reason.includes("foreach"), "锁定理由说明是循环展开");
+  check(
+    planPropertyPatch(FOREACH_SRC, foreachStmt, "stroke", "red").status === "error",
+    "锁定语句不生成补丁"
+  );
+}
+const shifted = "% X\n" + PROP_SRC;
+check(
+  planPropertyPatch(shifted, stmts[0], "lineWidth", "very thick").status === "error",
+  "源码在选择期间变化后旧 span 被拒绝"
+);
+check(
+  planPropertyPatch(PROP_SRC, stmts[2], "stroke", "blue, ->]").status === "error",
+  "含 ] / , 的自定义值被拒绝，不写坏选项结构"
+);
+check(
+  planPropertyPatch(PROP_SRC, stmts[2], "stroke", "\\mycolor").status === "error",
+  "含反斜杠的自定义值被拒绝"
+);
+const customWidth = normalizeCustomValue("lineWidth", "1.2pt");
+check("value" in customWidth && customWidth.value === "line width=1.2pt", "线宽简写补全为合法 TikZ");
+const customColor = normalizeCustomValue("fill", "blue!40");
+check("value" in customColor && customColor.value === "blue!40", "自定义混色值通过校验");
+check("error" in normalizeCustomValue("arrow", "boom"), "未知箭头样式被拒绝");
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

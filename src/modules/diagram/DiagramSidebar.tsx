@@ -2,10 +2,12 @@
 // 形态：活动栏「绘图」→ 侧栏显示组件库 / 布局选项 / 导出方式；画布与源码放在
 // 主编辑区的独立 Tab（diagram://editor 伪 buffer），两者并存、互不遮挡。
 //
-// F1-1 打开/聚焦绘图 Tab + 锁定 targetTex；F1-4 导出方式单选与「插入到文档」主操作。
+// F1-1 打开/聚焦绘图 Tab + 锁定 targetTex；F1-4 导出方式单选与「插入到文档」主操作；
+// F2-2 在侧栏顶部加「属性」区（不设右坞），选中图元后直接改 TikZ 选项。
 // 切片编号见 docs/dev/绘图模块开发计划.md。
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
+import { DiagramProperties } from "./DiagramProperties";
 import { insertDiagramCode } from "./insert";
 import type { ExportMode } from "@/types/diagram";
 import "./diagram.css";
@@ -67,6 +69,8 @@ export function DiagramSidebar() {
         <span className="dg-side-title">绘图 · TikZ</span>
         <span className="dg-side-meta">{lineCount} 行源码</span>
       </div>
+
+      <DiagramProperties />
 
       <section className="dg-side-card">
         <h3 className="dg-side-card-title">组件库</h3>
