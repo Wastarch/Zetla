@@ -1,9 +1,12 @@
-// M2·F1-3：tikz-editor 引擎封装。
-// 职责：动态加载 vendor bundle（3.3MB，只在绘图 Tab 首次渲染时拉取）、
-//       按源码内容做 LRU 缓存、把上游多种 diagnostics 归一化给 UI。
-// 不做：debounce（在 DiagramCanvas）、SVG 消毒（在 ./svg.ts）、拖拽写回（F2）。
+// M2·F1-3 / F2-1：tikz-editor 引擎封装。
+// 职责：动态加载 vendor bundle（3.4MB，只在绘图 Tab 首次渲染时拉取）、
+//       按源码内容做 LRU 缓存、把上游多种 diagnostics 归一化给 UI、
+//       把语义层 editHandles 透出给画布、把一次拖拽落成最小源码补丁。
+// 不做：debounce（在 DiagramCanvas）、SVG 消毒（在 ./svg.ts）、DOM 控制点绘制（在 ../DiagramCanvas）。
 import type {
   VendorDiagnostic,
+  VendorEditHandle,
+  VendorEditIntentResult,
   VendorRenderResult,
   VendorViewBox,
 } from "./vendor/engine.bundle.js";
@@ -12,9 +15,12 @@ export interface TikzDiagnostic {
   severity: "warning" | "error";
   message: string;
   code?: string;
-  /** 源码字符偏移，供 F4 反向编辑定位；F1 仅展示 */
+  /** 源码字符偏移，供 F4-1 反向编辑定位；F1 仅展示 */
   offset?: number;
 }
+
+/** F2-1：画布控制点。字段是上游 EditHandle 的子集，其余字段原样透给 applyEditIntent。 */
+export type TikzEditHandle = VendorEditHandle;
 
 export interface TikzViewBox {
   x: number;
@@ -34,9 +40,26 @@ export interface TikzRender {
    * UI 必须显式提示「预览不完整，导出以 XeLaTeX 为准」，不能只给一个可折叠的诊断按钮。
    */
   unsupported: TikzDiagnostic[];
+  /**
+   * 与这份 svg 同一次渲染产出的可拖拽控制点（F2-1）。
+   * 世界坐标单位是 pt、Y 轴向上；applyDragEdit 必须传同一份数组，否则上游会因
+   * sourceFingerprint 不匹配返回 stale handle。
+   */
+  handles: TikzEditHandle[];
   elapsedMs: number;
   fromCache: boolean;
 }
+
+/** 一次拖拽的写回结果；status 三态分别对应成功 / 上游不支持 / 引擎报错。 */
+export type DragEditOutcome =
+  | {
+      status: "ok";
+      newSource: string;
+      /** 上游给出的坐标替换文本，用于提示条展示「(1,1) → (1.4,1.2)」 */
+      replacement: string | null;
+    }
+  | { status: "unsupported"; reason: string }
+  | { status: "error"; message: string };
 
 type VendorModule = typeof import("./vendor/engine.bundle.js");
 
@@ -180,14 +203,57 @@ export async function renderTikz(source: string): Promise<TikzRender> {
   }
 
   const diagnostics = collectDiagnostics(raw);
+  const rawHandles = raw.semantic?.editHandles;
+  const handles: TikzEditHandle[] = Array.isArray(rawHandles)
+    ? (rawHandles.filter((h) => h && typeof h.id === "string") as TikzEditHandle[])
+    : [];
   const render: TikzRender = {
     svg,
     viewBox: readViewBox(raw),
     diagnostics,
     unsupported: diagnostics.filter((d) => /^unsupported/i.test(d.code ?? "")),
+    handles,
     elapsedMs: performance.now() - started,
     fromCache: false,
   };
   writeCache(source, render);
   return render;
+}
+
+/**
+ * F2-1：把一次控制点拖拽交给上游语义层改写成新源码。
+ * 只做「算」，不碰 CodeMirror / store —— 提交由 DiagramCanvas 经 sourceBridge 完成，
+ * 这样源码直编与画布拖拽进的是同一条 CM6 撤销栈。
+ */
+export async function applyDragEdit(
+  source: string,
+  handles: readonly TikzEditHandle[],
+  handleId: string,
+  newWorld: { x: number; y: number },
+): Promise<DragEditOutcome> {
+  if (!Number.isFinite(newWorld.x) || !Number.isFinite(newWorld.y)) {
+    return { status: "error", message: "拖拽坐标无效" };
+  }
+  let raw: VendorEditIntentResult;
+  try {
+    const mod = await loadVendor();
+    raw = mod.applyEditIntent(source, handles, { kind: "move", handleId, newWorld });
+  } catch (err) {
+    return { status: "error", message: `引擎写回异常：${errorText(err)}` };
+  }
+  if (raw.kind === "success") {
+    const replacement = raw.patches?.[0]?.replacement;
+    if (typeof raw.newSource !== "string") {
+      return { status: "error", message: "引擎未返回新源码" };
+    }
+    return {
+      status: "ok",
+      newSource: raw.newSource,
+      replacement: typeof replacement === "string" ? replacement : null,
+    };
+  }
+  if (raw.kind === "unsupported") {
+    return { status: "unsupported", reason: raw.reason || "该构造暂不支持拖拽写回" };
+  }
+  return { status: "error", message: raw.message || "写回失败" };
 }

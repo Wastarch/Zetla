@@ -1,17 +1,48 @@
-// M2·F1-3 / F1-6：TikZ 双通道只读画布。
+// M2·F1-3 / F1-6 / F2-1：TikZ 双通道画布 + 拖拽写回。
 //  本地通道：source → debounce 160ms → engine.renderTikz（动态加载 vendor bundle + LRU
-//            缓存 + 诊断归一化）→ svg.sanitizeSvg 白名单消毒 → importNode 挂载。
+//            缓存 + 诊断归一化 + editHandles）→ svg.sanitizeSvg 白名单消毒 → importNode 挂载
+//            → 追加控制点 <circle> 图层（DOM API 创建，不经过 innerHTML）。
 //  精确通道：source → debounce 800ms → Rust tikz_preview（XeLaTeX standalone → PDF → SVG）
-//            → data URL 交给 <img>（隔离文档，不内联注入、不受白名单限制）。
+//            → data URL 交给 <img>（隔离文档，不内联注入、不受白名单限制）。精确通道只读，
+//            没有语义句柄，拖拽只在本地通道开放。
+//  拖拽写回：pointerdown 命中控制点 → window 级 pointermove（屏幕 px 经 getScreenCTM 反算
+//            world 位移）→ pointerup 调上游 applyEditIntent 得到新源码 → 求最小 span 补丁
+//            → 经 sourceBridge dispatch 到 CM6 视图（与键盘改源码共用撤销栈）。
 // 三布局下本组件常驻挂载（DiagramTab 用 hidden 切换），故不会因布局切换重复拉引擎。
 // 精确通道只在绘图 Tab 真实激活时编译，Tab 隐藏/切到别的缓冲时不跑 XeLaTeX。
-// F2 起在此叠加拖拽层；F1 阶段只读。
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useSettingsStore } from "@/core/settings";
 import { useDiagramStore } from "./store";
-import { preloadTikzEngine, renderTikz, type TikzRender } from "./tikzEditor/engine";
+import {
+  applyDragEdit,
+  preloadTikzEngine,
+  renderTikz,
+  type TikzEditHandle,
+  type TikzRender,
+  type TikzViewBox,
+} from "./tikzEditor/engine";
 import { hasDrawableContent, sanitizeSvg } from "./tikzEditor/svg";
+import {
+  MAX_VISIBLE_HANDLES,
+  clientDeltaToSvgDelta,
+  dragDeltaLabel,
+  handleLabel,
+  isDraggableHandle,
+  lockedHandleReason,
+  singleSpanPatch,
+  svgDeltaToWorldDelta,
+  worldToSvgPoint,
+  type MatrixLike,
+  type PointLike,
+} from "./dragEdit";
+import { getDiagramSourceBridge } from "./sourceBridge";
 import {
   getCachedPreview,
   previewKey,
@@ -25,6 +56,11 @@ const PRECISE_DEBOUNCE_MS = 800;
 const DIAGRAM_PATH = "diagram://editor";
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3];
 const MAX_DIAG = 5;
+const SVG_NS = "http://www.w3.org/2000/svg";
+/** 控制点半径 / 线宽以「屏幕像素」为准，除以 zoom 换算到 SVG 用户单位 */
+const HANDLE_R_PX = 4.2;
+const HANDLE_STROKE_PX = 1.4;
+const DRAG_THRESHOLD_PX = 3;
 
 function basename(p: string): string {
   return p.split(/[\\/]/).pop() || p;
@@ -34,8 +70,75 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function fmtNum(n: number): string {
+  return Number.isFinite(n) ? String(Math.round(n * 10000) / 10000) : "0";
+}
+
+/** 控制点图层：画在消毒后的 SVG 之上，全部由 DOM API 创建，绝不拼 HTML 字符串。 */
+function buildHandleLayer(
+  svg: SVGSVGElement,
+  handles: readonly TikzEditHandle[],
+  viewBox: TikzViewBox,
+  zoom: number,
+): SVGGElement {
+  const layer = document.createElementNS(SVG_NS, "g");
+  layer.setAttribute("data-dg-handle-layer", "1");
+  const r = HANDLE_R_PX / zoom;
+  const stroke = HANDLE_STROKE_PX / zoom;
+  for (const h of handles.slice(0, MAX_VISIBLE_HANDLES)) {
+    if (!h.world || !Number.isFinite(h.world.x) || !Number.isFinite(h.world.y)) continue;
+    const p = worldToSvgPoint(h.world, viewBox);
+    const draggable = isDraggableHandle(h);
+    const c = document.createElementNS(SVG_NS, "circle");
+    c.setAttribute("class", `dg-handle${draggable ? "" : " is-locked"}`);
+    c.setAttribute("cx", fmtNum(p.x));
+    c.setAttribute("cy", fmtNum(p.y));
+    c.setAttribute("r", fmtNum(r));
+    c.setAttribute("stroke-width", fmtNum(stroke));
+    c.setAttribute("data-dg-handle-id", h.id);
+    c.setAttribute("data-dg-locked", draggable ? "0" : "1");
+    const title = document.createElementNS(SVG_NS, "title");
+    title.textContent = draggable
+      ? `${handleLabel(h)}：按住拖动可改写源码坐标`
+      : lockedHandleReason(h);
+    c.appendChild(title);
+    layer.appendChild(c);
+  }
+  // 拖拽时的虚线引导（从起点到当前位置），平时 hidden
+  const guide = document.createElementNS(SVG_NS, "line");
+  guide.setAttribute("class", "dg-handle-guide");
+  guide.setAttribute("data-dg-guide", "1");
+  guide.setAttribute("stroke-width", fmtNum(stroke));
+  guide.setAttribute("stroke-dasharray", fmtNum(4 / zoom));
+  guide.setAttribute("visibility", "hidden");
+  layer.appendChild(guide);
+  svg.appendChild(layer);
+  return layer;
+}
+
+interface DragState {
+  handleId: string;
+  handle: TikzEditHandle;
+  sourceAtStart: string;
+  resultAtStart: TikzRender;
+  startClient: PointLike;
+  startWorld: PointLike;
+  startSvg: PointLike;
+  matrix: MatrixLike;
+  marker: SVGCircleElement;
+  guide: SVGLineElement | null;
+  moved: boolean;
+  newWorld: PointLike;
+}
+
+interface Notice {
+  tone: "ok" | "warn" | "err";
+  text: string;
+}
+
 export function DiagramCanvas() {
   const source = useDiagramStore((s) => s.source);
+  const setSource = useDiagramStore((s) => s.setSource);
   const targetTex = useDiagramStore((s) => s.targetTex);
   const previewMode = useDiagramStore((s) => s.previewMode);
   const setPreviewMode = useDiagramStore((s) => s.setPreviewMode);
@@ -51,11 +154,23 @@ export function DiagramCanvas() {
   const [diagOpen, setDiagOpen] = useState<boolean | null>(null);
   const [precise, setPrecise] = useState<TikzPreviewResult | null>(null);
   const [preciseBusy, setPreciseBusy] = useState(false);
+  const [handlesOn, setHandlesOn] = useState(true);
+  const [dragLabel, setDragLabel] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<DragState | null>(null);
+  // pointerdown 的 client 坐标要传给 window 级监听，用 ref 中转（避免闭包捕获旧事件对象）
+  const lastPointer = useRef<PointLike>({ x: 0, y: 0 }).current;
+  // window 级 pointer 监听只注册一次，靠 ref 读最新状态，避免反复解绑/重绑
+  const sourceRef = useRef(source);
+  sourceRef.current = source;
+  const resultRef = useRef(result);
+  resultRef.current = result;
+  const commitDragRef = useRef<(d: DragState) => void>(() => undefined);
 
   const empty = source.trim().length === 0;
 
-  // 预热：3.32MB 的动态 chunk 在打开 Tab 时就开始拉，不等第一次敲键盘
+  // 预热：3.39MB 的动态 chunk 在打开 Tab 时就开始拉，不等第一次敲键盘
   useEffect(() => {
     let alive = true;
     preloadTikzEngine().then(
@@ -134,9 +249,12 @@ export function DiagramCanvas() {
   }, [source, empty, previewMode, tabVisible]);
 
   // 消毒后挂载本地 SVG。精确模式下清空 stage（改由 <img> 显示，不内联注入）。
+  // 每次重建都丢弃旧拖拽持有的 DOM 引用，避免把位移写到已被替换的控制点上。
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage) return;
+    dragRef.current = null;
+    setDragLabel(null);
     if (!result || previewMode === "precise") {
       stage.replaceChildren();
       return;
@@ -147,13 +265,200 @@ export function DiagramCanvas() {
       setError("引擎返回的 SVG 无法解析，已阻止注入画布。");
       return;
     }
+    if (handlesOn && result.handles.length > 0) {
+      buildHandleLayer(node, result.handles, result.viewBox, zoom);
+    }
     stage.replaceChildren(node);
-  }, [result, zoom, previewMode]);
+  }, [result, zoom, previewMode, handlesOn]);
 
   // 每次拿到新结果都回到「自动」模式，避免上一次手动收起延续到下一张图
   useEffect(() => {
     setDiagOpen(null);
   }, [result]);
+
+  // 拖拽提交：只算一次新源码，再以最小 span 补丁写回 CM6（F2-1 与键盘编辑同撤销栈）。
+  commitDragRef.current = (d: DragState) => {
+    const src = sourceRef.current;
+    const res = resultRef.current;
+    if (!res || src !== d.sourceAtStart || res !== d.resultAtStart) {
+      setNotice({ tone: "warn", text: "源码在拖拽期间发生变化，请重新拖动。" });
+      return;
+    }
+    void applyDragEdit(src, res.handles, d.handleId, d.newWorld).then((outcome) => {
+      if (outcome.status !== "ok") {
+        setNotice(
+          outcome.status === "unsupported"
+            ? { tone: "warn", text: `无法写回：${outcome.reason}` }
+            : { tone: "err", text: `写回失败：${outcome.message}` },
+        );
+        return;
+      }
+      if (outcome.newSource === src) {
+        setNotice({ tone: "warn", text: "位移太小，坐标未变化。" });
+        return;
+      }
+      const patch = singleSpanPatch(src, outcome.newSource);
+      const bridge = getDiagramSourceBridge();
+      const written = !!patch && !!bridge && bridge.patch(patch, src);
+      if (!written) setSource(outcome.newSource); // 降级：功能不丢，但无 CM6 撤销记录
+      const from = d.handle.sourceText ?? "";
+      const to = outcome.replacement ?? "新坐标";
+      setNotice({
+        tone: "ok",
+        text:
+          from && from !== to
+            ? `已写回 ${from} → ${to}${written ? " · Ctrl+Z 可撤销" : ""}`
+            : `坐标已写回${written ? " · Ctrl+Z 可撤销" : ""}`,
+      });
+    });
+  };
+
+  // window 级拖拽监听：即使指针移出 SVG / 画布仍能持续跟随，松手统一提交。
+  useEffect(() => {
+    const resetMarker = (d: DragState) => {
+      d.marker.classList.remove("is-active");
+      d.marker.setAttribute("cx", fmtNum(d.startSvg.x));
+      d.marker.setAttribute("cy", fmtNum(d.startSvg.y));
+      if (d.guide) d.guide.setAttribute("visibility", "hidden");
+    };
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dxPx = e.clientX - d.startClient.x;
+      const dyPx = e.clientY - d.startClient.y;
+      if (!d.moved && Math.hypot(dxPx, dyPx) < DRAG_THRESHOLD_PX) return;
+      d.moved = true;
+      const dSvg = clientDeltaToSvgDelta(d.matrix, dxPx, dyPx);
+      if (!dSvg) return;
+      const dWorld = svgDeltaToWorldDelta(dSvg);
+      d.newWorld = { x: d.startWorld.x + dWorld.x, y: d.startWorld.y + dWorld.y };
+      const curSvg = { x: d.startSvg.x + dSvg.x, y: d.startSvg.y + dSvg.y };
+      d.marker.setAttribute("cx", fmtNum(curSvg.x));
+      d.marker.setAttribute("cy", fmtNum(curSvg.y));
+      if (d.guide) {
+        d.guide.setAttribute("x2", fmtNum(curSvg.x));
+        d.guide.setAttribute("y2", fmtNum(curSvg.y));
+      }
+      setDragLabel(dragDeltaLabel(dWorld.x, dWorld.y));
+    };
+    const onUp = () => {
+      const d = dragRef.current;
+      if (!d) return;
+      dragRef.current = null;
+      d.marker.classList.remove("is-active");
+      if (d.guide) d.guide.setAttribute("visibility", "hidden");
+      setDragLabel(null);
+      if (d.moved) commitDragRef.current(d);
+    };
+    const onCancel = () => {
+      const d = dragRef.current;
+      if (!d) return;
+      dragRef.current = null;
+      resetMarker(d);
+      setDragLabel(null);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && dragRef.current) onCancel();
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, []);
+
+  // 提示条自动消失（4s），新提示会重置计时
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  /** 命中控制点，或直接拖图元本体（自动取它的 node-position 句柄）。 */
+  function startDragFromEvent(target: EventTarget | null): void {
+    if (previewMode !== "local" || !result || !handlesOn) return;
+    if (!(target instanceof Element)) return;
+    const svg = target.closest("svg") as SVGSVGElement | null;
+    if (!svg) return;
+    let hit: TikzEditHandle | undefined;
+    const markerEl = target.closest("[data-dg-handle-id]");
+    if (markerEl) {
+      const id = markerEl.getAttribute("data-dg-handle-id");
+      hit = result.handles.find((h) => h.id === id);
+    } else {
+      const shape = target.closest("[data-source-id]");
+      const sid = shape?.getAttribute("data-source-id");
+      if (sid) {
+        const own = result.handles.filter(
+          (h) => isDraggableHandle(h) && h.sourceRef?.sourceId === sid,
+        );
+        hit = own.find((h) => h.kind === "node-position") ?? own[0];
+      }
+    }
+    if (!hit) return;
+    if (!isDraggableHandle(hit)) {
+      setNotice({ tone: "warn", text: lockedHandleReason(hit) });
+      return;
+    }
+    const layer = svg.querySelector("[data-dg-handle-layer]");
+    let marker: SVGCircleElement | null = null;
+    for (const c of Array.from(layer?.querySelectorAll("circle[data-dg-handle-id]") ?? [])) {
+      if (c.getAttribute("data-dg-handle-id") === hit.id) {
+        marker = c as SVGCircleElement;
+        break;
+      }
+    }
+    if (!marker) {
+      setNotice({ tone: "warn", text: "控制点过多已折叠，请缩小图形或用源码编辑。" });
+      return;
+    }
+    const ctm = svg.getScreenCTM?.();
+    if (!ctm) return;
+    const matrix: MatrixLike = { a: ctm.a, b: ctm.b, c: ctm.c, d: ctm.d };
+    if (!clientDeltaToSvgDelta(matrix, 1, 0)) return; // 退化矩阵（宽度为 0 等）
+    const guide = layer?.querySelector("[data-dg-guide]") as SVGLineElement | null;
+    const startSvg = worldToSvgPoint(hit.world, result.viewBox);
+    dragRef.current = {
+      handleId: hit.id,
+      handle: hit,
+      sourceAtStart: sourceRef.current,
+      resultAtStart: result,
+      startClient: { x: lastPointer.x, y: lastPointer.y },
+      startWorld: { x: hit.world.x, y: hit.world.y },
+      startSvg,
+      matrix,
+      marker,
+      guide,
+      moved: false,
+      newWorld: { x: hit.world.x, y: hit.world.y },
+    };
+    marker.classList.add("is-active");
+    if (guide) {
+      guide.setAttribute("x1", fmtNum(startSvg.x));
+      guide.setAttribute("y1", fmtNum(startSvg.y));
+      guide.setAttribute("x2", fmtNum(startSvg.x));
+      guide.setAttribute("y2", fmtNum(startSvg.y));
+      guide.setAttribute("visibility", "visible");
+    }
+  }
+
+  function onStagePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
+    if (e.button !== 0) return;
+    lastPointer.x = e.clientX;
+    lastPointer.y = e.clientY;
+    startDragFromEvent(e.target);
+    if (dragRef.current) e.preventDefault();
+  }
+
+  function historyCommand(kind: "undo" | "redo"): void {
+    const ok = getDiagramSourceBridge()?.[kind]();
+    if (!ok) setNotice({ tone: "warn", text: "没有可撤销 / 重做的改动，或源码栏尚未就绪。" });
+  }
 
   const preciseImg = useMemo(
     () => (precise?.status === "ok" && precise.svg ? svgDataUrl(precise.svg) : null),
@@ -176,6 +481,7 @@ export function DiagramCanvas() {
   const preciseOk = previewMode === "precise" && precise?.status === "ok" && !!preciseImg;
   const alertTone = preciseFailed ? "err" : preciseOk ? "ok" : "warn";
   const unsupportedCount = unsupported.length;
+  const handleCount = result?.handles.length ?? 0;
 
   return (
     <div className="dg-canvas">
@@ -186,7 +492,7 @@ export function DiagramCanvas() {
             type="button"
             className={previewMode === "local" ? "on" : ""}
             aria-pressed={previewMode === "local"}
-            title="tikz-editor 即时预览（毫秒级，覆盖集有限）"
+            title="tikz-editor 即时预览（毫秒级，覆盖集有限，可拖拽写回）"
             onClick={() => setPreviewMode("local")}
           >
             本地即时
@@ -195,15 +501,34 @@ export function DiagramCanvas() {
             type="button"
             className={previewMode === "precise" ? "on" : ""}
             aria-pressed={previewMode === "precise"}
-            title="XeLaTeX 编译 TikZ 片段（秒级，100% 还原）"
+            title="XeLaTeX 编译 TikZ 片段（秒级，100% 还原；只读）"
             onClick={() => setPreviewMode("precise")}
           >
             XeLaTeX 精确
           </button>
         </div>
         <span className="dg-canvas-hint">
-          {previewMode === "local" ? "tikz-editor · 只读" : "standalone · 100% 还原"}
+          {previewMode === "local" ? "tikz-editor · 可拖拽" : "standalone · 100% 还原"}
         </span>
+        {previewMode === "local" && (
+          <div className="dg-edit-tools">
+            <button
+              type="button"
+              className={handlesOn ? "on" : ""}
+              aria-pressed={handlesOn}
+              title="显示 / 隐藏可拖拽控制点"
+              onClick={() => setHandlesOn(!handlesOn)}
+            >
+              控制点
+            </button>
+            <button type="button" title="撤销上一次源码或拖拽改动 (Ctrl+Z)" onClick={() => historyCommand("undo")}>
+              撤销
+            </button>
+            <button type="button" title="重做 (Ctrl+Shift+Z)" onClick={() => historyCommand("redo")}>
+              重做
+            </button>
+          </div>
+        )}
         {previewMode === "local" && localDiags.length > 0 && (
           <button
             type="button"
@@ -271,7 +596,12 @@ export function DiagramCanvas() {
       )}
 
       <div className="dg-canvas-body">
-        <div className="dg-canvas-stage" ref={stageRef} hidden={previewMode === "precise"} />
+        <div
+          className="dg-canvas-stage"
+          ref={stageRef}
+          hidden={previewMode === "precise"}
+          onPointerDown={onStagePointerDown}
+        />
         {previewMode === "precise" && preciseImg && (
           <img
             className="dg-precise-img"
@@ -294,7 +624,7 @@ export function DiagramCanvas() {
         )}
         {!empty && previewMode === "local" && !error && !result && (
           <div className="dg-canvas-overlay">
-            {engineReady ? "正在渲染…" : "正在加载渲染引擎（首次约 3.3 MB）…"}
+            {engineReady ? "正在渲染…" : "正在加载渲染引擎（首次约 3.4 MB）…"}
           </div>
         )}
         {!empty && blankSvg && (
@@ -326,6 +656,17 @@ export function DiagramCanvas() {
         )}
         {previewMode === "precise" && preciseBusy && preciseImg && (
           <div className="dg-canvas-busy">XeLaTeX 编译中…</div>
+        )}
+        {dragLabel && (
+          <div className="dg-drag-chip">
+            <strong>{dragLabel}</strong>
+            <span>松开写回源码 · Esc 取消</span>
+          </div>
+        )}
+        {notice && (
+          <div className={`dg-drag-notice is-${notice.tone}`} role="status">
+            {notice.text}
+          </div>
         )}
       </div>
 
@@ -368,7 +709,11 @@ export function DiagramCanvas() {
                 ? "编译失败"
                 : "—"}
         </span>
-        <span>F1 阶段画布为只读预览，拖拽编辑属 F2</span>
+        <span>
+          {previewMode === "local"
+            ? `拖动控制点写回坐标 · ${handleCount} 个控制点（F2-1）`
+            : "精确预览只读 · 切回本地即时可拖拽"}
+        </span>
         <span>插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>
       </div>
     </div>

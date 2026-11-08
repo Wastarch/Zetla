@@ -2,7 +2,21 @@
 // 跑法：node --experimental-strip-types scripts/diagram-render.test.ts
 // 依赖 node_modules/jsdom（项目已有），不需要浏览器 / Tauri 运行时。
 import { JSDOM } from "jsdom";
-import { renderTikz, clearTikzRenderCache } from "../src/modules/diagram/tikzEditor/engine.ts";
+import {
+  renderTikz,
+  clearTikzRenderCache,
+  applyDragEdit,
+} from "../src/modules/diagram/tikzEditor/engine.ts";
+import {
+  MAX_VISIBLE_HANDLES,
+  clientDeltaToSvgDelta,
+  dragDeltaLabel,
+  isDraggableHandle,
+  lockedHandleReason,
+  singleSpanPatch,
+  svgDeltaToWorldDelta,
+  worldToSvgPoint,
+} from "../src/modules/diagram/dragEdit.ts";
 import {
   hasDrawableContent,
   sanitizeSvg,
@@ -101,6 +115,11 @@ check(fixed.svg.includes("<text"), "角度文字标签渲染");
 
 console.log("F1-3 · sanitizeSvg（白名单消毒 / 注入）");
 g.document = dom.window.document;
+// 一旦注入 document，引擎会认为自己在浏览器里并用 canvas 度量节点文字宽度。
+// jsdom 未实现 getContext，这里给最小 stub（F2-1 的写回用例也会重新渲染），
+// 避免打印 "Not implemented" 噪音；真实 webview 走正常路径。
+(dom.window.HTMLCanvasElement.prototype as unknown as { getContext: () => unknown }).getContext =
+  () => ({ font: "", measureText: (t: string) => ({ width: t.length * 5 }) });
 const clean = sanitizeSvg(good.svg, good.viewBox, 1);
 check(clean !== null, "合法 SVG 可解析");
 check(clean?.namespaceURI === "http://www.w3.org/2000/svg", "保持 SVG 命名空间");
@@ -203,6 +222,80 @@ check(evilData.startsWith("data:image/svg+xml;charset=utf-8,"), "data URL 前缀
 check(!evilData.includes("<script"), "SVG 内容整体编码，无裸标签");
 check(decodeURIComponent(evilData.split(",")[1] ?? "").includes("<script>"), "解码后可还原原文");
 check(!evilData.includes("\n"), "换行也被编码，不会截断属性");
+
+console.log("F2-1 · 拖拽坐标换算 / 最小源码补丁");
+const m2x = { a: 2, b: 0, c: 0, d: 2 };
+const dSvg = clientDeltaToSvgDelta(m2x, 20, 10);
+check(!!dSvg && dSvg.x === 10 && dSvg.y === 5, "2× 缩放下屏幕位移正确反算为 SVG 位移");
+check(clientDeltaToSvgDelta({ a: 0, b: 0, c: 0, d: 0 }, 1, 1) === null, "退化 CTM 返回 null（取消拖拽）");
+check(svgDeltaToWorldDelta({ x: 3, y: 4 }).y === -4, "SVG→world 的 Y 轴翻转正确");
+const dragVb = { x: -12.4, y: -12.4, width: 110.16, height: 81.71 };
+const originSvg = worldToSvgPoint({ x: 0, y: 0 }, dragVb);
+check(
+  Math.abs(originSvg.x) < 1e-9 &&
+    Math.abs(originSvg.y - (2 * dragVb.y + dragVb.height)) < 1e-9,
+  "world 原点映射到 SVG 的正确 Y"
+);
+check(
+  worldToSvgPoint({ x: 0, y: 28.45 }, dragVb).y < originSvg.y,
+  "world Y 增大时 SVG Y 减小（Y 轴向上）"
+);
+const patchBefore = String.raw`\draw (1,1) -- (2,2);`;
+const patchAfter = String.raw`\draw (1.4,1.2) -- (2,2);`;
+const span = singleSpanPatch(patchBefore, patchAfter);
+check(
+  !!span &&
+    patchBefore.slice(0, span.from) + span.insert + patchBefore.slice(span.to) === patchAfter,
+  "最小 span 补丁可精确还原新源码"
+);
+check(!!span && span.to - span.from <= 5, "只替换坐标数字，未整篇替换");
+check(singleSpanPatch(patchBefore, patchBefore) === null, "无变化时返回 null");
+check(MAX_VISIBLE_HANDLES === 160, "控制点数量上限稳定");
+const deltaLabel = dragDeltaLabel(28.45, -14.23);
+check(
+  deltaLabel.startsWith("Δ ") && deltaLabel.endsWith(" pt") && !deltaLabel.includes("NaN"),
+  "拖拽实时位移标签格式正确"
+);
+
+console.log("F2-1 · applyDragEdit 真实写回 / 过期句柄 / 锁定判定");
+const DRAG_SRC = String.raw`\begin{tikzpicture}
+  \draw (0,0) rectangle (3,2);
+  \node[draw] (a) at (1,1) {A};
+  \draw[->] (a) -- (2.5,1);
+\end{tikzpicture}`;
+const dragRender = await renderTikz(DRAG_SRC);
+check(Array.isArray(dragRender.handles) && dragRender.handles.length > 0, "渲染结果带语义 editHandles");
+const nodeHandle = dragRender.handles.find(
+  (h) => h.kind === "node-position" && isDraggableHandle(h)
+);
+check(!!nodeHandle, "存在可拖的 node-position 控制点");
+if (nodeHandle) {
+  // 1cm = 28.4527559pt、0.5cm = 14.22637795pt，向上游传 world(pt) 由它反算源码写法
+  const target = {
+    x: nodeHandle.world.x + 28.4527559,
+    y: nodeHandle.world.y + 14.22637795,
+  };
+  const moved = await applyDragEdit(DRAG_SRC, dragRender.handles, nodeHandle.id, target);
+  check(moved.status === "ok", "拖拽节点成功返回新源码");
+  if (moved.status === "ok") {
+    check(moved.newSource !== DRAG_SRC, "写回后源码确实变化");
+    check(typeof moved.replacement === "string" && moved.replacement.startsWith("("), "返回坐标替换文本");
+    check(!!singleSpanPatch(DRAG_SRC, moved.newSource), "新旧源码可求最小补丁");
+    const rerender = await renderTikz(moved.newSource);
+    check(rerender.svg.includes("<path"), "写回后的源码仍可渲染");
+    check(rerender.handles.length === dragRender.handles.length, "写回后控制点数量稳定");
+    const stale = await applyDragEdit(DRAG_SRC + " ", dragRender.handles, nodeHandle.id, target);
+    check(stale.status === "error", "源码在拖拽期间变化会被 sourceFingerprint 拒绝");
+  }
+  const unknown = await applyDragEdit(DRAG_SRC, dragRender.handles, "handle:no-such", {
+    x: 0,
+    y: 0,
+  });
+  check(unknown.status === "error", "未知句柄返回 error 而不是抛异常");
+  const named = dragRender.handles.find((h) => h.coordinateForm === "named");
+  check(!named || !isDraggableHandle(named), "命名坐标引用默认锁定，不静默脱离引用");
+  if (named) check(lockedHandleReason(named).includes("命名"), "锁定控制点给出可读原因");
+}
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

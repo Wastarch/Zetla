@@ -5,7 +5,7 @@
 //
 // 存储口径：绘图布局/预览模式是低风险 UI 状态，沿用 localStorage（键集中在此文件），
 // 不扩全局 AppSettings schema（那需要同步改 Rust AppConfig + 归一化 + 迁移，收益不抵风险）。
-// 后续切片扩展：F5 组件库插入；F2 拖拽写回与属性面板。
+// 后续切片扩展：F2-2 属性面板（selectedId 仍是占位）；F5 组件库插入。
 import { create } from "zustand";
 import type { ExportMode, PreviewMode } from "@/types/diagram";
 

@@ -7,7 +7,9 @@
 // 前置：本机有一份 DominikPeters/tikz-editor 的源码检出，并已安装其依赖
 //       （脚本从该仓库的 node_modules 里取 esbuild / @lezer/*，不给 Zetla 增加依赖）。
 //
-// 产出：单个自包含 ESM bundle，只导出同步 renderTikzToSvg。
+// 产出：单个自包含 ESM bundle，导出同步渲染 + 拖拽写回所需的最小编辑 API。
+//       · F1-3 只需 renderTikzToSvg；F2-1 追加 applyEditIntent / applyEdit，
+//         F2-3 追加 capabilityMatrix / FEATURE_IDS（都是纯语义层，不触发文字引擎）。
 //       · 不含 Computer Modern 字形轮廓数据（用户 2026-11-07 决策「先不带」）：
 //         只深导入同步渲染闭包，createTexNodeTextEngine / renderTikzToSvgAsync
 //         被 tree-shaking 掉，20MB text/ 字形数据自然为 0。
@@ -92,8 +94,13 @@ const vendorPlugin = {
 
 const result = await esbuild.build({
   stdin: {
-    // 只导出同步渲染 API —— 这是「不带文字引擎 / 20MB 字形数据」的关键
-    contents: 'export { renderTikzToSvg } from "./render/index.js";',
+    // 不导出 createTexNodeTextEngine —— 这是「不带 20MB 字形数据」的关键。
+    // 编辑 API 走同一份 parse/semantic 闭包，tree-shaking 后增量很小。
+    contents: [
+      'export { renderTikzToSvg } from "./render/index.js";',
+      'export { applyEditIntent, applyEdit } from "./edit/apply.js";',
+      'export { capabilityMatrix, FEATURE_IDS } from "./capabilities/index.js";',
+    ].join("\n"),
     resolveDir: CORE_SRC,
     sourcefile: path.join(CORE_SRC, "__zetla_vendor_entry.ts"),
     loader: "ts",

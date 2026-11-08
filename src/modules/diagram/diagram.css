@@ -519,6 +519,118 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-canvas-stage[hidden] {
   display: none;
 }
+
+/* ── F2-1 拖拽写回：控制点 / 引导线 / 提示条 ───────────────────────────── */
+.dg-edit-tools {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.dg-edit-tools button {
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 16px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--txt-2, #888);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dg-edit-tools button:hover {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-edit-tools button.on {
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  color: var(--accent, #2d7ff9);
+  border-color: var(--accent, #2d7ff9);
+}
+
+/* 控制点由 buildHandleLayer 用 DOM API 追加到已消毒的 SVG 上；
+   半径 / 线宽在 JS 里除以 zoom，保证任何缩放下都是同样大小。 */
+.dg-handle {
+  fill: var(--bg-3, #fff);
+  stroke: var(--accent, #2d7ff9);
+  pointer-events: all;
+  cursor: grab;
+  opacity: 0.95;
+}
+.dg-handle:hover {
+  fill: var(--accent, #2d7ff9);
+}
+.dg-handle.is-active {
+  fill: var(--accent, #2d7ff9);
+  stroke: var(--bg-3, #fff);
+  cursor: grabbing;
+  opacity: 1;
+  filter: drop-shadow(0 0 2px var(--accent, #2d7ff9));
+}
+.dg-handle.is-locked {
+  fill: var(--txt-3, #aaa);
+  stroke: var(--txt-3, #aaa);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.dg-handle-guide {
+  fill: none;
+  stroke: var(--accent, #2d7ff9);
+  stroke-linecap: round;
+  pointer-events: none;
+  opacity: 0.8;
+}
+
+.dg-drag-chip,
+.dg-drag-notice {
+  position: absolute;
+  z-index: 3;
+  pointer-events: none;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+  font-size: 11px;
+  line-height: 1.5;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+}
+.dg-drag-chip {
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+.dg-drag-chip strong {
+  font-family: var(--font-mono, monospace);
+  color: var(--accent, #2d7ff9);
+  font-variant-numeric: tabular-nums;
+}
+.dg-drag-chip span {
+  color: var(--txt-2, #888);
+}
+.dg-drag-notice {
+  left: 12px;
+  top: 10px;
+  max-width: min(520px, calc(100% - 24px));
+  padding: 5px 10px;
+}
+.dg-drag-notice.is-ok {
+  border-color: var(--ok, #218a5c);
+  color: var(--ok, #218a5c);
+}
+.dg-drag-notice.is-warn {
+  border-color: var(--warn, #a86a12);
+  color: var(--warn, #a86a12);
+}
+.dg-drag-notice.is-err {
+  border-color: var(--err, #c2382f);
+  color: var(--err, #c2382f);
+}
+
 /* 精确预览产物来自真 TeX 引擎，可能含 <style>/<image>/foreignObject，
    因此用 <img> 当隔离文档显示，绝不做内联 DOM 注入。 */
 .dg-precise-img {
