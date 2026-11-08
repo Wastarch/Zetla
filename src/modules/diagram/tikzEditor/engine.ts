@@ -1,7 +1,7 @@
 // M2·F1-3：tikz-editor 引擎封装。
 // 职责：动态加载 vendor bundle（3.3MB，只在绘图 Tab 首次渲染时拉取）、
 //       按源码内容做 LRU 缓存、把上游多种 diagnostics 归一化给 UI。
-// 不做：debounce（在 DiagramCanvas）、SVG 消毒（在 ./svg.ts）、拖拽写回（F4）。
+// 不做：debounce（在 DiagramCanvas）、SVG 消毒（在 ./svg.ts）、拖拽写回（F2）。
 import type {
   VendorDiagnostic,
   VendorRenderResult,
@@ -12,7 +12,7 @@ export interface TikzDiagnostic {
   severity: "warning" | "error";
   message: string;
   code?: string;
-  /** 源码字符偏移，供 F5 反向编辑定位；v1 仅展示 */
+  /** 源码字符偏移，供 F4 反向编辑定位；F1 仅展示 */
   offset?: number;
 }
 
@@ -121,7 +121,7 @@ function readViewBox(raw: VendorRenderResult): TikzViewBox {
 }
 
 // 源码内容键（FNV-1a + 长度）+ 存原文比对，避免 hash 碰撞导致错图；
-// LRU 上限 32 条，足够覆盖 F5-2 之前的反复微调场景。
+// LRU 上限 32 条，足够覆盖 F4-2 之前的反复微调场景。
 const CACHE_LIMIT = 32;
 interface CacheEntry {
   source: string;

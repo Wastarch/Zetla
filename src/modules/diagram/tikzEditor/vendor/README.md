@@ -44,7 +44,7 @@ S0 计划里写的是「vendoring 源码」，F1-3 落地时改为「vendoring �
 |---|---|
 | `xml-formatter` | 仅 `serializeSvgModelAsync(pretty)` 动态 import 用到，同步路径不触发；生成脚本用虚拟 stub 解析，不引入该 npm 依赖 |
 | `renderTikzToSvgAsync` / `createTexNodeTextEngine` | 不导出（避免拉入字形数据） |
-| `applyEdit` / `EditorSession` / `capabilityMatrix` / `parseTikz` | F4 拖拽写回才需要；届时在生成脚本入口追加导出并补齐 `.d.ts`，无需重新调研 |
+| `applyEdit` / `EditorSession` / `capabilityMatrix` / `parseTikz` | F2 拖拽写回才需要；届时在生成脚本入口追加导出并补齐 `.d.ts`，无需重新调研 |
 | `node:fs` / `node:path` | 不在同步渲染闭包内，bundle 中零命中（浏览器安全） |
 
 ## 重新生成

@@ -5,7 +5,7 @@
 //
 // 存储口径：绘图布局/预览模式是低风险 UI 状态，沿用 localStorage（键集中在此文件），
 // 不扩全局 AppSettings schema（那需要同步改 Rust AppConfig + 归一化 + 迁移，收益不抵风险）。
-// 后续切片扩展：F3 组件库插入；F4 拖拽写回与属性面板。
+// 后续切片扩展：F5 组件库插入；F2 拖拽写回与属性面板。
 import { create } from "zustand";
 import type { ExportMode, PreviewMode } from "@/types/diagram";
 
@@ -70,7 +70,7 @@ export interface DiagramState {
   /** 当前绘图源码（完整 tikzpicture 环境；由 Tab 内 LaTeXEditor 受控驱动） */
   source: string;
   setSource: (s: string) => void;
-  /** 当前选中图元 id（F4 属性面板用；当前占位） */
+  /** 当前选中图元 id（F2-2 属性面板用；当前占位） */
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   /**
@@ -88,7 +88,7 @@ export interface DiagramState {
   /** F1-5：画布预览通道（local = tikz-editor / precise = XeLaTeX） */
   previewMode: PreviewMode;
   setPreviewMode: (m: PreviewMode) => void;
-  /** F1-4：侧栏导出方式；image / file 由 F2 落盘链路接入 */
+  /** F1-4：侧栏导出方式；image / file 由 F3 落盘链路接入 */
   exportMode: ExportMode;
   setExportMode: (m: ExportMode) => void;
   /** F1-4：插入时是否套 figure 环境 + caption/label */

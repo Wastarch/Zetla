@@ -5,7 +5,7 @@
 //            → data URL 交给 <img>（隔离文档，不内联注入、不受白名单限制）。
 // 三布局下本组件常驻挂载（DiagramTab 用 hidden 切换），故不会因布局切换重复拉引擎。
 // 精确通道只在绘图 Tab 真实激活时编译，Tab 隐藏/切到别的缓冲时不跑 XeLaTeX。
-// F4 起在此叠加拖拽层；v1 只读。
+// F2 起在此叠加拖拽层；F1 阶段只读。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useSettingsStore } from "@/core/settings";
@@ -368,7 +368,7 @@ export function DiagramCanvas() {
                 ? "编译失败"
                 : "—"}
         </span>
-        <span>v1 画布为只读预览，拖拽编辑属 F4</span>
+        <span>F1 阶段画布为只读预览，拖拽编辑属 F2</span>
         <span>插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>
       </div>
     </div>
