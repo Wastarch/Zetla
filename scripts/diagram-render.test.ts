@@ -29,6 +29,22 @@ import {
   readProperty,
   statementEditability,
 } from "../src/modules/diagram/optionsEdit.ts";
+import {
+  allReasonsNonEmpty,
+  buildCompatReport,
+  compatHandleReason,
+  effectiveSeverity,
+  emptyCompatReport,
+  featureLabel,
+  maskComments,
+  owningStatement,
+  readSupport,
+  readUsage,
+  resolveHandleLock,
+  type CompatCapabilityRow,
+  type CompatHandle,
+  type CompatStatement,
+} from "../src/modules/diagram/tikzEditor/compat.ts";
 import { insertBeforeDocument } from "../src/core/preamble.ts";
 import {
   buildDiagramInsertCode,
@@ -445,6 +461,182 @@ check("value" in customWidth && customWidth.value === "line width=1.2pt", "线�
 const customColor = normalizeCustomValue("fill", "blue!40");
 check("value" in customColor && customColor.value === "blue!40", "自定义混色值通过校验");
 check("error" in normalizeCustomValue("arrow", "boom"), "未知箭头样式被拒绝");
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F2-3 · 编辑能力锁定（capabilityMatrix / featureUsage → 语句 / 控制点归因）
+// ─────────────────────────────────────────────────────────────────────────────
+console.log("F2-3 · compat 纯逻辑（注释掩码 / 评级 / 归属）");
+check(maskComments("a\\foreach b").length === "a\\foreach b".length, "maskComments 保持索引不变");
+const maskedLine = maskComments("% \\foreach \\x in {1,2}\n\\node (a) at (1,1) {A};");
+check(!maskedLine.includes("\\foreach"), "注释里的 \\foreach 被掩码掉");
+check(maskedLine.includes("\\node"), "下一行代码未被误伤");
+check(maskComments("50\\% \\foreach").includes("\\foreach"), "\\% 转义不算注释起点");
+const miniMatrix: Record<string, CompatCapabilityRow> = {
+  foreach_statement: { edit: "none" },
+  foreach_path_operation: { edit: "stable" },
+  let_operation: { edit: "none" },
+  calc_coordinates: { edit: "partial" },
+};
+check(readSupport(miniMatrix, ["foreach_statement"]) === "none", "readSupport 读出 none");
+check(
+  readSupport(miniMatrix, ["foreach_path_operation", "foreach_statement"]) === "none",
+  "多个 feature 里只要有一个 none 就按最保守计"
+);
+check(readSupport(null, ["foreach_statement"]) === "unknown", "矩阵缺失返回 unknown");
+check(readUsage({ foreach_statement: "used-supported" }, ["foreach_statement"]) === "used-supported", "readUsage 读出 used-supported");
+check(readUsage(null, ["foreach_statement"]) === "unknown", "featureUsage 缺失返回 unknown");
+check(effectiveSeverity("warn", "partial", "used-unsupported") === "lock", "used-unsupported 升级为锁定");
+check(effectiveSeverity("lock", "stable", "used-supported") === "warn", "上游 stable 降级为提示，不误锁");
+check(effectiveSeverity("lock", "none", "used-supported") === "lock", "edit=none 维持锁定");
+const nested: CompatStatement[] = [
+  { id: "scope:0", span: { from: 0, to: 100 } },
+  { id: "path:1", span: { from: 20, to: 60 } },
+];
+check(owningStatement(nested, 30)?.id === "path:1", "归属取最内层语句");
+check(owningStatement(nested, 60)?.id === "scope:0", "span.to 为开区间边界，回落到外层语句");
+check(owningStatement(nested, 100) === null, "超出所有语句范围返回 null");
+check(owningStatement([], 5) === null, "无语句时返回 null");
+check(featureLabel("foreach_statement").includes("foreach"), "feature 中文标签可读");
+
+const C_FOREACH_SRC = String.raw`\begin{tikzpicture}
+  \foreach \x in {1,2,3} \draw (\x,0) circle (2pt);
+  \node (a) at (1,1) {A};
+\end{tikzpicture}`;
+const C_FEATURE_USAGE: Record<string, string> = {
+  foreach_statement: "used-supported",
+  foreach_path_operation: "unused",
+  foreach_node_operation: "unused",
+  let_operation: "used-unsupported",
+  calc_coordinates: "used-supported",
+};
+const C_FOREACH_STMTS: CompatStatement[] = [
+  { id: "foreach:0", kind: "Foreach", span: { from: 22, to: 71 } },
+  { id: "path:1", kind: "Path", span: { from: 74, to: 97 } },
+];
+const C_FOREACH_HANDLES: CompatHandle[] = [
+  { id: "h1", sourceRef: { sourceId: "foreach:0", sourceSpan: { from: 51, to: 57 } } },
+  { id: "h2", sourceRef: { sourceId: "foreach:0", sourceSpan: { from: 51, to: 57 } } },
+  { id: "h3", sourceRef: { sourceId: "foreach:0", sourceSpan: { from: 51, to: 57 } } },
+  { id: "h4", sourceRef: { sourceId: "path:1", sourceSpan: { from: 87, to: 92 } } },
+];
+
+console.log("F2-3 · buildCompatReport（构造归因 / 不误伤 / 降级）");
+const rep = buildCompatReport({
+  source: C_FOREACH_SRC,
+  statements: C_FOREACH_STMTS,
+  handles: C_FOREACH_HANDLES,
+  featureUsage: C_FEATURE_USAGE,
+  capabilityMatrix: miniMatrix,
+  featureIds: Object.keys(C_FEATURE_USAGE),
+});
+check(rep.issues.some((i) => i.ruleKey === "foreach" && i.statementId === "foreach:0"), "\\foreach 命中并归属到 Foreach 语句");
+check(rep.lockReasons["foreach:0"]?.includes("循环") === true, "锁定理由说明是循环展开");
+check(!rep.lockReasons["path:1"], "未受影响的 \\node 语句不被误锁");
+check(Object.keys(rep.handleReasons).length === 3, "3 个展开控制点全被锁");
+check(!rep.handleReasons["h4"], "node 控制点仍可拖，不误伤 F2-1");
+check(rep.lockedHandleCount === 3 && rep.lockedStatementCount === 1, "锁定计数正确");
+check(rep.summary.includes("3 个控制点"), "摘要含锁定数");
+check(allReasonsNonEmpty(rep), "所有锁定理由都非空");
+check(rep.issues[0]?.detail.includes("edit=none"), "长说明里带上游能力矩阵评级");
+check(rep.hasUnsupported, "used-unsupported 触发还原导向");
+check(rep.unsupportedFeatures.some((f) => f.id === "let_operation"), "used-unsupported 构造被收集");
+
+const C_PLAIN_SRC = String.raw`\begin{tikzpicture}
+  \draw[thick, rounded corners] (0,0) rectangle (3,2);
+  \node[draw, circle] (a) at (1,1) {A};
+  \draw[->] (a) -- (2.5,1);
+\end{tikzpicture}`;
+const plainRep = buildCompatReport({
+  source: C_PLAIN_SRC,
+  statements: [{ id: "path:0", span: { from: 20, to: 130 } }],
+  handles: [{ id: "h", sourceRef: { sourceId: "path:0" } }],
+  featureUsage: {
+    arrow_tips: "used-supported",
+    named_coordinates: "used-supported",
+    path_statement: "used-supported",
+  },
+  capabilityMatrix: { arrow_tips: { edit: "none" }, named_coordinates: { edit: "none" } },
+});
+check(plainRep.empty, "默认示例图零锁定：edit=none 的箭头 / 命名坐标不误锁");
+check(Object.keys(plainRep.handleReasons).length === 0, "默认示例控制点全部可拖");
+check(!plainRep.lockReasons["path:0"], "默认示例语句不被锁");
+
+const commentRep = buildCompatReport({
+  source: String.raw`\begin{tikzpicture}
+  % \foreach \x in {1,2} \draw (\x,0) circle (2pt);
+  \node (a) at (1,1) {A};
+\end{tikzpicture}`,
+  statements: [{ id: "path:0", span: { from: 20, to: 100 } }],
+  handles: [],
+  featureUsage: { foreach_statement: "used-supported" },
+  capabilityMatrix: miniMatrix,
+});
+check(!commentRep.issues.some((i) => i.ruleKey === "foreach"), "注释里的 \\foreach 不产生锁定");
+
+const calcRep = buildCompatReport({
+  source: String.raw`\begin{tikzpicture}\draw ($(a)+(1,0)$) -- (2,2);\end{tikzpicture}`,
+  statements: [{ id: "path:0", span: { from: 0, to: 55 } }],
+  handles: [{ id: "h", sourceRef: { sourceId: "path:0" } }],
+  featureUsage: { calc_coordinates: "used-supported" },
+  capabilityMatrix: miniMatrix,
+});
+check(calcRep.issues.some((i) => i.ruleKey === "calc" && i.severity === "warn"), "calc 表达式只给提示不硬锁");
+check(!calcRep.lockReasons["path:0"], "warn 级构造不写入语句锁定表");
+
+const noMeta = buildCompatReport({ source: C_FOREACH_SRC, statements: C_FOREACH_STMTS, handles: C_FOREACH_HANDLES });
+check(noMeta.lockReasons["foreach:0"]?.includes("循环") === true, "矩阵 / featureUsage 缺失时仍保守锁定");
+const emptyRep = buildCompatReport({ source: "", statements: [], handles: [] });
+check(emptyRep.empty && emptyCompatReport().empty, "空源码返回空报告，不抛异常");
+check(
+  emptyRep.summary === "" && emptyRep.lockedHandleCount === 0,
+  "空报告摘要与计数干净"
+);
+
+console.log("F2-3 · resolveHandleLock（能力矩阵优先于 rewriteMode 兜底）");
+check(
+  resolveHandleLock(rep, "h1", true, "F2-1 兜底理由")?.includes("循环") === true,
+  "可拖但被能力矩阵锁定时用具体理由"
+);
+check(
+  resolveHandleLock(null, "h", false, "命名坐标兜底") === "命名坐标兜底",
+  "无报告时回落到 F2-1 兜底理由"
+);
+check(resolveHandleLock(null, "h", true, "兜底") === null, "可拖且无报告时不锁");
+check(compatHandleReason(rep, "h4", "兜底") === "兜底", "compatHandleReason 未命中时回落");
+check(compatHandleReason(rep, "h1", "兜底").includes("循环"), "compatHandleReason 命中时返回具体理由");
+
+console.log("F2-3 · renderTikz 真实接线（compat 随 LRU 缓存同源）");
+const compatPlain = await renderTikz(C_PLAIN_SRC);
+check(compatPlain.compat.empty, "真实渲染：默认示例零锁定，F2-1/F2-2 无回归");
+const compatForeach = await renderTikz(C_FOREACH_SRC);
+check(
+  compatForeach.compat.lockReasons["foreach:0"]?.includes("循环") === true,
+  "真实渲染：\\foreach 语句带 capabilityMatrix 归因理由"
+);
+check(
+  Object.keys(compatForeach.compat.handleReasons).length === 3,
+  "真实渲染：3 个展开控制点被锁，避免改写循环变量"
+);
+check(
+  compatForeach.compat.issues[0]?.support === "none",
+  "真实渲染：capabilityMatrix.foreach_statement.edit = none"
+);
+const compatForeachCached = await renderTikz(C_FOREACH_SRC);
+check(
+  compatForeachCached.fromCache &&
+    compatForeachCached.compat.summary === compatForeach.compat.summary,
+  "compat 随 LRU 缓存返回，不重复计算"
+);
+const C_COMPAT_LET = String.raw`\begin{tikzpicture}
+  \draw let \p1=(1,1) in (0,0) -- (\x1,\y1);
+\end{tikzpicture}`;
+const compatLet = await renderTikz(C_COMPAT_LET);
+check(compatLet.compat.lockReasons["path:0"]?.includes("let") === true, "真实渲染：let … in 被锁定");
+check(
+  compatLet.compat.unsupportedFeatures.some((f) => f.id === "let_operation"),
+  "真实渲染：used-unsupported 构造被列出，可导向 XeLaTeX"
+);
+check(allReasonsNonEmpty(compatLet.compat), "真实渲染：所有理由非空");
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

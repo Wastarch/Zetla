@@ -1,4 +1,4 @@
-// M2·F1-3 / F1-6 / F2-1 / F2-2：TikZ 双通道画布 + 拖拽写回 + 点选图元。
+// M2·F1-3 / F1-6 / F2-1 / F2-2 / F2-3：TikZ 双通道画布 + 拖拽写回 + 点选图元 + 锁定提示。
 //  本地通道：source → debounce 160ms → engine.renderTikz（动态加载 vendor bundle + LRU
 //            缓存 + 诊断归一化 + editHandles）→ svg.sanitizeSvg 白名单消毒 → importNode 挂载
 //            → 追加控制点 <circle> 图层（DOM API 创建，不经过 innerHTML）。
@@ -10,6 +10,9 @@
 //            → 经 sourceBridge dispatch 到 CM6 视图（与键盘改源码共用撤销栈）。
 //  点选图元：F2-2 pointerdown 从 data-source-id / 控制点 sourceRef 取 id 写入 store，
 //            侧栏属性区据此定位语句选项；选中态只 toggle class，不重建 SVG、不打断拖拽。
+//  锁定提示：F2-3 compat.ts 用 capabilityMatrix + featureUsage 把「展开 / 计算型构造」
+//            归属到语句与控制点；锁定控制点画橙色挂锁 + 具体理由，拒绝拖拽；
+//            画布常驻一条可展开的锁定清单（默认展开，不做死按钮）。
 // 三布局下本组件常驻挂载（DiagramTab 用 hidden 切换），故不会因布局切换重复拉引擎。
 // 精确通道只在绘图 Tab 真实激活时编译，Tab 隐藏/切到别的缓冲时不跑 XeLaTeX。
 import {
@@ -44,6 +47,7 @@ import {
   type MatrixLike,
   type PointLike,
 } from "./dragEdit";
+import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat";
 import { getDiagramSourceBridge } from "./sourceBridge";
 import {
   getCachedPreview,
@@ -63,6 +67,8 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const HANDLE_R_PX = 4.2;
 const HANDLE_STROKE_PX = 1.4;
 const DRAG_THRESHOLD_PX = 3;
+/** 常驻锁定清单最多列出几条；hover title 里始终带完整长说明 */
+const MAX_LOCK_ITEMS = 4;
 
 function basename(p: string): string {
   return p.split(/[\\/]/).pop() || p;
@@ -76,12 +82,45 @@ function fmtNum(n: number): string {
   return Number.isFinite(n) ? String(Math.round(n * 10000) / 10000) : "0";
 }
 
+/** 挂锁图标：一个 <g>（锁体 + 锁梁 + 锁孔），尺寸除以 zoom 保持屏幕恒定。 */
+function appendLockGlyph(
+  parent: SVGGElement,
+  x: number,
+  y: number,
+  zoom: number,
+  compatLocked: boolean,
+): void {
+  const g = document.createElementNS(SVG_NS, "g");
+  g.setAttribute("class", `dg-handle-lock${compatLocked ? " is-compat" : ""}`);
+  // 以屏幕 10px 见方为基准，SVG 用户单位随 zoom 反比缩放
+  const s = 1 / zoom;
+  g.setAttribute("transform", `translate(${fmtNum(x)} ${fmtNum(y)}) scale(${fmtNum(s)})`);
+  const body = document.createElementNS(SVG_NS, "rect");
+  body.setAttribute("class", "dg-handle-lock-body");
+  body.setAttribute("x", "-4");
+  body.setAttribute("y", "-0.5");
+  body.setAttribute("width", "8");
+  body.setAttribute("height", "6.5");
+  body.setAttribute("rx", "1.2");
+  const shackle = document.createElementNS(SVG_NS, "path");
+  shackle.setAttribute("class", "dg-handle-lock-shackle");
+  shackle.setAttribute("d", "M-2.5 -0.5 V-2.4 A2.5 2.5 0 0 1 2.5 -2.4 V-0.5");
+  const hole = document.createElementNS(SVG_NS, "circle");
+  hole.setAttribute("class", "dg-handle-lock-hole");
+  hole.setAttribute("cx", "0");
+  hole.setAttribute("cy", "2.1");
+  hole.setAttribute("r", "0.9");
+  g.append(body, shackle, hole);
+  parent.appendChild(g);
+}
+
 /** 控制点图层：画在消毒后的 SVG 之上，全部由 DOM API 创建，绝不拼 HTML 字符串。 */
 function buildHandleLayer(
   svg: SVGSVGElement,
   handles: readonly TikzEditHandle[],
   viewBox: TikzViewBox,
   zoom: number,
+  compat: CompatReport | null,
 ): SVGGElement {
   const layer = document.createElementNS(SVG_NS, "g");
   layer.setAttribute("data-dg-handle-layer", "1");
@@ -90,9 +129,13 @@ function buildHandleLayer(
   for (const h of handles.slice(0, MAX_VISIBLE_HANDLES)) {
     if (!h.world || !Number.isFinite(h.world.x) || !Number.isFinite(h.world.y)) continue;
     const p = worldToSvgPoint(h.world, viewBox);
-    const draggable = isDraggableHandle(h);
+    const lockReason = resolveHandleLock(compat, h.id, isDraggableHandle(h), lockedHandleReason(h));
+    const draggable = lockReason === null;
     const c = document.createElementNS(SVG_NS, "circle");
-    c.setAttribute("class", `dg-handle${draggable ? "" : " is-locked"}`);
+    c.setAttribute(
+      "class",
+      `dg-handle${draggable ? "" : " is-locked"}${compat?.handleReasons[h.id] ? " is-compat-locked" : ""}`,
+    );
     c.setAttribute("cx", fmtNum(p.x));
     c.setAttribute("cy", fmtNum(p.y));
     c.setAttribute("r", fmtNum(r));
@@ -102,9 +145,12 @@ function buildHandleLayer(
     const title = document.createElementNS(SVG_NS, "title");
     title.textContent = draggable
       ? `${handleLabel(h)}：按住拖动可改写源码坐标`
-      : lockedHandleReason(h);
+      : lockReason;
     c.appendChild(title);
     layer.appendChild(c);
+    if (!draggable) {
+      appendLockGlyph(layer, p.x, p.y - 9 / zoom, zoom, !!compat?.handleReasons[h.id]);
+    }
   }
   // 拖拽时的虚线引导（从起点到当前位置），平时 hidden
   const guide = document.createElementNS(SVG_NS, "line");
@@ -162,6 +208,8 @@ export function DiagramCanvas() {
   const [handlesOn, setHandlesOn] = useState(true);
   const [dragLabel, setDragLabel] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  // F2-3 锁定清单：默认展开且常驻，不做「只有一个折叠按钮」的死 UI
+  const [lockOpen, setLockOpen] = useState(true);
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
   // pointerdown 的 client 坐标要传给 window 级监听，用 ref 中转（避免闭包捕获旧事件对象）
@@ -210,7 +258,7 @@ export function DiagramCanvas() {
           setResult(r);
           setError(null);
           setBusy(false);
-          setRenderMeta({ source, statements: r.statements });
+          setRenderMeta({ source, statements: r.statements, compat: r.compat });
         },
         (err: unknown) => {
           if (cancelled) return;
@@ -274,7 +322,7 @@ export function DiagramCanvas() {
       return;
     }
     if (handlesOn && result.handles.length > 0) {
-      buildHandleLayer(node, result.handles, result.viewBox, zoom);
+      buildHandleLayer(node, result.handles, result.viewBox, zoom, result.compat);
     }
     stage.replaceChildren(node);
   }, [result, zoom, previewMode, handlesOn]);
@@ -413,14 +461,23 @@ export function DiagramCanvas() {
       const sid = shape?.getAttribute("data-source-id");
       if (sid) {
         const own = result.handles.filter(
-          (h) => isDraggableHandle(h) && h.sourceRef?.sourceId === sid,
+          (h) =>
+            h.sourceRef?.sourceId === sid &&
+            resolveHandleLock(result.compat, h.id, isDraggableHandle(h), lockedHandleReason(h)) === null,
         );
         hit = own.find((h) => h.kind === "node-position") ?? own[0];
       }
     }
     if (!hit) return;
-    if (!isDraggableHandle(hit)) {
-      setNotice({ tone: "warn", text: lockedHandleReason(hit) });
+    // F2-3：能力矩阵归因的锁定优先，理由更具体；F2-1 的 rewriteMode 兜底在后。
+    const lockReason = resolveHandleLock(
+      result.compat,
+      hit.id,
+      isDraggableHandle(hit),
+      lockedHandleReason(hit),
+    );
+    if (lockReason !== null) {
+      setNotice({ tone: "warn", text: lockReason });
       return;
     }
     const layer = svg.querySelector("[data-dg-handle-layer]");
@@ -515,6 +572,13 @@ export function DiagramCanvas() {
   const alertTone = preciseFailed ? "err" : preciseOk ? "ok" : "warn";
   const unsupportedCount = unsupported.length;
   const handleCount = result?.handles.length ?? 0;
+  // F2-3：兼容报告只在本地即时通道有语义句柄；精确通道是 XeLaTeX 只读结果，不显示锁定层。
+  const compat = previewMode === "local" ? (result?.compat ?? null) : null;
+  const compatIssues = compat?.issues ?? [];
+  const compatUnrendered = compat?.unsupportedFeatures ?? [];
+  const compatLocked = compat?.lockedHandleCount ?? 0;
+  const compatItemCount = compatIssues.length + compatUnrendered.length;
+  const showCompatBar = !!compat && !compat.empty;
 
   return (
     <div className="dg-canvas">
@@ -624,6 +688,57 @@ export function DiagramCanvas() {
             <button type="button" onClick={() => setPreviewMode("precise")}>
               用 XeLaTeX 精确预览
             </button>
+          )}
+        </div>
+      )}
+
+      {/* F2-3：能力矩阵锁定清单。默认展开、理由常驻，用户可收起但不做「只有一个折叠按钮」。
+          与上面的「预览不完整」提示互补：那条讲渲染缺口，这条讲编辑缺口（哪些对象不能拖 / 改属性）。 */}
+      {showCompatBar && compat && (
+        <div className="dg-lock-bar" role="status">
+          <div className="dg-lock-head">
+            <span className="dg-lock-badge">
+              {compatLocked > 0 ? "已锁定编辑" : "编辑能力提示"}
+            </span>
+            <strong>{compat.summary || `${compatItemCount} 处构造需要留意`}</strong>
+            {compat.hasUnsupported && previewMode === "local" && (
+              <button type="button" onClick={() => setPreviewMode("precise")}>
+                XeLaTeX 精确还原
+              </button>
+            )}
+            <button
+              type="button"
+              className="dg-lock-toggle"
+              aria-expanded={lockOpen}
+              onClick={() => setLockOpen(!lockOpen)}
+            >
+              {lockOpen ? "收起理由" : `查看 ${compatItemCount} 条理由`}
+            </button>
+          </div>
+          {lockOpen && (
+            <ul className="dg-lock-list">
+              {compatIssues.slice(0, MAX_LOCK_ITEMS).map((it) => (
+                <li key={it.id} className={`is-${it.severity}`} title={it.detail}>
+                  <span className="dg-lock-tag">{it.severity === "lock" ? "锁定" : "留意"}</span>
+                  <span className="dg-lock-text">{it.reason}</span>
+                  <em>
+                    {it.statementId ?? "全局"} · edit={it.support}
+                  </em>
+                </li>
+              ))}
+              {compatUnrendered.slice(0, Math.max(0, MAX_LOCK_ITEMS - compatIssues.length)).map((f) => (
+                <li key={f.id} className="is-warn" title={f.notes || undefined}>
+                  <span className="dg-lock-tag">未还原</span>
+                  <span className="dg-lock-text">
+                    {f.label}：上游语义层标记为未完整支持，本地画布可能缺元素。
+                  </span>
+                  <em>{f.id}</em>
+                </li>
+              ))}
+              {compatItemCount > MAX_LOCK_ITEMS && (
+                <li className="dg-lock-more">…另有 {compatItemCount - MAX_LOCK_ITEMS} 条，请展开诊断或检查源码</li>
+              )}
+            </ul>
           )}
         </div>
       )}
@@ -744,7 +859,7 @@ export function DiagramCanvas() {
         </span>
         <span>
           {previewMode === "local"
-            ? `拖动控制点写回坐标 · ${handleCount} 个控制点 · 选中 ${selectedId ?? "无"}（侧栏改属性）`
+            ? `拖动控制点写回坐标 · ${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · 选中 ${selectedId ?? "无"}（侧栏改属性）`
             : "精确预览只读 · 切回本地即时可拖拽"}
         </span>
         <span>插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>

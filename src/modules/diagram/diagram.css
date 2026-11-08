@@ -403,6 +403,98 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   opacity: 0.7;
 }
 
+/* F2-3：编辑能力锁定清单。常驻在工具条与舞台之间，默认展开理由，
+   与「预览不完整」提示条互补（那条讲渲染缺口，这条讲编辑缺口）。 */
+.dg-lock-bar {
+  flex: none;
+  max-height: 148px;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid color-mix(in srgb, var(--warn, #a86a12) 45%, var(--line));
+  background: var(--bg-3, #fff);
+  background: color-mix(in srgb, var(--warn, #a86a12) 6%, var(--bg-3, #fff));
+  font-size: 11px;
+  line-height: 1.55;
+  color: var(--txt, #353333);
+}
+.dg-lock-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+}
+.dg-lock-head strong {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  color: var(--warn, #a86a12);
+}
+.dg-lock-badge {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid var(--warn, #a86a12);
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--warn, #a86a12);
+}
+.dg-lock-head button {
+  flex: none;
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--warn, #a86a12);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--warn, #a86a12);
+  cursor: pointer;
+}
+.dg-lock-head button.dg-lock-toggle {
+  border-color: var(--line, #e0e0e0);
+  color: var(--txt-2, #888);
+}
+.dg-lock-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 12px 6px;
+  list-style: none;
+  overflow: auto;
+}
+.dg-lock-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 0;
+}
+.dg-lock-tag {
+  flex: none;
+  min-width: 32px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  text-align: center;
+  background: color-mix(in srgb, var(--warn, #a86a12) 16%, transparent);
+  color: var(--warn, #a86a12);
+}
+.dg-lock-list li.is-warn .dg-lock-tag {
+  background: color-mix(in srgb, var(--accent, #2d7ff9) 14%, transparent);
+  color: var(--accent, #2d7ff9);
+}
+.dg-lock-text {
+  flex: 1;
+  min-width: 0;
+}
+.dg-lock-list em {
+  flex: none;
+  font-style: normal;
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  opacity: 0.6;
+}
+.dg-lock-more {
+  opacity: 0.7;
+}
+
 .dg-canvas-foot {
   flex: none;
   display: flex;
@@ -573,6 +665,35 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   cursor: not-allowed;
   opacity: 0.7;
 }
+/* F2-3：capabilityMatrix 归因而来的锁定，用 warn 色与 F2-1 的灰锁区分；
+   挂锁图标由 createElementNS 追加到已消毒的 SVG 之后，pointer-events:none 不干扰命中。 */
+.dg-handle.is-compat-locked {
+  fill: var(--warn, #a86a12);
+  stroke: var(--warn, #a86a12);
+  opacity: 0.9;
+}
+.dg-handle-lock {
+  pointer-events: none;
+  /* F2-1 的灰锁（命名坐标 / 极坐标）默认用中性色，只有能力矩阵锁定才染 warn 色 */
+  --lock-tone: var(--txt-3, #aaa);
+}
+.dg-handle-lock.is-compat {
+  --lock-tone: var(--warn, #a86a12);
+}
+.dg-handle-lock-body {
+  fill: var(--bg-3, #fff);
+  stroke: var(--lock-tone);
+  stroke-width: 1.2;
+}
+.dg-handle-lock-shackle {
+  fill: none;
+  stroke: var(--lock-tone);
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+.dg-handle-lock-hole {
+  fill: var(--lock-tone);
+}
 .dg-handle-guide {
   fill: none;
   stroke: var(--accent, #2d7ff9);
@@ -688,6 +809,18 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 }
 .dg-prop-item.is-off {
   opacity: 0.55;
+}
+/* F2-3：能力矩阵锁定的语句在列表里也有可见标记，避免只在画布上锁、侧栏仍可改。 */
+.dg-prop-item.is-compat-locked {
+  border-color: color-mix(in srgb, var(--warn, #a86a12) 55%, var(--line));
+}
+.dg-prop-lock {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  background: color-mix(in srgb, var(--warn, #a86a12) 16%, transparent);
+  color: var(--warn, #a86a12);
 }
 .dg-prop-item-id {
   flex: none;

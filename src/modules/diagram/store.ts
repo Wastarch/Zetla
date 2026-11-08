@@ -2,7 +2,8 @@
 // F1-1 起持有 source / targetTex；F1-2 增三布局 layoutMode 与分屏比例 splitRatio；
 // F1-4 增导出方式与 figure 包裹选项；F1-5 增精确预览通道偏好，并把这些轻量 UI 偏好
 // 统一收敛到本模块的读写入口（设置页「绘图」分区直接调用，见 resetDiagramPreferences）；
-// F2-2 把 F1-1 预留的 selectedId 接上画布点选，并新增 renderMeta（渲染派生的语句清单）。
+// F2-2 把 F1-1 预留的 selectedId 接上画布点选，并新增 renderMeta（渲染派生的语句清单）；
+// F2-3 给 renderMeta 加 compat（同源的能力矩阵锁定报告），画布与侧栏共用一份判定。
 //
 // 存储口径：绘图布局/预览模式是低风险 UI 状态，沿用 localStorage（键集中在此文件），
 // 不扩全局 AppSettings schema（那需要同步改 Rust AppConfig + 归一化 + 迁移，收益不抵风险）。
@@ -11,6 +12,7 @@
 import { create } from "zustand";
 import type { ExportMode, PreviewMode } from "@/types/diagram";
 import type { TikzStatement } from "./optionsEdit.ts";
+import type { CompatReport } from "./tikzEditor/compat.ts";
 
 /** Tab 内三种布局：仅画布 / 仅源码 / 左右分屏（都是同一个 diagram://editor Tab 内的视图状态） */
 export type LayoutMode = "canvas" | "code" | "split";
@@ -69,6 +71,13 @@ function writeSetting(key: string, value: string): void {
   }
 }
 
+/** F2-3：一次本地渲染的派生元数据（会话态，不持久化）。 */
+export interface DiagramRenderMeta {
+  source: string;
+  statements: TikzStatement[];
+  compat: CompatReport;
+}
+
 export interface DiagramState {
   /** 当前绘图源码（完整 tikzpicture 环境；由 Tab 内 LaTeXEditor 受控驱动） */
   source: string;
@@ -77,11 +86,12 @@ export interface DiagramState {
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
   /**
-   * F2-2：最近一次本地渲染派生的语句清单。带上 source 让侧栏在 debounce 期间
-   * 能识别「源码已改但还没重渲染」，避免把补丁打到过期的选项 span 上。
+   * F2-2 / F2-3：最近一次本地渲染派生的语句清单 + 兼容报告。带上 source 让侧栏在
+   * debounce 期间能识别「源码已改但还没重渲染」，避免把补丁打到过期的选项 span 上，
+   * 或拿上一张图的锁定理由标到新图上。
    */
-  renderMeta: { source: string; statements: TikzStatement[] } | null;
-  setRenderMeta: (m: { source: string; statements: TikzStatement[] } | null) => void;
+  renderMeta: DiagramRenderMeta | null;
+  setRenderMeta: (m: DiagramRenderMeta | null) => void;
   /**
    * 编辑完成后代码要插入的目标 .tex 绝对路径（F1-1 打开绘图 Tab 时锁定）。
    * 伪 buffer Tab 活动时 getActiveView() 会失效，F1-4 必须靠此路径取 getEditorView(targetTex)。

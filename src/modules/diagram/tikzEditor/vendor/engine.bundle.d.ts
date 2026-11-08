@@ -57,6 +57,8 @@ export interface VendorRenderResult {
     diagnostics?: VendorDiagnostic[];
     /** 可拖拽控制点；与 svg 字符串来自同一次渲染 */
     editHandles?: VendorEditHandle[];
+    /** F2-3：本图实际用到的 feature → unused / used-supported / used-unsupported（118 键） */
+    featureUsage?: Record<string, string>;
   };
   svg: VendorSvgResult;
   renderDiagnostics?: VendorDiagnostic[];
@@ -107,6 +109,14 @@ export declare function applyEdit(
   edit: { kind: string; targetId: string; [key: string]: unknown }
 ): { source: string; changedSpans: VendorSpan[] };
 
-/** F2-3：上游能力矩阵，用于给不可写回的构造显示锁定理由。 */
-export declare const capabilityMatrix: Record<string, unknown>;
+/** F2-3：上游能力矩阵（118 键），每行四层评级，Zetla 主要读 edit 层。 */
+export interface VendorCapabilityRow {
+  edit?: string;
+  parser?: string;
+  semantic?: string;
+  svg?: string;
+  notes?: string;
+  [key: string]: unknown;
+}
+export declare const capabilityMatrix: Record<string, VendorCapabilityRow>;
 export declare const FEATURE_IDS: readonly string[];

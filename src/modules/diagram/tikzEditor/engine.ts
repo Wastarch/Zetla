@@ -1,8 +1,9 @@
-// M2·F1-3 / F2-1 / F2-2：tikz-editor 引擎封装。
+// M2·F1-3 / F2-1 / F2-2 / F2-3：tikz-editor 引擎封装。
 // 职责：动态加载 vendor bundle（3.4MB，只在绘图 Tab 首次渲染时拉取）、
 //       按源码内容做 LRU 缓存、把上游多种 diagnostics 归一化给 UI、
 //       把语义层 editHandles 透出给画布、把一次拖拽落成最小源码补丁、
-//       F2-2 把 parse.figure.body 归一化为属性面板可用的语句清单。
+//       F2-2 把 parse.figure.body 归一化为属性面板可用的语句清单、
+//       F2-3 把 capabilityMatrix / featureUsage 交给 compat.ts 生成锁定报告。
 // 不做：debounce（在 DiagramCanvas）、SVG 消毒（在 ./svg.ts）、DOM 控制点绘制（在 ../DiagramCanvas）。
 import type {
   VendorDiagnostic,
@@ -12,6 +13,7 @@ import type {
   VendorViewBox,
 } from "./vendor/engine.bundle.js";
 import { collectStatements, type TikzStatement } from "../optionsEdit.ts";
+import { buildCompatReport, type CompatReport } from "./compat.ts";
 
 export interface TikzDiagnostic {
   severity: "warning" | "error";
@@ -53,6 +55,11 @@ export interface TikzRender {
    * 侧栏属性面板按 selectedId 查语句，再用 optionsEdit 生成最小选项补丁。
    */
   statements: TikzStatement[];
+  /**
+   * F2-3：与这份 svg / handles / statements 同源的兼容报告（锁定语句 / 控制点 + 具体理由）。
+   * 由 capabilityMatrix + featureUsage + 源码扫描生成；随 LRU 一起缓存，不重复计算。
+   */
+  compat: CompatReport;
   elapsedMs: number;
   fromCache: boolean;
 }
@@ -214,13 +221,23 @@ export async function renderTikz(source: string): Promise<TikzRender> {
   const handles: TikzEditHandle[] = Array.isArray(rawHandles)
     ? (rawHandles.filter((h) => h && typeof h.id === "string") as TikzEditHandle[])
     : [];
+  const statements = collectStatements(raw.parse?.figure, source);
+  const compat = buildCompatReport({
+    source,
+    statements,
+    handles,
+    featureUsage: raw.semantic?.featureUsage ?? null,
+    capabilityMatrix: mod.capabilityMatrix ?? null,
+    featureIds: mod.FEATURE_IDS ?? null,
+  });
   const render: TikzRender = {
     svg,
     viewBox: readViewBox(raw),
     diagnostics,
     unsupported: diagnostics.filter((d) => /^unsupported/i.test(d.code ?? "")),
     handles,
-    statements: collectStatements(raw.parse?.figure, source),
+    statements,
+    compat,
     elapsedMs: performance.now() - started,
     fromCache: false,
   };

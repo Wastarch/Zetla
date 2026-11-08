@@ -1,4 +1,5 @@
-// M2·F2-2：侧栏「属性」区 —— 选中图元 → 改颜色 / 线宽 / 箭头 / 线型 / 填充 → 写回源码。
+// M2·F2-2 / F2-3：侧栏「属性」区 —— 选中图元 → 改颜色 / 线宽 / 箭头 / 线型 / 填充 → 写回源码。
+// F2-3：能力矩阵判定为不可编辑的语句，显示具体锁定理由而不是属性下拉（防止绕过画布锁定）。
 //
 // 位置按计划放在**侧栏选项区**（不另设右坞）；画布与源码仍是主编辑区的独立 Tab。
 // 数据流：DiagramCanvas 点选写 selectedId + 每次渲染写 renderMeta → 本组件按
@@ -108,11 +109,17 @@ export function DiagramProperties() {
   // 直接按 source 相等判定，宁可短暂显示「等待渲染」也不打过期补丁。
   const fresh = renderMeta?.source === source;
   const statements = fresh ? (renderMeta?.statements ?? []) : [];
+  const compat = fresh ? (renderMeta?.compat ?? null) : null;
   const selected = useMemo(
     () => statements.find((s) => s.id === selectedId) ?? null,
     [statements, selectedId],
   );
-  const editable = selected ? statementEditability(selected) : null;
+  const baseEdit = selected ? statementEditability(selected) : null;
+  // F2-3：capabilityMatrix 归因的锁定优先于 F2-2 的语句类型判定，理由更具体
+  // （例如 \draw … let \p1 在 F2-2 里被当成普通可编辑 Path）。
+  const compatLock = selected ? (compat?.lockReasons[selected.id] ?? null) : null;
+  const editable =
+    compatLock && baseEdit ? { ...baseEdit, editable: false, reason: compatLock } : baseEdit;
 
   function commit(key: PropertyKey, value: string | null): void {
     if (!selected) return;
@@ -151,15 +158,18 @@ export function DiagramProperties() {
           <div className="dg-prop-list">
             {statements.slice(0, 40).map((stmt) => {
               const state = statementEditability(stmt);
+              const lock = compat?.lockReasons[stmt.id] ?? null;
+              const off = !state.editable || !!lock;
               return (
                 <button
                   key={stmt.id}
                   type="button"
-                  className={`dg-prop-item${selectedId === stmt.id ? " is-on" : ""}${state.editable ? "" : " is-off"}`}
-                  title={state.editable ? statementLabel(stmt, source) : state.reason}
+                  className={`dg-prop-item${selectedId === stmt.id ? " is-on" : ""}${off ? " is-off" : ""}${lock ? " is-compat-locked" : ""}`}
+                  title={lock ?? (off ? state.reason : statementLabel(stmt, source))}
                   onClick={() => setSelectedId(stmt.id)}
                 >
                   <span className="dg-prop-item-id">{stmt.id}</span>
+                  {lock && <span className="dg-prop-lock">已锁定</span>}
                   <span className="dg-prop-item-code">{statementLabel(stmt, source)}</span>
                 </button>
               );
