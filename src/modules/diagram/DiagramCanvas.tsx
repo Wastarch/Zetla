@@ -1,4 +1,4 @@
-// M2·F1-3 / F1-6 / F2-1 / F2-2 / F2-3：TikZ 双通道画布 + 拖拽写回 + 点选图元 + 锁定提示。
+// M2·F1-3 / F1-6 / F2-1 / F2-2 / F2-3 / F2-4：TikZ 双通道画布 + 拖拽写回 + 点选图元 + 锁定提示 + 统一撤销栈。
 //  本地通道：source → debounce 160ms → engine.renderTikz（动态加载 vendor bundle + LRU
 //            缓存 + 诊断归一化 + editHandles）→ svg.sanitizeSvg 白名单消毒 → importNode 挂载
 //            → 追加控制点 <circle> 图层（DOM API 创建，不经过 innerHTML）。
@@ -13,6 +13,9 @@
 //  锁定提示：F2-3 compat.ts 用 capabilityMatrix + featureUsage 把「展开 / 计算型构造」
 //            归属到语句与控制点；锁定控制点画橙色挂锁 + 具体理由，拒绝拖拽；
 //            画布常驻一条可展开的锁定清单（默认展开，不做死按钮）。
+//  撤销栈：F2-4 拖拽与属性都经 diagramHistory.commitDiagramPatch 并组写回；
+//            「仅画布」布局 CM6 无焦点，由 window keydown 把 Ctrl/Cmd+Z / Shift+Z / Y
+//            转发到同一条 history，焦点在源码栏时仍交回 CM6 的 historyKeymap。
 // 三布局下本组件常驻挂载（DiagramTab 用 hidden 切换），故不会因布局切换重复拉引擎。
 // 精确通道只在绘图 Tab 真实激活时编译，Tab 隐藏/切到别的缓冲时不跑 XeLaTeX。
 import {
@@ -41,14 +44,18 @@ import {
   handleLabel,
   isDraggableHandle,
   lockedHandleReason,
-  singleSpanPatch,
   svgDeltaToWorldDelta,
   worldToSvgPoint,
   type MatrixLike,
   type PointLike,
 } from "./dragEdit";
 import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat";
-import { getDiagramSourceBridge } from "./sourceBridge";
+import {
+  commitDiagramPatch,
+  resetDiagramHistorySession,
+  runDiagramHistoryCommand,
+  shouldHandleHistoryKey,
+} from "./diagramHistory";
 import {
   getCachedPreview,
   previewKey,
@@ -217,6 +224,9 @@ export function DiagramCanvas() {
   // window 级 pointer 监听只注册一次，靠 ref 读最新状态，避免反复解绑/重绑
   const sourceRef = useRef(source);
   sourceRef.current = source;
+  // F2-4：window 级 keydown 只注册一次，Tab 激活态靠 ref 读最新值，避免反复解绑
+  const tabVisibleRef = useRef(tabVisible);
+  tabVisibleRef.current = tabVisible;
   const resultRef = useRef(result);
   resultRef.current = result;
   const commitDragRef = useRef<(d: DragState) => void>(() => undefined);
@@ -343,6 +353,7 @@ export function DiagramCanvas() {
   }, [result]);
 
   // 拖拽提交：只算一次新源码，再以最小 span 补丁写回 CM6（F2-1 与键盘编辑同撤销栈）。
+  // F2-4：同一控制点的连续微调并入一组 history，一次 Ctrl+Z 回到这一串调整之前。
   commitDragRef.current = (d: DragState) => {
     const src = sourceRef.current;
     const res = resultRef.current;
@@ -363,18 +374,23 @@ export function DiagramCanvas() {
         setNotice({ tone: "warn", text: "位移太小，坐标未变化。" });
         return;
       }
-      const patch = singleSpanPatch(src, outcome.newSource);
-      const bridge = getDiagramSourceBridge();
-      const written = !!patch && !!bridge && bridge.patch(patch, src);
-      if (!written) setSource(outcome.newSource); // 降级：功能不丢，但无 CM6 撤销记录
+      const write = commitDiagramPatch({
+        key: `drag:${d.handleId}`,
+        source: src,
+        nextSource: outcome.newSource,
+        fallback: (s) => setSource(s), // 降级：功能不丢，但无 CM6 撤销记录
+      });
       const from = d.handle.sourceText ?? "";
       const to = outcome.replacement ?? "新坐标";
+      const suffix = write.written
+        ? write.merged
+          ? " · 连续微调已并组，Ctrl+Z 撤回整组"
+          : " · Ctrl+Z 可撤销"
+        : " · 源码栏未就绪，无撤销记录";
       setNotice({
-        tone: "ok",
+        tone: write.written ? "ok" : "warn",
         text:
-          from && from !== to
-            ? `已写回 ${from} → ${to}${written ? " · Ctrl+Z 可撤销" : ""}`
-            : `坐标已写回${written ? " · Ctrl+Z 可撤销" : ""}`,
+          from && from !== to ? `已写回 ${from} → ${to}${suffix}` : `坐标已写回${suffix}`,
       });
     });
   };
@@ -424,7 +440,26 @@ export function DiagramCanvas() {
       setDragLabel(null);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && dragRef.current) onCancel();
+      if (e.key === "Escape" && dragRef.current) {
+        onCancel();
+        return;
+      }
+      // F2-4：仅画布布局（或焦点在画布 / 侧栏而非源码栏）时 CM6 收不到按键，
+      // 由这里把撤销 / 重做转发到同一条 history；分屏里焦点在源码栏时应交回 CM6。
+      const kind = shouldHandleHistoryKey(e, tabVisibleRef.current, !!dragRef.current);
+      if (!kind) return;
+      e.preventDefault();
+      if (runDiagramHistoryCommand(kind)) {
+        setNotice({
+          tone: "ok",
+          text: kind === "undo" ? "已撤销 · 画布与源码同步还原" : "已重做",
+        });
+      } else {
+        setNotice({
+          tone: "warn",
+          text: `没有可${kind === "undo" ? "撤销" : "重做"}的改动，或源码栏尚未就绪。`,
+        });
+      }
     };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerup", onUp);
@@ -437,6 +472,12 @@ export function DiagramCanvas() {
       window.removeEventListener("keydown", onKey);
     };
   }, []);
+
+  // F2-4：切换预览通道后断开合并组。精确通道是 XeLaTeX 只读结果，
+  // 不该把「回到本地画布后的下一次拖拽」并到切通道前的那组微调上。
+  useEffect(() => {
+    resetDiagramHistorySession();
+  }, [previewMode]);
 
   // 提示条自动消失（4s），新提示会重置计时
   useEffect(() => {
@@ -546,8 +587,9 @@ export function DiagramCanvas() {
   }
 
   function historyCommand(kind: "undo" | "redo"): void {
-    const ok = getDiagramSourceBridge()?.[kind]();
-    if (!ok) setNotice({ tone: "warn", text: "没有可撤销 / 重做的改动，或源码栏尚未就绪。" });
+    if (!runDiagramHistoryCommand(kind)) {
+      setNotice({ tone: "warn", text: "没有可撤销 / 重做的改动，或源码栏尚未就绪。" });
+    }
   }
 
   const preciseImg = useMemo(
@@ -607,8 +649,10 @@ export function DiagramCanvas() {
         <span className="dg-canvas-hint">
           {previewMode === "local" ? "tikz-editor · 可拖拽" : "standalone · 100% 还原"}
         </span>
-        {previewMode === "local" && (
-          <div className="dg-edit-tools">
+        {/* F2-4：撤销 / 重做操作的是源码 history，与预览通道无关，两个通道常驻；
+            控制点只在本地即时通道有意义。 */}
+        <div className="dg-edit-tools">
+          {previewMode === "local" && (
             <button
               type="button"
               className={handlesOn ? "on" : ""}
@@ -618,14 +662,22 @@ export function DiagramCanvas() {
             >
               控制点
             </button>
-            <button type="button" title="撤销上一次源码或拖拽改动 (Ctrl+Z)" onClick={() => historyCommand("undo")}>
-              撤销
-            </button>
-            <button type="button" title="重做 (Ctrl+Shift+Z)" onClick={() => historyCommand("redo")}>
-              重做
-            </button>
-          </div>
-        )}
+          )}
+          <button
+            type="button"
+            title="撤销上一次源码 / 拖拽 / 属性改动 (Ctrl+Z)"
+            onClick={() => historyCommand("undo")}
+          >
+            撤销
+          </button>
+          <button
+            type="button"
+            title="重做 (Ctrl+Shift+Z / Ctrl+Y)"
+            onClick={() => historyCommand("redo")}
+          >
+            重做
+          </button>
+        </div>
         {previewMode === "local" && localDiags.length > 0 && (
           <button
             type="button"

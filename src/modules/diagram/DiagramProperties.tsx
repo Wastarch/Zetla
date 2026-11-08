@@ -1,14 +1,15 @@
-// M2·F2-2 / F2-3：侧栏「属性」区 —— 选中图元 → 改颜色 / 线宽 / 箭头 / 线型 / 填充 → 写回源码。
+// M2·F2-2 / F2-3 / F2-4：侧栏「属性」区 —— 选中图元 → 改颜色 / 线宽 / 箭头 / 线型 / 填充 → 写回源码。
 // F2-3：能力矩阵判定为不可编辑的语句，显示具体锁定理由而不是属性下拉（防止绕过画布锁定）。
+// F2-4：连续改同一个属性并入同一组 history，与画布拖拽共享同一个合并会话。
 //
 // 位置按计划放在**侧栏选项区**（不另设右坞）；画布与源码仍是主编辑区的独立 Tab。
 // 数据流：DiagramCanvas 点选写 selectedId + 每次渲染写 renderMeta → 本组件按
 // renderMeta.source === store.source 判定清单新鲜 → optionsEdit 生成单个最小 span 补丁
-// → sourceBridge.patch() dispatch 到 CM6（与键盘直编 / F2-1 拖拽共用撤销栈）。
+// → commitDiagramPatch() 经 sourceBridge dispatch 到 CM6（与键盘直编 / F2-1 拖拽共用撤销栈）。
 // 源码栏未就绪时降级为 setSource(applyPatchToSource)，功能不丢但无撤销记录，会明确提示。
 import { useEffect, useMemo, useState } from "react";
 import { useDiagramStore } from "./store";
-import { getDiagramSourceBridge } from "./sourceBridge";
+import { commitDiagramPatch } from "./diagramHistory";
 import {
   PROPERTY_LABELS,
   PROPERTY_PRESETS,
@@ -132,13 +133,19 @@ export function DiagramProperties() {
       setNotice({ tone: "warn", text: "当前已是该值，无需修改。" });
       return;
     }
-    const bridge = getDiagramSourceBridge();
-    const written = !!bridge && bridge.patch(plan.patch, source);
-    if (!written) setSource(applyPatchToSource(source, plan.patch));
-    setNotice({
-      tone: "ok",
-      text: `${plan.label}${written ? " · Ctrl+Z 可撤销" : " · 源码栏未就绪，无撤销记录"}`,
+    const nextSource = applyPatchToSource(source, plan.patch);
+    const write = commitDiagramPatch({
+      key: `prop:${selected.id}:${key}`,
+      source,
+      nextSource,
+      fallback: setSource,
     });
+    const suffix = write.written
+      ? write.merged
+        ? " · 连续微调已并组，Ctrl+Z 撤回整组"
+        : " · Ctrl+Z 可撤销"
+      : " · 源码栏未就绪，无撤销记录";
+    setNotice({ tone: write.written ? "ok" : "warn", text: `${plan.label}${suffix}` });
   }
 
   return (

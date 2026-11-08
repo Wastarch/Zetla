@@ -59,6 +59,20 @@ import {
   setCachedPreview,
   svgDataUrl,
 } from "../src/modules/diagram/previewCache.ts";
+import {
+  MAX_MERGE_STEPS,
+  MERGE_WINDOW_MS,
+  commitWithMerge,
+  planHistoryMerge,
+  resetMergeSession,
+  resolveHistoryShortcut,
+  type HistoryKeyContext,
+  type HistoryKeyLike,
+  type HistoryPatchApplier,
+  type MergeGroup,
+  type MergeSession,
+} from "../src/modules/diagram/historyMerge.ts";
+import { shouldHandleHistoryKey } from "../src/modules/diagram/diagramHistory.ts";
 
 // svg.ts 只在函数内部访问 DOM API，模块加载时不碰 DOM，故可先 import 再注入全局。
 const dom = new JSDOM("<!doctype html><html><body><div id=\"host\"></div></body></html>");
@@ -637,6 +651,277 @@ check(
   "真实渲染：used-unsupported 构造被列出，可导向 XeLaTeX"
 );
 check(allReasonsNonEmpty(compatLet.compat), "真实渲染：所有理由非空");
+
+console.log("F2-4 · planHistoryMerge（连续微调分组边界）");
+const H_SRC0 = String.raw`\draw (1,1) -- (2,2);`;
+const H_SRC1 = String.raw`\draw (1,1) -- (3,2);`;
+const H_SRC2 = String.raw`\draw (1,1) -- (4,2);`;
+const H_SRC3 = String.raw`\draw (1,1) -- (5,2);`;
+const H_SRC4 = String.raw`\draw (1,1) -- (6,2);`;
+const H_SRC5 = String.raw`\draw (1,1) -- (7,2);`;
+const p0 = planHistoryMerge(null, "drag:h1", H_SRC0, H_SRC1, 1000);
+check(p0.kind === "new" && p0.group.steps === 1, "首次微调开新组");
+check(
+  p0.group.baseSource === H_SRC0 && p0.group.currentSource === H_SRC1,
+  "组内基准 / 当前源码记账正确"
+);
+check(
+  p0.kind === "new" && p0.patch.insert === "3" && p0.patch.to - p0.patch.from === 1,
+  "首次补丁仍是最小单点替换，不整篇重写"
+);
+const p1 = planHistoryMerge(p0.group, "drag:h1", H_SRC1, H_SRC2, 1200);
+check(p1.kind === "merge" && p1.patch?.insert === "4", "窗口内同 key 微调并组，补丁从组内基准出发");
+check(
+  p1.kind === "merge" &&
+    p1.replace?.baseSource === H_SRC0 &&
+    p1.replace?.currentSource === H_SRC1,
+  "并组替换带上基准 / 当前源码供 CM6 校验"
+);
+check(p1.group.steps === 2, "并组后步数累加");
+check(
+  planHistoryMerge(p0.group, "drag:h1", H_SRC1, H_SRC2, 1000 + MERGE_WINDOW_MS + 1).kind === "new",
+  "超过合并窗口不并组"
+);
+check(
+  planHistoryMerge(p0.group, "drag:h1", H_SRC1, H_SRC2, 999).kind === "new",
+  "时间倒退不并组"
+);
+check(
+  planHistoryMerge(p0.group, "prop:path:0:stroke", H_SRC1, H_SRC2, 1200).kind === "new",
+  "换对象 / 换属性 key 不并组"
+);
+check(
+  planHistoryMerge(p0.group, "drag:h1", H_SRC0, H_SRC2, 1200).kind === "new",
+  "中途源码被外部改动（currentSource 不匹配）绝不并组"
+);
+const capped: MergeGroup = { ...p0.group, steps: MAX_MERGE_STEPS, currentSource: H_SRC1 };
+check(
+  planHistoryMerge(capped, "drag:h1", H_SRC1, H_SRC2, 1200).kind === "new",
+  "达到步数上限后开新组，避免一次 Ctrl+Z 回退过多"
+);
+const rewind = planHistoryMerge(p0.group, "drag:h1", H_SRC1, H_SRC0, 1200);
+check(
+  rewind.kind === "merge" && rewind.patch === null,
+  "连续微调恰好回到组内起点时只撤销整组、不新增空历史"
+);
+const rs: MergeSession = { group: p0.group };
+resetMergeSession(rs);
+check(rs.group === null, "resetMergeSession 断开合并组");
+
+console.log("F2-4 · commitWithMerge（并组写回 / 逐级降级）");
+function makeFake(initial: string) {
+  let doc = initial;
+  let failReplace = false;
+  let failPatch = false;
+  const log: string[] = [];
+  const applier: HistoryPatchApplier = {
+    patch(p, expected) {
+      if (failPatch || doc !== expected) {
+        failPatch = false;
+        log.push("patch-fail");
+        return false;
+      }
+      log.push("patch");
+      doc = doc.slice(0, p.from) + p.insert + doc.slice(p.to);
+      return true;
+    },
+    // 模拟真实契约：成功 = undo 回到 base 再重放合并补丁；失败 = 文档保持 current 不变
+    replaceLast(p, base, current, target) {
+      if (failReplace || doc !== current) {
+        failReplace = false;
+        log.push("replace-fail");
+        return false;
+      }
+      log.push("replace");
+      doc = p === null ? base : base.slice(0, p.from) + p.insert + base.slice(p.to);
+      return doc === target;
+    },
+  };
+  return {
+    applier,
+    log,
+    getDoc: () => doc,
+    failNextReplace() {
+      failReplace = true;
+    },
+    failNextPatch() {
+      failPatch = true;
+    },
+  };
+}
+
+const fake = makeFake(H_SRC0);
+const hs: MergeSession = { group: null };
+let hNow = 1000;
+const hApply = (source: string, nextSource: string, key = "drag:h1") => {
+  const out = commitWithMerge(hs, fake.applier, {
+    key,
+    source,
+    nextSource,
+    now: hNow,
+    fallback: () => undefined,
+  });
+  hNow += 200;
+  return out;
+};
+hApply(H_SRC0, H_SRC1);
+hApply(fake.getDoc(), H_SRC2);
+const r3 = hApply(fake.getDoc(), H_SRC3);
+check(fake.log.join(",") === "patch,replace,replace", "三次连续微调：1 次新补丁 + 2 次并组替换");
+check(fake.getDoc() === H_SRC3 && r3.written && r3.merged, "并组后文档等于最新源码，一次 Ctrl+Z 回到组内起点");
+check(hs.group?.baseSource === H_SRC0 && hs.group?.steps === 3, "会话基准始终是组内起点");
+const r4 = hApply(fake.getDoc(), H_SRC4, "prop:path:0:stroke");
+check(fake.log[fake.log.length - 1] === "patch" && !r4.merged, "换 key 后另起一组");
+resetMergeSession(hs);
+hApply(fake.getDoc(), H_SRC5);
+check(fake.log[fake.log.length - 1] === "patch", "撤销 / 重做后会话失效，下一次微调新开一组");
+
+const fakeTimeout = makeFake(H_SRC0);
+const hsTimeout: MergeSession = { group: null };
+commitWithMerge(hsTimeout, fakeTimeout.applier, {
+  key: "drag:h1", source: H_SRC0, nextSource: H_SRC1, now: 1000, fallback: () => undefined,
+});
+const rTimeout = commitWithMerge(hsTimeout, fakeTimeout.applier, {
+  key: "drag:h1", source: H_SRC1, nextSource: H_SRC2,
+  now: 1000 + MERGE_WINDOW_MS + 1, fallback: () => undefined,
+});
+check(
+  fakeTimeout.log.join(",") === "patch,patch" && !rTimeout.merged,
+  "超窗口的两次微调各自独立成一条 history"
+);
+
+const fakeFail = makeFake(H_SRC0);
+const hsFail: MergeSession = { group: null };
+commitWithMerge(hsFail, fakeFail.applier, {
+  key: "drag:h1", source: H_SRC0, nextSource: H_SRC1, now: 1000, fallback: () => undefined,
+});
+fakeFail.failNextReplace();
+const rFail = commitWithMerge(hsFail, fakeFail.applier, {
+  key: "drag:h1", source: H_SRC1, nextSource: H_SRC2, now: 1200, fallback: () => undefined,
+});
+check(
+  fakeFail.log.join(",") === "patch,replace-fail,patch" && rFail.written && !rFail.merged,
+  "并组替换失败（历史顶端不是本组）后回滚并降级为独立一步"
+);
+check(fakeFail.getDoc() === H_SRC2 && hsFail.group?.steps === 1, "降级后文档与会话状态一致");
+
+let fallbackCalls = 0;
+const rDeg = commitWithMerge({ group: null }, null, {
+  key: "k", source: H_SRC0, nextSource: H_SRC1, now: 1,
+  fallback: () => { fallbackCalls += 1; },
+});
+check(rDeg.degraded && !rDeg.written && fallbackCalls === 1, "源码栏未就绪时整篇降级且明确标记");
+const fakeStale = makeFake(H_SRC0);
+fakeStale.failNextPatch();
+const rStale = commitWithMerge({ group: null }, fakeStale.applier, {
+  key: "k", source: H_SRC0, nextSource: H_SRC1, now: 1,
+  fallback: () => { fallbackCalls += 1; },
+});
+check(rStale.degraded && fallbackCalls === 2, "CM6 拒绝过期补丁时降级写回，不静默丢改动");
+const fakeNoop = makeFake(H_SRC0);
+const rNoop = commitWithMerge({ group: null }, fakeNoop.applier, {
+  key: "k", source: H_SRC0, nextSource: H_SRC0, now: 1, fallback: () => undefined,
+});
+check(
+  !rNoop.written && !rNoop.degraded && fakeNoop.log.length === 0,
+  "源码无变化时不入 history 也不降级"
+);
+const fakeCap = makeFake(H_SRC0);
+const hsCap: MergeSession = { group: null };
+for (let i = 1; i <= MAX_MERGE_STEPS + 1; i += 1) {
+  const next = H_SRC0.replace("2,2", `${2 + i},2`);
+  commitWithMerge(hsCap, fakeCap.applier, {
+    key: "drag:h1", source: fakeCap.getDoc(), nextSource: next,
+    now: 1000 + i * 100, fallback: () => undefined,
+  });
+}
+check(
+  fakeCap.log.filter((s) => s === "patch").length === 2,
+  "超过 MAX_MERGE_STEPS 自动开新组，防止一次撤销回退过长历史"
+);
+
+console.log("F2-4 · resolveHistoryShortcut（全局撤销键判定）");
+const H_OK: HistoryKeyContext = {
+  tabVisible: true, dragging: false, inCodeMirror: false, inTextInput: false, dialogOpen: false,
+};
+const hkey = (over: Partial<HistoryKeyLike> = {}): HistoryKeyLike => ({
+  key: "z", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false,
+  defaultPrevented: false, ...over,
+});
+check(resolveHistoryShortcut(hkey(), H_OK) === "undo", "Ctrl+Z → 撤销");
+check(resolveHistoryShortcut(hkey({ ctrlKey: false, metaKey: true }), H_OK) === "undo", "Cmd+Z → 撤销");
+check(resolveHistoryShortcut(hkey({ shiftKey: true }), H_OK) === "redo", "Ctrl+Shift+Z → 重做");
+check(resolveHistoryShortcut(hkey({ key: "y" }), H_OK) === "redo", "Ctrl+Y → 重做");
+check(resolveHistoryShortcut(hkey({ key: "Z" }), H_OK) === "undo", "大写 Z（CapsLock）不漏判");
+check(resolveHistoryShortcut(hkey({ ctrlKey: false, metaKey: false }), H_OK) === null, "无修饰键不接管");
+check(resolveHistoryShortcut(hkey({ altKey: true }), H_OK) === null, "Alt 组合不接管");
+check(resolveHistoryShortcut(hkey({ defaultPrevented: true }), H_OK) === null, "已被处理的事件不重复接管");
+check(resolveHistoryShortcut(hkey({ key: "a" }), H_OK) === null, "Ctrl+A 等其它快捷键不接管");
+check(resolveHistoryShortcut(hkey({ key: "y", shiftKey: true }), H_OK) === null, "Ctrl+Shift+Y 不误判重做");
+check(resolveHistoryShortcut(hkey(), { ...H_OK, tabVisible: false }) === null, "绘图 Tab 未激活不抢主文档 Ctrl+Z");
+check(resolveHistoryShortcut(hkey(), { ...H_OK, dragging: true }) === null, "拖拽中不打断指针会话");
+check(resolveHistoryShortcut(hkey(), { ...H_OK, inCodeMirror: true }) === null, "焦点在 CM6 交回 historyKeymap");
+check(resolveHistoryShortcut(hkey(), { ...H_OK, inTextInput: true }) === null, "文本框内归还浏览器撤销");
+check(resolveHistoryShortcut(hkey(), { ...H_OK, dialogOpen: true }) === null, "模态对话框打开时不接管");
+
+console.log("F2-4 · shouldHandleHistoryKey（真实 DOM 上下文）");
+(globalThis as unknown as { Element: unknown }).Element = (dom.window as unknown as { Element: unknown }).Element;
+const host = g.document.getElementById("host")!;
+const mkKey = (target: Element, over: Record<string, unknown> = {}): KeyboardEvent =>
+  ({
+    key: "z", ctrlKey: true, metaKey: false, shiftKey: false, altKey: false,
+    defaultPrevented: false, target, ...over,
+  }) as unknown as KeyboardEvent;
+host.innerHTML = '<div class="cm-editor"><div contenteditable="true"></div></div>';
+check(
+  shouldHandleHistoryKey(mkKey(host.querySelector("[contenteditable]")!), true, false) === null,
+  "焦点在隐藏 / 可见 CM6 内都交回编辑器，不重复撤销"
+);
+host.innerHTML = '<input type="text" />';
+check(
+  shouldHandleHistoryKey(mkKey(host.querySelector("input")!), true, false) === null,
+  "caption 等文本框内按 Ctrl+Z 只撤销输入"
+);
+host.innerHTML = '<select><option>blue</option></select>';
+check(
+  shouldHandleHistoryKey(mkKey(host.querySelector("select")!), true, false) === "undo",
+  "属性下拉上按 Ctrl+Z 撤销刚才的绘图改动"
+);
+host.innerHTML = '<div class="modal-layer" role="dialog"></div>';
+check(
+  shouldHandleHistoryKey(mkKey(host.querySelector(".modal-layer")!), true, false) === null,
+  "模态框（.modal-layer）打开时不抢快捷键"
+);
+host.innerHTML = '<div class="modal sm" role="dialog"></div>';
+check(
+  shouldHandleHistoryKey(mkKey(host.querySelector(".modal")!), true, false) === null,
+  "内层 .modal[role=dialog] 形式的对话框也能识别"
+);
+// 项目里 role="dialog" 还用于常驻非模态面板，绝不能因此让全局撤销键永远失效
+host.innerHTML = '<div class="math-prefs" role="dialog"></div>';
+check(
+  shouldHandleHistoryKey(mkKey(host.querySelector(".math-prefs")!), true, false) === "undo",
+  "公式模块常驻 .math-prefs[role=dialog] 不误判为模态框"
+);
+host.innerHTML = '<div class="ref-preview" role="dialog"></div>';
+check(
+  shouldHandleHistoryKey(mkKey(host.querySelector(".ref-preview")!), true, false) === "undo",
+  "引用预览卡等浮动面板不误判为模态框"
+);
+host.innerHTML = '<div class="dg-canvas"></div>';
+const canvasEl = host.querySelector(".dg-canvas")!;
+check(
+  shouldHandleHistoryKey(mkKey(canvasEl), true, false) === "undo",
+  "仅画布布局（CM6 无焦点）由全局快捷键接管撤销"
+);
+check(
+  shouldHandleHistoryKey(mkKey(canvasEl, { shiftKey: true }), true, false) === "redo",
+  "仅画布布局下 Ctrl+Shift+Z 接管重做"
+);
+check(
+  shouldHandleHistoryKey(mkKey(canvasEl), false, false) === null,
+  "切到 .tex / PDF 后不抢主文档的撤销栈"
+);
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);
