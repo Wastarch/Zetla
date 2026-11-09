@@ -21,14 +21,14 @@ import { SyntaxHighlightDialog } from "@/ui/SyntaxHighlightDialog";
 import { RecipePane } from "@/ui/RecipePane";
 import { SnippetsPane, resetSnippetsDraft } from "@/ui/SnippetsPane";
 import { flushSnippets, hasDirtySnippets } from "@/ui/snippetsPaneBridge";
-import { DEFAULT_AUX_EXTENSIONS, LIVE_PREVIEW_DELAY_PRESETS } from "@/types/settings";
-import type {
-  AppSettings,
-  AppTheme,
-  CompileEngine,
-  EditorFontFamily,
-  PdfDefaultZoom,
+import {
+  DEFAULT_AUX_EXTENSIONS,
+  LIVE_PREVIEW_DELAY_PRESETS,
+  SUGGESTED_FONTS,
+  TERMINAL_SCROLLBACK_OPTIONS,
+  TERMINAL_FONT_SIZE_OPTIONS,
 } from "@/types/settings";
+import type { AppSettings, AppTheme, CompileEngine, PdfDefaultZoom } from "@/types/settings";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "general", icon: "layout", label: "通用" },
@@ -41,7 +41,8 @@ const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "about", icon: "book", label: "关于 Zetla" },
 ];
 
-const FONT_OPTIONS: EditorFontFamily[] = ["IBM Plex Mono", "Consolas", "Cascadia Mono"];
+/** 字体建议列表（M1-22 起字体族为任意字符串，datalist 供快捷选择亦可自由输入） */
+const FONT_OPTIONS = SUGGESTED_FONTS;
 /** 字号可选值 8–32（M0-14a 用户追加：Ctrl+滚轮缩放后为连续范围） */
 const FONT_SIZE_OPTIONS = Array.from({ length: 25 }, (_, i) => i + 8);
 const INTERVAL_OPTIONS = [5, 15, 30, 60];
@@ -259,6 +260,12 @@ export function SettingsDialog() {
           </button>
         </div>
         <div className="modal-body">
+          {/* M1-22：字体族建议列表（编辑器/终端两处 input 复用；仍可自由输入任意字体名） */}
+          <datalist id="zetla-font-options">
+            {FONT_OPTIONS.map((f) => (
+              <option key={f} value={f} />
+            ))}
+          </datalist>
           <div className="set-nav" role="tablist">
             {PANES.map((p) => (
               <button
@@ -499,22 +506,19 @@ export function SettingsDialog() {
             {pane === "editor" && (
               <div className="set-pane" role="tabpanel">
                 <h4>代码编辑器</h4>
-                <Fld label="编辑器字体" hint="影响代码区等宽字体">
-                  <select
+                <Fld label="编辑器字体" hint="影响代码区等宽字体；可输入系统内任意字体名">
+                  <input
+                    className="txt-in"
+                    list="zetla-font-options"
                     value={draft.editor.fontFamily}
+                    placeholder="IBM Plex Mono"
                     onChange={(e) =>
                       update((d) => ({
                         ...d,
-                        editor: { ...d.editor, fontFamily: e.target.value as EditorFontFamily },
+                        editor: { ...d.editor, fontFamily: e.target.value },
                       }))
                     }
-                  >
-                    {FONT_OPTIONS.map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </Fld>
                 <Fld label="字体大小" hint="代码区字号">
                   <select
@@ -563,6 +567,115 @@ export function SettingsDialog() {
                   tip="括号匹配固定开启；代码折叠"
                 >
                   <Switch checked disabled />
+                </Fld>
+
+                <h4 style={{ marginTop: 18 }}>终端</h4>
+                <Fld label="终端字体" hint="留空 = 跟随编辑器字体；可输入系统内任意字体名">
+                  <input
+                    className="txt-in"
+                    list="zetla-font-options"
+                    value={draft.terminal.fontFamily}
+                    placeholder="跟随编辑器字体"
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        terminal: { ...d.terminal, fontFamily: e.target.value },
+                      }))
+                    }
+                  />
+                </Fld>
+                <Fld label="终端字号" hint="终端区字号（8–24）">
+                  <select
+                    value={draft.terminal.fontSize}
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        terminal: { ...d.terminal, fontSize: Number(e.target.value) },
+                      }))
+                    }
+                  >
+                    {TERMINAL_FONT_SIZE_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n}px
+                      </option>
+                    ))}
+                  </select>
+                </Fld>
+                <Fld label="光标样式" hint="终端光标形状">
+                  <select
+                    value={draft.terminal.cursorStyle}
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        terminal: {
+                          ...d.terminal,
+                          cursorStyle: e.target.value as "block" | "bar" | "underline",
+                        },
+                      }))
+                    }
+                  >
+                    <option value="block">方块</option>
+                    <option value="bar">竖线</option>
+                    <option value="underline">下划线</option>
+                  </select>
+                </Fld>
+                <Fld label="光标闪烁" hint="终端光标是否闪烁">
+                  <Switch
+                    checked={draft.terminal.cursorBlink}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, terminal: { ...d.terminal, cursorBlink: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld label="回滚行数" hint="可向上翻看的输出行数；修改后重开终端生效">
+                  <select
+                    value={draft.terminal.scrollback}
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        terminal: { ...d.terminal, scrollback: Number(e.target.value) },
+                      }))
+                    }
+                  >
+                    {TERMINAL_SCROLLBACK_OPTIONS.map((n) => (
+                      <option key={n} value={n}>
+                        {n.toLocaleString()} 行
+                      </option>
+                    ))}
+                  </select>
+                </Fld>
+                <Fld label="选中文本自动复制" hint="鼠标选中终端文本即复制到剪贴板">
+                  <Switch
+                    checked={draft.terminal.copyOnSelect}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, terminal: { ...d.terminal, copyOnSelect: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld label="右键粘贴" hint="在终端区点击右键直接粘贴剪贴板内容">
+                  <Switch
+                    checked={draft.terminal.rightClickPaste}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, terminal: { ...d.terminal, rightClickPaste: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld label="默认工作目录" hint="新会话起始目录">
+                  <select
+                    value={draft.terminal.defaultCwd}
+                    onChange={(e) =>
+                      update((d) => ({
+                        ...d,
+                        terminal: {
+                          ...d.terminal,
+                          defaultCwd: e.target.value as "project" | "home",
+                        },
+                      }))
+                    }
+                  >
+                    <option value="project">当前项目根</option>
+                    <option value="home">用户主目录</option>
+                  </select>
                 </Fld>
               </div>
             )}

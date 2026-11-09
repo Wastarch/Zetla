@@ -7,3 +7,4 @@ export * from "./module";
 export * from "./settings";
 export * from "./snippets";
 export * from "./synctex";
+export * from "./terminal";

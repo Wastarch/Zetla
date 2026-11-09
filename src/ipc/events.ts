@@ -19,6 +19,10 @@ export const RustEvents = {
   texInstallProgress: "tex_install_progress",
   /** TeX 自动安装最终结果（M0-15b） */
   texInstallFinished: "tex_install_finished",
+  /** 内置终端输出（feat/terminal，data = base64 字节） */
+  terminalOutput: "terminal_output",
+  /** 内置终端子进程退出（feat/terminal） */
+  terminalExit: "terminal_exit",
 } as const;
 
 /** 前端内部总线事件名（bus.emit/on，见 core/bus.ts） */

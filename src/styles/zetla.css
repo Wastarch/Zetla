@@ -3376,6 +3376,192 @@ body.row-resizing {
   color: var(--txt-2);
 }
 
+/* ── 内置终端页（feat/terminal · xterm.js）── */
+/* 常驻挂载、按页签显隐：切页不销毁 PTY 会话与 xterm 缓冲 */
+.term-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.term-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 8px;
+}
+
+/* M1-24：终端操作按钮直接嵌在日志页签栏右端（不再有独立顶部条与会话标签） */
+.log-tab-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  padding-left: 6px;
+}
+
+/* 右侧操作按钮：比 .ibtn 更紧凑 */
+.term-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--txt-3);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+
+.term-act:hover,
+.term-act.on {
+  background: var(--bg-4);
+  color: var(--txt);
+}
+
+.term-act:disabled {
+  opacity: 0.32;
+  cursor: default;
+  background: none;
+}
+
+.term-sep {
+  width: 1px;
+  height: 13px;
+  margin: 0 3px;
+  background: var(--line);
+}
+
+/* 终端区：多会话叠放，同一时刻只显示一个（切会话不销毁缓冲与 PTY） */
+.term-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  padding: 6px 8px 0;
+}
+
+.term-hosts {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.term-host {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: var(--bg-2);
+}
+
+/* xterm 根元素绝不加 padding：FitAddon 以它为测量基准，padding 会让渲染网格
+   与 viewport 错位，xterm 6 默认黑底（viewport 不再刷主题色）从缝隙里露出成黑框 */
+.term-host .xterm {
+  height: 100%;
+}
+
+/* xterm 6：Viewport 不再用主题色刷底，默认黑会从行区余量/缝隙露出 → 置透明，
+   让 .term-host 的 var(--bg-2) 透上来（渲染层行区自身带主题背景色） */
+.term-host .xterm .xterm-viewport {
+  background: transparent;
+}
+
+/* ── 多会话列表（VSCode 终端列表面板）：会话 ≥2 时出现，点击切换 ── */
+.term-sessions {
+  flex: none;
+  width: 138px;
+  margin-left: 8px;
+  padding: 2px 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--line-soft);
+}
+
+.term-ses {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 24px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  background: none;
+  color: var(--txt-3);
+  font-family: var(--font-ui);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.term-ses:hover {
+  background: var(--bg-3);
+  color: var(--txt-2);
+}
+
+.term-ses.on {
+  color: var(--txt);
+}
+
+/* 当前会话：左侧蓝色竖条（对齐 VSCode 列表当前项） */
+.term-ses.on::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--accent);
+}
+
+.term-ses.dead {
+  opacity: 0.55;
+}
+
+.term-ses-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 空态：所有会话都关掉 ── */
+.term-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--txt-3);
+  font-family: var(--font-ui);
+  font-size: 12px;
+}
+
+.term-empty-btn {
+  height: 24px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  color: var(--txt-2);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.term-empty-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 .log-err {
   display: flex;
   flex-direction: column;

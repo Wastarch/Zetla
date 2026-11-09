@@ -2,8 +2,9 @@
 // schema v1；M0-13 在此追加 window / session / layout
 import type { ProjectEntry } from "./project";
 
-/** 编辑器字体族白名单（非法值由 Rust 侧归一化） */
-export type EditorFontFamily = "IBM Plex Mono" | "Consolas" | "Cascadia Mono";
+/** M1-22：编辑器/终端字体族为**任意字符串**（取消白名单；Rust 侧仅去空白，空回退默认）。
+ *  以下三项仅作为设置页 datalist 建议（可自由输入系统内任意字体名） */
+export const SUGGESTED_FONTS = ["IBM Plex Mono", "Consolas", "Cascadia Mono"] as const;
 /** PDF 默认缩放：适合宽度 / 100% / 125% / 150% */
 export type PdfDefaultZoom = "fit-width" | "100" | "125" | "150";
 /**
@@ -106,7 +107,8 @@ export interface FormulaConfig {
 export interface AppSettings {
   schemaVersion: number;
   editor: {
-    fontFamily: EditorFontFamily;
+    /** 字体族：任意字符串（M1-22 取消白名单） */
+    fontFamily: string;
     fontSize: number; // 8–32（Ctrl+滚轮缩放后为连续区间）
     lineWrapping: boolean;
     /** Ctrl+滚轮缩放编辑器字体（M0-14a 用户追加，默认开） */
@@ -215,7 +217,35 @@ export interface AppSettings {
   recentProjects: ProjectEntry[];
   /** M1-17：LaTeX 语法高亮配色（数据驱动；设置页「外观与保存 → 语法高亮」编辑） */
   highlight: HighlightSettings;
+  /** M1-22：内置终端配置（与 Rust TerminalConfig 一一对应，camelCase） */
+  terminal: TerminalSettings;
 }
+
+/** M1-22：内置终端设置（与 Rust TerminalConfig 一一对应，camelCase） */
+export interface TerminalSettings {
+  /** 字体族；空串 = 跟随编辑器字体 */
+  fontFamily: string;
+  /** 字号 8–24 */
+  fontSize: number;
+  /** 光标样式 */
+  cursorStyle: "block" | "bar" | "underline";
+  /** 光标闪烁 */
+  cursorBlink: boolean;
+  /** 回滚行数（100–50000；xterm 建实例时生效） */
+  scrollback: number;
+  /** 选中文本自动复制 */
+  copyOnSelect: boolean;
+  /** 右键粘贴剪贴板 */
+  rightClickPaste: boolean;
+  /** 默认工作目录（project=项目根 / home=用户主目录） */
+  defaultCwd: "project" | "home";
+}
+
+/** M1-22：终端回滚行数可选档位（设置页下拉） */
+export const TERMINAL_SCROLLBACK_OPTIONS = [1000, 5000, 10000, 50000] as const;
+
+/** M1-22：终端字号可选档位（8–24 连续区间整数值） */
+export const TERMINAL_FONT_SIZE_OPTIONS = Array.from({ length: 17 }, (_, i) => i + 8);
 
 /** M1-8：表格模块设置（与 Rust TableConfig 一一对应，camelCase） */
 export interface TableSettings {
@@ -340,14 +370,27 @@ export const DEFAULT_SETTINGS: AppSettings = {
   },
   /** M1-17：LaTeX 语法高亮默认配色（与 Rust DEFAULT_HIGHLIGHT 一致） */
   highlight: { latex: DEFAULT_LATEX_HIGHLIGHT },
+  /** M1-22：内置终端默认配置（与 Rust TerminalConfig::default 一致） */
+  terminal: {
+    fontFamily: "",
+    fontSize: 12,
+    cursorStyle: "block",
+    cursorBlink: true,
+    scrollback: 5000,
+    copyOnSelect: false,
+    rightClickPaste: true,
+    defaultCwd: "project",
+  },
 };
 
-/** 字体族 → CSS font-family 栈（应用到 --editor-ff，仅影响编辑器代码区） */
-export const FONT_STACKS: Record<EditorFontFamily, string> = {
-  "IBM Plex Mono": "'IBM Plex Mono', 'Cascadia Mono', Consolas, monospace",
-  Consolas: "Consolas, 'Cascadia Mono', monospace",
-  "Cascadia Mono": "'Cascadia Mono', Consolas, monospace",
-};
+/**
+ * 字体族 → CSS font-family 栈：用户字体优先，后接内置等宽兜底链。
+ * 用户值会过滤引号/反斜杠/分号再进单引号字面量，防 CSS 注入。
+ */
+export function editorFontStack(family: string): string {
+  const f = family.trim().replace(/['"\\;{}]/g, "") || "IBM Plex Mono";
+  return `'${f}', 'Cascadia Mono', Consolas, monospace`;
+}
 
 /** 旧 steps 步骤显示名（仅编译日志用） */
 export const STEP_LABELS: Record<CompileStep, string> = {
