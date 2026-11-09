@@ -324,6 +324,17 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   flex: none;
   user-select: none;
 }
+/* F3-2 后续修复：拖命中圈时实时换几何。根 SVG 保持拖拽开始时的 viewBox，
+   候选几何由 .dg-preview-geometry 包裹并做 Y 基准差补偿；此时允许几何溢出
+   基准 viewBox，拖出原边界也不会被裁掉（松手重渲染后标记会被清掉）。 */
+.dg-canvas-stage > svg[data-dg-drag-preview="1"] {
+  overflow: visible;
+  cursor: grabbing;
+}
+.dg-preview-geometry {
+  /* 只是几何容器，不改变描边 / 填充；控制点层仍挂在它之上接收指针。 */
+  pointer-events: auto;
+}
 
 .dg-canvas-overlay {
   position: absolute;

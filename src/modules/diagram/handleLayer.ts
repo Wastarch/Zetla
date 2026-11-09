@@ -56,9 +56,12 @@ function appendLockGlyph(
   unitScale: number,
   compatLocked: boolean,
   lockScale = 1,
+  handleId = "",
 ): void {
   const g = el("g", {
     class: `dg-handle-lock${compatLocked ? " is-compat" : ""}`,
+    // F3-2 后续修复：实时预览换几何时按 id 把挂锁一起挪，避免锁图标留在旧位置。
+    "data-dg-lock-for": handleId,
     transform: `translate(${fmtNum(x)} ${fmtNum(y)}) scale(${fmtNum(lockScale / unitScale)})`,
   });
   const body = el("rect", {
@@ -143,6 +146,7 @@ export function buildHandleLayer(
         metrics.unitScale,
         compatLocked,
         metrics.lockScale,
+        h.id,
       );
     }
   }

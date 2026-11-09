@@ -16,6 +16,11 @@
 //  拖拽写回：pointerdown 命中控制点 → window 级 pointermove（屏幕 px 经 getScreenCTM 反算
 //            world 位移）→ pointerup 调上游 applyEditIntent 得到新源码 → 求最小 span 补丁
 //            → 经 sourceBridge dispatch 到 CM6 视图（与键盘改源码共用撤销栈）。
+//  实时预览（F3-2 后续修复）：pointermove 期间同一份 applyEditIntent 产出**候选源码**，
+//            renderTikz 得到候选 SVG，只替换根 SVG 的几何子节点（保持基准 viewBox 与
+//            控制点 / 选中框辅助层不变），于是「拖命中圈 = 图形跟着动」；预览不写 source、
+//            不进撤销栈、不动 renderMeta，松手才提交一次。命中圈只是 TikZ 句柄的交互代理，
+//            编辑语义与结果仍然是原来的节点坐标改写（见 dragPreview.ts）。
 //  点选图元：F2-2 pointerdown 从 data-source-id / 控制点 sourceRef 取 id 写入 store，
 //            侧栏属性区据此定位语句选项；选中态只 toggle class，不重建 SVG、不打断拖拽。
 //  锁定提示：F2-3 compat.ts 用 capabilityMatrix + featureUsage 把「展开 / 计算型构造」
@@ -40,6 +45,7 @@ import {
   applyDragEdit,
   preloadTikzEngine,
   renderTikz,
+  type DragEditOutcome,
   type TikzEditHandle,
   type TikzRender,
 } from "./tikzEditor/engine";
@@ -62,6 +68,12 @@ import {
   createSelectionLayer,
   drawSelectionBox,
 } from "./handleLayer";
+import {
+  applyPreviewGeometry,
+  isPreviewActive,
+  shouldRenderPreview,
+  updateHandleLayerPositions,
+} from "./dragPreview";
 import {
   HANDLE_SIZE_LABELS,
   clientRectToSvgBox,
@@ -175,11 +187,26 @@ interface DragState {
   guide: SVGLineElement | null;
   moved: boolean;
   newWorld: PointLike;
+  /** F3-2 后续修复：最近一帧实时预览所用的候选源码 / 世界坐标 / 写回结果 */
+  previewSource: string | null;
+  previewWorld: PointLike | null;
+  previewOutcome: DragEditOutcome | null;
+  /** 连续预览失败次数；超过阈值就停掉本手势的预览，避免每帧注定失败的重试 */
+  previewFailures: number;
 }
 
 interface Notice {
   tone: "ok" | "warn" | "err";
   text: string;
+}
+
+/** window 级监听只注册一次，实时预览的闭包靠这个 ref 取最新值（同 shapeApiRef 范式）。 */
+interface PreviewApi {
+  schedule: (d: DragState) => void;
+  /** 停止排帧但保留预览几何（提交成功后等重渲染自然替换） */
+  deactivate: () => void;
+  /** 取消 / 失败时把基准几何与控制点位置还原 */
+  restore: () => void;
 }
 
 export function DiagramCanvas() {
@@ -235,6 +262,17 @@ export function DiagramCanvas() {
     key: () => false,
     cancel: () => undefined,
   });
+  // F3-2 后续修复：拖拽实时预览（不写源码、不进撤销栈）。rAF 单帧节流 + 在途守卫，
+  // 一帧只跑一次「候选源码 → 候选 SVG → 换几何」，指针跑得比渲染快就只保留最新坐标。
+  const previewApiRef = useRef<PreviewApi>({
+    schedule: () => undefined,
+    deactivate: () => undefined,
+    restore: () => undefined,
+  });
+  const previewFrameRef = useRef<number | null>(null);
+  const previewBusyRef = useRef(false);
+  const previewActiveRef = useRef(false);
+  const previewBaseRef = useRef<DragState | null>(null);
   // F3-2：控制点档位（localStorage 偏好）× 实测单位比 → 一组真正恒屏的尺寸。
   // unitScale 不能写成 zoom：SVG 的 viewBox 会按 width:100% 铺进画布，默认示例
   // 124 单位 ≈ 400px，漏掉这层比例会让 3.3px 的手柄显示成 21px 直径。
@@ -333,6 +371,8 @@ export function DiagramCanvas() {
     const stage = stageRef.current;
     if (!stage) return;
     dragRef.current = null;
+    // 新的渲染结果会整棵替换 SVG：停掉在途的实时预览，避免异步回调把旧几何写回新画布。
+    previewApiRef.current.deactivate();
     setDragLabel(null);
     if (!result || previewMode === "precise") {
       stage.replaceChildren();
@@ -382,10 +422,14 @@ export function DiagramCanvas() {
     return () => ro.disconnect();
   }, [previewMode, zoom]);
 
-  // F2-2 选中高亮：只 toggle class，不重建 SVG —— 重建会丢弃正在拖拽的 DOM 引用，
-  // 也会让 CM6 视图之外的画布状态抖动。drop-shadow 不改变实际描边颜色，避免误以为改了色。
-  // F3-2：同一条 effect 里给控制点 <g> 标 is-selected，选中图元的手柄会填充强调色。
-  useEffect(() => {
+  /**
+   * F2-2 选中高亮 + F3-2 选中包围盒。抽成函数是为了让「实时预览换几何」也能复用：
+   * 候选几何是全新的 DOM 节点，必须重新贴一次 dg-selected / is-selected 并重画虚线框，
+   * 否则拖着拖着高亮和包围盒会留在旧位置。只改辅助层，不重建主 SVG、不打断拖拽。
+   * 包围盒用 getBoundingClientRect()（屏幕像素，天然含 transform）经 getScreenCTM()
+   * 完整仿射逆回到 SVG 用户坐标；零尺寸矩形跳过，避免把 (0,0) 并进来。
+   */
+  function refreshSelectionChrome(): void {
     const stage = stageRef.current;
     if (!stage || previewMode !== "local") return;
     for (const el of Array.from(stage.querySelectorAll("[data-source-id]"))) {
@@ -397,15 +441,6 @@ export function DiagramCanvas() {
         !!selectedId && node.getAttribute("data-dg-source-id") === selectedId,
       );
     }
-  }, [selectedId, result, zoom, previewMode, handlesOn, metrics]);
-
-  // F3-2：选中包围盒。只重画辅助层（不重建主 SVG、不打断 F2-1 拖拽）。
-  // 用 getBoundingClientRect()（屏幕像素，天然含 transform）再经 getScreenCTM() 完整仿射逆
-  // 回到 SVG 用户坐标；不用 getBBox()，避免局部坐标系与元素 transform 叠加算错。
-  // 零尺寸（display:none / 尚未布局）矩形跳过，否则会把 (0,0) 并进包围盒。
-  useEffect(() => {
-    const stage = stageRef.current;
-    if (!stage) return;
     const svg = stage.querySelector("svg") as SVGSVGElement | null;
     const layer = svg?.querySelector("[data-dg-selection-layer]") as SVGGElement | null;
     if (!svg || !layer) return;
@@ -430,7 +465,159 @@ export function DiagramCanvas() {
       .filter((r) => !(r.width === 0 && r.height === 0))
       .map((r) => clientRectToSvgBox(r, m));
     drawSelectionBox(layer, unionBoxes(boxes), metrics);
+  }
+
+  useEffect(() => {
+    refreshSelectionChrome();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, result, zoom, previewMode, handlesOn, toolMode, metrics]);
+
+  // ── F3-2 后续修复：拖命中圈 → 实时几何预览（不写源码、不进撤销栈） ──────────
+  // 命中圈只是 TikZ 句柄的交互代理：每一帧仍用同一份 applyEditIntent 从「基准源码 +
+  // 基准句柄」算出候选源码，再 renderTikz 出候选 SVG。根 SVG 的 viewBox 保持基准值，
+  // 只换几何子节点并做 Y 基准差补偿（dragPreview.ts），所以画布不跳、控制点引用不丢。
+  function cancelPreviewFrame(): void {
+    if (previewFrameRef.current !== null) {
+      window.cancelAnimationFrame(previewFrameRef.current);
+      previewFrameRef.current = null;
+    }
+  }
+
+  /** 把基准几何 / 控制点 / 选中框还原（Esc、pointercancel、提交失败时用）。 */
+  function restorePreviewGeometry(): void {
+    const svg = stageSvg();
+    const base = previewBaseRef.current;
+    if (!svg || !base || !isPreviewActive(svg)) return;
+    const vb = base.resultAtStart.viewBox;
+    const ok = applyPreviewGeometry(svg, {
+      markup: base.resultAtStart.svg,
+      baseViewBox: vb,
+      candidateViewBox: vb,
+      zoom,
+      live: false,
+    });
+    if (!ok) return;
+    const layer = svg.querySelector("[data-dg-handle-layer]") as SVGGElement | null;
+    if (layer) updateHandleLayerPositions(layer, base.resultAtStart.handles, vb, metrics);
+    base.marker.classList.remove("is-active");
+    base.marker.setAttribute("cx", fmtNum(base.startSvg.x));
+    base.marker.setAttribute("cy", fmtNum(base.startSvg.y));
+    base.hitMarker?.setAttribute("cx", fmtNum(base.startSvg.x));
+    base.hitMarker?.setAttribute("cy", fmtNum(base.startSvg.y));
+    if (base.guide) base.guide.setAttribute("visibility", "hidden");
+    refreshSelectionChrome();
+  }
+
+  function deactivatePreview(): void {
+    cancelPreviewFrame();
+    previewActiveRef.current = false;
+  }
+
+  function cancelAndRestorePreview(): void {
+    cancelPreviewFrame();
+    previewActiveRef.current = false;
+    restorePreviewGeometry();
+    previewBaseRef.current = null;
+  }
+
+  function schedulePreview(d: DragState): void {
+    if (!previewActiveRef.current || dragRef.current !== d) return;
+    if (previewFrameRef.current !== null || previewBusyRef.current) return;
+    previewFrameRef.current = window.requestAnimationFrame(() => {
+      previewFrameRef.current = null;
+      void runPreview(d);
+    });
+  }
+
+  /** 连续 3 帧失败就停掉本手势的预览（上游对该句柄不支持是确定性的，重试没意义）。 */
+  function notePreviewFailure(d: DragState): void {
+    d.previewFailures += 1;
+    if (d.previewFailures >= 3) previewActiveRef.current = false;
+  }
+
+  async function runPreview(d: DragState): Promise<void> {
+    if (!previewActiveRef.current || dragRef.current !== d) return;
+    previewBusyRef.current = true;
+    const world = { x: d.newWorld.x, y: d.newWorld.y };
+    try {
+      const outcome = await applyDragEdit(
+        d.sourceAtStart,
+        d.resultAtStart.handles,
+        d.handleId,
+        world,
+      );
+      if (!previewActiveRef.current || dragRef.current !== d) return;
+      // 上游不支持 / 报错时不打断拖拽，松手由 commit 给出明确理由。
+      if (outcome.status !== "ok") {
+        notePreviewFailure(d);
+        return;
+      }
+      if (!shouldRenderPreview(d.previewSource, outcome.newSource, d.sourceAtStart)) {
+        // 源码没变（上游坐标量化）：几何已经正确，只记下这一帧的世界坐标供提交复用。
+        d.previewWorld = world;
+        d.previewOutcome = outcome;
+        return;
+      }
+      const candidate = await renderTikz(outcome.newSource);
+      if (!previewActiveRef.current || dragRef.current !== d) return;
+      const svg = stageSvg();
+      if (!svg) {
+        notePreviewFailure(d);
+        return;
+      }
+      const changed = applyPreviewGeometry(svg, {
+        markup: candidate.svg,
+        baseViewBox: d.resultAtStart.viewBox,
+        candidateViewBox: candidate.viewBox,
+        zoom,
+        live: true,
+      });
+      if (!changed) {
+        notePreviewFailure(d);
+        return;
+      }
+      const layer = svg.querySelector("[data-dg-handle-layer]") as SVGGElement | null;
+      if (layer) {
+        // 活动控制点继续跟指针；其余控制点 / 挂锁跟着候选几何一起挪。
+        updateHandleLayerPositions(
+          layer,
+          candidate.handles,
+          d.resultAtStart.viewBox,
+          metrics,
+          d.handleId,
+        );
+      }
+      refreshSelectionChrome();
+      d.previewSource = outcome.newSource;
+      d.previewOutcome = outcome;
+      d.previewWorld = world;
+      d.previewFailures = 0;
+    } catch (err) {
+      // 单帧预览失败不阻断拖拽：松手仍走原写回路径。不弹提示条，避免一帧一次刷屏。
+      notePreviewFailure(d);
+      console.warn("[diagram] 实时预览渲染失败：", errorText(err));
+    } finally {
+      previewBusyRef.current = false;
+      // 失败路径也记下这一帧的坐标：否则 previewWorld 一直是 null，会在拖拽期间
+      // 每帧重试一次注定失败的渲染（上游不支持 / 引擎报错 / 消毒失败）。
+      if (!d.previewWorld) d.previewWorld = world;
+      // 指针跑得比渲染快时，用最新坐标再排一帧；相同坐标不重排，避免空转。
+      if (
+        previewActiveRef.current &&
+        dragRef.current === d &&
+        (Math.abs(d.previewWorld.x - d.newWorld.x) > 1e-6 ||
+          Math.abs(d.previewWorld.y - d.newWorld.y) > 1e-6)
+      ) {
+        schedulePreview(d);
+      }
+    }
+  }
+
+  previewApiRef.current = {
+    schedule: schedulePreview,
+    deactivate: deactivatePreview,
+    restore: cancelAndRestorePreview,
+  };
 
   // 每次拿到新结果都回到「自动」模式，避免上一次手动收起延续到下一张图
   useEffect(() => {
@@ -461,15 +648,31 @@ export function DiagramCanvas() {
 
   // 拖拽提交：只算一次新源码，再以最小 span 补丁写回 CM6（F2-1 与键盘编辑同撤销栈）。
   // F2-4：同一控制点的连续微调并入一组 history，一次 Ctrl+Z 回到这一串调整之前。
+  // F3-2 后续修复：若最后一帧实时预览与松手坐标一致，直接复用它的写回结果 ——
+  // 保证「眼睛看到的几何」和「真正提交的源码」是同一份，不会在松手瞬间跳一下。
   commitDragRef.current = (d: DragState) => {
+    // 停止排帧但保留预览几何；160ms 后重渲染会整棵替换，期间不留视觉空档。
+    previewApiRef.current.deactivate();
     const src = sourceRef.current;
     const res = resultRef.current;
     if (!res || src !== d.sourceAtStart || res !== d.resultAtStart) {
+      previewApiRef.current.restore();
       setNotice({ tone: "warn", text: "源码在拖拽期间发生变化，请重新拖动。" });
       return;
     }
-    void applyDragEdit(src, res.handles, d.handleId, d.newWorld).then((outcome) => {
+    const reused =
+      d.previewOutcome &&
+      d.previewWorld &&
+      Math.abs(d.previewWorld.x - d.newWorld.x) < 1e-9 &&
+      Math.abs(d.previewWorld.y - d.newWorld.y) < 1e-9
+        ? d.previewOutcome
+        : null;
+    const pending = reused
+      ? Promise.resolve(reused)
+      : applyDragEdit(src, res.handles, d.handleId, d.newWorld);
+    void pending.then((outcome) => {
       if (outcome.status !== "ok") {
+        previewApiRef.current.restore();
         setNotice(
           outcome.status === "unsupported"
             ? { tone: "warn", text: `无法写回：${outcome.reason}` }
@@ -478,6 +681,7 @@ export function DiagramCanvas() {
         return;
       }
       if (outcome.newSource === src) {
+        previewApiRef.current.restore();
         setNotice({ tone: "warn", text: "位移太小，坐标未变化。" });
         return;
       }
@@ -916,6 +1120,8 @@ export function DiagramCanvas() {
         d.guide.setAttribute("y2", fmtNum(curSvg.y));
       }
       setDragLabel(dragDeltaLabel(dWorld.x, dWorld.y));
+      // F3-2 后续修复：同一帧排一次「候选源码 → 候选几何」的替换，图形跟着命中圈动。
+      previewApiRef.current.schedule(d);
     };
     const onUp = () => {
       // F3-1：形状工具松手提交；多点工具无 toolDragRef，这里会直接返回。
@@ -927,6 +1133,7 @@ export function DiagramCanvas() {
       if (d.guide) d.guide.setAttribute("visibility", "hidden");
       setDragLabel(null);
       if (d.moved) commitDragRef.current(d);
+      else previewApiRef.current.deactivate();
     };
     const onCancel = () => {
       const d = dragRef.current;
@@ -934,6 +1141,8 @@ export function DiagramCanvas() {
       dragRef.current = null;
       resetMarker(d);
       setDragLabel(null);
+      // F3-2 后续修复：Esc / pointercancel 把预览几何还原成拖拽开始前的样子。
+      previewApiRef.current.restore();
     };
     const onKey = (e: KeyboardEvent) => {
       // F3-1：Esc / Enter / Backspace 先给形状工具会话，绘制中不触发撤销栈。
@@ -988,6 +1197,14 @@ export function DiagramCanvas() {
   /** 命中控制点，或直接拖图元本体（自动取它的 node-position 句柄）。 */
   function startDragFromEvent(target: EventTarget | null): void {
     if (previewMode !== "local" || !result || !handlesOn) return;
+    // 实时预览让「连续快速拖拽」变常见：源码已提交但画布还在 160ms debounce 时，
+    // result 仍是旧一批句柄，直接拖会因 sourceFingerprint 不符而写回失败。
+    // 这里对齐 renderMeta.source 与当前源码，不匹配就等这一帧重渲染完成。
+    const meta = useDiagramStore.getState().renderMeta;
+    if (meta && meta.source !== sourceRef.current) {
+      setNotice({ tone: "warn", text: "源码刚更新，画布正在重渲染，请稍候再拖。" });
+      return;
+    }
     if (!(target instanceof Element)) return;
     const svg = target.closest("svg") as SVGSVGElement | null;
     if (!svg) return;
@@ -1054,7 +1271,15 @@ export function DiagramCanvas() {
       guide,
       moved: false,
       newWorld: { x: hit.world.x, y: hit.world.y },
+      previewSource: null,
+      previewWorld: null,
+      previewOutcome: null,
+      previewFailures: 0,
     };
+    // F3-2 后续修复：以此刻的源码 / 渲染结果为整段手势的**唯一基准**，之后每帧的
+    // 候选源码都从它重算，绝不把上一帧的候选当基准（否则误差会累积、语义也会漂）。
+    previewActiveRef.current = true;
+    previewBaseRef.current = dragRef.current;
     marker.classList.add("is-active");
     if (guide) {
       guide.setAttribute("x1", fmtNum(startSvg.x));
@@ -1135,7 +1360,7 @@ export function DiagramCanvas() {
     previewMode !== "local"
       ? "精确预览只读 · 切回本地即时可绘制"
       : toolMode === "select"
-        ? `拖动控制点写回坐标 · ${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · 选中 ${selectedId ?? "无"}（侧栏改属性）`
+        ? `拖动命中圈实时预览 · 松手写回坐标 · ${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · 选中 ${selectedId ?? "无"}（侧栏改属性）`
         : `${toolDef(toolMode).label}工具已启用 · 绘制时隐藏控制点 · 选中 ${selectedId ?? "无"}（插入后自动选中）`;
 
   return (

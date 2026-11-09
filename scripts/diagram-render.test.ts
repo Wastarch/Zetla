@@ -123,6 +123,13 @@ import {
   createSelectionLayer,
   drawSelectionBox,
 } from "../src/modules/diagram/handleLayer.ts";
+import {
+  applyPreviewGeometry,
+  isPreviewActive,
+  previewGeometryOffset,
+  shouldRenderPreview,
+  updateHandleLayerPositions,
+} from "../src/modules/diagram/dragPreview.ts";
 
 // svg.ts 只在函数内部访问 DOM API，模块加载时不碰 DOM，故可先 import 再注入全局。
 const dom = new JSDOM("<!doctype html><html><body><div id=\"host\"></div></body></html>");
@@ -1377,6 +1384,218 @@ check(
 );
 drawSelectionBox(H_SEL, null, H_M1);
 check(H_SEL.children.length === 0, "点空白 / 切精确通道时包围盒被清空，不留残影");
+
+// ── F3-2 后续修复 · 拖拽实时几何预览（纯逻辑 + jsdom DOM） ───────────────────
+console.log("\nF3-2 后续修复 · 拖拽实时几何预览");
+
+// 1) viewBox 补偿：上游会按包围盒重算 viewBox，直接换根 SVG 会让画布跳一下
+const P_VB0 = { x: -12.2, y: -12.2, width: 81.3055, height: 52.8528 };
+const P_VB1 = { x: -12.2, y: -42.0754, width: 81.3055, height: 82.7281 };
+const P_SAME = previewGeometryOffset(P_VB0, P_VB0);
+check(P_SAME.dx === 0 && P_SAME.dy === 0, "同一 viewBox 不做补偿（横向拖拽只改 x/width 时就是这种情形）");
+const P_OFF = previewGeometryOffset(P_VB0, P_VB1);
+check(
+  P_OFF.dx === 0 && Math.abs(P_OFF.dy - ((2 * P_VB0.y + P_VB0.height) - (2 * P_VB1.y + P_VB1.height))) < 1e-9,
+  "纵向 viewBox 变化：dy = 两个 Y 基准差；X 方向上游无偏移，dx 恒为 0"
+);
+const P_WORLD_Y = 28.4528;
+const P_BASE_Y = 2 * P_VB0.y + P_VB0.height - P_WORLD_Y;
+const P_CAND_Y = 2 * P_VB1.y + P_VB1.height - P_WORLD_Y;
+check(
+  Math.abs(P_CAND_Y + P_OFF.dy - P_BASE_Y) < 1e-9,
+  "候选几何整体平移 dy 后，同一个 world 点仍落在基准 viewBox 的 SVG 坐标（画布不跳）"
+);
+const P_DEGENERATE = previewGeometryOffset(
+  { x: 0, y: Number.NaN, width: 10, height: 10 },
+  { x: 0, y: 0, width: 0, height: 0 },
+);
+check(
+  P_DEGENERATE.dx === 0 && Number.isFinite(P_DEGENERATE.dy),
+  "退化 / NaN viewBox 不产出 NaN transform（引擎返回异常结果时的护栏）"
+);
+
+// 2) 源码去重：上游坐标量化到 cm 两位小数，很多 pointermove 会得到同一份源码
+check(shouldRenderPreview(null, "S1", "S0") === true, "第一帧候选源码与基准不同 → 需要重渲染");
+check(shouldRenderPreview("S1", "S1", "S0") === false, "同一份候选源码连续多帧 → 跳过，不重复解析渲染");
+check(shouldRenderPreview(null, "S0", "S0") === false, "候选源码等于基准（位移太小）→ 不预览");
+check(shouldRenderPreview("S1", "", "S0") === false, "空候选源码 → 不预览");
+
+// 3) 真实引擎：候选源码 / 候选 viewBox / 补偿量三者自洽
+const P_SRC = H_SRC;
+const P_BASE = await renderTikz(P_SRC);
+const P_HANDLE = P_BASE.handles.find((h) => h.rewriteMode === "direct")!;
+const P_INTENT = await applyDragEdit(P_SRC, P_BASE.handles, P_HANDLE.id, {
+  x: P_HANDLE.world.x,
+  y: P_HANDLE.world.y - 30,
+});
+check(P_INTENT.status === "ok", "探针：纵向拖拽命中圈仍走同一份 applyEditIntent 得到候选源码");
+if (P_INTENT.status === "ok") {
+  const P_CAND = await renderTikz(P_INTENT.newSource);
+  check(
+    P_BASE.viewBox.y !== P_CAND.viewBox.y || P_BASE.viewBox.height !== P_CAND.viewBox.height,
+    "实证：上游按新包围盒重算 viewBox —— 实时预览必须做 Y 基准补偿"
+  );
+  const P_REAL_OFF = previewGeometryOffset(P_BASE.viewBox, P_CAND.viewBox);
+  check(
+    Math.abs(P_REAL_OFF.dy) > 1 && P_REAL_OFF.dx === 0,
+    "实证：候选几何需要非零 dy 补偿，且 X 方向不需要"
+  );
+
+  // 4) DOM：只换几何子节点，控制点层 / 选中层的 DOM 引用一个都不丢
+  const P_SVG = sanitizeSvg(P_BASE.svg, P_BASE.viewBox, 1)!;
+  const P_VIEWBOX_TEXT = P_SVG.getAttribute("viewBox");
+  const P_SEL = createSelectionLayer(P_SVG);
+  const P_LAYER = buildHandleLayer(P_SVG, P_BASE.handles, P_BASE.viewBox, P_BASE.compat, H_M1);
+  const P_OK = applyPreviewGeometry(P_SVG, {
+    markup: P_CAND.svg,
+    baseViewBox: P_BASE.viewBox,
+    candidateViewBox: P_CAND.viewBox,
+    zoom: 1,
+    live: true,
+  });
+  check(P_OK === true, "候选 SVG 经白名单消毒后成功替换几何");
+  check(
+    P_SVG.children.length === 3 &&
+      P_SVG.children[0].hasAttribute("data-dg-preview-geometry") &&
+      P_SVG.children[1] === P_SEL &&
+      P_SVG.children[2] === P_LAYER,
+    "预览几何插在辅助层之前，选中层 / 控制点层仍是原来的 DOM 节点（拖拽引用不丢）"
+  );
+  check(
+    P_SVG.getAttribute("viewBox") === P_VIEWBOX_TEXT,
+    "根 SVG 的 viewBox 全程保持基准值，不因候选包围盒变化而跳动"
+  );
+  check(
+    isPreviewActive(P_SVG) && P_SVG.getAttribute("overflow") === "visible",
+    "预览态标记 + overflow:visible，拖出基准 viewBox 也不被裁掉"
+  );
+  const P_WRAP = P_SVG.querySelector("[data-dg-preview-geometry]")!;
+  check(
+    Math.abs(Number((P_WRAP.getAttribute("transform") ?? "").replace(/translate\(0\s+/, "").replace(")", "")) - P_REAL_OFF.dy) < 1e-3,
+    "预览包裹层的 translate dy 与纯逻辑算出的补偿量一致"
+  );
+  check(
+    P_WRAP.querySelectorAll("[data-source-id]").length > 0,
+    "候选几何仍带 data-source-id：点选 / 属性区 / 选中高亮语义不丢"
+  );
+
+  // 连续多帧：旧包裹层被替换，辅助层引用仍不变
+  const P_INTENT2 = await applyDragEdit(P_SRC, P_BASE.handles, P_HANDLE.id, {
+    x: P_HANDLE.world.x,
+    y: P_HANDLE.world.y - 10,
+  });
+  if (P_INTENT2.status === "ok") {
+    const P_CAND2 = await renderTikz(P_INTENT2.newSource);
+    applyPreviewGeometry(P_SVG, {
+      markup: P_CAND2.svg,
+      baseViewBox: P_BASE.viewBox,
+      candidateViewBox: P_CAND2.viewBox,
+      zoom: 1,
+      live: true,
+    });
+    check(
+      P_SVG.querySelectorAll("[data-dg-preview-geometry]").length === 1,
+      "连续多帧只保留一个预览包裹层，不会层层嵌套"
+    );
+    check(
+      P_SVG.children[1] === P_SEL && P_SVG.children[2] === P_LAYER,
+      "连续预览不重建控制点 / 选中层，Esc 与松手提交拿到的还是同一批 DOM"
+    );
+  }
+
+  // 5) 非活动控制点跟着候选几何挪，活动控制点继续跟指针
+  const P_NODES = Array.from(P_LAYER.querySelectorAll("g.dg-handle-node"));
+  const P_ACTIVE_NODE = P_NODES.find((n) => n.getAttribute("data-dg-handle-id") === P_HANDLE.id)!;
+  const P_OTHER_NODE = P_NODES.find((n) => n.getAttribute("data-dg-handle-id") !== P_HANDLE.id)!;
+  const P_ACTIVE_CX0 = Number(P_ACTIVE_NODE.querySelector("circle.dg-handle")!.getAttribute("cx"));
+  const P_MOVED = updateHandleLayerPositions(
+    P_LAYER,
+    P_CAND.handles,
+    P_BASE.viewBox,
+    H_M1,
+    P_HANDLE.id,
+  );
+  check(P_MOVED >= 1, "至少有一个非活动控制点按候选句柄重新定位");
+  const P_OTHER_ID = P_OTHER_NODE.getAttribute("data-dg-handle-id")!;
+  const P_OTHER_H = P_CAND.handles.find((h) => h.id === P_OTHER_ID)!;
+  const P_EXPECT = worldToSvgPoint(P_OTHER_H.world, P_BASE.viewBox);
+  const P_OTHER_CIRCLE = P_OTHER_NODE.querySelector("circle.dg-handle")!;
+  const P_OTHER_HIT = P_OTHER_NODE.querySelector("circle.dg-handle-hit")!;
+  check(
+    Math.abs(Number(P_OTHER_CIRCLE.getAttribute("cx")) - P_EXPECT.x) < 1e-3 &&
+      Math.abs(Number(P_OTHER_CIRCLE.getAttribute("cy")) - P_EXPECT.y) < 1e-3,
+    "非活动控制点视觉圆按候选 world 坐标落到基准 viewBox 位置"
+  );
+  check(
+    P_OTHER_HIT.getAttribute("cx") === P_OTHER_CIRCLE.getAttribute("cx") &&
+      P_OTHER_HIT.getAttribute("cy") === P_OTHER_CIRCLE.getAttribute("cy"),
+    "视觉圆与透明命中圈同步移动，拖拽时两者不错位"
+  );
+  check(
+    Number(P_ACTIVE_NODE.querySelector("circle.dg-handle")!.getAttribute("cx")) === P_ACTIVE_CX0,
+    "活动控制点被 skipId 跳过，继续由 onMove 跟指针（更顺滑）"
+  );
+
+  // 6) 挂锁按 data-dg-lock-for 同步（F2-3 锁定提示不留在旧位置）
+  const P_LOCK_SVG = g.document.createElementNS(H_NS, "svg");
+  const P_LOCK_LAYER = buildHandleLayer(
+    P_LOCK_SVG,
+    P_BASE.handles.slice(0, 1),
+    P_BASE.viewBox,
+    { ...emptyCompatReport(), empty: false, handleReasons: { [P_BASE.handles[0].id]: "测试：已锁定" } },
+    H_M1,
+  );
+  const P_LOCK_GLYPH = P_LOCK_LAYER.querySelector("g.dg-handle-lock")!;
+  check(
+    P_LOCK_GLYPH.getAttribute("data-dg-lock-for") === P_BASE.handles[0].id,
+    "挂锁带 data-dg-lock-for，实时预览可按句柄 id 一起挪"
+  );
+  const P_LOCK_T0 = P_LOCK_GLYPH.getAttribute("transform");
+  updateHandleLayerPositions(P_LOCK_LAYER, P_CAND.handles, P_BASE.viewBox, H_M1);
+  check(
+    P_LOCK_GLYPH.getAttribute("transform") !== P_LOCK_T0 &&
+      (P_LOCK_GLYPH.getAttribute("transform") ?? "").startsWith("translate("),
+    "挂锁 transform 随候选句柄更新，且保持 translate+scale 恒屏结构"
+  );
+
+  // 7) 还原：Esc / pointercancel / 提交失败时回到拖拽开始前的几何
+  const P_RESTORED = applyPreviewGeometry(P_SVG, {
+    markup: P_BASE.svg,
+    baseViewBox: P_BASE.viewBox,
+    candidateViewBox: P_BASE.viewBox,
+    zoom: 1,
+    live: false,
+  });
+  check(P_RESTORED === true, "还原操作成功把基准 SVG 消毒挂回");
+  check(
+    !isPreviewActive(P_SVG) && P_SVG.querySelectorAll("[data-dg-preview-geometry]").length === 0,
+    "还原后清掉预览标记与包裹层，不留残影"
+  );
+  check(
+    P_SVG.children.length >= 3 &&
+      P_SVG.children[P_SVG.children.length - 2] === P_SEL &&
+      P_SVG.children[P_SVG.children.length - 1] === P_LAYER,
+    "还原后几何回到最前，辅助层仍是原 DOM 节点且「选中层在控制点层之下」"
+  );
+  check(
+    P_SVG.getAttribute("viewBox") === P_VIEWBOX_TEXT && !P_SVG.hasAttribute("overflow"),
+    "还原后 viewBox 保持基准、overflow 恢复默认"
+  );
+  check(
+    P_SVG.querySelector("[data-source-id]") !== null,
+    "还原后基准几何仍在，可直接继续下一次拖拽"
+  );
+  check(
+    applyPreviewGeometry(P_SVG, {
+      markup: "<not-svg",
+      baseViewBox: P_BASE.viewBox,
+      candidateViewBox: P_BASE.viewBox,
+      zoom: 1,
+      live: true,
+    }) === false,
+    "候选 SVG 无法解析时返回 false，调用方保留上一帧、不打断拖拽"
+  );
+}
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);
