@@ -11,7 +11,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 /// 输出事件名（前端 events.ts RustEvents.terminalOutput 对应）
@@ -121,7 +121,7 @@ fn build_command(shell: &str, args: &[String], cwd: &std::path::Path) -> Command
 #[tauri::command]
 pub fn terminal_create(
     app: AppHandle,
-    state: State<'_, TerminalState>,
+    state: State<'_, Arc<TerminalState>>,
     cwd: Option<String>,
     rows: u16,
     cols: u16,
@@ -185,7 +185,7 @@ pub fn terminal_create(
                 code,
             },
         );
-        if let Some(st) = app_wait.try_state::<TerminalState>() {
+        if let Some(st) = app_wait.try_state::<Arc<TerminalState>>() {
             st.sessions.lock().ok().map(|mut m| m.remove(&id));
         }
     });
@@ -205,7 +205,7 @@ pub fn terminal_create(
 /// 写入键盘输入（data = base64 字节）
 #[tauri::command]
 pub fn terminal_write(
-    state: State<'_, TerminalState>,
+    state: State<'_, Arc<TerminalState>>,
     id: u32,
     data: String,
 ) -> Result<(), String> {
@@ -223,7 +223,7 @@ pub fn terminal_write(
 /// 前端窗口尺寸变化后同步 pty 尺寸
 #[tauri::command]
 pub fn terminal_resize(
-    state: State<'_, TerminalState>,
+    state: State<'_, Arc<TerminalState>>,
     id: u32,
     rows: u16,
     cols: u16,
@@ -244,7 +244,7 @@ pub fn terminal_resize(
 
 /// 显式关闭终端（杀子进程；会话由回收线程从表里移除）
 #[tauri::command]
-pub fn terminal_kill(state: State<'_, TerminalState>, id: u32) -> Result<(), String> {
+pub fn terminal_kill(state: State<'_, Arc<TerminalState>>, id: u32) -> Result<(), String> {
     let session = {
         let mut st = state.sessions.lock().map_err(|e| e.to_string())?;
         st.remove(&id)
