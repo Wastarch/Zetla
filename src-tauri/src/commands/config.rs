@@ -10,8 +10,20 @@ use tauri::Manager;
 pub const CONFIG_DIR_NAME: &str = "Zetla";
 pub const CONFIG_FILE_NAME: &str = "config.json";
 
-/// 编辑器字体族白名单（设置页三个选项；非法值归一化为默认）
-pub const FONT_FAMILIES: [&str; 3] = ["IBM Plex Mono", "Consolas", "Cascadia Mono"];
+/// 编辑器/终端字体族：**任意字体名**（M1-22 起取消白名单；归一化仅去空白，空回退默认）
+pub const DEFAULT_FONT_FAMILY: &str = "IBM Plex Mono";
+/// 终端字号合法范围（独立于编辑器 8–32，终端面板高度有限取更窄区间）
+pub const TERM_FONT_SIZE_MIN: u32 = 8;
+pub const TERM_FONT_SIZE_MAX: u32 = 24;
+/// 终端默认字号
+pub const TERM_FONT_SIZE_DEFAULT: u32 = 12;
+/// 终端光标样式白名单
+pub const TERM_CURSOR_STYLES: [&str; 3] = ["block", "bar", "underline"];
+/// 终端回滚行数合法范围
+pub const TERM_SCROLLBACK_MIN: u32 = 100;
+pub const TERM_SCROLLBACK_MAX: u32 = 50000;
+/// 终端默认工作目录模式（project=项目根 / home=用户主目录）
+pub const TERM_CWD_MODES: [&str; 2] = ["project", "home"];
 /// 编辑器字号合法范围（M0-14a 用户追加：Ctrl+滚轮缩放字体后为连续区间，越界回退默认）
 pub const FONT_SIZE_MIN: u32 = 8;
 pub const FONT_SIZE_MAX: u32 = 32;
@@ -64,6 +76,8 @@ pub struct AppConfig {
     pub recent_projects: Vec<ProjectEntry>,
     /// M1-17：LaTeX 语法高亮配色（数据驱动；设置页「外观与保存 → 语法高亮」编辑）
     pub highlight: HighlightConfig,
+    /// M1-22：内置终端配置（设置页「编辑器 → 终端」分组）
+    pub terminal: TerminalConfig,
 }
 
 impl Default for AppConfig {
@@ -85,6 +99,7 @@ impl Default for AppConfig {
             table: TableConfig::default(),
             recent_projects: Vec::new(),
             highlight: HighlightConfig::default(),
+            terminal: TerminalConfig::default(),
         }
     }
 }
@@ -353,10 +368,47 @@ pub struct EditorConfig {
 impl Default for EditorConfig {
     fn default() -> Self {
         EditorConfig {
-            font_family: "IBM Plex Mono".to_string(),
+            font_family: DEFAULT_FONT_FAMILY.to_string(),
             font_size: 13,
             line_wrapping: true,
             mouse_wheel_zoom: true,
+        }
+    }
+}
+
+/// M1-22：内置终端配置（与 src/types/settings.ts TerminalSettings 一一对应，camelCase）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct TerminalConfig {
+    /// 字体族；**空串 = 跟随编辑器字体**（前端解析实际栈）
+    pub font_family: String,
+    /// 字号（8–24）
+    pub font_size: u32,
+    /// 光标样式（block / bar / underline）
+    pub cursor_style: String,
+    /// 光标闪烁
+    pub cursor_blink: bool,
+    /// 回滚行数（100–50000；xterm 建实例时生效）
+    pub scrollback: u32,
+    /// 选中文本自动复制
+    pub copy_on_select: bool,
+    /// 右键粘贴剪贴板
+    pub right_click_paste: bool,
+    /// 默认工作目录（project=项目根 / home=用户主目录）
+    pub default_cwd: String,
+}
+
+impl Default for TerminalConfig {
+    fn default() -> Self {
+        TerminalConfig {
+            font_family: String::new(),
+            font_size: TERM_FONT_SIZE_DEFAULT,
+            cursor_style: "block".to_string(),
+            cursor_blink: true,
+            scrollback: 5000,
+            copy_on_select: false,
+            right_click_paste: true,
+            default_cwd: "project".to_string(),
         }
     }
 }
@@ -824,10 +876,28 @@ pub fn normalize_highlight(h: HighlightConfig) -> HighlightConfig {
     HighlightConfig { latex }
 }
 
+/// M1-22：终端配置归一化（字体任意：去空白、空=跟随编辑器；数值钳制；枚举白名单）
+fn normalize_terminal(mut t: TerminalConfig) -> TerminalConfig {
+    t.font_family = t.font_family.trim().to_string();
+    if !(TERM_FONT_SIZE_MIN..=TERM_FONT_SIZE_MAX).contains(&t.font_size) {
+        t.font_size = TERM_FONT_SIZE_DEFAULT;
+    }
+    if !TERM_CURSOR_STYLES.contains(&t.cursor_style.as_str()) {
+        t.cursor_style = "block".to_string();
+    }
+    t.scrollback = t.scrollback.clamp(TERM_SCROLLBACK_MIN, TERM_SCROLLBACK_MAX);
+    if !TERM_CWD_MODES.contains(&t.default_cwd.as_str()) {
+        t.default_cwd = "project".to_string();
+    }
+    t
+}
+
 /// 越界/非法值归一化（读盘与写盘统一走此入口）
 pub fn normalize(mut cfg: AppConfig) -> AppConfig {
-    if !FONT_FAMILIES.contains(&cfg.editor.font_family.as_str()) {
-        cfg.editor.font_family = "IBM Plex Mono".to_string();
+    // M1-22：字体族取消白名单——任意字体往返保留；仅去空白，空回退默认
+    cfg.editor.font_family = cfg.editor.font_family.trim().to_string();
+    if cfg.editor.font_family.is_empty() {
+        cfg.editor.font_family = DEFAULT_FONT_FAMILY.to_string();
     }
     // M0-14a 用户追加：字号改为 8–32 连续范围（Ctrl+滚轮缩放），越界回退默认
     if cfg.editor.font_size < FONT_SIZE_MIN || cfg.editor.font_size > FONT_SIZE_MAX {
@@ -880,6 +950,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     cfg.layout.log_height = cfg.layout.log_height.clamp(LOG_H_MIN, LOG_H_MAX);
     // M1-17：LaTeX 语法高亮配色归一化（以默认 12 组为蓝本，覆盖已保存颜色）
     cfg.highlight = normalize_highlight(cfg.highlight);
+    // M1-22：终端配置归一化（字号/回滚钳制；光标样式与工作目录白名单）
+    cfg.terminal = normalize_terminal(cfg.terminal);
     // M0-15a：tex 代装记录归一化（先去空白再校验 distro 白名单）
     // distro 非法 → 清空；distro 为 null 允许保留目录（「手动指定引擎目录」场景）
     cfg.tex.distro = clean_opt_str(cfg.tex.distro);
@@ -1455,7 +1527,6 @@ mod tests {
 
     #[test]
     fn normalizes_out_of_range_values() {
-        let cfg = AppConfig::default();
         let raw = json!({
             "schemaVersion": 9,
             "editor": { "fontFamily": "Comic Sans", "fontSize": 99, "lineWrapping": true },
@@ -1465,11 +1536,46 @@ mod tests {
         });
         let parsed: AppConfig = serde_json::from_value(raw).unwrap();
         let got = normalize(parsed);
-        assert_eq!(got.editor.font_family, cfg.editor.font_family);
+        // M1-22：字体族取消白名单，任意字体名往返保留（仅去空白）
+        assert_eq!(got.editor.font_family, "Comic Sans");
         assert_eq!(got.editor.font_size, 13);
         assert_eq!(got.autosave.interval_seconds, 30);
         assert_eq!(got.pdf.default_zoom, "fit-width");
         assert_eq!(got.schema_version, 1);
+    }
+
+    #[test]
+    fn normalizes_terminal_config() {
+        // M1-22：终端配置——字号/回滚钳制、光标样式与工作目录白名单、字体去空白
+        let raw = json!({
+            "schemaVersion": 1,
+            "terminal": {
+                "fontFamily": "  Fira Code  ",
+                "fontSize": 99,
+                "cursorStyle": "wavy",
+                "cursorBlink": false,
+                "scrollback": 1,
+                "copyOnSelect": true,
+                "rightClickPaste": false,
+                "defaultCwd": "nowhere"
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        let t = normalize(parsed).terminal;
+        assert_eq!(t.font_family, "Fira Code");
+        assert_eq!(t.font_size, TERM_FONT_SIZE_DEFAULT);
+        assert_eq!(t.cursor_style, "block");
+        assert!(!t.cursor_blink);
+        assert_eq!(t.scrollback, TERM_SCROLLBACK_MIN);
+        assert!(t.copy_on_select);
+        assert!(!t.right_click_paste);
+        assert_eq!(t.default_cwd, "project");
+
+        // 空字体 = 跟随编辑器（保留空串语义）；非法回滚上限钳到 50000
+        let raw2 = json!({ "schemaVersion": 1, "terminal": { "fontFamily": "  ", "scrollback": 999999 } });
+        let t2 = normalize(serde_json::from_value::<AppConfig>(raw2).unwrap()).terminal;
+        assert_eq!(t2.font_family, "");
+        assert_eq!(t2.scrollback, TERM_SCROLLBACK_MAX);
     }
 
     #[test]

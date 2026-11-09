@@ -9,7 +9,7 @@ import { configApi } from "@/ipc/invoke";
 import {
   DEFAULT_SETTINGS,
   DEFAULT_AUX_EXTENSIONS,
-  FONT_STACKS,
+  editorFontStack,
   cloneSettings,
   type AppSettings,
   type AppTheme,
@@ -86,6 +86,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ...DEFAULT_SETTINGS,
         ...cfg,
         build: { ...DEFAULT_SETTINGS.build, ...(cfg.build ?? {}) },
+        // M1-22：terminal 子对象深合并（旧配置缺 terminal 时补默认值）
+        terminal: { ...DEFAULT_SETTINGS.terminal, ...(cfg.terminal ?? {}) },
       };
       // M1-9c：空列表 = 使用内置默认清单（语义统一）；旧配置缺字段时回退默认，UI 不显示空白列表
       if (
@@ -164,7 +166,7 @@ export function useSettingsEffects(): void {
   useEffect(() => {
     const root = document.documentElement;
     root.style.setProperty("--editor-fs", `${editor.fontSize}px`);
-    root.style.setProperty("--editor-ff", FONT_STACKS[editor.fontFamily]);
+    root.style.setProperty("--editor-ff", editorFontStack(editor.fontFamily));
   }, [editor.fontFamily, editor.fontSize]);
   // 主题：<html data-theme> 驱动 zetla.css 双 token 块 + color-scheme（原生滚动条/表单控件）
   // CM6 编辑器主题由 LaTeXEditor 订阅 effectiveTheme 经 theme prop 切换（非 CSS 层）
