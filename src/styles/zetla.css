@@ -3376,6 +3376,76 @@ body.row-resizing {
   color: var(--txt-2);
 }
 
+/* ── 内置终端页（feat/terminal · xterm.js）── */
+/* 常驻挂载、按页签显隐：切页不销毁 PTY 会话与 xterm 缓冲 */
+.term-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.term-slot {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 9px 9px;
+}
+
+.term-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+}
+
+.term-bar .ic {
+  width: 12px;
+  height: 12px;
+  color: var(--txt-3);
+  flex: none;
+}
+
+.term-cwd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--txt-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.term-meta {
+  flex: none;
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: var(--txt-3);
+  opacity: 0.75;
+}
+
+.term-host {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-soft);
+  border-radius: 7px;
+  background: var(--bg-2);
+}
+
+.term-host .xterm {
+  height: 100%;
+  padding: 4px 8px 8px;
+}
+
+.term-error {
+  flex: none;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--err);
+  padding-top: 5px;
+}
+
 .log-err {
   display: flex;
   flex-direction: column;

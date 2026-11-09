@@ -7,9 +7,10 @@ import { useAppStore } from "@/core/store";
 import { base } from "@/project/useProject";
 import { jumpToError } from "@/editor/jump";
 import { Icon } from "@/ui/Icon";
+import { TerminalPane } from "@/ui/TerminalPane";
 import type { TexError } from "@/types";
 
-type LogTab = "errors" | "warnings" | "all";
+type LogTab = "errors" | "warnings" | "all" | "terminal";
 type Status = "idle" | "running" | "ok" | "error" | "cancelled";
 
 /** 面板高度下限 / 上限（上限还会被窗口高度约束，见 maxLogHeight） */
@@ -22,6 +23,7 @@ const TABS: Array<{ key: LogTab; label: string }> = [
   { key: "errors", label: "错误" },
   { key: "warnings", label: "警告" },
   { key: "all", label: "全部" },
+  { key: "terminal", label: "终端" },
 ];
 
 function maxLogHeight(): number {
@@ -109,6 +111,12 @@ export function LogPanel() {
   const errors = filterBy(lastResult?.errors, "error");
   const warnings = filterBy(lastResult?.errors, "warning");
 
+  // 终端页：首次切到时才挂载（懒建 PTY 会话），之后常驻不销毁，切页不丢会话
+  const [terminalOpened, setTerminalOpened] = useState(false);
+  useEffect(() => {
+    if (logTab === "terminal") setTerminalOpened(true);
+  }, [logTab]);
+
   // 全部页：新行到达时贴底（用户手动上翻后仍会被拉回，P0 可接受；M1 再做「仅在底部时跟随」）
   useEffect(() => {
     const el = bodyRef.current;
@@ -133,15 +141,17 @@ export function LogPanel() {
         <h2>编译日志</h2>
         <span className="log-count">{lines.length} 行</span>
         <div className="log-spacer" />
-        <button
-          type="button"
-          className="ibtn"
-          title="清空日志"
-          disabled={lines.length === 0}
-          onClick={clearLog}
-        >
-          <Icon name="trash" />
-        </button>
+        {logTab !== "terminal" && (
+          <button
+            type="button"
+            className="ibtn"
+            title="清空日志"
+            disabled={lines.length === 0}
+            onClick={clearLog}
+          >
+            <Icon name="trash" />
+          </button>
+        )}
         <button type="button" className="ibtn" title="收起日志面板" onClick={toggleLog}>
           <Icon name="x" />
         </button>
@@ -149,7 +159,14 @@ export function LogPanel() {
 
       <div className="log-tabs">
         {TABS.map((t) => {
-          const n = t.key === "errors" ? errors.length : t.key === "warnings" ? warnings.length : lines.length;
+          const n =
+            t.key === "errors"
+              ? errors.length
+              : t.key === "warnings"
+                ? warnings.length
+                : t.key === "terminal"
+                  ? 0
+                  : lines.length;
           return (
             <button
               key={t.key}
@@ -168,6 +185,16 @@ export function LogPanel() {
         })}
       </div>
 
+      {terminalOpened && (
+        <div
+          className="term-wrap"
+          style={{ display: logTab === "terminal" ? "flex" : "none" }}
+          aria-hidden={logTab !== "terminal"}
+        >
+          <TerminalPane active={logTab === "terminal"} />
+        </div>
+      )}
+
       {logTab === "all" ? (
         <div className="log-body" ref={bodyRef}>
           {lines.length === 0 ? (
@@ -182,7 +209,7 @@ export function LogPanel() {
             ))
           )}
         </div>
-      ) : (
+      ) : logTab !== "terminal" ? (
         <div className="log-errlist">
           {list.length === 0 ? (
             <div className="log-empty">{emptyText(logTab, status)}</div>
@@ -190,7 +217,7 @@ export function LogPanel() {
             list.map((e, i) => <LogErr key={i} e={e} />)
           )}
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

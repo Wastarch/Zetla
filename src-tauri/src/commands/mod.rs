@@ -13,5 +13,6 @@ pub mod project;
 pub mod snippets;
 pub mod synctex;
 pub mod template;
+pub mod terminal;
 pub mod updater;
 pub mod watch;

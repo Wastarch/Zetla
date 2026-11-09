@@ -99,9 +99,9 @@ export interface AppState {
   /** M1-16：日志面板高度（120–560，拖拽上边界写入，偏好设置持久化） */
   logHeight: number;
   setLogHeight: (h: number) => void;
-  /** 底部日志面板当前页签 */
-  logTab: "errors" | "warnings" | "all";
-  setLogTab: (t: "errors" | "warnings" | "all") => void;
+  /** 底部日志面板当前页签（terminal = 内置终端，feat/terminal） */
+  logTab: "errors" | "warnings" | "all" | "terminal";
+  setLogTab: (t: "errors" | "warnings" | "all" | "terminal") => void;
   compileLog: string[];
   appendLog: (lines: string[]) => void;
   clearLog: () => void;

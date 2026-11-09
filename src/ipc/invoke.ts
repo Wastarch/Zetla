@@ -18,6 +18,7 @@ import type {
   TexDistInfo,
   TexError,
   TexInstallResult,
+  TerminalCreated,
   WriteOptions,
 } from "@/types";
 
@@ -167,6 +168,20 @@ export const snippetsApi = {
   /** 保存用户自定义片段（整对象写入，Rust 归一化）；返回归一化后的列表供前端镜像 */
   saveUserSnippets: (snippets: SnippetDef[]) =>
     call<SnippetDef[]>("save_user_snippets", { snippets }),
+};
+
+// ── 日志面板内置终端（feat/terminal）──────────────────────
+export const terminalApi = {
+  /** 创建 PTY 会话（cwd 传当前项目根；null 回退主目录；立即返回，输出走 terminal_output 事件） */
+  createTerminal: (cwd: string | null, rows: number, cols: number) =>
+    call<TerminalCreated>("terminal_create", { cwd: cwd ?? null, rows, cols }),
+  /** 写入键盘输入（data = base64 字节） */
+  writeTerminal: (id: number, data: string) => call<void>("terminal_write", { id, data }),
+  /** 前端尺寸变化后同步 pty 行列 */
+  resizeTerminal: (id: number, rows: number, cols: number) =>
+    call<void>("terminal_resize", { id, rows, cols }),
+  /** 显式关闭会话（杀子进程） */
+  killTerminal: (id: number) => call<void>("terminal_kill", { id }),
 };
 
 // ── 基础设施（M0-1 验收用） ───────────────────────────────

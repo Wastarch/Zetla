@@ -44,6 +44,9 @@ sha2 = "0.10"
 hex = "0.4"
 # M1-15a：最近项目时间戳（仅 clock，避免拉入旧 time/iana 依赖）
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+# 日志面板内置终端：跨平台 PTY（Windows ConPTY / Unix pty）+ 事件负载 base64
+portable-pty = "0.9"
+base64 = "0.22"
 
 # M0-15a：读注册表里的用户/系统 PATH（检测合并用，只读不改）—— 仅 Windows
 [target.'cfg(windows)'.dependencies]

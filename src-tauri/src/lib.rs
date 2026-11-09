@@ -25,6 +25,10 @@ pub fn run() {
         .manage(std::sync::Arc::new(
             commands::synctex::SyncTexState::default(),
         ))
+        // 日志面板内置终端（feat/terminal）：PTY 会话表
+        .manage(std::sync::Arc::new(
+            commands::terminal::TerminalState::default(),
+        ))
         .invoke_handler(tauri::generate_handler![
             // 基础设施（M0-1）
             commands::core::ping,
@@ -95,6 +99,11 @@ pub fn run() {
             commands::updater::download_app_update,
             commands::updater::fetch_latest_json,
             commands::updater::launch_installer_and_exit,
+            // 日志面板内置终端（feat/terminal）
+            commands::terminal::terminal_create,
+            commands::terminal::terminal_write,
+            commands::terminal::terminal_resize,
+            commands::terminal::terminal_kill,
             // M0-2+ 逐步注册：
             // list_templates, get_template, create_project, import_template,
             // scan_project, read_file, write_file, revert_file
