@@ -1235,3 +1235,225 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   background: var(--accent-soft, rgba(43, 98, 207, 0.11));
   pointer-events: none;
 }
+
+/* ── M2·F3-4：对齐 · 变换面板 + 画布参考线 / 变换柄 ─────────────
+   侧栏面板与属性 / 图层并列（不设右坞）；几何层与 F2-1 控制点同处已消毒 SVG，
+   主题色统一走 zetla.css 的 --txt* / --line / --accent / --warn。柄几何尺寸已按
+   实测 unitScale 在 handleLayer.ts 里换算成屏幕恒定（含 stroke-width），故 CSS 不重设
+   stroke-width（否则会覆盖内联值、破坏恒定尺寸）；只补颜色 / 命中 / 光标。 */
+.dg-transform-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 6px;
+  background: var(--bg-2, #f7f7f7);
+}
+.dg-panel-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--txt, #353333);
+}
+.dg-panel-hint {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--txt-2, #6b6b6b);
+  opacity: 0.85;
+}
+.dg-panel-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt, #353333);
+}
+.dg-mini-btn {
+  flex: none;
+  padding: 1px 8px;
+  font-size: 11px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt-2, #6b6b6b);
+  cursor: pointer;
+}
+.dg-mini-btn:hover {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-bbox-readout {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 5px 7px;
+  font-size: 11px;
+  font-family: var(--font-mono, monospace);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+}
+.dg-align-grid,
+.dg-dist-grid {
+  display: grid;
+  gap: 4px;
+}
+.dg-align-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+.dg-dist-grid {
+  grid-template-columns: repeat(2, 1fr);
+}
+.dg-align-grid button,
+.dg-dist-grid button {
+  padding: 5px 4px;
+  font-size: 11px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dg-align-grid button:hover:not(:disabled),
+.dg-dist-grid button:hover:not(:disabled) {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-align-grid button:disabled,
+.dg-dist-grid button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.dg-transform-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 4px;
+}
+.dg-transform-row label {
+  font-size: 11px;
+  color: var(--txt, #353333);
+  white-space: nowrap;
+}
+.dg-transform-row input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+}
+.dg-transform-row input:focus {
+  border-color: var(--accent, #2d7ff9);
+  outline: none;
+}
+.dg-transform-row input:disabled {
+  opacity: 0.5;
+}
+.dg-transform-row button {
+  flex: none;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 4px;
+  font-size: 12px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt-2, #888);
+  cursor: pointer;
+}
+.dg-transform-row button:hover:not(:disabled) {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-transform-row button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.dg-field-err {
+  grid-column: 1 / -1;
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--err, #c2382f);
+}
+.dg-panel-msg {
+  margin-top: 2px;
+  padding: 5px 7px;
+  font-size: 11px;
+  line-height: 1.5;
+  border-radius: 4px;
+  border: 1px solid var(--line, #e0e0e0);
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+}
+.dg-panel-msg.dg-msg-ok {
+  border-color: var(--ok, #218a5c);
+  color: var(--ok, #218a5c);
+  background: color-mix(in srgb, var(--ok, #218a5c) 8%, var(--bg-3, #fff));
+}
+.dg-panel-msg.dg-msg-warn {
+  border-color: var(--warn, #a86a12);
+  color: var(--warn, #a86a12);
+  background: color-mix(in srgb, var(--warn, #a86a12) 8%, var(--bg-3, #fff));
+}
+.dg-panel-msg.dg-msg-err {
+  border-color: var(--err, #c2382f);
+  color: var(--err, #c2382f);
+  background: color-mix(in srgb, var(--err, #c2382f) 8%, var(--bg-3, #fff));
+}
+
+/* 画布辅助层：参考线（拖拽吸附时临时显示）+ 变换柄层。
+   两层整体不接收几何命中，只有柄单独开 pointer-events（由 data 属性分发到旋转 / 缩放）。 */
+.dg-guide-layer,
+.dg-transform-layer {
+  pointer-events: none;
+}
+/* 参考线用非缩放描边保持屏幕恒定细线；与选中高亮的 accent 区分，用 warn 色更醒目。 */
+.dg-guide-line {
+  stroke: var(--warn, #a86a12);
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.2;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
+}
+/* 缩放柄尺寸由 handleLayer.ts 的内联 width/height 控制（屏幕恒定），
+   CSS 只补颜色 / 命中 / 光标，绝不重设 stroke-width。 */
+.dg-scale-handle {
+  fill: var(--bg-3, #fff);
+  stroke: var(--accent, #2d7ff9);
+  pointer-events: all;
+  cursor: nwse-resize;
+}
+.dg-scale-handle[data-dg-corner="1"],
+.dg-scale-handle[data-dg-corner="5"] {
+  cursor: ns-resize;
+}
+.dg-scale-handle[data-dg-corner="3"],
+.dg-scale-handle[data-dg-corner="7"] {
+  cursor: ew-resize;
+}
+.dg-scale-handle:hover {
+  fill: var(--accent, #2d7ff9);
+}
+.dg-rotate-stick {
+  stroke: var(--accent, #2d7ff9);
+  pointer-events: none;
+}
+.dg-rotate-handle {
+  fill: var(--bg-3, #fff);
+  stroke: var(--accent, #2d7ff9);
+  pointer-events: all;
+  cursor: grab;
+}
+.dg-rotate-handle:hover {
+  fill: var(--accent, #2d7ff9);
+}

@@ -31,6 +31,7 @@ import {
   pruneGrouping,
   type GroupingState,
 } from "./grouping.ts";
+import type { GuideLine } from "./guides.ts";
 
 export type { HandleSize } from "./handleVisual.ts";
 
@@ -43,6 +44,7 @@ const PREVIEW_KEY = "zetla.diagram.previewMode";
 const TOOL_KEY = "zetla.diagram.toolMode";
 const HANDLE_SIZE_KEY = "zetla.diagram.handleSize";
 const LAYERS_KEY = "zetla.diagram.layersVisible";
+const SNAP_KEY = "zetla.diagram.snapEnabled";
 const GROUPING_KEY = "zetla.diagram.grouping.v1";
 
 export const MIN_SPLIT_RATIO = 0.2;
@@ -56,6 +58,7 @@ export const DIAGRAM_DEFAULTS = {
   toolMode: DEFAULT_TOOL_MODE,
   handleSize: DEFAULT_HANDLE_SIZE,
   layersVisible: true,
+  snapEnabled: true,
 };
 
 function clampRatio(n: number): number {
@@ -117,6 +120,16 @@ function readLayersVisible(): boolean {
     return v === null ? DIAGRAM_DEFAULTS.layersVisible : v === "1";
   } catch {
     return DIAGRAM_DEFAULTS.layersVisible;
+  }
+}
+
+/** F3-4：拖拽时是否启用智能参考线吸附（第七项持久化偏好）。 */
+function readSnapEnabled(): boolean {
+  try {
+    const v = localStorage.getItem(SNAP_KEY);
+    return v === null ? DIAGRAM_DEFAULTS.snapEnabled : v === "1";
+  } catch {
+    return DIAGRAM_DEFAULTS.snapEnabled;
   }
 }
 
@@ -218,6 +231,16 @@ export interface DiagramState {
   /** F3-3：图层面板显隐（轻量 UI 偏好） */
   layersVisible: boolean;
   setLayersVisible: (v: boolean) => void;
+  /** F3-4：拖拽智能参考线吸附（第七项持久化偏好） */
+  snapEnabled: boolean;
+  setSnapEnabled: (v: boolean) => void;
+  /**
+   * F3-4：对齐操作后短暂显示的参考线（会话态，不持久化）。
+   * guideSeq 每次自增，保证「连续两次对齐到同一条线」也能触发画布重画。
+   */
+  guides: GuideLine[];
+  guideSeq: number;
+  setGuides: (lines: readonly GuideLine[]) => void;
   /** F3-3：虚拟分组 / 主动隐藏 / 主动锁定。只存编辑器侧，TikZ 源码零污染 */
   grouping: GroupingState;
   /** 分组写入口：所有变更都经它，顺带持久化到 localStorage */
@@ -234,7 +257,7 @@ export interface DiagramState {
   setCaption: (v: string) => void;
   label: string;
   setLabel: (v: string) => void;
-  /** F1-5 / F3-1 / F3-2 / F3-3：设置页「恢复默认」——把六项持久化偏好写回默认值 */
+  /** F1-5 / F3-1 / F3-2 / F3-3 / F3-4：设置页「恢复默认」——把七项持久化偏好写回默认值 */
   resetDiagramPreferences: () => void;
 }
 
@@ -313,6 +336,19 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     writeSetting(LAYERS_KEY, v ? "1" : "0");
     set({ layersVisible: v });
   },
+  snapEnabled: readSnapEnabled(),
+  setSnapEnabled: (v) => {
+    writeSetting(SNAP_KEY, v ? "1" : "0");
+    set({ snapEnabled: v });
+  },
+  guides: [],
+  guideSeq: 0,
+  setGuides: (lines) => {
+    const clean = lines.filter(
+      (l) => l && (l.axis === "x" || l.axis === "y") && Number.isFinite(l.at),
+    );
+    set((state) => ({ guides: clean, guideSeq: state.guideSeq + 1 }));
+  },
   exportMode: "source",
   setExportMode: (m) => set({ exportMode: m }),
   wrapFigure: false,
@@ -328,6 +364,7 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     writeSetting(TOOL_KEY, DIAGRAM_DEFAULTS.toolMode);
     writeSetting(HANDLE_SIZE_KEY, DIAGRAM_DEFAULTS.handleSize);
     writeSetting(LAYERS_KEY, DIAGRAM_DEFAULTS.layersVisible ? "1" : "0");
+    writeSetting(SNAP_KEY, DIAGRAM_DEFAULTS.snapEnabled ? "1" : "0");
     set({
       layoutMode: DIAGRAM_DEFAULTS.layoutMode,
       splitRatio: DIAGRAM_DEFAULTS.splitRatio,
@@ -335,6 +372,7 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       toolMode: DIAGRAM_DEFAULTS.toolMode,
       handleSize: DIAGRAM_DEFAULTS.handleSize,
       layersVisible: DIAGRAM_DEFAULTS.layersVisible,
+      snapEnabled: DIAGRAM_DEFAULTS.snapEnabled,
     });
   },
 }));

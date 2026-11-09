@@ -7,6 +7,7 @@ import {
   clearTikzRenderCache,
   applyDragEdit,
   applyGroupEdit,
+  applyDeltaEdit,
 } from "../src/modules/diagram/tikzEditor/engine.ts";
 import {
   MAX_VISIBLE_HANDLES,
@@ -162,6 +163,27 @@ import {
   type GroupingState,
   type RectLike,
 } from "../src/modules/diagram/grouping.ts";
+import {
+  collectElementBoxes,
+  normalizeTransformValue,
+  planAlignDeltas,
+  planDistributeDeltas,
+  planDragSnap,
+  planTransformPatches,
+  type ElementBox,
+} from "../src/modules/diagram/transform.ts";
+import {
+  DEFAULT_SNAP_THRESHOLD_PT,
+  formatCm,
+  guideToSvgSegment,
+  makeWorldBox,
+  planSnap,
+  rotationFromDrag,
+  scaleFromDrag,
+  snapAngle,
+  svgBoxToWorldBox,
+  worldBoxToSvgBox,
+} from "../src/modules/diagram/guides.ts";
 
 // svg.ts 只在函数内部访问 DOM API，模块加载时不碰 DOM，故可先 import 再注入全局。
 const dom = new JSDOM("<!doctype html><html><body><div id=\"host\"></div></body></html>");
@@ -2030,6 +2052,106 @@ check(
   !L_SHAPE.classList.contains("dg-hidden") && !L_LOCK.classList.contains("dg-hidden"),
   "取消隐藏幂等恢复，不重建 SVG"
 );
+
+console.log("F3-4 · 对齐 / 分布纯逻辑（锚点包围盒同源）");
+const F3_BOXES: ElementBox[] = [
+  { id: "a", box: makeWorldBox(0, 0, 2, 2)! },
+  { id: "b", box: makeWorldBox(5, 1, 7, 3)! },
+  { id: "c", box: makeWorldBox(10, 5, 13, 8)! },
+];
+const f3Left = planAlignDeltas(F3_BOXES, "left");
+check(f3Left.status === "ok", "左对齐状态 ok");
+check(
+  f3Left.deltas["a"].x === 0 && f3Left.deltas["b"].x === -5 && f3Left.deltas["c"].x === -10,
+  "左对齐 delta 把三个左边缘都移到联合 minX=0"
+);
+check(f3Left.guides.length === 1 && f3Left.guides[0].axis === "x" && f3Left.guides[0].at === 0, "左对齐给出 x=0 参考线");
+const f3Right = planAlignDeltas(F3_BOXES, "right");
+check(f3Right.deltas["a"].x === 11 && f3Right.deltas["c"].x === 0, "右对齐把右边缘都移到联合 maxX=13");
+const f3Top = planAlignDeltas(F3_BOXES, "top");
+check(f3Top.deltas["a"].y === 6 && f3Top.deltas["c"].y === 0, "上对齐把顶边都移到联合 maxY=8");
+const f3VC = planAlignDeltas(F3_BOXES, "vcenter");
+check(Math.abs(f3VC.deltas["a"].y - 3) < 1e-9, "垂直居中把各自中心移到联合中心 y=4");
+const f3Single = planAlignDeltas([F3_BOXES[0]], "left");
+check(f3Single.status === "error" && f3Single.reason.includes("2"), "单元素对齐被拒（需 ≥2）");
+const f3Dist = planDistributeDeltas(F3_BOXES, "vertical");
+check(f3Dist.status === "ok", "垂直等距分布状态 ok");
+check(Math.abs(f3Dist.deltas["b"].y - 1.75) < 1e-9, "垂直等距把中间元素移到等距位（step=2.75）");
+const f3DistFew = planDistributeDeltas([F3_BOXES[0], F3_BOXES[1]], "horizontal");
+check(f3DistFew.status === "error", "双元素分布被拒（需 ≥3）");
+
+console.log("F3-4 · 变换选项补丁（rotate/scale/xshift/yshift 写入 options）");
+const TV_SRC = String.raw`\begin{tikzpicture}
+  \draw[rotate=30] (0,0) rectangle (1,1);
+  \draw (3,2) rectangle (4,3);
+  \draw[fill=red] (6,4) rectangle (7,5);
+\end{tikzpicture}`;
+const tv = await renderTikz(TV_SRC);
+const tvIds = tv.statements.map((s) => s.id);
+check(tv.statements.length >= 3, "渲染得到 ≥3 条语句");
+const tvRot = planTransformPatches({ source: TV_SRC, statements: tv.statements, elementIds: [tvIds[1]], key: "rotate", value: "45", compat: tv.compat, grouping: EMPTY_GROUPING });
+check(tvRot.status === "ok" && tvRot.nextSource.includes("rotate=45"), "对第二图元应用 rotate=45（插入选项）");
+const tvRem = planTransformPatches({ source: TV_SRC, statements: tv.statements, elementIds: [tvIds[0]], key: "rotate", value: null, compat: tv.compat, grouping: EMPTY_GROUPING });
+check(tvRem.status === "ok" && !tvRem.nextSource.includes("rotate"), "移除第一图元 rotate 后源码不含 rotate");
+const tvX = planTransformPatches({ source: TV_SRC, statements: tv.statements, elementIds: tvIds, key: "xshift", value: "1cm", compat: tv.compat, grouping: EMPTY_GROUPING });
+check(tvX.status === "ok" && tvX.changedIds.length === 3, "对全部 3 图元应用 xshift=1cm");
+const tvNoop = planTransformPatches({ source: TV_SRC, statements: tv.statements, elementIds: [tvIds[0]], key: "rotate", value: "30", compat: tv.compat, grouping: EMPTY_GROUPING });
+check(tvNoop.status === "empty", "已为 rotate=30 时再次应用等同 noop（empty）");
+const tvLock = planTransformPatches({ source: TV_SRC, statements: tv.statements, elementIds: [tvIds[0]], key: "rotate", value: "60", compat: { ...emptyCompatReport(), lockReasons: { [tvIds[0]]: "测试锁定" } }, grouping: EMPTY_GROUPING });
+check(tvLock.skipped.length === 1 && tvLock.changedIds.length === 0, "能力矩阵锁定被跳过、不写回");
+
+console.log("F3-4 · 数值白名单");
+check(normalizeTransformValue("rotate", "30").value === "30", "rotate 30 规范化为 30");
+check("error" in normalizeTransformValue("rotate", "abc"), "rotate 非数字报错");
+check("error" in normalizeTransformValue("scale", "-1"), "scale 负数报错");
+check(normalizeTransformValue("xshift", "1cm").value === "1cm", "xshift 1cm 通过");
+check("error" in normalizeTransformValue("xshift", "1"), "xshift 缺单位报错");
+
+console.log("F3-4 · 智能参考线 / 吸附（world 阈值，与写回句柄同源）");
+const vb0 = { x: 0, y: 0, width: 10, height: 10 };
+const snapHit = planSnap({ moving: makeWorldBox(0, 0, 2, 2)!, others: [makeWorldBox(2.05, 0, 4, 2)!], threshold: DEFAULT_SNAP_THRESHOLD_PT });
+check(Math.abs(snapHit.delta.x - 0.05) < 1e-9 && snapHit.guides.length >= 1, "planSnap 吸附到邻近右边并给出参考线");
+const snapMiss = planSnap({ moving: makeWorldBox(0, 0, 2, 2)!, others: [makeWorldBox(50, 50, 52, 52)!], threshold: 6 });
+check(snapMiss.delta.x === 0 && snapMiss.delta.y === 0 && snapMiss.guides.length === 0, "远离时不吸附");
+const dragSnap = planDragSnap({ selectedBoxes: [{ id: "s", box: makeWorldBox(0, 0, 2, 2)! }], otherBoxes: [{ id: "o", box: makeWorldBox(2.05, 0, 4, 2)! }], delta: { x: 0, y: 0 }, threshold: DEFAULT_SNAP_THRESHOLD_PT });
+check(Math.abs(dragSnap.delta.x - 0.05) < 1e-9, "planDragSnap 在拖拽位移上叠加吸附修正");
+const segX = guideToSvgSegment({ axis: "x", at: 3, kind: "edge" }, vb0);
+check(!!segX && segX.x1 === 3 && segX.x2 === 3 && segX.y1 === 0 && segX.y2 === 10, "guideToSvgSegment x 线贯穿视口");
+const segY = guideToSvgSegment({ axis: "y", at: 4, kind: "center" }, vb0);
+check(!!segY && Math.abs(segY.y1 - (2 * vb0.y + vb0.height - 4)) < 1e-9, "guideToSvgSegment y 按 viewBox 翻转");
+const wb = makeWorldBox(1, 2, 3, 4)!;
+const sb = worldBoxToSvgBox(wb, vb0);
+const back = svgBoxToWorldBox(sb!, vb0);
+check(!!back && Math.abs(back.minX - 1) < 1e-9 && Math.abs(back.minY - 2) < 1e-9 && Math.abs(back.maxX - 3) < 1e-9 && Math.abs(back.maxY - 4) < 1e-9, "worldBox↔svgBox 往返一致");
+
+console.log("F3-4 · 旋转 / 缩放手势纯逻辑");
+check(snapAngle(14) === 15 && snapAngle(89) === 90, "snapAngle 接近 15° 网格点吸附");
+check(snapAngle(7) === 7 && snapAngle(20) === 20, "snapAngle 远离网格点不吸附（保留原值）");
+const rb = makeWorldBox(-1, -1, 1, 1)!;
+check(Math.abs(rotationFromDrag(rb, { x: 1, y: 0 }, { x: 0, y: 1 }) - 90) < 1e-6, "rotationFromDrag 0°→90°=90");
+const sbx = makeWorldBox(0, 0, 2, 2)!;
+const sc = scaleFromDrag({ box: sbx, corner: 4, pointer: { x: 4, y: 0 }, uniform: false, center: false });
+check(!!sc && Math.abs(sc.sx - 2) < 1e-6 && Math.abs(sc.sy - 1) < 1e-6, "scaleFromDrag 角柄得到 sx=2,sy=1");
+check(formatCm(TIKZ_PT_PER_CM) === "1.00 cm", "formatCm 1cm 显示");
+
+console.log("F3-4 · 锚点包围盒 + 端到端对齐写回（一次 dispatch）");
+const CE_SRC = String.raw`\begin{tikzpicture}
+  \draw (0,0) rectangle (1,1);
+  \draw (3,2) rectangle (4,3);
+  \draw (6,4) rectangle (9,5);
+\end{tikzpicture}`;
+const ce = await renderTikz(CE_SRC);
+const ceIds = Array.from(new Set(ce.handles.map((h) => h.sourceRef?.sourceId).filter(Boolean) as string[]));
+const cb = collectElementBoxes({ handles: ce.handles, elementIds: ceIds, compat: ce.compat, grouping: EMPTY_GROUPING });
+check(cb.boxes.length === 3, `collectElementBoxes 收 3 个锚点包围盒（实得 ${cb.boxes.length}）`);
+const ceLeft = planAlignDeltas(cb.boxes, "left");
+const ceMove = await applyDeltaEdit({ source: CE_SRC, handles: ce.handles, deltas: ceLeft.deltas, compat: ce.compat, grouping: EMPTY_GROUPING });
+check(ceMove.status === "ok", "applyDeltaEdit 对齐 ok");
+const ceRe = await renderTikz(ceMove.nextSource);
+const ceReIds = Array.from(new Set(ceRe.handles.map((h) => h.sourceRef?.sourceId).filter(Boolean) as string[]));
+const ceReBoxes = collectElementBoxes({ handles: ceRe.handles, elementIds: ceReIds, compat: ceRe.compat, grouping: EMPTY_GROUPING });
+const minXs = ceReBoxes.boxes.map((b) => b.box.minX);
+check(minXs.length === 3 && minXs.every((x) => Math.abs(x - minXs[0]) < 1e-6), "对齐写回后三图元左边缘一致");
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

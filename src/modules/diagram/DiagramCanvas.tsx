@@ -72,8 +72,12 @@ import {
 import {
   applyLayerVisibility,
   buildHandleLayer,
+  createGuideLayer,
   createSelectionLayer,
+  createTransformLayer,
+  drawGuides,
   drawSelectionBox,
+  drawTransformHandles,
 } from "./handleLayer";
 import {
   applyMarqueeSelection,
@@ -89,6 +93,12 @@ import {
   type MarqueeBox,
   type RectLike,
 } from "./grouping";
+import {
+  collectElementBoxes,
+  planDragSnap,
+  planTransformPatches,
+  type ElementBox,
+} from "./transform";
 import type { GroupMovePlan } from "./grouping";
 import {
   applyPreviewGeometry,
@@ -125,8 +135,18 @@ import {
   insertShapeStatement,
   pickInsertedStatementId,
 } from "./shapeInsert";
+import {
+  boxCenter,
+  DEFAULT_SNAP_THRESHOLD_PT,
+  rotationFromDrag,
+  scaleFromDrag,
+  snapAngle,
+  unionWorldBox,
+  type GuideLine,
+  type WorldBox,
+} from "./guides";
 import { ShapeToolbar } from "./ShapeToolbar";
-import { resolveHandleLock } from "./tikzEditor/compat";
+import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat";
 import {
   commitDiagramPatch,
   commitDiagramPatches,
@@ -230,6 +250,31 @@ interface DragState {
   previewGroup: GroupMovePlan | null;
   /** 连续预览失败次数；超过阈值就停掉本手势的预览，避免每帧注定失败的重试 */
   previewFailures: number;
+  /** F3-4：拖拽期间缓存的包围盒，用于智能参考线吸附（避免每帧重算） */
+  snap: {
+    selected: ElementBox[];
+    others: ElementBox[];
+    canvasCenter: PointLike;
+    unitScale: number;
+  } | null;
+}
+
+/** F3-4：旋转 / 缩放手势的状态（与坐标拖拽 DragState 平行，独立一路）。 */
+interface TransformDrag {
+  kind: "rotate" | "scale";
+  corner: number;
+  sourceAtStart: string;
+  resultAtStart: TikzRender;
+  startWorld: PointLike;
+  /** 选中集合在 world 坐标下的联合包围盒（旋转 / 缩放数学用） */
+  startBox: WorldBox;
+  center: PointLike;
+  value: number;
+  compat: CompatReport | null;
+  grouping: GroupingState;
+  elementIds: string[];
+  previewSource: string | null;
+  previewFailures: number;
 }
 
 interface Notice {
@@ -260,6 +305,9 @@ export function DiagramCanvas() {
   const grouping = useDiagramStore((s) => s.grouping);
   const setGrouping = useDiagramStore((s) => s.setGrouping);
   const pruneGroupingTo = useDiagramStore((s) => s.pruneGroupingTo);
+  // F3-4：智能参考线（会话态）。订阅以便 setGuides 触发画布重绘并落参考线。
+  const guides = useDiagramStore((s) => s.guides);
+  const setGuides = useDiagramStore((s) => s.setGuides);
   const setRenderMeta = useDiagramStore((s) => s.setRenderMeta);
   const activePath = useBuffersStore((s) => s.activePath);
   const tabVisible = activePath === DIAGRAM_PATH;
@@ -294,6 +342,18 @@ export function DiagramCanvas() {
   const resultRef = useRef(result);
   resultRef.current = result;
   const commitDragRef = useRef<(d: DragState) => void>(() => undefined);
+  // F3-4：旋转 / 缩放手势独立一路，不占用坐标拖拽的 dragRef。
+  const transformRef = useRef<TransformDrag | null>(null);
+  // F3-4：setGuides 仅在参考线集合变化时触发重绘（避免每帧重渲染）。
+  const lastGuideKeyRef = useRef<string>("");
+  function setDragGuides(g: GuideLine[]): void {
+    const key = g
+      .map((x) => `${x.axis}:${x.kind}:${Math.round(x.at * 100) / 100}`)
+      .join("|");
+    if (key === lastGuideKeyRef.current) return;
+    lastGuideKeyRef.current = key;
+    setGuides(g);
+  }
   // F3-1：形状工具状态。会话 / 拖拽只留在本组件，不写进 store（不是跨组件共享数据）。
   const toolMode = useDiagramStore((s) => s.toolMode);
   const setToolMode = useDiagramStore((s) => s.setToolMode);
@@ -445,6 +505,9 @@ export function DiagramCanvas() {
     // 先挂选中层（在控制点层之下），再挂控制点层。两层都只用 createElementNS
     // 追加到已消毒 SVG 之后；精确通道走 <img>，这里不会执行到。
     createSelectionLayer(node);
+    // F3-4：参考线层 + 变换柄层（永远在几何之上，拖拽实时预览换几何时一起保留）。
+    createGuideLayer(node);
+    createTransformLayer(node);
     // F3-1：形状工具模式下不挂控制点，避免小圆点挡住起笔 / 抢 pointerdown。
     if (handlesOn && toolMode === "select" && result.handles.length > 0) {
       buildHandleLayer(node, result.handles, result.viewBox, result.compat, m);
@@ -525,13 +588,33 @@ export function DiagramCanvas() {
       .map((el) => el.getBoundingClientRect())
       .filter((r) => !(r.width === 0 && r.height === 0))
       .map((r) => clientRectToSvgBox(r, m));
-    drawSelectionBox(layer, unionBoxes(boxes), metrics);
+    const selBox = unionBoxes(boxes);
+    drawSelectionBox(layer, selBox, metrics);
+    // F3-4：参考线层从 store 读取（拖拽吸附 / 对齐 / 分布后短暂显示）。
+    const guideLayer = svg.querySelector("[data-dg-guide-layer]") as SVGGElement | null;
+    drawGuides(guideLayer, useDiagramStore.getState().guides, resultRef.current?.viewBox ?? null);
+    // F3-4：在选中包围盒上画旋转 / 缩放柄（仅本地 + 选择工具 + 有选中项）。
+    const transformLayer = svg.querySelector("[data-dg-transform-layer]") as SVGGElement | null;
+    if (editable && selBox) {
+      drawTransformHandles(
+        transformLayer,
+        {
+          minX: selBox.x,
+          minY: selBox.y,
+          maxX: selBox.x + selBox.width,
+          maxY: selBox.y + selBox.height,
+        },
+        metrics,
+      );
+    } else {
+      drawTransformHandles(transformLayer, null, metrics);
+    }
   }
 
   useEffect(() => {
     refreshSelectionChrome();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, selectedIds, grouping, result, zoom, previewMode, handlesOn, toolMode, metrics]);
+  }, [selectedId, selectedIds, grouping, result, zoom, previewMode, handlesOn, toolMode, metrics, guides]);
 
   // ── F3-2 后续修复：拖命中圈 → 实时几何预览（不写源码、不进撤销栈） ──────────
   // 命中圈只是 TikZ 句柄的交互代理：每一帧仍用同一份 applyEditIntent 从「基准源码 +
@@ -1243,6 +1326,11 @@ export function DiagramCanvas() {
         );
         return;
       }
+      // F3-4：变换柄手势（旋转 / 缩放）独立一路，优先级高于坐标拖拽。
+      if (transformRef.current) {
+        handleTransformMove(e);
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       const dxPx = e.clientX - d.startClient.x;
@@ -1252,8 +1340,24 @@ export function DiagramCanvas() {
       const dSvg = clientDeltaToSvgDelta(d.matrix, dxPx, dyPx);
       if (!dSvg) return;
       const dWorld = svgDeltaToWorldDelta(dSvg);
-      d.newWorld = { x: d.startWorld.x + dWorld.x, y: d.startWorld.y + dWorld.y };
-      const curSvg = { x: d.startSvg.x + dSvg.x, y: d.startSvg.y + dSvg.y };
+      // F3-4：智能参考线吸附 —— 在指针位移上叠加对齐修正，并把命中参考线写入 store
+      // 供 drawGuides 实时显示；未命中时清空（保证松手残留的参考线消失）。
+      let effWorld = dWorld;
+      if (d.snap) {
+        const snap = planDragSnap({
+          selectedBoxes: d.snap.selected,
+          otherBoxes: d.snap.others,
+          delta: dWorld,
+          threshold: DEFAULT_SNAP_THRESHOLD_PT * Math.max(0.25, d.snap.unitScale),
+          canvasCenter: d.snap.canvasCenter,
+        });
+        effWorld = { x: dWorld.x + snap.delta.x, y: dWorld.y + snap.delta.y };
+        setDragGuides(snap.guides);
+      } else {
+        setDragGuides([]);
+      }
+      d.newWorld = { x: d.startWorld.x + effWorld.x, y: d.startWorld.y + effWorld.y };
+      const curSvg = worldToSvgPoint(d.newWorld, d.resultAtStart.viewBox);
       d.marker.setAttribute("cx", fmtNum(curSvg.x));
       d.marker.setAttribute("cy", fmtNum(curSvg.y));
       d.hitMarker?.setAttribute("cx", fmtNum(curSvg.x));
@@ -1262,7 +1366,7 @@ export function DiagramCanvas() {
         d.guide.setAttribute("x2", fmtNum(curSvg.x));
         d.guide.setAttribute("y2", fmtNum(curSvg.y));
       }
-      setDragLabel(dragDeltaLabel(dWorld.x, dWorld.y));
+      setDragLabel(dragDeltaLabel(effWorld.x, effWorld.y));
       // F3-2 后续修复：同一帧排一次「候选源码 → 候选几何」的替换，图形跟着命中圈动。
       previewApiRef.current.schedule(d);
     };
@@ -1295,12 +1399,18 @@ export function DiagramCanvas() {
         finishMarquee({ x: e.clientX, y: e.clientY });
         return;
       }
+      // F3-4：旋转 / 缩放柄松手 → 提交一次变换补丁。
+      if (transformRef.current) {
+        finishTransform();
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
       d.marker.classList.remove("is-active");
       if (d.guide) d.guide.setAttribute("visibility", "hidden");
       setDragLabel(null);
+      setDragGuides([]);
       if (d.moved) commitDragRef.current(d);
       else previewApiRef.current.deactivate();
     };
@@ -1311,18 +1421,27 @@ export function DiagramCanvas() {
         setMarqueeRect(null);
         return;
       }
+      // F3-4：变换手势取消 → 还原基准几何，参考线清空。
+      if (transformRef.current) {
+        transformRef.current = null;
+        setDragLabel(null);
+        setDragGuides([]);
+        previewApiRef.current.restore();
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
       resetMarker(d);
       setDragLabel(null);
+      setDragGuides([]);
       // F3-2 后续修复：Esc / pointercancel 把预览几何还原成拖拽开始前的样子。
       previewApiRef.current.restore();
     };
     const onKey = (e: KeyboardEvent) => {
       // F3-1：Esc / Enter / Backspace 先给形状工具会话，绘制中不触发撤销栈。
       if (shapeApiRef.current.key(e)) return;
-      if (e.key === "Escape" && (dragRef.current || marqueeRef.current)) {
+      if (e.key === "Escape" && (dragRef.current || marqueeRef.current || transformRef.current)) {
         if (marqueeRef.current) {
           marqueeRef.current = null;
           setMarqueeRect(null);
@@ -1336,6 +1455,7 @@ export function DiagramCanvas() {
       const inGesture =
         !!dragRef.current ||
         !!marqueeRef.current ||
+        !!transformRef.current ||
         !!toolDragRef.current ||
         !!shapeSessionRef.current;
       const kind = shouldHandleHistoryKey(e, tabVisibleRef.current, inGesture);
@@ -1480,7 +1600,41 @@ export function DiagramCanvas() {
       groupIds: groupIds && groupIds.length > 1 ? groupIds : null,
       previewGroup: null,
       previewFailures: 0,
+      snap: null,
     };
+    // F3-4：拖拽开始时缓存选中 / 其余元素的「锚点包围盒」与画布中心，供实时吸附用
+    // （避免每帧重算）。阈值按当前单位比换算成屏幕 ~6px，保证任何缩放下手感一致。
+    {
+      const d = dragRef.current;
+      if (d) {
+        const allIds = result.statements.map((s) => s.id);
+        const selIds =
+          d.groupIds && d.groupIds.length > 1
+            ? d.groupIds
+            : [hit.sourceRef?.sourceId].filter((x): x is string => !!x);
+        const selBoxes = collectElementBoxes({
+          handles: result.handles,
+          elementIds: selIds,
+          compat: result.compat,
+          grouping: state.grouping,
+        }).boxes;
+        const otherBoxes = collectElementBoxes({
+          handles: result.handles,
+          elementIds: allIds.filter((id) => !selIds.includes(id)),
+          compat: result.compat,
+          grouping: state.grouping,
+        }).boxes;
+        const vb = result.viewBox;
+        d.snap = selBoxes.length > 0
+          ? {
+              selected: selBoxes,
+              others: otherBoxes,
+              canvasCenter: { x: vb.x + vb.width / 2, y: vb.y + vb.height / 2 },
+              unitScale: metrics.unitScale,
+            }
+          : null;
+      }
+    }
     // F3-2 后续修复：以此刻的源码 / 渲染结果为整段手势的**唯一基准**，之后每帧的
     // 候选源码都从它重算，绝不把上一帧的候选当基准（否则误差会累积、语义也会漂）。
     previewActiveRef.current = true;
@@ -1493,6 +1647,192 @@ export function DiagramCanvas() {
       guide.setAttribute("y2", fmtNum(startSvg.y));
       guide.setAttribute("visibility", "visible");
     }
+  }
+
+  /** F3-4：把被变换预览换掉的几何还原成拖拽开始前的基准（不依赖坐标拖拽的 previewBaseRef）。 */
+  function restoreTransformPreview(): void {
+    const svg = stageSvg();
+    const base = resultRef.current;
+    if (!svg || !base) return;
+    applyPreviewGeometry(svg, {
+      markup: base.svg,
+      baseViewBox: base.viewBox,
+      candidateViewBox: base.viewBox,
+      zoom,
+      live: false,
+    });
+    const layer = svg.querySelector("[data-dg-handle-layer]") as SVGGElement | null;
+    if (layer) updateHandleLayerPositions(layer, base.handles, base.viewBox, metrics);
+  }
+
+  /** F3-4：从变换柄 pointerdown 起一次旋转 / 缩放手势（与坐标拖拽平行，独立一路）。 */
+  function startTransformFromEvent(
+    kind: "rotate" | "scale",
+    corner: number,
+    e: ReactPointerEvent<HTMLDivElement>,
+  ): void {
+    if (previewMode !== "local" || !result) return;
+    const meta = useDiagramStore.getState().renderMeta;
+    if (meta && meta.source !== sourceRef.current) {
+      setNotice({ tone: "warn", text: "源码刚更新，画布正在重渲染，请稍候再变换。" });
+      return;
+    }
+    const state = useDiagramStore.getState();
+    const selIds =
+      state.selectedIds.length > 0
+        ? state.selectedIds
+        : state.selectedId
+          ? [state.selectedId]
+          : [];
+    if (selIds.length === 0) return;
+    for (const id of selIds) {
+      if (isManuallyLocked(state.grouping, id)) {
+        setNotice({ tone: "warn", text: "含主动锁定的图元，先解锁后再变换。" });
+        return;
+      }
+      if (isManuallyHidden(state.grouping, id)) {
+        setNotice({ tone: "warn", text: "含已隐藏的图元，先显示后再变换。" });
+        return;
+      }
+    }
+    const { boxes } = collectElementBoxes({
+      handles: result.handles,
+      elementIds: selIds,
+      compat: result.compat,
+      grouping: state.grouping,
+    });
+    if (boxes.length === 0) {
+      setNotice({ tone: "warn", text: "没有可写控制点，无法参与旋转 / 缩放。" });
+      return;
+    }
+    const startBox = unionWorldBox(boxes.map((b) => b.box));
+    if (!startBox) return;
+    const center = boxCenter(startBox);
+    const startWorld = pointerWorld(e.clientX, e.clientY) ?? center;
+    transformRef.current = {
+      kind,
+      corner,
+      sourceAtStart: sourceRef.current,
+      resultAtStart: result,
+      startWorld,
+      startBox,
+      center,
+      value: kind === "rotate" ? 0 : 1,
+      compat: result.compat,
+      grouping: state.grouping,
+      elementIds: selIds,
+      previewSource: null,
+      previewFailures: 0,
+    };
+    previewActiveRef.current = true;
+    lastPointer.x = e.clientX;
+    lastPointer.y = e.clientY;
+  }
+
+  /** F3-4：旋转 / 缩放柄移动 → 算新值 → 实时换几何预览（不写源码、不进撤销栈）。 */
+  function handleTransformMove(e: PointerEvent): void {
+    const t = transformRef.current;
+    if (!t) return;
+    const cur = pointerWorld(e.clientX, e.clientY);
+    if (!cur) return;
+    let value: number;
+    let candidate: string | null = null;
+    if (t.kind === "rotate") {
+      const deg = snapAngle(rotationFromDrag(t.startBox, t.startWorld, cur));
+      value = deg;
+      const plan = planTransformPatches({
+        source: t.sourceAtStart,
+        statements: t.resultAtStart.statements,
+        elementIds: t.elementIds,
+        key: "rotate",
+        value: String(Math.round(deg)),
+        compat: t.compat,
+        grouping: t.grouping,
+      });
+      if (plan.status === "ok") candidate = plan.nextSource;
+      setDragLabel(`旋转 ${Math.round(deg)}°`);
+    } else {
+      const res = scaleFromDrag({
+        box: t.startBox,
+        corner: t.corner,
+        pointer: cur,
+        uniform: e.shiftKey,
+        center: e.altKey,
+      });
+      if (!res) return;
+      value = res.scale;
+      const plan = planTransformPatches({
+        source: t.sourceAtStart,
+        statements: t.resultAtStart.statements,
+        elementIds: t.elementIds,
+        key: "scale",
+        value: String(value),
+        compat: t.compat,
+        grouping: t.grouping,
+      });
+      if (plan.status === "ok") candidate = plan.nextSource;
+      setDragLabel(`缩放 ${value.toFixed(2)}×`);
+    }
+    t.value = value;
+    if (!candidate || candidate === t.sourceAtStart) return;
+    if (!shouldRenderPreview(t.previewSource, candidate, t.sourceAtStart)) return;
+    void renderTikz(candidate).then((r) => {
+      const svg = stageSvg();
+      if (!svg || transformRef.current !== t) return;
+      const ok = applyPreviewGeometry(svg, {
+        markup: r.svg,
+        baseViewBox: t.resultAtStart.viewBox,
+        candidateViewBox: r.viewBox,
+        zoom,
+        live: true,
+      });
+      if (ok) t.previewSource = candidate;
+    });
+  }
+
+  /** F3-4：旋转 / 缩放柄松手 → 提交一次变换补丁（一条 Ctrl+Z 退整组）。 */
+  function finishTransform(): void {
+    const t = transformRef.current;
+    if (!t) return;
+    transformRef.current = null;
+    setDragLabel(null);
+    setDragGuides([]);
+    previewActiveRef.current = false;
+    const plan = planTransformPatches({
+      source: t.sourceAtStart,
+      statements: t.resultAtStart.statements,
+      elementIds: t.elementIds,
+      key: t.kind,
+      value:
+        t.kind === "rotate"
+          ? String(Math.round(t.value))
+          : String(Math.round(t.value * 1000) / 1000),
+      compat: t.compat,
+      grouping: t.grouping,
+    });
+    if (plan.status !== "ok") {
+      restoreTransformPreview();
+      if (plan.status !== "empty") {
+        setNotice({ tone: "warn", text: plan.reason || "无法应用变换" });
+      }
+      return;
+    }
+    restoreTransformPreview();
+    const write = commitDiagramPatches({
+      patches: plan.patches,
+      source: t.sourceAtStart,
+      nextSource: plan.nextSource,
+      fallback: setSource,
+    });
+    const sk = plan.skipped.length
+      ? ` · ${plan.skipped.length} 个跳过（${plan.skipped[0].id}：${plan.skipped[0].reason}）`
+      : "";
+    setNotice({
+      tone: write.written ? "ok" : "warn",
+      text: `已${t.kind === "rotate" ? "旋转" : "缩放"} ${plan.changedIds.length} 个图元${sk}${
+        write.written ? " · Ctrl+Z 一次退回" : " · 源码栏未就绪，无撤销记录"
+      }`,
+    });
   }
 
   /** F2-2：点图元本体或控制点都选中同一条语句；点空白清除选中。 */
@@ -1519,6 +1859,19 @@ export function DiagramCanvas() {
         beginShapeAt(e);
       }
       return;
+    }
+    // F3-4：先判变换柄（旋转 / 缩放），命中则只起变换手势，不动选择 / 不起框选 / 不拖坐标。
+    const th = (e.target as Element | null)?.closest?.("[data-dg-transform-handle]") as
+      | Element
+      | null;
+    if (th && previewMode === "local") {
+      const kind = th.getAttribute("data-dg-transform-kind") === "scale" ? "scale" : "rotate";
+      const corner = Number(th.getAttribute("data-dg-corner") ?? "0");
+      startTransformFromEvent(kind, corner, e);
+      if (transformRef.current) {
+        e.preventDefault();
+        return;
+      }
     }
     // F3-3：点图元 = 单选 / Shift 加选减选；点空白 = 清空 + 起框选。
     // 多选且点中已选中的图元时**不重置选择**，交给 startDragFromEvent 判定「拖组」。

@@ -26,6 +26,7 @@ import {
   type BoxLike,
   type HandleMetrics,
 } from "./handleVisual.ts";
+import { cornerPoint, guideToSvgSegment, type GuideLine, type SvgViewBoxLike, type WorldBox } from "./guides.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -233,4 +234,107 @@ export function drawSelectionBox(
       }),
     );
   }
+}
+
+/** 参考线层：每次重绘都整层重写，永远画在几何之上（F3-4 智能参考线）。 */
+export function createGuideLayer(svg: SVGSVGElement): SVGGElement {
+  const layer = el("g", { class: "dg-guide-layer", "data-dg-guide-layer": "1" });
+  svg.appendChild(layer);
+  return layer;
+}
+
+/**
+ * 把 store 里的 world 参考线画成 SVG 线段。viewBox 是渲染视口（world 单位，Y 轴已翻转），
+ * 由 guides.guideToSvgSegment 做 world→svg 换算，绝不参与写回计算（见 guides.ts 口径）。
+ */
+export function drawGuides(
+  layer: SVGGElement | null,
+  guides: readonly GuideLine[],
+  viewBox: SvgViewBoxLike | null,
+): void {
+  if (!layer) return;
+  layer.replaceChildren();
+  if (!viewBox || !guides || guides.length === 0) return;
+  for (const line of guides) {
+    const seg = guideToSvgSegment(line, viewBox);
+    if (!seg) continue;
+    layer.appendChild(
+      el("line", {
+        class: "dg-guide-line",
+        "data-dg-guide-line": "1",
+        x1: fmtNum(seg.x1),
+        y1: fmtNum(seg.y1),
+        x2: fmtNum(seg.x2),
+        y2: fmtNum(seg.y2),
+      }),
+    );
+  }
+}
+
+/** 变换手柄层：旋转 / 缩放柄（F3-4）。每次重绘整层重写，永远在控制点之上。 */
+export function createTransformLayer(svg: SVGSVGElement): SVGGElement {
+  const layer = el("g", { class: "dg-transform-layer", "data-dg-transform-layer": "1" });
+  svg.appendChild(layer);
+  return layer;
+}
+
+/**
+ * 在选中包围盒上画 8 个缩放柄 + 1 个旋转柄。svgBox 已是 SVG 用户坐标（Y 轴已按 viewBox 翻转），
+ * 因此直接用 cornerPoint 取角点 / 边中点即可定位，无需再翻转。柄尺寸按实测单位比换算，
+ * 任何缩放下屏幕恒定。柄只接 pointer-events:all，命中只靠 data 属性由 onStagePointerDown 区分。
+ */
+export function drawTransformHandles(
+  layer: SVGGElement | null,
+  svgBox: WorldBox | null,
+  metrics: HandleMetrics,
+): void {
+  if (!layer) return;
+  layer.replaceChildren();
+  if (!svgBox || !Number.isFinite(svgBox.minX) || !Number.isFinite(svgBox.maxY)) return;
+  const s = metrics.unitScale > 0 ? metrics.unitScale : 1;
+  const half = 4 / s;
+  const stroke = 1.2 / s;
+  const cx = (svgBox.minX + svgBox.maxX) / 2;
+  const topY = svgBox.minY; // SVG 空间里 minY 是「上边」
+  // 8 个缩放柄：0 左上 / 1 上中 / 2 右上 / 3 右中 / 4 右下 / 5 下中 / 6 左下 / 7 左中
+  for (let i = 0; i < 8; i += 1) {
+    const p = cornerPoint(svgBox, i);
+    const handle = el("rect", {
+      class: "dg-scale-handle",
+      "data-dg-transform-handle": "1",
+      "data-dg-transform-kind": "scale",
+      "data-dg-corner": String(i),
+      x: fmtNum(p.x - half),
+      y: fmtNum(p.y - half),
+      width: fmtNum(half * 2),
+      height: fmtNum(half * 2),
+      "stroke-width": fmtNum(stroke),
+    });
+    layer.appendChild(handle);
+  }
+  // 旋转柄：顶边中点上方一段固定屏幕距离处画一个小圆 + 连线
+  const rotY = topY - 18 / s;
+  layer.appendChild(
+    el("line", {
+      class: "dg-rotate-stick",
+      "data-dg-transform-handle": "1",
+      "data-dg-transform-kind": "rotate",
+      x1: fmtNum(cx),
+      y1: fmtNum(topY),
+      x2: fmtNum(cx),
+      y2: fmtNum(rotY),
+      "stroke-width": fmtNum(stroke),
+    }),
+  );
+  layer.appendChild(
+    el("circle", {
+      class: "dg-rotate-handle",
+      "data-dg-transform-handle": "1",
+      "data-dg-transform-kind": "rotate",
+      cx: fmtNum(cx),
+      cy: fmtNum(rotY),
+      r: fmtNum(5 / s),
+      "stroke-width": fmtNum(stroke),
+    }),
+  );
 }

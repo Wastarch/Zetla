@@ -77,12 +77,14 @@ export interface PreviewGeometryOptions {
   live: boolean;
 }
 
-/** 辅助层：选中框 / 控制点 / 形状工具预览。替换几何时它们必须原样保留（拖拽 DOM 引用不丢）。 */
+/** 辅助层：选中框 / 控制点 / 形状工具预览 / 参考线 / 变换柄。替换几何时它们必须原样保留（拖拽 DOM 引用不丢）。 */
 function isAuxLayer(el: Element): boolean {
   return (
     el.hasAttribute("data-dg-selection-layer") ||
     el.hasAttribute("data-dg-handle-layer") ||
-    el.hasAttribute("data-dg-shape-preview")
+    el.hasAttribute("data-dg-shape-preview") ||
+    el.hasAttribute("data-dg-guide-layer") ||
+    el.hasAttribute("data-dg-transform-layer")
   );
 }
 

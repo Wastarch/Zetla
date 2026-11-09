@@ -305,7 +305,44 @@ export async function applyGroupEdit(args: {
   grouping: GroupingState;
 }): Promise<GroupMovePlan> {
   const mod = await loadVendor();
-  const intent: MoveIntent = (src, hs, handleId, newWorld) => {
+  return planGroupMove({
+    source: args.source,
+    handles: args.handles,
+    elementIds: args.elementIds,
+    delta: args.delta,
+    compat: args.compat,
+    grouping: args.grouping,
+    intent: vendorMoveIntent(mod),
+  });
+}
+
+/**
+ * F3-4：对齐 / 分布 / 吸附位移 —— 每个元素各自的 delta，但所有 intent 仍基于
+ * 同一份基准 source + handles，因此多段补丁可直接合并成一次 dispatch。
+ */
+export async function applyDeltaEdit(args: {
+  source: string;
+  handles: readonly TikzEditHandle[];
+  deltas: Record<string, { x: number; y: number }>;
+  compat: CompatReport | null;
+  grouping: GroupingState;
+}): Promise<GroupMovePlan> {
+  const mod = await loadVendor();
+  return planGroupMove({
+    source: args.source,
+    handles: args.handles,
+    elementIds: Object.keys(args.deltas),
+    delta: { x: 0, y: 0 },
+    deltaFor: (id) => args.deltas[id] ?? { x: 0, y: 0 },
+    compat: args.compat,
+    grouping: args.grouping,
+    intent: vendorMoveIntent(mod),
+  });
+}
+
+/** 把 vendor 同步 API 适配成可注入的 MoveIntent（纯逻辑在 Node 侧可用 fake 回归）。 */
+function vendorMoveIntent(mod: VendorModule): MoveIntent {
+  return (src, hs, handleId, newWorld) => {
     try {
       const raw = mod.applyEditIntent(src, hs, { kind: "move", handleId, newWorld });
       if (raw.kind !== "success") {
@@ -326,13 +363,4 @@ export async function applyGroupEdit(args: {
       return { ok: false, reason: `引擎写回异常：${errorText(err)}` };
     }
   };
-  return planGroupMove({
-    source: args.source,
-    handles: args.handles,
-    elementIds: args.elementIds,
-    delta: args.delta,
-    compat: args.compat,
-    grouping: args.grouping,
-    intent,
-  });
 }

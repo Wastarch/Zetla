@@ -223,6 +223,8 @@ export function SettingsDialog() {
   // F3-3：图层面板显隐也是轻量 UI 偏好，纳入「恢复默认」
   const diagramLayersVisible = useDiagramStore((s) => s.layersVisible);
   const setDiagramLayersVisible = useDiagramStore((s) => s.setLayersVisible);
+  const diagramSnapEnabled = useDiagramStore((s) => s.snapEnabled);
+  const setDiagramSnapEnabled = useDiagramStore((s) => s.setSnapEnabled);
   const resetDiagramPreferences = useDiagramStore((s) => s.resetDiagramPreferences);
   const moduleNames: Record<string, string> = {};
   for (const m of modules) moduleNames[m.id] = m.name;
@@ -787,7 +789,16 @@ export function SettingsDialog() {
                     onChange={(next) => setDiagramLayersVisible(next)}
                   />
                 </Fld>
-                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板一次性重置">
+                <Fld
+                  label="智能参考线吸附"
+                  hint="F3-4：拖图元时与其他图元的边 / 中心或画布中心对齐，显示临时参考线并吸附"
+                >
+                  <Switch
+                    checked={diagramSnapEnabled}
+                    onChange={(next) => setDiagramSnapEnabled(next)}
+                  />
+                </Fld>
+                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板 / 智能参考线一次性重置">
                   <button
                     type="button"
                     className="btn"

@@ -561,6 +561,11 @@ export function planGroupMove(args: {
   handles: readonly TikzEditHandle[];
   elementIds: readonly string[];
   delta: { x: number; y: number };
+  /**
+   * F3-4：对齐 / 分布时每个元素位移不同。提供后优先于统一 delta；
+   * 不提供时保持 F3-3 的「整组平移」语义。每个 intent 仍基于同一份基准 source+handles。
+   */
+  deltaFor?: (elementId: string) => { x: number; y: number };
   compat: CompatReport | null;
   grouping: GroupingState;
   intent: MoveIntent;
@@ -571,10 +576,14 @@ export function planGroupMove(args: {
     movedElements: [] as string[],
     skipped: [] as GroupMoveSkipped[],
   };
+  const deltaOf = args.deltaFor ?? (() => args.delta);
+  // 统一 delta 时可提前判空；按元素 delta 时必须逐元素算完再由 nextSource 判空
+  // （某个元素零位移不代表整组零位移）。
   if (
-    !Number.isFinite(args.delta.x) ||
-    !Number.isFinite(args.delta.y) ||
-    (args.delta.x === 0 && args.delta.y === 0)
+    !args.deltaFor &&
+    (!Number.isFinite(args.delta.x) ||
+      !Number.isFinite(args.delta.y) ||
+      (args.delta.x === 0 && args.delta.y === 0))
   ) {
     return { status: "empty", ...emptyBase, reason: "位移为零" };
   }
@@ -616,10 +625,15 @@ export function planGroupMove(args: {
     }
     let okCount = 0;
     let lastReason = "上游未返回补丁";
+    const ownDelta = deltaOf(id);
+    if (!Number.isFinite(ownDelta?.x) || !Number.isFinite(ownDelta?.y)) {
+      skipped.push({ id, reason: "位移无效" });
+      continue;
+    }
     for (const h of writable) {
       const res = args.intent(args.source, args.handles, h.id, {
-        x: h.world.x + args.delta.x,
-        y: h.world.y + args.delta.y,
+        x: h.world.x + ownDelta.x,
+        y: h.world.y + ownDelta.y,
       });
       if (!res.ok) {
         lastReason = res.reason || lastReason;

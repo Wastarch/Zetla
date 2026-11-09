@@ -9,6 +9,7 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
 import { DiagramProperties } from "./DiagramProperties";
 import { LayersPanel } from "./LayersPanel";
+import { TransformPanel } from "./TransformPanel";
 import { insertDiagramCode } from "./insert";
 import type { ExportMode } from "@/types/diagram";
 import "./diagram.css";
@@ -75,6 +76,9 @@ export function DiagramSidebar() {
 
       {/* F3-3：图层 / 虚拟分组面板，与属性区并列在侧栏（不设右坞） */}
       <LayersPanel />
+
+      {/* F3-4：对齐 / 分布 / 变换面板，与属性、图层并列在侧栏（不设右坞） */}
+      <TransformPanel />
 
       <section className="dg-side-card">
         <h3 className="dg-side-card-title">组件库</h3>
