@@ -21,6 +21,11 @@
 //            控制点 / 选中框辅助层不变），于是「拖命中圈 = 图形跟着动」；预览不写 source、
 //            不进撤销栈、不动 renderMeta，松手才提交一次。命中圈只是 TikZ 句柄的交互代理，
 //            编辑语义与结果仍然是原来的节点坐标改写（见 dragPreview.ts）。
+//  选择 / 分组（F3-3）：空白区拖出框选矩形 → 按 getBoundingClientRect() 命中多个
+//            data-source-id；Shift 加选 / 减选、点空白清空；多选时拖任一选中图元 =
+//            整体平移（applyGroupEdit 把各元素最小补丁合并成一次 CM6 dispatch = 一条 history）。
+//            虚拟分组只存 store + localStorage，源码零改动、绝不包 \begin{scope}；
+//            图层面板的眼睛 / 锁是主动隐藏 / 主动锁定，与 F2-3 能力矩阵锁定并列。
 //  点选图元：F2-2 pointerdown 从 data-source-id / 控制点 sourceRef 取 id 写入 store，
 //            侧栏属性区据此定位语句选项；选中态只 toggle class，不重建 SVG、不打断拖拽。
 //  锁定提示：F2-3 compat.ts 用 capabilityMatrix + featureUsage 把「展开 / 计算型构造」
@@ -43,6 +48,7 @@ import { useSettingsStore } from "@/core/settings";
 import { useDiagramStore } from "./store";
 import {
   applyDragEdit,
+  applyGroupEdit,
   preloadTikzEngine,
   renderTikz,
   type DragEditOutcome,
@@ -64,10 +70,26 @@ import {
   type PointLike,
 } from "./dragEdit";
 import {
+  applyLayerVisibility,
   buildHandleLayer,
   createSelectionLayer,
   drawSelectionBox,
 } from "./handleLayer";
+import {
+  applyMarqueeSelection,
+  createGroup,
+  deleteGroup,
+  findGroupByMembers,
+  isManuallyHidden,
+  isManuallyLocked,
+  marqueeBox,
+  marqueeHits,
+  toggleSelection,
+  type GroupingState,
+  type MarqueeBox,
+  type RectLike,
+} from "./grouping";
+import type { GroupMovePlan } from "./grouping";
 import {
   applyPreviewGeometry,
   isPreviewActive,
@@ -107,6 +129,7 @@ import { ShapeToolbar } from "./ShapeToolbar";
 import { resolveHandleLock } from "./tikzEditor/compat";
 import {
   commitDiagramPatch,
+  commitDiagramPatches,
   resetDiagramHistorySession,
   runDiagramHistoryCommand,
   shouldHandleHistoryKey,
@@ -132,8 +155,18 @@ const DRAG_THRESHOLD_PX = 3;
 const MAX_LOCK_ITEMS = 4;
 /** F3-1：形状工具的最小拖拽距离（屏幕 px），低于此值视为误点 */
 const SHAPE_THRESHOLD_PX = 3;
+/** F3-3：框选的最小拖动距离；低于此值按「点空白清空选择」处理 */
+const MARQUEE_THRESHOLD_PX = 3;
 /** 空白画布的默认环境（空源码时先建环境，才能在 SVG 上取坐标） */
 const BLANK_DIAGRAM = "\\begin{tikzpicture}\n  \n\\end{tikzpicture}";
+
+/** F3-3：空白区拖出的框选手势（window 级监听靠 ref 读最新闭包）。 */
+interface MarqueeDrag {
+  startClient: PointLike;
+  additive: boolean;
+  baseSelection: string[];
+  moved: boolean;
+}
 
 interface ToolDragState {
   tool: ToolMode;
@@ -191,6 +224,10 @@ interface DragState {
   previewSource: string | null;
   previewWorld: PointLike | null;
   previewOutcome: DragEditOutcome | null;
+  /** F3-3：非 null 表示本次是「拖组」整体平移（命中图元本体且多选 > 1） */
+  groupIds: string[] | null;
+  /** 拖组最后一帧的候选规划；松手复用它提交，保证看到的几何 == 写回的源码 */
+  previewGroup: GroupMovePlan | null;
   /** 连续预览失败次数；超过阈值就停掉本手势的预览，避免每帧注定失败的重试 */
   previewFailures: number;
 }
@@ -217,6 +254,12 @@ export function DiagramCanvas() {
   const setPreviewMode = useDiagramStore((s) => s.setPreviewMode);
   const selectedId = useDiagramStore((s) => s.selectedId);
   const setSelectedId = useDiagramStore((s) => s.setSelectedId);
+  // F3-3：多选 / 分组 / 主动隐藏锁定
+  const selectedIds = useDiagramStore((s) => s.selectedIds);
+  const setSelectedIds = useDiagramStore((s) => s.setSelectedIds);
+  const grouping = useDiagramStore((s) => s.grouping);
+  const setGrouping = useDiagramStore((s) => s.setGrouping);
+  const pruneGroupingTo = useDiagramStore((s) => s.pruneGroupingTo);
   const setRenderMeta = useDiagramStore((s) => s.setRenderMeta);
   const activePath = useBuffersStore((s) => s.activePath);
   const tabVisible = activePath === DIAGRAM_PATH;
@@ -237,6 +280,9 @@ export function DiagramCanvas() {
   const [lockOpen, setLockOpen] = useState(true);
   const stageRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState | null>(null);
+  // F3-3：框选手势 + 屏幕矩形（position:fixed 直接用 client 坐标，无需再减容器偏移）
+  const marqueeRef = useRef<MarqueeDrag | null>(null);
+  const [marqueeRect, setMarqueeRect] = useState<MarqueeBox | null>(null);
   // pointerdown 的 client 坐标要传给 window 级监听，用 ref 中转（避免闭包捕获旧事件对象）
   const lastPointer = useRef<PointLike>({ x: 0, y: 0 }).current;
   // window 级 pointer 监听只注册一次，靠 ref 读最新状态，避免反复解绑/重绑
@@ -320,6 +366,8 @@ export function DiagramCanvas() {
           setError(null);
           setBusy(false);
           setRenderMeta({ source, statements: r.statements, compat: r.compat });
+          // F3-3：源码换图 / 撤销后按最新语句 id 裁剪失效分组与多选，避免悬空引用。
+          pruneGroupingTo(r.statements.map((s) => s.id));
         },
         (err: unknown) => {
           if (cancelled) return;
@@ -432,20 +480,32 @@ export function DiagramCanvas() {
   function refreshSelectionChrome(): void {
     const stage = stageRef.current;
     if (!stage || previewMode !== "local") return;
+    const svg = stage.querySelector("svg") as SVGSVGElement | null;
+    // F3-3：多选集合是唯一口径；selectedId 始终等于它的首项（属性面板零改动）。
+    const picked = new Set(selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : []);
+    const state = useDiagramStore.getState().grouping as GroupingState;
+    const hidden = new Set<string>();
     for (const el of Array.from(stage.querySelectorAll("[data-source-id]"))) {
-      el.classList.toggle("dg-selected", el.getAttribute("data-source-id") === selectedId);
+      const id = el.getAttribute("data-source-id") ?? "";
+      if (id && !hidden.has(id) && isManuallyHidden(state, id)) hidden.add(id);
+    }
+    for (const el of Array.from(stage.querySelectorAll("[data-source-id]"))) {
+      el.classList.toggle("dg-selected", picked.has(el.getAttribute("data-source-id") ?? ""));
     }
     for (const node of Array.from(stage.querySelectorAll("g.dg-handle-node"))) {
       node.classList.toggle(
         "is-selected",
-        !!selectedId && node.getAttribute("data-dg-source-id") === selectedId,
+        picked.has(node.getAttribute("data-dg-source-id") ?? ""),
       );
     }
-    const svg = stage.querySelector("svg") as SVGSVGElement | null;
-    const layer = svg?.querySelector("[data-dg-selection-layer]") as SVGGElement | null;
-    if (!svg || !layer) return;
+    if (!svg) return;
+    // 隐藏只切 class：源码仍在，切回可见再调一次即可（F3-3 主动隐藏）。
+    applyLayerVisibility(svg, hidden);
+    const layer = svg.querySelector("[data-dg-selection-layer]") as SVGGElement | null;
+    if (!layer) return;
+    // 多选虚线框 = 所有选中图元包围盒的并集，同时也是虚拟分组的淡色外框。
     const editable =
-      previewMode === "local" && handlesOn && toolMode === "select" && !!selectedId;
+      previewMode === "local" && handlesOn && toolMode === "select" && picked.size > 0;
     const ctm = editable ? svg.getScreenCTM?.() : null;
     if (!ctm) {
       drawSelectionBox(layer, null, metrics);
@@ -460,7 +520,8 @@ export function DiagramCanvas() {
       f: ctm.f,
     };
     const boxes = Array.from(stage.querySelectorAll("[data-source-id]"))
-      .filter((el) => el.getAttribute("data-source-id") === selectedId)
+      .filter((el) => picked.has(el.getAttribute("data-source-id") ?? ""))
+      .filter((el) => !hidden.has(el.getAttribute("data-source-id") ?? ""))
       .map((el) => el.getBoundingClientRect())
       .filter((r) => !(r.width === 0 && r.height === 0))
       .map((r) => clientRectToSvgBox(r, m));
@@ -470,7 +531,7 @@ export function DiagramCanvas() {
   useEffect(() => {
     refreshSelectionChrome();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId, result, zoom, previewMode, handlesOn, toolMode, metrics]);
+  }, [selectedId, selectedIds, grouping, result, zoom, previewMode, handlesOn, toolMode, metrics]);
 
   // ── F3-2 后续修复：拖命中圈 → 实时几何预览（不写源码、不进撤销栈） ──────────
   // 命中圈只是 TikZ 句柄的交互代理：每一帧仍用同一份 applyEditIntent 从「基准源码 +
@@ -540,25 +601,50 @@ export function DiagramCanvas() {
     previewBusyRef.current = true;
     const world = { x: d.newWorld.x, y: d.newWorld.y };
     try {
-      const outcome = await applyDragEdit(
-        d.sourceAtStart,
-        d.resultAtStart.handles,
-        d.handleId,
-        world,
-      );
-      if (!previewActiveRef.current || dragRef.current !== d) return;
-      // 上游不支持 / 报错时不打断拖拽，松手由 commit 给出明确理由。
-      if (outcome.status !== "ok") {
-        notePreviewFailure(d);
-        return;
+      // F3-3：拖组与单控制点拖拽共用同一条实时预览链路，只是候选源码的算不同：
+      // 单句柄 → applyDragEdit；多选整体平移 → applyGroupEdit（多个最小补丁合并）。
+      let newSource: string;
+      if (d.groupIds) {
+        const plan = await applyGroupEdit({
+          source: d.sourceAtStart,
+          handles: d.resultAtStart.handles,
+          elementIds: d.groupIds,
+          delta: { x: world.x - d.startWorld.x, y: world.y - d.startWorld.y },
+          compat: d.resultAtStart.compat,
+          grouping: useDiagramStore.getState().grouping,
+        });
+        if (!previewActiveRef.current || dragRef.current !== d) return;
+        d.previewGroup = plan;
+        d.previewOutcome = null;
+        // 上游不支持 / 补丁冲突时不打断拖拽，松手由 commit 给出明确理由。
+        if (plan.status !== "ok") {
+          notePreviewFailure(d);
+          d.previewWorld = world;
+          return;
+        }
+        newSource = plan.nextSource;
+      } else {
+        const outcome = await applyDragEdit(
+          d.sourceAtStart,
+          d.resultAtStart.handles,
+          d.handleId,
+          world,
+        );
+        if (!previewActiveRef.current || dragRef.current !== d) return;
+        if (outcome.status !== "ok") {
+          notePreviewFailure(d);
+          return;
+        }
+        d.previewOutcome = outcome;
+        d.previewGroup = null;
+        newSource = outcome.newSource;
       }
-      if (!shouldRenderPreview(d.previewSource, outcome.newSource, d.sourceAtStart)) {
+      if (!shouldRenderPreview(d.previewSource, newSource, d.sourceAtStart)) {
         // 源码没变（上游坐标量化）：几何已经正确，只记下这一帧的世界坐标供提交复用。
         d.previewWorld = world;
-        d.previewOutcome = outcome;
         return;
       }
-      const candidate = await renderTikz(outcome.newSource);
+      const candidate = await renderTikz(newSource);
       if (!previewActiveRef.current || dragRef.current !== d) return;
       const svg = stageSvg();
       if (!svg) {
@@ -588,8 +674,7 @@ export function DiagramCanvas() {
         );
       }
       refreshSelectionChrome();
-      d.previewSource = outcome.newSource;
-      d.previewOutcome = outcome;
+      d.previewSource = newSource;
       d.previewWorld = world;
       d.previewFailures = 0;
     } catch (err) {
@@ -642,8 +727,11 @@ export function DiagramCanvas() {
   }, [result, pendingSelection, error, setSelectedId]);
 
   // F3-1：换工具 / 切预览通道时取消未完成的绘制会话（精确通道全程只读）。
+  // F3-3：同时丢掉进行中的框选，避免切通道后残留一个 fixed 选区矩形。
   useEffect(() => {
     shapeApiRef.current.cancel(true);
+    marqueeRef.current = null;
+    setMarqueeRect(null);
   }, [toolMode, previewMode]);
 
   // 拖拽提交：只算一次新源码，再以最小 span 补丁写回 CM6（F2-1 与键盘编辑同撤销栈）。
@@ -660,13 +748,53 @@ export function DiagramCanvas() {
       setNotice({ tone: "warn", text: "源码在拖拽期间发生变化，请重新拖动。" });
       return;
     }
-    const reused =
-      d.previewOutcome &&
-      d.previewWorld &&
+    const lastFrameMatches =
+      !!d.previewWorld &&
       Math.abs(d.previewWorld.x - d.newWorld.x) < 1e-9 &&
-      Math.abs(d.previewWorld.y - d.newWorld.y) < 1e-9
-        ? d.previewOutcome
-        : null;
+      Math.abs(d.previewWorld.y - d.newWorld.y) < 1e-9;
+
+    // F3-3：拖组走多段补丁一次 dispatch（一条 history = 一次 Ctrl+Z 退整组）。
+    // 复用最后一帧的规划，保证「眼睛看到的几何」和「真正写回的源码」完全一致。
+    if (d.groupIds) {
+      const plan =
+        d.previewGroup && lastFrameMatches && d.previewGroup.status === "ok"
+          ? Promise.resolve(d.previewGroup)
+          : applyGroupEdit({
+              source: src,
+              handles: res.handles,
+              elementIds: d.groupIds,
+              delta: { x: d.newWorld.x - d.startWorld.x, y: d.newWorld.y - d.startWorld.y },
+              compat: res.compat,
+              grouping: useDiagramStore.getState().grouping,
+            });
+      void plan.then((p) => {
+        if (p.status !== "ok") {
+          previewApiRef.current.restore();
+          setNotice({ tone: "warn", text: `无法整体移动：${p.reason}` });
+          return;
+        }
+        const write = commitDiagramPatches({
+          patches: p.patches,
+          source: src,
+          nextSource: p.nextSource,
+          fallback: setSource,
+        });
+        const skipped =
+          p.skipped.length > 0
+            ? ` · ${p.skipped.length} 个跳过（${p.skipped[0].id}：${p.skipped[0].reason}）`
+            : "";
+        setNotice({
+          tone: write.written ? "ok" : "warn",
+          text: `已整体移动 ${p.movedElements.length} 个图元${skipped}${
+            write.written ? " · Ctrl+Z 一次退回整组" : " · 源码栏未就绪，无撤销记录"
+          }`,
+        });
+      });
+      return;
+    }
+
+    const reused =
+      d.previewOutcome && lastFrameMatches ? d.previewOutcome : null;
     const pending = reused
       ? Promise.resolve(reused)
       : applyDragEdit(src, res.handles, d.handleId, d.newWorld);
@@ -1098,8 +1226,23 @@ export function DiagramCanvas() {
       if (d.guide) d.guide.setAttribute("visibility", "hidden");
     };
     const onMove = (e: PointerEvent) => {
+      lastPointer.x = e.clientX;
+      lastPointer.y = e.clientY;
       // F3-1：形状工具会话优先；无会话时该函数立即返回，不影响 F2-1 控制点拖拽。
       shapeApiRef.current.move(e);
+      // F3-3：空白区框选。屏幕矩形直接用 client 坐标，命中判定用
+      // getBoundingClientRect()（天然含 zoom / viewBox 留白），不做 SVG 反算。
+      const mq = marqueeRef.current;
+      if (mq) {
+        const dx = e.clientX - mq.startClient.x;
+        const dy = e.clientY - mq.startClient.y;
+        if (!mq.moved && Math.hypot(dx, dy) < MARQUEE_THRESHOLD_PX) return;
+        mq.moved = true;
+        setMarqueeRect(
+          marqueeBox(mq.startClient.x, mq.startClient.y, e.clientX, e.clientY),
+        );
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       const dxPx = e.clientX - d.startClient.x;
@@ -1123,9 +1266,35 @@ export function DiagramCanvas() {
       // F3-2 后续修复：同一帧排一次「候选源码 → 候选几何」的替换，图形跟着命中圈动。
       previewApiRef.current.schedule(d);
     };
-    const onUp = () => {
+    /** F3-3：框选松手 → 按屏幕矩形命中 data-source-id → 并入 / 替换多选。 */
+    const finishMarquee = (client: PointLike): void => {
+      const mq = marqueeRef.current;
+      marqueeRef.current = null;
+      setMarqueeRect(null);
+      if (!mq || !mq.moved) return;
+      const stage = stageRef.current;
+      if (!stage) return;
+      const box = marqueeBox(mq.startClient.x, mq.startClient.y, client.x, client.y);
+      const state = useDiagramStore.getState();
+      const items = Array.from(stage.querySelectorAll("[data-source-id]"))
+        .map((el) => ({
+          id: el.getAttribute("data-source-id") ?? "",
+          rect: el.getBoundingClientRect() as RectLike,
+        }))
+        .filter((it) => !!it.id && !isManuallyHidden(state.grouping, it.id));
+      const hits = marqueeHits(items, box);
+      state.setSelectedIds(
+        applyMarqueeSelection(mq.additive ? mq.baseSelection : [], hits, mq.additive),
+      );
+    };
+
+    const onUp = (e: PointerEvent) => {
       // F3-1：形状工具松手提交；多点工具无 toolDragRef，这里会直接返回。
       shapeApiRef.current.up();
+      if (marqueeRef.current) {
+        finishMarquee({ x: e.clientX, y: e.clientY });
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
@@ -1136,6 +1305,12 @@ export function DiagramCanvas() {
       else previewApiRef.current.deactivate();
     };
     const onCancel = () => {
+      // F3-3：pointercancel 时丢弃框选，不加选任何东西。
+      if (marqueeRef.current) {
+        marqueeRef.current = null;
+        setMarqueeRect(null);
+        return;
+      }
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
@@ -1147,13 +1322,22 @@ export function DiagramCanvas() {
     const onKey = (e: KeyboardEvent) => {
       // F3-1：Esc / Enter / Backspace 先给形状工具会话，绘制中不触发撤销栈。
       if (shapeApiRef.current.key(e)) return;
-      if (e.key === "Escape" && dragRef.current) {
+      if (e.key === "Escape" && (dragRef.current || marqueeRef.current)) {
+        if (marqueeRef.current) {
+          marqueeRef.current = null;
+          setMarqueeRect(null);
+          return;
+        }
         onCancel();
         return;
       }
       // F2-4：仅画布布局（或焦点在画布 / 侧栏而非源码栏）时 CM6 收不到按键，
       // 由这里把撤销 / 重做转发到同一条 history；分屏里焦点在源码栏时应交回 CM6。
-      const inGesture = !!dragRef.current || !!toolDragRef.current || !!shapeSessionRef.current;
+      const inGesture =
+        !!dragRef.current ||
+        !!marqueeRef.current ||
+        !!toolDragRef.current ||
+        !!shapeSessionRef.current;
       const kind = shouldHandleHistoryKey(e, tabVisibleRef.current, inGesture);
       if (!kind) return;
       e.preventDefault();
@@ -1185,6 +1369,8 @@ export function DiagramCanvas() {
   // 不该把「回到本地画布后的下一次拖拽」并到切通道前的那组微调上。
   useEffect(() => {
     resetDiagramHistorySession();
+    marqueeRef.current = null;
+    setMarqueeRect(null);
   }, [previewMode]);
 
   // 提示条自动消失（4s），新提示会重置计时
@@ -1226,6 +1412,23 @@ export function DiagramCanvas() {
       }
     }
     if (!hit) return;
+    const state = useDiagramStore.getState();
+    const shapeEl = target.closest("[data-source-id]");
+    const sid = shapeEl?.getAttribute("data-source-id") ?? null;
+    // F3-3：主动锁定优先于一切拖拽（与 F2-3 的能力矩阵锁定是两套语义）。
+    if (sid && isManuallyLocked(state.grouping, sid)) {
+      setNotice({ tone: "warn", text: "该图元已在图层面板主动锁定，先解锁后再拖动。" });
+      return;
+    }
+    // F3-3：命中图元本体（不是控制点）且当前多选 > 1 → 整体平移整组。
+    // 命中控制点仍走 F2-1 的单点几何编辑，保证拖拽语义不被多选抢走。
+    const groupIds =
+      !markerEl &&
+      sid &&
+      state.selectedIds.length > 1 &&
+      state.selectedIds.includes(sid)
+        ? state.selectedIds.filter((id) => !isManuallyHidden(state.grouping, id))
+        : null;
     // F2-3：能力矩阵归因的锁定优先，理由更具体；F2-1 的 rewriteMode 兜底在后。
     const lockReason = resolveHandleLock(
       result.compat,
@@ -1233,7 +1436,7 @@ export function DiagramCanvas() {
       isDraggableHandle(hit),
       lockedHandleReason(hit),
     );
-    if (lockReason !== null) {
+    if (lockReason !== null && !groupIds) {
       setNotice({ tone: "warn", text: lockReason });
       return;
     }
@@ -1274,6 +1477,8 @@ export function DiagramCanvas() {
       previewSource: null,
       previewWorld: null,
       previewOutcome: null,
+      groupIds: groupIds && groupIds.length > 1 ? groupIds : null,
+      previewGroup: null,
       previewFailures: 0,
     };
     // F3-2 后续修复：以此刻的源码 / 渲染结果为整段手势的**唯一基准**，之后每帧的
@@ -1315,16 +1520,60 @@ export function DiagramCanvas() {
       }
       return;
     }
+    // F3-3：点图元 = 单选 / Shift 加选减选；点空白 = 清空 + 起框选。
+    // 多选且点中已选中的图元时**不重置选择**，交给 startDragFromEvent 判定「拖组」。
     const sid = resolveSelectedId(e.target);
-    if (useDiagramStore.getState().selectedId !== sid) setSelectedId(sid);
-    startDragFromEvent(e.target);
-    if (dragRef.current) e.preventDefault();
+    const additive = e.shiftKey;
+    const current = useDiagramStore.getState().selectedIds;
+    if (sid) {
+      if (additive) {
+        setSelectedIds(toggleSelection(current, sid, true));
+      } else if (!(current.length > 1 && current.includes(sid))) {
+        setSelectedId(sid);
+      }
+    } else {
+      if (!additive) setSelectedIds([]);
+      marqueeRef.current = {
+        startClient: { x: e.clientX, y: e.clientY },
+        additive,
+        baseSelection: current,
+        moved: false,
+      };
+      setMarqueeRect(null);
+    }
+    // Shift 点击只做加选 / 减选，绝不起拖，避免误改几何。
+    if (sid && !additive) startDragFromEvent(e.target);
+    if (dragRef.current || marqueeRef.current) e.preventDefault();
   }
 
   function historyCommand(kind: "undo" | "redo"): void {
     if (!runDiagramHistoryCommand(kind)) {
       setNotice({ tone: "warn", text: "没有可撤销 / 重做的改动，或源码栏尚未就绪。" });
     }
+  }
+
+  // F3-3：画布头部的编组 / 解组快捷入口（侧栏图层面板也有完整版）。
+  // 解组按「当前多选是否恰好等于某组成员」定位，不需要额外的面板选中态。
+  const selectionGroupId = useMemo(
+    () => findGroupByMembers(grouping.groups, selectedIds),
+    [grouping.groups, selectedIds],
+  );
+
+  function groupSelection(): void {
+    if (selectedIds.length < 2) return;
+    const out = createGroup(grouping, selectedIds);
+    if (!out.groupId) return;
+    setGrouping(out.state);
+    setNotice({
+      tone: "ok",
+      text: `已编组 ${selectedIds.length} 个图元 · 源码零改动，拖组后一次 Ctrl+Z 退回整组`,
+    });
+  }
+
+  function ungroupSelection(): void {
+    if (!selectionGroupId) return;
+    setGrouping(deleteGroup(grouping, selectionGroupId));
+    setNotice({ tone: "ok", text: "已解组 · 只删除编辑器侧元数据，源码不变" });
   }
 
   const preciseImg = useMemo(
@@ -1356,12 +1605,16 @@ export function DiagramCanvas() {
   const compatLocked = compat?.lockedHandleCount ?? 0;
   const compatItemCount = compatIssues.length + compatUnrendered.length;
   const showCompatBar = !!compat && !compat.empty;
+  const selectionHint =
+    selectedIds.length > 1
+      ? `已选 ${selectedIds.length} 项（拖任一选中图元整体移动 · 可编组）`
+      : `选中 ${selectedId ?? "无"}（侧栏改属性）`;
   const footHint =
     previewMode !== "local"
       ? "精确预览只读 · 切回本地即时可绘制"
       : toolMode === "select"
-        ? `拖动命中圈实时预览 · 松手写回坐标 · ${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · 选中 ${selectedId ?? "无"}（侧栏改属性）`
-        : `${toolDef(toolMode).label}工具已启用 · 绘制时隐藏控制点 · 选中 ${selectedId ?? "无"}（插入后自动选中）`;
+        ? `拖动命中圈实时预览 · 松手写回坐标 · 空白拖框选 / Shift 加选 · ${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · ${selectionHint}`
+        : `${toolDef(toolMode).label}工具已启用 · 绘制时隐藏控制点 · ${selectionHint}`;
 
   return (
     <div className="dg-canvas">
@@ -1424,6 +1677,27 @@ export function DiagramCanvas() {
                 ))}
               </select>
             </label>
+          )}
+          {/* F3-3：编组 / 解组只改编辑器侧元数据，源码零污染 */}
+          {previewMode === "local" && (
+            <>
+              <button
+                type="button"
+                disabled={selectedIds.length < 2}
+                title="把当前多选编成虚拟分组（不写进 TikZ、不包 scope）"
+                onClick={groupSelection}
+              >
+                编组
+              </button>
+              <button
+                type="button"
+                disabled={!selectionGroupId}
+                title="解散当前选中的虚拟分组（源码不变）"
+                onClick={ungroupSelection}
+              >
+                解组
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -1633,6 +1907,19 @@ export function DiagramCanvas() {
           <div className={`dg-drag-notice is-${notice.tone}`} role="status">
             {notice.text}
           </div>
+        )}
+        {/* F3-3：框选矩形用 position:fixed 直接吃 client 坐标，不做容器偏移换算；
+            pointer-events:none 保证不拦截 stage 上的 pointerdown / move。 */}
+        {marqueeRect && (
+          <div
+            className="dg-marquee"
+            style={{
+              left: marqueeRect.left,
+              top: marqueeRect.top,
+              width: Math.max(0, marqueeRect.right - marqueeRect.left),
+              height: Math.max(0, marqueeRect.bottom - marqueeRect.top),
+            }}
+          />
         )}
       </div>
 

@@ -1095,3 +1095,143 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   stroke: none;
   opacity: 0.7;
 }
+
+/* ── F3-3 选择 · 分组 · 图层 ──────────────────────────────────────────────
+   框选矩形是 position:fixed 的 HTML 层，直接吃 client 坐标；选中包围盒与
+   控制点仍在已消毒 SVG 的辅助层里。图层面板挂在左侧栏（不另设右坞）。
+   隐藏只切 .dg-hidden class：源码一个字不改，随时可恢复。 */
+.dg-layer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.dg-layer-toggle {
+  flex: none;
+  padding: 1px 6px;
+  font-size: 10px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--txt-2, #888);
+  cursor: pointer;
+}
+.dg-layer-toggle:hover {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-layer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.dg-layer-card .btn {
+  align-self: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+.dg-layer-card .btn:disabled,
+.dg-edit-tools button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.dg-edit-tools button:disabled:hover {
+  border-color: var(--line, #e0e0e0);
+  color: var(--txt-2, #888);
+}
+.dg-layer-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 260px;
+  margin: 0;
+  padding: 2px 0;
+  overflow: auto;
+  list-style: none;
+  border-top: 1px solid var(--line, #e0e0e0);
+}
+.dg-layer-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 22px;
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-layer-row:hover {
+  background: var(--accent-soft, rgba(43, 98, 207, 0.09));
+}
+.dg-layer-row.is-group {
+  font-weight: 600;
+  color: var(--txt, #353333);
+}
+.dg-layer-row.is-on {
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  color: var(--accent, #2d7ff9);
+}
+.dg-layer-name {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 4px;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.dg-layer-row.is-hidden .dg-layer-name {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.dg-layer-count {
+  flex: none;
+  font-size: 10px;
+  color: var(--txt-3, #999);
+}
+.dg-layer-ops {
+  display: flex;
+  flex: none;
+  gap: 1px;
+}
+.dg-layer-icon {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--txt-3, #999);
+  font-size: 10px;
+  line-height: 16px;
+  cursor: pointer;
+}
+.dg-layer-icon:hover {
+  border-color: var(--line, #e0e0e0);
+  color: var(--accent, #2d7ff9);
+}
+.dg-layer-icon.is-active {
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  color: var(--warn, #d9822b);
+}
+.dg-layer-rename {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 1px 4px;
+  font-size: 11px;
+}
+.dg-hidden {
+  display: none !important;
+}
+.dg-marquee {
+  position: fixed;
+  z-index: 60;
+  border: 1px solid var(--accent, #2d7ff9);
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  pointer-events: none;
+}

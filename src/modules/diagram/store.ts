@@ -6,6 +6,9 @@
 // F2-3 给 renderMeta 加 compat（同源的能力矩阵锁定报告），画布与侧栏共用一份判定。
 // F3-1 增 toolMode（基础图元工具），F3-2 增 handleSize（控制点视觉档位），
 // 都沿用同一套轻量 localStorage 偏好机制。
+// F3-3 增 selectedIds（多选）/ grouping（虚拟分组 + 主动隐藏 / 锁定）/ layersVisible；
+// 分组是**编辑器侧元数据**，绝不写进 TikZ。持久化按当前语句 id 白名单裁剪，
+// 源码改崩 / 换成另一张图时失效引用由 pruneGroupingTo 自动清掉。
 //
 // 存储口径：绘图布局/预览模式/当前工具/控制点大小是低风险 UI 状态，沿用 localStorage（键集中在此文件），
 // 不扩全局 AppSettings schema（那需要同步改 Rust AppConfig + 归一化 + 迁移，收益不抵风险）。
@@ -21,6 +24,13 @@ import {
   isHandleSize,
   type HandleSize,
 } from "./handleVisual.ts";
+import {
+  EMPTY_GROUPING,
+  groupingStorageKey,
+  normalizeGrouping,
+  pruneGrouping,
+  type GroupingState,
+} from "./grouping.ts";
 
 export type { HandleSize } from "./handleVisual.ts";
 
@@ -32,6 +42,8 @@ const RATIO_KEY = "zetla.diagram.splitRatio";
 const PREVIEW_KEY = "zetla.diagram.previewMode";
 const TOOL_KEY = "zetla.diagram.toolMode";
 const HANDLE_SIZE_KEY = "zetla.diagram.handleSize";
+const LAYERS_KEY = "zetla.diagram.layersVisible";
+const GROUPING_KEY = "zetla.diagram.grouping.v1";
 
 export const MIN_SPLIT_RATIO = 0.2;
 export const MAX_SPLIT_RATIO = 0.8;
@@ -43,6 +55,7 @@ export const DIAGRAM_DEFAULTS = {
   previewMode: "local" as PreviewMode,
   toolMode: DEFAULT_TOOL_MODE,
   handleSize: DEFAULT_HANDLE_SIZE,
+  layersVisible: true,
 };
 
 function clampRatio(n: number): number {
@@ -97,6 +110,55 @@ function readHandleSize(): HandleSize {
   }
 }
 
+/** F3-3：图层面板显隐（轻量 UI 偏好，和五项偏好一起由设置页「恢复默认」复位）。 */
+function readLayersVisible(): boolean {
+  try {
+    const v = localStorage.getItem(LAYERS_KEY);
+    return v === null ? DIAGRAM_DEFAULTS.layersVisible : v === "1";
+  } catch {
+    return DIAGRAM_DEFAULTS.layersVisible;
+  }
+}
+
+/**
+ * F3-3：分组元数据的持久化。存 `{ ids, state }`：ids 是保存那一刻的语句 id 白名单，
+ * 加载时先按它归一化，运行时再由 pruneGroupingTo 按当前渲染的 statements 裁剪。
+ * 这样「编辑过源码再刷新」不会留下悬空组，也不会把上一张图的分组串到新图上。
+ */
+function readGrouping(): GroupingState {
+  try {
+    const raw = JSON.parse(localStorage.getItem(GROUPING_KEY) ?? "null") as {
+      ids?: unknown;
+      state?: unknown;
+      /** 保存时的源码指纹；仅作诊断 / 未来按图迁移用，不作为恢复门槛 */
+      signature?: unknown;
+    } | null;
+    const ids = Array.isArray(raw?.ids)
+      ? raw.ids.filter((v): v is string => typeof v === "string")
+      : [];
+    return normalizeGrouping(raw?.state, ids);
+  } catch {
+    return { ...EMPTY_GROUPING };
+  }
+}
+
+function writeGrouping(
+  state: GroupingState,
+  ids: readonly string[],
+  source: string,
+): void {
+  try {
+    // signature 记录保存时的源码指纹：便于将来按图迁移 / 排查串味；
+    // 恢复门槛故意靠 ids 白名单 + 运行时 prune，这样「改过源码再刷新」不丢分组。
+    localStorage.setItem(
+      GROUPING_KEY,
+      JSON.stringify({ signature: groupingStorageKey(source), ids, state }),
+    );
+  } catch {
+    // 隐私模式 / 配额：忽略，分组仅本次会话有效。
+  }
+}
+
 function writeSetting(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
@@ -116,9 +178,15 @@ export interface DiagramState {
   /** 当前绘图源码（完整 tikzpicture 环境；由 Tab 内 LaTeXEditor 受控驱动） */
   source: string;
   setSource: (s: string) => void;
-  /** F2-2：画布点选 / 侧栏列表选中的图元 id（与 SVG 的 data-source-id 一致） */
+  /**
+   * F2-2：主选中项（属性面板按它定位语句）。F3-3 起与 selectedIds 保持同步：
+   * 始终等于 selectedIds[0] ?? null —— 既有的属性区 / 自动选中链路零改动。
+   */
   selectedId: string | null;
   setSelectedId: (id: string | null) => void;
+  /** F3-3：多选集合（框选 / Shift 加选 / 拖组 / 编组都基于它），会话态不持久化 */
+  selectedIds: string[];
+  setSelectedIds: (ids: readonly string[]) => void;
   /**
    * F2-2 / F2-3：最近一次本地渲染派生的语句清单 + 兼容报告。带上 source 让侧栏在
    * debounce 期间能识别「源码已改但还没重渲染」，避免把补丁打到过期的选项 span 上，
@@ -147,6 +215,15 @@ export interface DiagramState {
   /** F3-2：控制点视觉半径档位（命中半径独立且更大，见 handleVisual.ts） */
   handleSize: HandleSize;
   setHandleSize: (s: HandleSize) => void;
+  /** F3-3：图层面板显隐（轻量 UI 偏好） */
+  layersVisible: boolean;
+  setLayersVisible: (v: boolean) => void;
+  /** F3-3：虚拟分组 / 主动隐藏 / 主动锁定。只存编辑器侧，TikZ 源码零污染 */
+  grouping: GroupingState;
+  /** 分组写入口：所有变更都经它，顺带持久化到 localStorage */
+  setGrouping: (g: GroupingState) => void;
+  /** 画布每次重渲染后按当前语句 id 裁剪失效分组 / 选中，防悬空引用 */
+  pruneGroupingTo: (ids: readonly string[]) => void;
   /** F1-4：侧栏导出方式；image / file 由 F4 落盘链路接入 */
   exportMode: ExportMode;
   setExportMode: (m: ExportMode) => void;
@@ -157,7 +234,7 @@ export interface DiagramState {
   setCaption: (v: string) => void;
   label: string;
   setLabel: (v: string) => void;
-  /** F1-5 / F3-1 / F3-2：设置页「恢复默认」——把五项持久化偏好写回默认值 */
+  /** F1-5 / F3-1 / F3-2 / F3-3：设置页「恢复默认」——把六项持久化偏好写回默认值 */
   resetDiagramPreferences: () => void;
 }
 
@@ -169,13 +246,40 @@ export const DEFAULT_DIAGRAM_SOURCE = `\\begin{tikzpicture}
   \\draw[->, thick] (a) -- (b);
 \\end{tikzpicture}`;
 
-export const useDiagramStore = create<DiagramState>((set) => ({
+export const useDiagramStore = create<DiagramState>((set, get) => ({
   source: DEFAULT_DIAGRAM_SOURCE,
   setSource: (s) => set({ source: s }),
   selectedId: null,
-  setSelectedId: (id) => set({ selectedId: id }),
+  setSelectedId: (id) => set({ selectedId: id, selectedIds: id ? [id] : [] }),
+  selectedIds: [],
+  setSelectedIds: (ids) => {
+    const clean = Array.from(new Set(ids.filter((x) => typeof x === "string" && !!x)));
+    set({ selectedIds: clean, selectedId: clean[0] ?? null });
+  },
   renderMeta: null,
   setRenderMeta: (m) => set({ renderMeta: m }),
+  grouping: readGrouping(),
+  setGrouping: (g) => {
+    const state = get();
+    const ids = state.renderMeta?.statements.map((s) => s.id) ?? [];
+    writeGrouping(g, ids, state.source);
+    set({ grouping: g });
+  },
+  pruneGroupingTo: (ids) => {
+    const available = new Set(ids);
+    const next = pruneGrouping(get().grouping, ids);
+    const cur = get();
+    const sel = cur.selectedIds.filter((id) => available.has(id));
+    const changed =
+      JSON.stringify(next) !== JSON.stringify(cur.grouping) ||
+      sel.length !== cur.selectedIds.length;
+    if (!changed) return;
+    set({
+      grouping: next,
+      selectedIds: sel,
+      selectedId: sel[0] ?? null,
+    });
+  },
   targetTex: null,
   setTargetTex: (p) => set({ targetTex: p }),
   layoutMode: readLayout(),
@@ -204,6 +308,11 @@ export const useDiagramStore = create<DiagramState>((set) => ({
     writeSetting(HANDLE_SIZE_KEY, s);
     set({ handleSize: s });
   },
+  layersVisible: readLayersVisible(),
+  setLayersVisible: (v) => {
+    writeSetting(LAYERS_KEY, v ? "1" : "0");
+    set({ layersVisible: v });
+  },
   exportMode: "source",
   setExportMode: (m) => set({ exportMode: m }),
   wrapFigure: false,
@@ -218,12 +327,14 @@ export const useDiagramStore = create<DiagramState>((set) => ({
     writeSetting(PREVIEW_KEY, DIAGRAM_DEFAULTS.previewMode);
     writeSetting(TOOL_KEY, DIAGRAM_DEFAULTS.toolMode);
     writeSetting(HANDLE_SIZE_KEY, DIAGRAM_DEFAULTS.handleSize);
+    writeSetting(LAYERS_KEY, DIAGRAM_DEFAULTS.layersVisible ? "1" : "0");
     set({
       layoutMode: DIAGRAM_DEFAULTS.layoutMode,
       splitRatio: DIAGRAM_DEFAULTS.splitRatio,
       previewMode: DIAGRAM_DEFAULTS.previewMode,
       toolMode: DIAGRAM_DEFAULTS.toolMode,
       handleSize: DIAGRAM_DEFAULTS.handleSize,
+      layersVisible: DIAGRAM_DEFAULTS.layersVisible,
     });
   },
 }));

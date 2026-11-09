@@ -163,6 +163,34 @@ export function buildHandleLayer(
   return layer;
 }
 
+/**
+ * F3-3：应用「主动隐藏」。只切 DOM class，不改源码、不重建 SVG：
+ *   · `[data-source-id]` 几何节点（一条语句可能对应多个节点，全部隐藏）；
+ *   · 对应的控制点 `<g>`；
+ *   · 该控制点的 F2-3 挂锁（按 data-dg-lock-for 匹配，避免用 CSS.escape）。
+ * 隐藏是纯编辑器侧状态，切回可见只需再调一次，天然幂等。
+ */
+export function applyLayerVisibility(
+  svg: SVGSVGElement,
+  hiddenIds: ReadonlySet<string>,
+): void {
+  const locks = new Map<string, Element>();
+  for (const g of Array.from(svg.querySelectorAll("g.dg-handle-lock"))) {
+    const key = g.getAttribute("data-dg-lock-for");
+    if (key) locks.set(key, g);
+  }
+  for (const el of Array.from(svg.querySelectorAll("[data-source-id]"))) {
+    el.classList.toggle("dg-hidden", hiddenIds.has(el.getAttribute("data-source-id") ?? ""));
+  }
+  for (const node of Array.from(svg.querySelectorAll("g.dg-handle-node"))) {
+    const hidden = hiddenIds.has(node.getAttribute("data-dg-source-id") ?? "");
+    node.classList.toggle("dg-hidden", hidden);
+    const hid = node.getAttribute("data-dg-handle-id") ?? "";
+    const lock = locks.get(hid);
+    if (lock) lock.classList.toggle("dg-hidden", hidden);
+  }
+}
+
 /** 选中包围盒层：先于控制点层 append，手柄画在虚线框之上；整层不接收指针事件。 */
 export function createSelectionLayer(svg: SVGSVGElement): SVGGElement {
   const layer = el("g", {

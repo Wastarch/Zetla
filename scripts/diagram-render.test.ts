@@ -6,6 +6,7 @@ import {
   renderTikz,
   clearTikzRenderCache,
   applyDragEdit,
+  applyGroupEdit,
 } from "../src/modules/diagram/tikzEditor/engine.ts";
 import {
   MAX_VISIBLE_HANDLES,
@@ -74,7 +75,11 @@ import {
   type MergeGroup,
   type MergeSession,
 } from "../src/modules/diagram/historyMerge.ts";
-import { shouldHandleHistoryKey } from "../src/modules/diagram/diagramHistory.ts";
+import {
+  commitDiagramPatches,
+  shouldHandleHistoryKey,
+} from "../src/modules/diagram/diagramHistory.ts";
+import { registerDiagramSourceBridge } from "../src/modules/diagram/sourceBridge.ts";
 import {
   DEFAULT_TOOL_MODE,
   MAX_SHAPE_POINTS,
@@ -119,6 +124,7 @@ import {
   type HandleSize,
 } from "../src/modules/diagram/handleVisual.ts";
 import {
+  applyLayerVisibility,
   buildHandleLayer,
   createSelectionLayer,
   drawSelectionBox,
@@ -130,6 +136,32 @@ import {
   shouldRenderPreview,
   updateHandleLayerPositions,
 } from "../src/modules/diagram/dragPreview.ts";
+import {
+  EMPTY_GROUPING,
+  applyMarqueeSelection,
+  buildLayerRows,
+  createGroup,
+  deleteGroup,
+  expandGroupElements,
+  findGroupByMembers,
+  groupAncestors,
+  groupingStorageKey,
+  isManuallyHidden,
+  isManuallyLocked,
+  marqueeBox,
+  marqueeHits,
+  mergeSourcePatches,
+  normalizeGrouping,
+  patchGroup,
+  planGroupMove,
+  pruneGrouping,
+  rectInsideBox,
+  rectIntersectsBox,
+  toggleId,
+  toggleSelection,
+  type GroupingState,
+  type RectLike,
+} from "../src/modules/diagram/grouping.ts";
 
 // svg.ts 只在函数内部访问 DOM API，模块加载时不碰 DOM，故可先 import 再注入全局。
 const dom = new JSDOM("<!doctype html><html><body><div id=\"host\"></div></body></html>");
@@ -1596,6 +1628,408 @@ if (P_INTENT.status === "ok") {
     "候选 SVG 无法解析时返回 false，调用方保留上一帧、不打断拖拽"
   );
 }
+
+// ── F3-3 选择 · 分组 · 图层 ────────────────────────────────────────────────
+console.log("F3-3 · 虚拟分组数据模型（编辑器侧元数据，源码零污染）");
+const G_IDS = ["path:0", "path:1", "path:2", "path:3"];
+check(
+  groupingStorageKey("abc") === groupingStorageKey("abc") &&
+    groupingStorageKey("abc") !== groupingStorageKey("abd"),
+  "groupingStorageKey 同源稳定、换源码换命名空间"
+);
+const G_EMPTY = normalizeGrouping(null, G_IDS);
+check(G_EMPTY.groups.length === 0 && G_EMPTY.seq === 0, "空 / 非对象输入归一化为 EMPTY_GROUPING");
+const G_DIRTY = normalizeGrouping(
+  {
+    groups: [
+      {
+        id: "group:1",
+        name: "x".repeat(200),
+        parentId: "group:2",
+        memberIds: ["path:0", "path:0", "ghost"],
+        collapsed: 1,
+        locked: true,
+        hidden: false,
+      },
+      { id: "group:2", name: "B", parentId: "group:1", memberIds: ["path:1"] },
+      { id: "bad", name: "bad", parentId: null, memberIds: [] },
+      { id: "group:3", name: "C", parentId: "group:404", memberIds: ["path:2"] },
+    ],
+    hiddenIds: ["ghost", "path:0"],
+    lockedIds: ["path:9", "path:1"],
+    seq: -5,
+  },
+  G_IDS,
+);
+check(G_DIRTY.groups.length === 3, "非法 group id 被丢弃，合法组保留");
+check(
+  G_DIRTY.groups.every((g) => g.name.length <= 60 && g.collapsed === false),
+  "名称截断到 60 字符、非布尔 collapsed 降级为 false"
+);
+check(
+  G_DIRTY.groups[0].memberIds.join("|") === "path:0",
+  "成员去重 + 按 validElementIds 白名单裁剪（ghost 被剔除）"
+);
+check(
+  G_DIRTY.hiddenIds.join("|") === "path:0" && G_DIRTY.lockedIds.join("|") === "path:1",
+  "hiddenIds / lockedIds 同样按白名单裁剪"
+);
+check(G_DIRTY.groups[2].parentId === null, "不存在的 parentId 提到顶层");
+check(G_DIRTY.groups[0].parentId === null, "parentId 成环时断环，绝不无限递归");
+check(G_DIRTY.seq === 3 && G_DIRTY.groups[0].locked === true, "seq 由现存组 id 推导且不低于 0");
+check(G_EMPTY.groups.length === 0, "normalizeGrouping 不 mutate 常量 EMPTY_GROUPING");
+
+const G_A = createGroup(G_EMPTY, ["path:0", "path:1"], "第一组");
+check(G_A.groupId === "group:1" && G_A.state.groups[0].name === "第一组", "编组生成 group:1 与自定义组名");
+check(G_A.state.groups[0].memberIds.length === 2 && G_A.state.seq === 1, "成员数与 seq 同步推进");
+check(createGroup(G_A.state, ["path:0"]).groupId === null, "少于 2 个元素不编组");
+check(createGroup(G_A.state, ["path:0", "path:0"]).groupId === null, "去重后不足 2 个不编组");
+const G_N = createGroup(G_A.state, ["path:0", "path:1"], "内层");
+check(
+  G_N.groupId === "group:2" && G_N.state.groups[1].parentId === "group:1",
+  "对同组成员再次编组 → 生成嵌套子组"
+);
+check(G_N.state.groups[0].memberIds.length === 0, "成员从父组移出，绝不重复归属");
+check(
+  expandGroupElements(G_N.state.groups, "group:1").join("|") === "path:0|path:1",
+  "展开父组含嵌套子组成员且去重"
+);
+check(groupAncestors(G_N.state.groups, "path:0").length === 2, "元素祖先链 = 内层 + 外层");
+check(
+  expandGroupElements(
+    [
+      { id: "group:1", parentId: "group:2", memberIds: ["path:0"], name: "", collapsed: false, locked: false, hidden: false },
+      { id: "group:2", parentId: "group:1", memberIds: ["path:1"], name: "", collapsed: false, locked: false, hidden: false },
+    ],
+    "group:1",
+  ).length === 2,
+  "成环的脏数据展开也能终止（visited 去重）"
+);
+const G_RENAMED = patchGroup(G_N.state, "group:2", { name: "改名", collapsed: true, locked: true, hidden: true });
+check(
+  G_RENAMED.groups[1].name === "改名" &&
+    G_RENAMED.groups[1].collapsed &&
+    G_RENAMED.groups[1].locked &&
+    G_RENAMED.groups[1].hidden,
+  "patchGroup 一次性改命名 / 折叠 / 锁定 / 隐藏"
+);
+check(
+  isManuallyLocked(G_RENAMED, "path:0") && isManuallyHidden(G_RENAMED, "path:0"),
+  "组级锁定 / 隐藏由成员继承（递归祖先链）"
+);
+check(G_N.state.groups[1].locked === false, "patchGroup 不 mutate 入参");
+const G_DEL = deleteGroup(G_N.state, "group:2");
+check(
+  G_DEL.groups.length === 1 && G_DEL.groups[0].memberIds.join("|") === "path:0|path:1",
+  "解组把成员归还父组，源码零改动"
+);
+check(
+  findGroupByMembers(G_A.state.groups, ["path:1", "path:0"]) === "group:1" &&
+    findGroupByMembers(G_A.state.groups, ["path:0"]) === null,
+  "findGroupByMembers 按集合匹配（顺序无关），单元素不认组"
+);
+const G_PRUNED = pruneGrouping(G_A.state, []);
+check(
+  G_PRUNED.groups.length === 0 && G_PRUNED.hiddenIds.length === 0,
+  "语句消失时空组 / 悬空隐藏态被裁掉"
+);
+check(toggleId(["a", "b"], "b").join("|") === "a" && toggleId(["a"], "c").join("|") === "a|c", "toggleId 增删幂等");
+
+console.log("F3-3 · 多选 / 框选命中");
+check(toggleSelection(["a"], "b", false).join("|") === "b", "非 Shift 点选 = 单选替换");
+check(toggleSelection(["a", "b"], "b", true).join("|") === "a", "Shift 点已选中项 = 减选");
+check(toggleSelection(["a"], "b", true).join("|") === "a|b", "Shift 点未选中项 = 加选");
+check(toggleSelection(["a", "b"], null, false).length === 0, "点空白清空选择");
+check(toggleSelection(["a", "b"], null, true).length === 2, "Shift + 点空白保留已有选择");
+check(
+  applyMarqueeSelection(["a"], ["b", "c"], false).join("|") === "b|c" &&
+    applyMarqueeSelection(["a"], ["b", "c"], true).join("|") === "a|b|c",
+  "框选结果替换 / 并入已有选择"
+);
+const G_BOX = marqueeBox(120, 90, 20, 10);
+check(
+  G_BOX.left === 20 && G_BOX.top === 10 && G_BOX.right === 120 && G_BOX.bottom === 90,
+  "反向拖出的 marquee 归一化为左上 / 右下"
+);
+const rect = (l: number, t: number, r: number, b: number): RectLike => ({
+  left: l, top: t, right: r, bottom: b, width: r - l, height: b - t,
+});
+check(rectIntersectsBox(rect(15, 15, 30, 30), G_BOX), "相交命中：部分压到框边也算选中");
+check(!rectInsideBox(rect(15, 15, 30, 30), G_BOX), "包含命中：部分越界则不算");
+check(rectInsideBox(rect(30, 20, 60, 60), G_BOX), "完全框住的图元被 contain 命中");
+check(!rectIntersectsBox(rect(30, 30, 30, 30), G_BOX), "零尺寸矩形不参与命中（防 (0,0) 误选）");
+const G_ITEMS = [
+  { id: "a", rect: rect(15, 15, 30, 30) },
+  { id: "a", rect: rect(30, 20, 60, 60) },
+  { id: "b", rect: rect(30, 20, 60, 60) },
+  { id: "c", rect: rect(200, 200, 220, 220) },
+];
+check(marqueeHits(G_ITEMS, G_BOX).join("|") === "a|b", "intersect 模式去重后只返回命中的图元 id");
+check(marqueeHits(G_ITEMS, G_BOX, "contain").join("|") === "a|b", "contain 模式排除越界图元");
+check(
+  marqueeHits(G_ITEMS, G_BOX, "intersect", new Set(["c"])).length === 0,
+  "allowedIds 过滤掉隐藏 / 不可选图元"
+);
+check(marqueeHits(G_ITEMS, marqueeBox(10, 10, 10, 10)).length === 0, "零面积框选不选中任何东西");
+
+console.log("F3-3 · 图层树");
+const G_STMTS = G_IDS.map((id) => ({
+  id,
+  kind: "Path",
+  command: "draw",
+  span: { from: 0, to: 1 },
+  optionsSpan: null,
+  optionsRaw: null,
+  entries: [],
+  insertOffset: -1,
+}));
+const G_ROWS0 = buildLayerRows(G_STMTS, G_A.state);
+check(
+  G_ROWS0[0].kind === "group" && G_ROWS0[0].label === "第一组" && G_ROWS0[0].count === 2,
+  "顶层组行带组名与成员数"
+);
+check(
+  G_ROWS0[1].kind === "element" && G_ROWS0[1].depth === 1 && G_ROWS0[1].groupId === "group:1",
+  "组成员缩进一层并标注所属组"
+);
+check(
+  G_ROWS0.filter((r) => r.kind === "element").map((r) => r.id).join("|") ===
+    "path:0|path:1|path:2|path:3",
+  "未分组元素按源码语句顺序排在组之后"
+);
+const G_ROWS1 = buildLayerRows(G_STMTS, patchGroup(G_A.state, "group:1", { collapsed: true }));
+check(
+  G_ROWS1.filter((r) => r.kind === "group").length === 1 && G_ROWS1.length === 3,
+  "折叠组只出一行（组行 + 2 个未分组元素），成员行隐藏"
+);
+const G_ROWS2 = buildLayerRows(G_STMTS, G_N.state);
+check(
+  G_ROWS2.some((r) => r.kind === "group" && r.depth === 1),
+  "嵌套子组按 depth 缩进"
+);
+const G_ROWS3 = buildLayerRows(G_STMTS, {
+  ...G_A.state,
+  groups: G_A.state.groups.map((x) => ({ ...x, locked: true, hidden: true })),
+});
+check(
+  G_ROWS3.filter((r) => r.kind === "element" && r.locked && r.hidden).length >= 2,
+  "元素行显示继承来的组级锁定 / 隐藏态"
+);
+const G_ORPHAN: GroupingState = {
+  ...G_A.state,
+  groups: G_A.state.groups.map((x) => ({ ...x, parentId: "group:999" })),
+};
+check(
+  buildLayerRows(G_STMTS, G_ORPHAN).some((r) => r.kind === "group"),
+  "parentId 指向已删除组时仍显示，不把用户的组藏没"
+);
+
+console.log("F3-3 · 多段最小补丁（拖组一次写回 = 一条 history）");
+const G_SRC = "A(0,0) B(1,1) C(2,2)";
+const G_PATCHES = [
+  { from: 16, to: 19, insert: "7,7" },
+  { from: 2, to: 5, insert: "9,9" },
+  { from: 9, to: 12, insert: "8,8" },
+];
+const G_MERGED = mergeSourcePatches(G_SRC, G_PATCHES);
+check(G_MERGED !== null, "正常多段补丁合并成功");
+check(
+  G_MERGED!.patches.map((p) => p.from).join("|") === "2|9|16",
+  "补丁按 from 排序后再应用"
+);
+check(
+  G_MERGED!.nextSource === "A(9,9) B(8,8) C(7,7)",
+  "合并结果逐段替换，未改动的字符一字不动"
+);
+check(mergeSourcePatches(G_SRC, [{ from: 2, to: 6, insert: "x" }, { from: 5, to: 8, insert: "y" }]) === null, "重叠区间返回 null，绝不静默改语义");
+check(mergeSourcePatches(G_SRC, [{ from: 2, to: 999, insert: "x" }]) === null, "越界区间返回 null");
+check(
+  mergeSourcePatches(G_SRC, [{ from: Number.NaN, to: 3, insert: "x" }])!.nextSource === G_SRC,
+  "非有限值补丁被过滤，不产出 NaN 打进 CM6"
+);
+const G_HANDLES = [
+  { id: "h:a", kind: "path-point", rewriteMode: "direct", world: { x: 0, y: 0 }, sourceRef: { sourceId: "a" } },
+  { id: "h:b", kind: "path-point", rewriteMode: "direct", world: { x: 10, y: 10 }, sourceRef: { sourceId: "b" } },
+  { id: "h:c", kind: "path-point", rewriteMode: "direct", world: { x: 20, y: 20 }, sourceRef: { sourceId: "c" } },
+  { id: "h:d", kind: "path-point", rewriteMode: "unsupported", world: { x: 30, y: 30 }, sourceRef: { sourceId: "d" } },
+];
+const G_SPANS: Record<string, { from: number; to: number; insert: string }> = {
+  "h:a": { from: 2, to: 5, insert: "9,9" },
+  "h:b": { from: 9, to: 12, insert: "8,8" },
+  "h:c": { from: 16, to: 19, insert: "7,7" },
+};
+const G_INTENT = (_src: string, _hs: unknown, id: string) =>
+  G_SPANS[id] ? { ok: true as const, patches: [G_SPANS[id]] } : { ok: false as const, reason: "上游不支持" };
+const G_PLAN = planGroupMove({
+  source: G_SRC,
+  handles: G_HANDLES as never,
+  elementIds: ["a", "b", "c"],
+  delta: { x: 5, y: 5 },
+  compat: null,
+  grouping: G_EMPTY,
+  intent: G_INTENT as never,
+});
+check(G_PLAN.status === "ok", "三个可写图元整体平移规划成功");
+check(
+  G_PLAN.status === "ok" && G_PLAN.patches.length === 3 && G_PLAN.movedElements.length === 3,
+  "每个可写图元各产一段最小补丁，共 3 段"
+);
+check(
+  G_PLAN.status === "ok" && G_PLAN.nextSource === "A(9,9) B(8,8) C(7,7)",
+  "规划出的 nextSource 与逐段应用结果一致"
+);
+check(
+  planGroupMove({ source: G_SRC, handles: G_HANDLES as never, elementIds: ["a"], delta: { x: 0, y: 0 }, compat: null, grouping: G_EMPTY, intent: G_INTENT as never }).status === "empty",
+  "零位移直接短路，不白跑上游 intent"
+);
+const G_LOCKED: GroupingState = { ...G_EMPTY, lockedIds: ["b"], hiddenIds: ["c"] };
+const G_PLAN2 = planGroupMove({
+  source: G_SRC, handles: G_HANDLES as never, elementIds: ["a", "b", "c"], delta: { x: 5, y: 5 },
+  compat: null, grouping: G_LOCKED, intent: G_INTENT as never,
+});
+check(
+  G_PLAN2.status === "ok" && G_PLAN2.movedElements.join("|") === "a" && G_PLAN2.skipped.length === 2,
+  "主动锁定 / 隐藏的图元跳过并在 skipped 里给出理由"
+);
+const G_COMPAT_LOCK = { ...emptyCompatReport(), handleReasons: { "h:a": "\\foreach 展开会静默改语义" } };
+const G_PLAN3 = planGroupMove({
+  source: G_SRC, handles: G_HANDLES as never, elementIds: ["a", "b"], delta: { x: 5, y: 5 },
+  compat: G_COMPAT_LOCK, grouping: G_EMPTY, intent: G_INTENT as never,
+});
+check(
+  G_PLAN3.status === "ok" && G_PLAN3.skipped.some((s) => s.id === "a" && s.reason.includes("静默改语义")),
+  "F2-3 能力矩阵锁定的句柄不参与组拖，理由透传"
+);
+const G_PLAN4 = planGroupMove({
+  source: G_SRC, handles: G_HANDLES as never, elementIds: ["a", "b", "d"], delta: { x: 5, y: 5 },
+  compat: null, grouping: G_EMPTY, intent: G_INTENT as never,
+});
+check(
+  G_PLAN4.status === "ok" && G_PLAN4.skipped.some((s) => s.id === "d"),
+  "rewriteMode=unsupported 的句柄被跳过，不静默改语义"
+);
+const G_CONFLICT_INTENT = (_s: string, _h: unknown, id: string) => ({
+  ok: true as const,
+  patches: [{ from: 2, to: 8, insert: id === "h:a" ? "x" : "y" }],
+});
+check(
+  planGroupMove({ source: G_SRC, handles: G_HANDLES as never, elementIds: ["a", "b"], delta: { x: 5, y: 5 }, compat: null, grouping: G_EMPTY, intent: G_CONFLICT_INTENT as never }).status === "conflict",
+  "补丁区间重叠时整次写回判为 conflict，绝不部分提交"
+);
+check(
+  planGroupMove({ source: G_SRC, handles: G_HANDLES as never, elementIds: ["a"], delta: { x: 5, y: 5 }, compat: null, grouping: G_EMPTY, intent: (() => ({ ok: false as const, reason: "上游拒绝" })) as never }).status === "empty",
+  "所有 intent 都失败时放弃写回（不产生半截源码）"
+);
+
+console.log("F3-3 · 真实引擎：整体平移 3 个图元且源码零 scope");
+const G_TIKZ = [
+  "\\begin{tikzpicture}",
+  "  \\draw[thick] (0,0) rectangle (1,1);",
+  "  \\draw (2,0) circle (0.5cm);",
+  "  \\node[draw] (a) at (3,2) {A};",
+  "\\end{tikzpicture}",
+].join("\n");
+const G_RENDER = await renderTikz(G_TIKZ);
+const G_REAL = await applyGroupEdit({
+  source: G_TIKZ,
+  handles: G_RENDER.handles,
+  elementIds: G_RENDER.statements.map((s) => s.id),
+  delta: { x: 12, y: -8 },
+  compat: G_RENDER.compat,
+  grouping: G_EMPTY,
+});
+check(G_REAL.status === "ok", "真实引擎对 3 个图元整体平移返回 ok");
+check(
+  G_REAL.status === "ok" && G_REAL.patches.length === 4 && G_REAL.movedElements.length === 3,
+  "矩形 2 个端点 + 圆 1 个 + node 1 个 = 4 段补丁，覆盖全部 3 图元"
+);
+check(
+  G_REAL.status === "ok" && !G_REAL.nextSource.includes("scope"),
+  "编组 / 拖组后源码不出现 \\begin{scope}（虚拟分组零源码污染）"
+);
+check(
+  G_REAL.status === "ok" && G_REAL.nextSource.includes("(0.42,") && G_REAL.nextSource.includes("(3.42,"),
+  "每个图元的坐标都按同一 world delta 改写"
+);
+const G_RENDER2 = await renderTikz(G_REAL.status === "ok" ? G_REAL.nextSource : G_TIKZ);
+check(G_RENDER2.diagnostics.length === 0 && G_RENDER2.handles.length === 4, "平移后的源码仍可正常渲染且句柄数不变");
+const G_REAL_ONE = await applyGroupEdit({
+  source: G_TIKZ, handles: G_RENDER.handles, elementIds: [G_RENDER.statements[2].id],
+  delta: { x: 12, y: -8 }, compat: G_RENDER.compat, grouping: G_EMPTY,
+});
+check(
+  G_REAL_ONE.status === "ok" && G_REAL_ONE.patches.length === 1,
+  "只选 1 个图元时只改它的坐标，不牵连其它语句"
+);
+
+console.log("F3-3 · 多段写回桥 / 主动隐藏 DOM");
+let GM_CALLS = 0;
+let GM_FALLBACK = 0;
+const GM_UNREG = registerDiagramSourceBridge({
+  getView: () => null,
+  patch: () => true,
+  patchMany: (ps) => {
+    GM_CALLS += 1;
+    return ps.length === 3;
+  },
+  replaceLast: () => true,
+  undo: () => true,
+  redo: () => true,
+});
+const GM_WRITE = commitDiagramPatches({
+  patches: G_MERGED!.patches,
+  source: G_SRC,
+  nextSource: G_MERGED!.nextSource,
+  fallback: () => { GM_FALLBACK += 1; },
+});
+check(
+  GM_WRITE.written && !GM_WRITE.merged && !GM_WRITE.degraded && GM_CALLS === 1 && GM_FALLBACK === 0,
+  "commitDiagramPatches 一次 patchMany 写回，不并入 F2-4 微调会话"
+);
+const GM_BAD = commitDiagramPatches({
+  patches: [{ from: 2, to: 5, insert: "9,9" }],
+  source: G_SRC,
+  nextSource: "A(8,8) B(1,1) C(2,2)",
+  fallback: () => { GM_FALLBACK += 1; },
+});
+check(
+  !GM_BAD.written && GM_BAD.degraded && GM_FALLBACK === 1,
+  "nextSource 与补丁不一致时拒绝写回并降级（防规划 / 写回错位）"
+);
+GM_UNREG();
+const GM_NO_BRIDGE = commitDiagramPatches({
+  patches: G_MERGED!.patches,
+  source: G_SRC,
+  nextSource: G_MERGED!.nextSource,
+  fallback: () => { GM_FALLBACK += 1; },
+});
+check(!GM_NO_BRIDGE.written && GM_NO_BRIDGE.degraded && GM_FALLBACK === 2, "桥未注册时降级 setSource，功能不丢");
+
+const L_SVG = g.document.createElementNS(H_NS, "svg");
+const L_SHAPE = g.document.createElementNS(H_NS, "g");
+L_SHAPE.setAttribute("data-source-id", "path:0");
+L_SVG.appendChild(L_SHAPE);
+const L_NODE = g.document.createElementNS(H_NS, "g");
+L_NODE.setAttribute("class", "dg-handle-node");
+L_NODE.setAttribute("data-dg-handle-id", "h:0");
+L_NODE.setAttribute("data-dg-source-id", "path:0");
+L_SVG.appendChild(L_NODE);
+const L_LOCK = g.document.createElementNS(H_NS, "g");
+L_LOCK.setAttribute("class", "dg-handle-lock");
+L_LOCK.setAttribute("data-dg-lock-for", "h:0");
+L_SVG.appendChild(L_LOCK);
+applyLayerVisibility(L_SVG, new Set(["path:0"]));
+check(
+  L_SHAPE.classList.contains("dg-hidden") &&
+    L_NODE.classList.contains("dg-hidden") &&
+    L_LOCK.classList.contains("dg-hidden"),
+  "隐藏同时作用于几何 / 控制点 / F2-3 挂锁（按 data-dg-lock-for 匹配）"
+);
+applyLayerVisibility(L_SVG, new Set());
+check(
+  !L_SHAPE.classList.contains("dg-hidden") && !L_LOCK.classList.contains("dg-hidden"),
+  "取消隐藏幂等恢复，不重建 SVG"
+);
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

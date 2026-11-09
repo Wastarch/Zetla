@@ -220,6 +220,9 @@ export function SettingsDialog() {
   const setDiagramPreview = useDiagramStore((s) => s.setPreviewMode);
   const diagramHandleSize = useDiagramStore((s) => s.handleSize);
   const setDiagramHandleSize = useDiagramStore((s) => s.setHandleSize);
+  // F3-3：图层面板显隐也是轻量 UI 偏好，纳入「恢复默认」
+  const diagramLayersVisible = useDiagramStore((s) => s.layersVisible);
+  const setDiagramLayersVisible = useDiagramStore((s) => s.setLayersVisible);
   const resetDiagramPreferences = useDiagramStore((s) => s.resetDiagramPreferences);
   const moduleNames: Record<string, string> = {};
   for (const m of modules) moduleNames[m.id] = m.name;
@@ -775,7 +778,16 @@ export function SettingsDialog() {
                     ))}
                   </select>
                 </Fld>
-                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小一次性重置">
+                <Fld
+                  label="图层面板"
+                  hint="F3-3：侧栏「图层 · 分组」区默认展开；分组 / 隐藏 / 锁定数据不受此开关影响"
+                >
+                  <Switch
+                    checked={diagramLayersVisible}
+                    onChange={(next) => setDiagramLayersVisible(next)}
+                  />
+                </Fld>
+                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板一次性重置">
                   <button
                     type="button"
                     className="btn"

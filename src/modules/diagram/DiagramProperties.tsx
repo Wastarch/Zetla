@@ -1,6 +1,8 @@
-// M2·F2-2 / F2-3 / F2-4：侧栏「属性」区 —— 选中图元 → 改颜色 / 线宽 / 箭头 / 线型 / 填充 → 写回源码。
+// M2·F2-2 / F2-3 / F2-4 / F3-3：侧栏「属性」区 —— 选中图元 → 改颜色 / 线宽 / 箭头 / 线型 / 填充 → 写回源码。
 // F2-3：能力矩阵判定为不可编辑的语句，显示具体锁定理由而不是属性下拉（防止绕过画布锁定）。
 // F2-4：连续改同一个属性并入同一组 history，与画布拖拽共享同一个合并会话。
+// F3-3：多选时属性只作用于主选中项（selectedId = selectedIds[0]）；图层面板的主动锁定
+//        与 F2-3 能力锁定并列生效，避免用户绕过画布的「禁止拖拽」还能从侧栏改属性。
 //
 // 位置按计划放在**侧栏选项区**（不另设右坞）；画布与源码仍是主编辑区的独立 Tab。
 // 数据流：DiagramCanvas 点选写 selectedId + 每次渲染写 renderMeta → 本组件按
@@ -10,6 +12,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDiagramStore } from "./store";
 import { commitDiagramPatch } from "./diagramHistory";
+import { isManuallyLocked } from "./grouping.ts";
 import {
   PROPERTY_LABELS,
   PROPERTY_PRESETS,
@@ -98,6 +101,8 @@ export function DiagramProperties() {
   const setSelectedId = useDiagramStore((s) => s.setSelectedId);
   const renderMeta = useDiagramStore((s) => s.renderMeta);
   const setSource = useDiagramStore((s) => s.setSource);
+  const grouping = useDiagramStore((s) => s.grouping);
+  const selectedIds = useDiagramStore((s) => s.selectedIds);
   const [notice, setNotice] = useState<Notice | null>(null);
 
   useEffect(() => {
@@ -119,11 +124,21 @@ export function DiagramProperties() {
   // F2-3：capabilityMatrix 归因的锁定优先于 F2-2 的语句类型判定，理由更具体
   // （例如 \draw … let \p1 在 F2-2 里被当成普通可编辑 Path）。
   const compatLock = selected ? (compat?.lockReasons[selected.id] ?? null) : null;
+  // F3-3：图层面板的主动锁定与 F2-3 能力锁定并列，理由要区分开。
+  const manualLock = selected && isManuallyLocked(grouping, selected.id)
+    ? "该图元已在图层面板主动锁定，先解锁后再编辑。"
+    : null;
   const editable =
-    compatLock && baseEdit ? { ...baseEdit, editable: false, reason: compatLock } : baseEdit;
+    (compatLock || manualLock) && baseEdit
+      ? { ...baseEdit, editable: false, reason: compatLock ?? manualLock ?? "" }
+      : baseEdit;
 
   function commit(key: PropertyKey, value: string | null): void {
     if (!selected) return;
+    if (manualLock) {
+      setNotice({ tone: "warn", text: manualLock });
+      return;
+    }
     const plan = planPropertyPatch(source, selected, key, value);
     if (plan.status === "error") {
       setNotice({ tone: "warn", text: plan.reason });
@@ -162,6 +177,12 @@ export function DiagramProperties() {
           <p className="dg-side-card-sub">
             在画布上点击图元，或从下面列表选一条语句；改动会以最小补丁写回源码并即时重绘。
           </p>
+          {selectedIds.length > 1 && (
+            <p className="dg-side-card-sub">
+              已多选 {selectedIds.length} 项；属性只作用于主选中项 <code>{selectedId}</code>。
+              整体移动请在画布拖任一选中图元，或到「图层 · 分组」编组。
+            </p>
+          )}
           <div className="dg-prop-list">
             {statements.slice(0, 40).map((stmt) => {
               const state = statementEditability(stmt);

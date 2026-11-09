@@ -16,6 +16,12 @@ export interface DiagramSourceBridge {
   /** 应用最小补丁；返回 false 表示视图不可用或源码已过期 */
   patch: (patch: SourceSpanPatch, expectedSource: string) => boolean;
   /**
+   * F3-3：一次 dispatch 多个互不重叠的 span 补丁（拖组 / 多选整体平移）。
+   * CM6 的一次 transaction 天然只占一条 history，因此「3 个图元一起移动」
+   * 按一次 Ctrl+Z 就能退回；绝不退化成整篇替换。
+   */
+  patchMany: (patches: readonly SourceSpanPatch[], expectedSource: string) => boolean;
+  /**
    * F2-4：撤销上一组微调 → 校验文档回到 expectedBaseSource → 应用从基准出发的
    * 合并补丁。patch 为 null 表示本组回到基准源码（只撤销、不 dispatch）。
    * 任何一步校验失败都必须 redo 回滚到 expectedCurrentSource 并返回 false。

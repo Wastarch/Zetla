@@ -14,6 +14,12 @@ import type {
 } from "./vendor/engine.bundle.js";
 import { collectStatements, type TikzStatement } from "../optionsEdit.ts";
 import { buildCompatReport, type CompatReport } from "./compat.ts";
+import {
+  planGroupMove,
+  type GroupMovePlan,
+  type GroupingState,
+  type MoveIntent,
+} from "../grouping.ts";
 
 export interface TikzDiagnostic {
   severity: "warning" | "error";
@@ -281,4 +287,52 @@ export async function applyDragEdit(
     return { status: "unsupported", reason: raw.reason || "该构造暂不支持拖拽写回" };
   }
   return { status: "error", message: raw.message || "写回失败" };
+}
+
+/**
+ * F3-3：一次「整体平移选中集合」的写回规划。与 applyDragEdit 的区别只是把
+ * 一个句柄扩成一组句柄：每个 intent 都传同一份 source + 同一份 handles，
+ * 因此所有 oldSpan 都在同一坐标系，可合并成一组不重叠的最小补丁。
+ * 纯逻辑在 grouping.planGroupMove，本函数只负责把 vendor 的同步 API 适配成
+ * 可注入的 MoveIntent（让规划逻辑能在 Node 侧用 fake 回归）。
+ */
+export async function applyGroupEdit(args: {
+  source: string;
+  handles: readonly TikzEditHandle[];
+  elementIds: readonly string[];
+  delta: { x: number; y: number };
+  compat: CompatReport | null;
+  grouping: GroupingState;
+}): Promise<GroupMovePlan> {
+  const mod = await loadVendor();
+  const intent: MoveIntent = (src, hs, handleId, newWorld) => {
+    try {
+      const raw = mod.applyEditIntent(src, hs, { kind: "move", handleId, newWorld });
+      if (raw.kind !== "success") {
+        return {
+          ok: false,
+          reason: raw.kind === "unsupported" ? raw.reason || "上游不支持改写" : raw.message || "写回失败",
+        };
+      }
+      const patches = (raw.patches ?? [])
+        .filter((p) => p && p.oldSpan && Number.isFinite(p.oldSpan.from) && Number.isFinite(p.oldSpan.to))
+        .map((p) => ({
+          from: p.oldSpan.from,
+          to: p.oldSpan.to,
+          insert: p.replacement,
+        }));
+      return { ok: true, patches };
+    } catch (err) {
+      return { ok: false, reason: `引擎写回异常：${errorText(err)}` };
+    }
+  };
+  return planGroupMove({
+    source: args.source,
+    handles: args.handles,
+    elementIds: args.elementIds,
+    delta: args.delta,
+    compat: args.compat,
+    grouping: args.grouping,
+    intent,
+  });
 }

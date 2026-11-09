@@ -23,12 +23,41 @@ function dispatchPatch(
   patch: SourceSpanPatch,
   expectedSource: string,
 ): boolean {
+  return dispatchPatches(view, [patch], expectedSource);
+}
+
+/**
+ * F3-3：多段补丁一次 dispatch。校验顺序 / 越界 / 重叠，任何异常都不写 CM6。
+ * 与 grouping.mergeSourcePatches 是同一套规则，防止「规划侧通过、写回侧错位」。
+ */
+function dispatchPatches(
+  view: EditorView,
+  patches: readonly SourceSpanPatch[],
+  expectedSource: string,
+): boolean {
   const doc = view.state.doc;
-  if (doc.toString() !== expectedSource) return false;
-  if (patch.from < 0 || patch.to > doc.length || patch.from > patch.to) return false;
-  const caret = patch.from + patch.insert.length;
+  if (doc.toString() !== expectedSource || patches.length === 0) return false;
+  const sorted = [...patches].sort((a, b) => a.from - b.from || a.to - b.to);
+  let cursor = 0;
+  for (const p of sorted) {
+    if (
+      !p ||
+      !Number.isFinite(p.from) ||
+      !Number.isFinite(p.to) ||
+      typeof p.insert !== "string" ||
+      p.from < 0 ||
+      p.to > doc.length ||
+      p.from > p.to ||
+      p.from < cursor
+    ) {
+      return false;
+    }
+    cursor = p.to;
+  }
+  const first = sorted[0];
+  const caret = first.from + first.insert.length;
   view.dispatch({
-    changes: { from: patch.from, to: patch.to, insert: patch.insert },
+    changes: sorted.map((p) => ({ from: p.from, to: p.to, insert: p.insert })),
     selection: { anchor: caret },
     effects: EditorView.scrollIntoView(caret, { y: "nearest" }),
     userEvent: "input.diagram",
@@ -62,6 +91,10 @@ export function DiagramCodePane() {
         patch(patch, expectedSource) {
           const view = handle.current?.getView();
           return !!view && dispatchPatch(view, patch, expectedSource);
+        },
+        patchMany(patches, expectedSource) {
+          const view = handle.current?.getView();
+          return !!view && dispatchPatches(view, patches, expectedSource);
         },
         replaceLast(patch, expectedBase, expectedCurrent, expectedTarget) {
           const view = handle.current?.getView();

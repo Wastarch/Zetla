@@ -6,6 +6,8 @@
 //
 // 刻意不 import store / React：fallback 由调用方注入，模块可在 Node 侧回归。
 import { getDiagramSourceBridge } from "./sourceBridge.ts";
+import { mergeSourcePatches } from "./grouping.ts";
+import type { SourceSpanPatch } from "./dragEdit.ts";
 import {
   commitWithMerge,
   resetMergeSession,
@@ -34,6 +36,34 @@ export function commitDiagramPatch(args: {
     now: args.now ?? Date.now(),
     fallback: args.fallback,
   });
+}
+
+/**
+ * F3-3：拖组 / 多选整体平移的多段写回。一次 transaction = 一条 CM6 history，
+ * 所以「3 个图元一起走」按一次 Ctrl+Z 就退回，不需要逐元素撤销。
+ * 刻意**不并入** F2-4 的连续微调会话：组拖是一次完整手势，key 也随选中集合变化，
+ * 并组会把不同对象的位移混成一条，撤销粒度反而失控。
+ */
+export function commitDiagramPatches(args: {
+  patches: readonly SourceSpanPatch[];
+  source: string;
+  nextSource: string;
+  fallback: (next: string) => void;
+}): MergeCommitResult {
+  const bridge = getDiagramSourceBridge();
+  const merged = mergeSourcePatches(args.source, args.patches);
+  resetMergeSession(session);
+  if (
+    bridge &&
+    merged &&
+    merged.nextSource === args.nextSource &&
+    merged.patches.length > 0 &&
+    bridge.patchMany(merged.patches, args.source)
+  ) {
+    return { written: true, merged: false, degraded: false };
+  }
+  args.fallback(args.nextSource);
+  return { written: false, merged: false, degraded: true };
 }
 
 /** 执行撤销 / 重做；成功后立刻让合并会话失效，防止并到已撤销的历史上。 */
