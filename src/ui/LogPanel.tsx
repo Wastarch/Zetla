@@ -117,6 +117,10 @@ export function LogPanel() {
     if (logTab === "terminal") setTerminalOpened(true);
   }, [logTab]);
 
+  // 终端操作按钮（+ / ▾ / 清屏 / 关闭）挂在页签栏右端：TerminalPane 通过 portal 渲染进来，
+  // 状态与动作仍归终端组件所有，LogPanel 只提供落点
+  const [tabActionsEl, setTabActionsEl] = useState<HTMLDivElement | null>(null);
+
   // 全部页：新行到达时贴底（用户手动上翻后仍会被拉回，P0 可接受；M1 再做「仅在底部时跟随」）
   useEffect(() => {
     const el = bodyRef.current;
@@ -183,6 +187,12 @@ export function LogPanel() {
             </button>
           );
         })}
+        {/* 终端操作按钮落点：仅终端页签激活时显示（按钮由 TerminalPane portal 注入） */}
+        <div
+          className="log-tab-actions"
+          ref={setTabActionsEl}
+          style={{ display: logTab === "terminal" ? "flex" : "none" }}
+        />
       </div>
 
       {terminalOpened && (
@@ -191,7 +201,7 @@ export function LogPanel() {
           style={{ display: logTab === "terminal" ? "flex" : "none" }}
           aria-hidden={logTab !== "terminal"}
         >
-          <TerminalPane active={logTab === "terminal"} />
+          <TerminalPane active={logTab === "terminal"} actionsSlot={tabActionsEl} />
         </div>
       )}
 
