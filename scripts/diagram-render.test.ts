@@ -101,6 +101,25 @@ import {
   ptToCm,
   sanitizeNodeText,
 } from "../src/modules/diagram/shapeInsert.ts";
+import {
+  DEFAULT_HANDLE_SIZE,
+  HANDLE_SIZE_LABELS,
+  HANDLE_SIZE_SPECS,
+  LOCK_BASE_PX,
+  clientRectToSvgBox,
+  handleMetrics,
+  handleSizeSummary,
+  isHandleSize,
+  padBox,
+  selectionCorners,
+  unionBoxes,
+  type HandleSize,
+} from "../src/modules/diagram/handleVisual.ts";
+import {
+  buildHandleLayer,
+  createSelectionLayer,
+  drawSelectionBox,
+} from "../src/modules/diagram/handleLayer.ts";
 
 // svg.ts 只在函数内部访问 DOM API，模块加载时不碰 DOM，故可先 import 再注入全局。
 const dom = new JSDOM("<!doctype html><html><body><div id=\"host\"></div></body></html>");
@@ -1106,6 +1125,197 @@ if (S_NEW_HANDLE) {
   });
   check(S_MOVED.status === "ok" && S_MOVED.newSource !== S_INS.source, "新形状的控制点可立即拖拽写回（F2-1 无回归）");
 }
+
+// ── F3-2 · 控制点视觉与命中（纯数值 + jsdom 真实 DOM 结构） ─────────────────
+console.log("\n[F3-2] 控制点视觉与命中");
+
+check(DEFAULT_HANDLE_SIZE === "medium", "默认控制点档位为中（比 F2-1 的 4.2px 小）");
+check(LOCK_BASE_PX === 10, "F2-3 挂锁基准为屏幕 10px 见方，不随节点档位缩小");
+check(isHandleSize("small") && isHandleSize("medium") && isHandleSize("large"), "节点档位白名单识别三档");
+check(!isHandleSize("huge") && !isHandleSize(null) && !isHandleSize(3), "节点档位拒绝非法值（防手改 localStorage）");
+check(
+  (Object.keys(HANDLE_SIZE_LABELS) as HandleSize[]).length === 3 &&
+    HANDLE_SIZE_LABELS.medium === "中",
+  "三档中文标签齐全"
+);
+check(handleSizeSummary("small").includes("2.6px") && handleSizeSummary("small").includes("9px"), "档位摘要含视觉与命中两套尺寸");
+
+const H_SIZES: HandleSize[] = ["small", "medium", "large"];
+check(
+  H_SIZES.every((s) => {
+    const p = HANDLE_SIZE_SPECS[s];
+    return p.hitR >= p.visualR * 2 && p.hitR >= 9;
+  }),
+  "三档命中半径均 ≥ 2× 视觉半径且不小于 9px（小而好点）"
+);
+check(HANDLE_SIZE_SPECS.medium.visualR < 4.2, "默认视觉半径确实小于 F2-1 的 4.2px（用户反馈「节点太大」）");
+check(
+  HANDLE_SIZE_SPECS.small.visualR < HANDLE_SIZE_SPECS.medium.visualR &&
+    HANDLE_SIZE_SPECS.medium.visualR < HANDLE_SIZE_SPECS.large.visualR,
+  "三档视觉半径单调递增，large 回到旧尺寸供习惯旧手感的用户"
+);
+
+const H_M05 = handleMetrics("medium", 0.5);
+const H_M1 = handleMetrics("medium", 1);
+const H_M2 = handleMetrics("medium", 2);
+const H_KEYS = [
+  "visualR", "hitR", "stroke", "lockOffset", "boxStroke", "boxCorner", "boxPad",
+] as const;
+check(
+  H_KEYS.every(
+    (k) => Math.abs(H_M05[k] * 0.5 - H_M1[k]) < 1e-9 && Math.abs(H_M2[k] * 2 - H_M1[k]) < 1e-9,
+  ),
+  "50%–200% 缩放下所有手柄 / 包围盒尺寸的屏幕像素量恒定"
+);
+check(
+  H_M1.visualR === 3.3 && H_M1.hitR === 10 && H_M1.lockOffset === 15,
+  "medium@1 的数值：视觉 3.3 / 命中 10 / 挂锁上移 15（命中+余量）"
+);
+check(H_M1.lockScale === 1, "挂锁缩放系数恒为 1，理由图标不会随节点缩小而看不清");
+const H_BAD = handleMetrics("bogus" as HandleSize, 0);
+check(
+  H_BAD.size === "medium" && H_BAD.zoom === 1 && H_KEYS.every((k) => Number.isFinite(H_BAD[k]) && H_BAD[k] > 0),
+  "非法档位 / 零 zoom 降级为 medium@1，绝不产出 NaN / Infinity 打进 SVG 属性"
+);
+
+check(
+  JSON.stringify(unionBoxes([{ x: 0, y: 0, width: 10, height: 5 }, { x: -2, y: 3, width: 4, height: 8 }])) ===
+    JSON.stringify({ x: -2, y: 0, width: 12, height: 11 }),
+  "包围盒并集取外接矩形（多段路径同属一个 sourceId 时求整体）"
+);
+const H_ZERO = unionBoxes([null, { x: 4, y: 4, width: 0, height: 0 }]);
+check(!!H_ZERO && H_ZERO.width === 0 && H_ZERO.height === 0, "零宽高的真实直线 bbox 不被丢弃（由 padBox 撑出可见框）");
+check(
+  unionBoxes([null, { x: NaN, y: 0, width: 1, height: 1 }, { x: 0, y: 0, width: -1, height: 2 }]) === null,
+  "非有限值 / 负尺寸 / 空输入一律返回 null，不画 NaN 框"
+);
+const H_PAD = padBox({ x: 0, y: 0, width: 10, height: 0 }, 3);
+check(
+  H_PAD.x === -3 && H_PAD.y === -3 && H_PAD.width === 16 && H_PAD.height === 6,
+  "padBox 给零高度直线撑出可见厚度且四边等量外扩"
+);
+const H_CORNERS = selectionCorners({ x: 10, y: 20, width: 30, height: 10 }, 6);
+check(
+  H_CORNERS.length === 4 &&
+    H_CORNERS[0].x === 7 && H_CORNERS[0].y === 17 &&
+    H_CORNERS[2].x === 37 && H_CORNERS[2].y === 27,
+  "四角小方块以角点为中心、边长按恒屏尺寸给出"
+);
+
+const H_CTM = { a: 2, b: 0, c: 0, d: 2, e: 100, f: 50 };
+const H_BOX = clientRectToSvgBox({ left: 110, top: 70, right: 150, bottom: 110 }, H_CTM);
+check(
+  !!H_BOX && H_BOX.x === 5 && H_BOX.y === 10 && H_BOX.width === 20 && H_BOX.height === 20,
+  "clientRectToSvgBox 完整仿射逆含 e/f 平移（2× 缩放 + 页面偏移被抵消）"
+);
+check(
+  clientRectToSvgBox({ left: 0, top: 0, right: 1, bottom: 1 }, { a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 }) === null,
+  "退化矩阵返回 null，调用方不画包围盒"
+);
+check(
+  clientRectToSvgBox({ left: NaN, top: 0, right: 1, bottom: 1 }, H_CTM) === null,
+  "非有限屏幕矩形返回 null（jsdom 未布局时不会画出错误包围盒）"
+);
+const H_ROT = clientRectToSvgBox(
+  { left: 10, top: 20, right: 30, bottom: 40 },
+  { a: 0, b: 1, c: -1, d: 0, e: 5, f: 5 },
+);
+check(!!H_ROT && H_ROT.width > 0 && H_ROT.height > 0, "旋转矩阵下取外接盒且尺寸为正");
+
+// ── 真实引擎渲染句柄 + jsdom DOM 层 ────────────────────────────────────────
+const H_NS = "http://www.w3.org/2000/svg";
+const H_SRC = "\\begin{tikzpicture}\n  \\draw (0,0) -- (2,1);\n\\end{tikzpicture}";
+const H_R = await renderTikz(H_SRC);
+check(H_R.handles.length >= 2 && H_R.compat.empty === true, "探针：简单直线产出可拖拽句柄且不被 F2-3 误锁");
+const H_SVG = g.document.createElementNS(H_NS, "svg");
+const H_SEL = createSelectionLayer(H_SVG);
+const H_LAYER = buildHandleLayer(H_SVG, H_R.handles, H_R.viewBox, 1, H_R.compat, H_M1);
+check(H_SVG.children[0] === H_SEL && H_SVG.children[1] === H_LAYER, "选中层先于控制点层挂载，手柄画在虚线框之上");
+const H_VALID = H_R.handles
+  .slice(0, MAX_VISIBLE_HANDLES)
+  .filter((h) => h.world && Number.isFinite(h.world.x) && Number.isFinite(h.world.y));
+const H_NODES = Array.from(H_LAYER.querySelectorAll("g.dg-handle-node"));
+check(H_NODES.length === H_VALID.length && H_NODES.length > 0, "每个有效句柄只生成一个 <g> 节点");
+check(
+  H_LAYER.querySelectorAll("circle[data-dg-handle-id]").length === H_NODES.length,
+  "circle[data-dg-handle-id] 仍唯一 —— F2-1 拖拽 marker 查找零回归"
+);
+check(H_LAYER.querySelectorAll(".dg-handle-hit").length === H_NODES.length, "每个控制点都有独立的透明命中圈");
+const H_G = H_NODES[0];
+const H_VIS = H_G.querySelector("circle.dg-handle")!;
+const H_HIT = H_G.querySelector("circle.dg-handle-hit")!;
+check(Number(H_HIT.getAttribute("r")) > Number(H_VIS.getAttribute("r")) * 2, "DOM 实测：命中半径 > 2× 视觉半径");
+check(H_HIT.getAttribute("pointer-events") === "all", "命中圈 fill:none 仍用 pointer-events=all 接收指针");
+check(
+  H_HIT.getAttribute("data-dg-hit-id") === H_VIS.getAttribute("data-dg-handle-id"),
+  "视觉圆与命中圈共享同一 handleId"
+);
+check(
+  H_HIT.closest("[data-dg-handle-id]") === H_G,
+  "点中透明命中圈时 closest() 仍落到带 id 的 <g>（F2-1 startDragFromEvent 零回归）"
+);
+check(H_G.getAttribute("data-dg-source-id") === H_VALID[0].sourceRef?.sourceId, "<g> 带 sourceId，供 F3-2 选中态联动");
+check(!!H_G.querySelector("title"), "hover tooltip 仍在 <g> 内，锁定理由不丢");
+check(H_VIS.hasAttribute("data-dg-locked"), "data-dg-locked 属性保留");
+check(
+  !!H_LAYER.querySelector("[data-dg-guide]") &&
+    H_LAYER.querySelector("[data-dg-guide]")!.getAttribute("visibility") === "hidden",
+  "拖拽虚线引导仍在控制点层且默认隐藏"
+);
+check(H_LAYER.querySelectorAll(".dg-handle-lock").length === 0, "未锁定句柄不画挂锁（默认示例零回归）");
+check(
+  resolveHandleLock(H_R.compat, H_VALID[0].id, true, "") === null,
+  "F2-3 能力矩阵对新层仍判定可拖拽，不误锁"
+);
+
+// 锁定场景：小档 + 50% 缩放，挂锁仍按屏幕 10px 清晰显示
+const H_LOCK_ID = H_VALID[0].id;
+const H_LOCK_REPORT = {
+  ...emptyCompatReport(),
+  empty: false,
+  handleReasons: { [H_LOCK_ID]: "测试：展开型构造已锁定，不能安全改写" },
+};
+const H_SVG2 = g.document.createElementNS(H_NS, "svg");
+const H_M_S05 = handleMetrics("small", 0.5);
+buildHandleLayer(H_SVG2, H_R.handles.slice(0, 1), H_R.viewBox, 0.5, H_LOCK_REPORT, H_M_S05);
+const H_LOCK = H_SVG2.querySelector(".dg-handle-lock");
+check(!!H_LOCK, "能力矩阵锁定的句柄仍画 F2-3 挂锁图标");
+check(
+  !!H_LOCK && (H_LOCK.getAttribute("transform") ?? "").includes("scale(2)"),
+  "50% 缩放下挂锁 transform 为 scale(2)，屏幕尺寸恒定清晰"
+);
+check(
+  !!H_SVG2.querySelector(".dg-handle.is-compat-locked") &&
+    !!H_SVG2.querySelector(".dg-handle-node.is-locked, .dg-handle-hit.is-locked"),
+  "锁定态 class 同时作用于视觉圆与命中圈（cursor 也变 not-allowed）"
+);
+check(
+  (H_SVG2.querySelector("g.dg-handle-node")!.textContent ?? "").includes("展开型构造"),
+  "锁定理由写进 <g> 的 <title>，hover 可见"
+);
+const H_VIS2 = H_SVG2.querySelector("circle.dg-handle")!;
+const H_HIT2 = H_SVG2.querySelector("circle.dg-handle-hit")!;
+check(
+  Math.abs(Number(H_VIS2.getAttribute("r")) - 5.2) < 1e-6 &&
+    Math.abs(Number(H_HIT2.getAttribute("r")) - 18) < 1e-6,
+  "small@50% 的 SVG 用户单位半径 = 屏幕 px / zoom（视觉 5.2 / 命中 18）"
+);
+
+// 选中包围盒层
+drawSelectionBox(H_SEL, { x: 10, y: 20, width: 30, height: 0 }, H_M1);
+const H_FRAME = H_SEL.querySelector("[data-dg-selection-box]");
+check(!!H_FRAME && H_SEL.querySelectorAll(".dg-sel-corner").length === 4, "包围盒 = 1 个虚线框 + 4 个角柄");
+check(
+  !!H_FRAME && Number(H_FRAME.getAttribute("width")) === 36 && Number(H_FRAME.getAttribute("height")) === 6,
+  "包围盒按 metrics.boxPad 外扩，零高度直线也有可见厚度"
+);
+check(
+  H_SEL.getAttribute("class") === "dg-selection-layer" &&
+    H_FRAME?.getAttribute("class") === "dg-sel-box",
+  "包围盒层与框都带既有 CSS 类名（pointer-events:none 不抢命中）"
+);
+drawSelectionBox(H_SEL, null, H_M1);
+check(H_SEL.children.length === 0, "点空白 / 切精确通道时包围盒被清空，不留残影");
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

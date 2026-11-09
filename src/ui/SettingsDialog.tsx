@@ -29,7 +29,12 @@ import type {
   EditorFontFamily,
   PdfDefaultZoom,
 } from "@/types/settings";
-import { useDiagramStore, type LayoutMode } from "@/modules/diagram/store";
+import {
+  useDiagramStore,
+  type HandleSize,
+  type LayoutMode,
+} from "@/modules/diagram/store";
+import { HANDLE_SIZE_LABELS, handleSizeSummary } from "@/modules/diagram/handleVisual";
 import type { PreviewMode } from "@/types/diagram";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
@@ -213,6 +218,8 @@ export function SettingsDialog() {
   const setDiagramRatio = useDiagramStore((s) => s.setSplitRatio);
   const diagramPreview = useDiagramStore((s) => s.previewMode);
   const setDiagramPreview = useDiagramStore((s) => s.setPreviewMode);
+  const diagramHandleSize = useDiagramStore((s) => s.handleSize);
+  const setDiagramHandleSize = useDiagramStore((s) => s.setHandleSize);
   const resetDiagramPreferences = useDiagramStore((s) => s.resetDiagramPreferences);
   const moduleNames: Record<string, string> = {};
   for (const m of modules) moduleNames[m.id] = m.name;
@@ -753,7 +760,22 @@ export function SettingsDialog() {
                     <option value="precise">XeLaTeX 精确</option>
                   </select>
                 </Fld>
-                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道一次性重置">
+                <Fld
+                  label="控制点大小"
+                  hint={`只改视觉半径，命中范围始终更大 · 当前${handleSizeSummary(diagramHandleSize)}`}
+                >
+                  <select
+                    value={diagramHandleSize}
+                    onChange={(e) => setDiagramHandleSize(e.target.value as HandleSize)}
+                  >
+                    {(Object.keys(HANDLE_SIZE_LABELS) as HandleSize[]).map((s) => (
+                      <option key={s} value={s}>
+                        {HANDLE_SIZE_LABELS[s]} · {handleSizeSummary(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Fld>
+                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小一次性重置">
                   <button
                     type="button"
                     className="btn"

@@ -640,17 +640,39 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   border-color: var(--accent, #2d7ff9);
 }
 
-/* 控制点由 buildHandleLayer 用 DOM API 追加到已消毒的 SVG 上；
-   半径 / 线宽在 JS 里除以 zoom，保证任何缩放下都是同样大小。 */
+/* 控制点由 handleLayer.ts 用 DOM API 追加到已消毒的 SVG 上；
+   半径 / 线宽由 handleVisual.handleMetrics 除以 zoom，保证任何缩放下都是同样大小。
+   F3-2：视觉圆只负责好看（pointer-events:none），透明命中圈负责接收指针，
+   两者半径独立 —— 缩小节点不再等于难点中。 */
 .dg-handle {
   fill: var(--bg-3, #fff);
   stroke: var(--accent, #2d7ff9);
+  pointer-events: none;
+  opacity: 0.95;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform 90ms ease, fill 90ms ease;
+}
+.dg-handle-hit {
+  fill: none;
+  stroke: none;
   pointer-events: all;
   cursor: grab;
-  opacity: 0.95;
 }
-.dg-handle:hover {
+.dg-handle-hit.is-locked {
+  cursor: not-allowed;
+}
+/* :not(.is-locked) 必须带 —— 否则这条 0,3,0 会盖过 F2-3 的灰锁 / 橙锁
+   （.dg-handle.is-locked / .is-compat-locked 都是 0,2,0），把锁定手柄染成蓝色。 */
+.dg-handle-node:hover .dg-handle:not(.is-locked),
+.dg-handle-node.is-selected .dg-handle:not(.is-locked) {
   fill: var(--accent, #2d7ff9);
+}
+.dg-handle-node:hover .dg-handle:not(.is-locked) {
+  transform: scale(1.35);
+}
+.dg-handle-node.is-selected .dg-handle:not(.is-locked) {
+  opacity: 1;
 }
 .dg-handle.is-active {
   fill: var(--accent, #2d7ff9);
@@ -700,6 +722,48 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   stroke-linecap: round;
   pointer-events: none;
   opacity: 0.8;
+}
+
+/* ── M2·F3-2：选中包围盒 + 节点大小选择器 ──────────────────────────────
+   包围盒整层不接收指针事件，绝不抢 F2-1 控制点 / F2-2 点选的命中。 */
+.dg-selection-layer {
+  pointer-events: none;
+}
+.dg-sel-box {
+  fill: none;
+  stroke: var(--accent, #2d7ff9);
+  opacity: 0.75;
+  pointer-events: none;
+}
+.dg-sel-corner {
+  fill: var(--bg-3, #fff);
+  stroke: var(--accent, #2d7ff9);
+  pointer-events: none;
+}
+.dg-handle-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+  font-size: 11px;
+  color: var(--txt-2, #888);
+  white-space: nowrap;
+}
+.dg-handle-size select {
+  padding: 1px 3px;
+  font-size: 11px;
+  line-height: 16px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt-2, #888);
+  cursor: pointer;
+}
+.dg-handle-size select:hover,
+.dg-handle-size select:focus {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+  outline: none;
 }
 
 .dg-drag-chip,

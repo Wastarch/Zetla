@@ -1,4 +1,7 @@
-// M2·F1-3 / F1-6 / F2-1 / F2-2 / F2-3 / F2-4 / F3-1：TikZ 双通道画布 + 拖拽写回 + 点选图元 + 锁定提示 + 统一撤销栈 + 基础图元工具。
+// M2·F1-3 / F1-6 / F2-1 / F2-2 / F2-3 / F2-4 / F3-1 / F3-2：TikZ 双通道画布 + 拖拽写回 + 点选图元 + 锁定提示 + 统一撤销栈 + 基础图元工具 + Illustrator 化手柄。
+//  F3-2 视觉层：控制点 DOM 构建抽到 handleLayer.ts（无 JSX，jsdom 可回归），尺寸数值抽到
+//  handleVisual.ts。视觉圆小、透明命中圈大（约 3×），选中图元另画虚线包围盒 + 四角方块；
+//  两层都只在本地通道挂在已消毒 SVG 之后，pointer 命中与 F2-1 拖拽 marker 的 data 属性不变。
 //  F3-1 形状工具：选工具 → 画布 pointerdown/move/up（或多点单击）→ 屏幕坐标经
 //  getScreenCTM 完整仿射逆 → world pt → shapeInsert 生成标准 TikZ 语句 → 单点补丁
 //  → commitDiagramPatch 写回 CM6（与键盘 / 拖拽 / 属性同一条 history）→ 重渲染后
@@ -39,15 +42,12 @@ import {
   renderTikz,
   type TikzEditHandle,
   type TikzRender,
-  type TikzViewBox,
 } from "./tikzEditor/engine";
 import { hasDrawableContent, sanitizeSvg } from "./tikzEditor/svg";
 import {
-  MAX_VISIBLE_HANDLES,
   clientDeltaToSvgDelta,
   clientToSvgPoint,
   dragDeltaLabel,
-  handleLabel,
   isDraggableHandle,
   lockedHandleReason,
   svgDeltaToWorldDelta,
@@ -57,6 +57,20 @@ import {
   type MatrixLike,
   type PointLike,
 } from "./dragEdit";
+import {
+  buildHandleLayer,
+  createSelectionLayer,
+  drawSelectionBox,
+} from "./handleLayer";
+import {
+  HANDLE_SIZE_LABELS,
+  clientRectToSvgBox,
+  handleMetrics,
+  handleSizeSummary,
+  unionBoxes,
+  isHandleSize,
+  type HandleSize,
+} from "./handleVisual";
 import {
   addShapePoint,
   canFinishShape,
@@ -77,7 +91,7 @@ import {
   pickInsertedStatementId,
 } from "./shapeInsert";
 import { ShapeToolbar } from "./ShapeToolbar";
-import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat";
+import { resolveHandleLock } from "./tikzEditor/compat";
 import {
   commitDiagramPatch,
   resetDiagramHistorySession,
@@ -98,9 +112,7 @@ const DIAGRAM_PATH = "diagram://editor";
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3];
 const MAX_DIAG = 5;
 const SVG_NS = "http://www.w3.org/2000/svg";
-/** 控制点半径 / 线宽以「屏幕像素」为准，除以 zoom 换算到 SVG 用户单位 */
-const HANDLE_R_PX = 4.2;
-const HANDLE_STROKE_PX = 1.4;
+/** F3-2：控制点 / 包围盒的恒屏尺寸统一由 handleVisual.handleMetrics(size, zoom) 给出 */
 const DRAG_THRESHOLD_PX = 3;
 /** 常驻锁定清单最多列出几条；hover title 里始终带完整长说明 */
 const MAX_LOCK_ITEMS = 4;
@@ -146,88 +158,6 @@ function fmtNum(n: number): string {
   return Number.isFinite(n) ? String(Math.round(n * 10000) / 10000) : "0";
 }
 
-/** 挂锁图标：一个 <g>（锁体 + 锁梁 + 锁孔），尺寸除以 zoom 保持屏幕恒定。 */
-function appendLockGlyph(
-  parent: SVGGElement,
-  x: number,
-  y: number,
-  zoom: number,
-  compatLocked: boolean,
-): void {
-  const g = document.createElementNS(SVG_NS, "g");
-  g.setAttribute("class", `dg-handle-lock${compatLocked ? " is-compat" : ""}`);
-  // 以屏幕 10px 见方为基准，SVG 用户单位随 zoom 反比缩放
-  const s = 1 / zoom;
-  g.setAttribute("transform", `translate(${fmtNum(x)} ${fmtNum(y)}) scale(${fmtNum(s)})`);
-  const body = document.createElementNS(SVG_NS, "rect");
-  body.setAttribute("class", "dg-handle-lock-body");
-  body.setAttribute("x", "-4");
-  body.setAttribute("y", "-0.5");
-  body.setAttribute("width", "8");
-  body.setAttribute("height", "6.5");
-  body.setAttribute("rx", "1.2");
-  const shackle = document.createElementNS(SVG_NS, "path");
-  shackle.setAttribute("class", "dg-handle-lock-shackle");
-  shackle.setAttribute("d", "M-2.5 -0.5 V-2.4 A2.5 2.5 0 0 1 2.5 -2.4 V-0.5");
-  const hole = document.createElementNS(SVG_NS, "circle");
-  hole.setAttribute("class", "dg-handle-lock-hole");
-  hole.setAttribute("cx", "0");
-  hole.setAttribute("cy", "2.1");
-  hole.setAttribute("r", "0.9");
-  g.append(body, shackle, hole);
-  parent.appendChild(g);
-}
-
-/** 控制点图层：画在消毒后的 SVG 之上，全部由 DOM API 创建，绝不拼 HTML 字符串。 */
-function buildHandleLayer(
-  svg: SVGSVGElement,
-  handles: readonly TikzEditHandle[],
-  viewBox: TikzViewBox,
-  zoom: number,
-  compat: CompatReport | null,
-): SVGGElement {
-  const layer = document.createElementNS(SVG_NS, "g");
-  layer.setAttribute("data-dg-handle-layer", "1");
-  const r = HANDLE_R_PX / zoom;
-  const stroke = HANDLE_STROKE_PX / zoom;
-  for (const h of handles.slice(0, MAX_VISIBLE_HANDLES)) {
-    if (!h.world || !Number.isFinite(h.world.x) || !Number.isFinite(h.world.y)) continue;
-    const p = worldToSvgPoint(h.world, viewBox);
-    const lockReason = resolveHandleLock(compat, h.id, isDraggableHandle(h), lockedHandleReason(h));
-    const draggable = lockReason === null;
-    const c = document.createElementNS(SVG_NS, "circle");
-    c.setAttribute(
-      "class",
-      `dg-handle${draggable ? "" : " is-locked"}${compat?.handleReasons[h.id] ? " is-compat-locked" : ""}`,
-    );
-    c.setAttribute("cx", fmtNum(p.x));
-    c.setAttribute("cy", fmtNum(p.y));
-    c.setAttribute("r", fmtNum(r));
-    c.setAttribute("stroke-width", fmtNum(stroke));
-    c.setAttribute("data-dg-handle-id", h.id);
-    c.setAttribute("data-dg-locked", draggable ? "0" : "1");
-    const title = document.createElementNS(SVG_NS, "title");
-    title.textContent = draggable
-      ? `${handleLabel(h)}：按住拖动可改写源码坐标`
-      : lockReason;
-    c.appendChild(title);
-    layer.appendChild(c);
-    if (!draggable) {
-      appendLockGlyph(layer, p.x, p.y - 9 / zoom, zoom, !!compat?.handleReasons[h.id]);
-    }
-  }
-  // 拖拽时的虚线引导（从起点到当前位置），平时 hidden
-  const guide = document.createElementNS(SVG_NS, "line");
-  guide.setAttribute("class", "dg-handle-guide");
-  guide.setAttribute("data-dg-guide", "1");
-  guide.setAttribute("stroke-width", fmtNum(stroke));
-  guide.setAttribute("stroke-dasharray", fmtNum(4 / zoom));
-  guide.setAttribute("visibility", "hidden");
-  layer.appendChild(guide);
-  svg.appendChild(layer);
-  return layer;
-}
-
 interface DragState {
   handleId: string;
   handle: TikzEditHandle;
@@ -238,6 +168,8 @@ interface DragState {
   startSvg: PointLike;
   matrix: MatrixLike;
   marker: SVGCircleElement;
+  /** F3-2：透明命中圈与视觉圆同步移动，避免拖拽时两者错位 */
+  hitMarker: SVGCircleElement | null;
   guide: SVGLineElement | null;
   moved: boolean;
   newWorld: PointLike;
@@ -301,6 +233,10 @@ export function DiagramCanvas() {
     key: () => false,
     cancel: () => undefined,
   });
+  // F3-2：控制点档位（localStorage 偏好），与 zoom 一起算出一组恒屏尺寸。
+  const handleSize = useDiagramStore((s) => s.handleSize);
+  const setHandleSize = useDiagramStore((s) => s.setHandleSize);
+  const metrics = useMemo(() => handleMetrics(handleSize, zoom), [handleSize, zoom]);
 
   const empty = source.trim().length === 0;
 
@@ -402,22 +338,65 @@ export function DiagramCanvas() {
       setError("引擎返回的 SVG 无法解析，已阻止注入画布。");
       return;
     }
+    // F3-2：先挂选中层（在控制点层之下），再挂控制点层。两层都只用 createElementNS
+    // 追加到已消毒 SVG 之后；精确通道走 <img>，这里不会执行到。
+    createSelectionLayer(node);
     // F3-1：形状工具模式下不挂控制点，避免小圆点挡住起笔 / 抢 pointerdown。
     if (handlesOn && toolMode === "select" && result.handles.length > 0) {
-      buildHandleLayer(node, result.handles, result.viewBox, zoom, result.compat);
+      buildHandleLayer(node, result.handles, result.viewBox, zoom, result.compat, metrics);
     }
     stage.replaceChildren(node);
-  }, [result, zoom, previewMode, handlesOn, toolMode]);
+  }, [result, zoom, previewMode, handlesOn, toolMode, metrics]);
 
   // F2-2 选中高亮：只 toggle class，不重建 SVG —— 重建会丢弃正在拖拽的 DOM 引用，
   // 也会让 CM6 视图之外的画布状态抖动。drop-shadow 不改变实际描边颜色，避免误以为改了色。
+  // F3-2：同一条 effect 里给控制点 <g> 标 is-selected，选中图元的手柄会填充强调色。
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || previewMode !== "local") return;
     for (const el of Array.from(stage.querySelectorAll("[data-source-id]"))) {
       el.classList.toggle("dg-selected", el.getAttribute("data-source-id") === selectedId);
     }
-  }, [selectedId, result, zoom, previewMode, handlesOn]);
+    for (const node of Array.from(stage.querySelectorAll("g.dg-handle-node"))) {
+      node.classList.toggle(
+        "is-selected",
+        !!selectedId && node.getAttribute("data-dg-source-id") === selectedId,
+      );
+    }
+  }, [selectedId, result, zoom, previewMode, handlesOn, metrics]);
+
+  // F3-2：选中包围盒。只重画辅助层（不重建主 SVG、不打断 F2-1 拖拽）。
+  // 用 getBoundingClientRect()（屏幕像素，天然含 transform）再经 getScreenCTM() 完整仿射逆
+  // 回到 SVG 用户坐标；不用 getBBox()，避免局部坐标系与元素 transform 叠加算错。
+  // 零尺寸（display:none / 尚未布局）矩形跳过，否则会把 (0,0) 并进包围盒。
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const svg = stage.querySelector("svg") as SVGSVGElement | null;
+    const layer = svg?.querySelector("[data-dg-selection-layer]") as SVGGElement | null;
+    if (!svg || !layer) return;
+    const editable =
+      previewMode === "local" && handlesOn && toolMode === "select" && !!selectedId;
+    const ctm = editable ? svg.getScreenCTM?.() : null;
+    if (!ctm) {
+      drawSelectionBox(layer, null, metrics);
+      return;
+    }
+    const m: AffineMatrix = {
+      a: ctm.a,
+      b: ctm.b,
+      c: ctm.c,
+      d: ctm.d,
+      e: ctm.e,
+      f: ctm.f,
+    };
+    const boxes = Array.from(stage.querySelectorAll("[data-source-id]"))
+      .filter((el) => el.getAttribute("data-source-id") === selectedId)
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => !(r.width === 0 && r.height === 0))
+      .map((r) => clientRectToSvgBox(r, m));
+    drawSelectionBox(layer, unionBoxes(boxes), metrics);
+  }, [selectedId, result, zoom, previewMode, handlesOn, toolMode, metrics]);
 
   // 每次拿到新结果都回到「自动」模式，避免上一次手动收起延续到下一张图
   useEffect(() => {
@@ -869,6 +848,8 @@ export function DiagramCanvas() {
       d.marker.classList.remove("is-active");
       d.marker.setAttribute("cx", fmtNum(d.startSvg.x));
       d.marker.setAttribute("cy", fmtNum(d.startSvg.y));
+      d.hitMarker?.setAttribute("cx", fmtNum(d.startSvg.x));
+      d.hitMarker?.setAttribute("cy", fmtNum(d.startSvg.y));
       if (d.guide) d.guide.setAttribute("visibility", "hidden");
     };
     const onMove = (e: PointerEvent) => {
@@ -887,6 +868,8 @@ export function DiagramCanvas() {
       const curSvg = { x: d.startSvg.x + dSvg.x, y: d.startSvg.y + dSvg.y };
       d.marker.setAttribute("cx", fmtNum(curSvg.x));
       d.marker.setAttribute("cy", fmtNum(curSvg.y));
+      d.hitMarker?.setAttribute("cx", fmtNum(curSvg.x));
+      d.hitMarker?.setAttribute("cy", fmtNum(curSvg.y));
       if (d.guide) {
         d.guide.setAttribute("x2", fmtNum(curSvg.x));
         d.guide.setAttribute("y2", fmtNum(curSvg.y));
@@ -1024,6 +1007,9 @@ export function DiagramCanvas() {
       startSvg,
       matrix,
       marker,
+      hitMarker: (marker.parentElement?.querySelector(".dg-handle-hit") as
+        | SVGCircleElement
+        | null) ?? null,
       guide,
       moved: false,
       newWorld: { x: hit.world.x, y: hit.world.y },
@@ -1151,6 +1137,27 @@ export function DiagramCanvas() {
             >
               控制点
             </button>
+          )}
+          {/* F3-2：三档视觉半径；命中范围始终独立且更大。设置页「绘图」分区可改默认值。 */}
+          {previewMode === "local" && (
+            <label className="dg-handle-size" title={handleSizeSummary(handleSize)}>
+              <span>节点</span>
+              <select
+                value={handleSize}
+                aria-label="控制点大小"
+                title={`控制点视觉档位 · ${handleSizeSummary(handleSize)} · 设置页「绘图」可改默认值`}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (isHandleSize(v)) setHandleSize(v);
+                }}
+              >
+                {(Object.keys(HANDLE_SIZE_LABELS) as HandleSize[]).map((s) => (
+                  <option key={s} value={s}>
+                    {HANDLE_SIZE_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
           <button
             type="button"
