@@ -7,6 +7,7 @@
 // F3-1 增 toolMode（基础图元工具），F3-2 增 handleSize（控制点视觉档位），
 // 都沿用同一套轻量 localStorage 偏好机制。
 // F3-3 增 selectedIds（多选）/ grouping（虚拟分组 + 主动隐藏 / 锁定）/ layersVisible；
+// F3-4 增 snapEnabled（智能参考线吸附）；F3-5 增 gridEnabled / snapGridEnabled（网格 + 吸附）。
 // 分组是**编辑器侧元数据**，绝不写进 TikZ。持久化按当前语句 id 白名单裁剪，
 // 源码改崩 / 换成另一张图时失效引用由 pruneGroupingTo 自动清掉。
 //
@@ -45,6 +46,8 @@ const TOOL_KEY = "zetla.diagram.toolMode";
 const HANDLE_SIZE_KEY = "zetla.diagram.handleSize";
 const LAYERS_KEY = "zetla.diagram.layersVisible";
 const SNAP_KEY = "zetla.diagram.snapEnabled";
+const GRID_KEY = "zetla.diagram.gridEnabled";
+const SNAP_GRID_KEY = "zetla.diagram.snapGridEnabled";
 const GROUPING_KEY = "zetla.diagram.grouping.v1";
 
 export const MIN_SPLIT_RATIO = 0.2;
@@ -59,6 +62,8 @@ export const DIAGRAM_DEFAULTS = {
   handleSize: DEFAULT_HANDLE_SIZE,
   layersVisible: true,
   snapEnabled: true,
+  gridEnabled: false,
+  snapGridEnabled: false,
 };
 
 function clampRatio(n: number): number {
@@ -113,7 +118,7 @@ function readHandleSize(): HandleSize {
   }
 }
 
-/** F3-3：图层面板显隐（轻量 UI 偏好，和五项偏好一起由设置页「恢复默认」复位）。 */
+/** F3-3：图层面板显隐（轻量 UI 偏好，和其他八项偏好一起由设置页「恢复默认」复位）。 */
 function readLayersVisible(): boolean {
   try {
     const v = localStorage.getItem(LAYERS_KEY);
@@ -130,6 +135,26 @@ function readSnapEnabled(): boolean {
     return v === null ? DIAGRAM_DEFAULTS.snapEnabled : v === "1";
   } catch {
     return DIAGRAM_DEFAULTS.snapEnabled;
+  }
+}
+
+/** F3-5：画布是否绘制网格 + 标尺（第八项持久化偏好，默认关）。 */
+function readGridEnabled(): boolean {
+  try {
+    const v = localStorage.getItem(GRID_KEY);
+    return v === null ? DIAGRAM_DEFAULTS.gridEnabled : v === "1";
+  } catch {
+    return DIAGRAM_DEFAULTS.gridEnabled;
+  }
+}
+
+/** F3-5：拖拽时是否吸附到网格步长（第九项持久化偏好，默认关）。 */
+function readSnapGridEnabled(): boolean {
+  try {
+    const v = localStorage.getItem(SNAP_GRID_KEY);
+    return v === null ? DIAGRAM_DEFAULTS.snapGridEnabled : v === "1";
+  } catch {
+    return DIAGRAM_DEFAULTS.snapGridEnabled;
   }
 }
 
@@ -234,6 +259,12 @@ export interface DiagramState {
   /** F3-4：拖拽智能参考线吸附（第七项持久化偏好） */
   snapEnabled: boolean;
   setSnapEnabled: (v: boolean) => void;
+  /** F3-5：画布网格 + 标尺（第八项持久化偏好，默认关） */
+  gridEnabled: boolean;
+  setGridEnabled: (v: boolean) => void;
+  /** F3-5：拖拽吸附到网格步长（第九项持久化偏好，默认关） */
+  snapGridEnabled: boolean;
+  setSnapGridEnabled: (v: boolean) => void;
   /**
    * F3-4：对齐操作后短暂显示的参考线（会话态，不持久化）。
    * guideSeq 每次自增，保证「连续两次对齐到同一条线」也能触发画布重画。
@@ -257,7 +288,7 @@ export interface DiagramState {
   setCaption: (v: string) => void;
   label: string;
   setLabel: (v: string) => void;
-  /** F1-5 / F3-1 / F3-2 / F3-3 / F3-4：设置页「恢复默认」——把七项持久化偏好写回默认值 */
+  /** F1-5 / F3-1 / F3-2 / F3-3 / F3-4 / F3-5：设置页「恢复默认」——把九项持久化偏好写回默认值 */
   resetDiagramPreferences: () => void;
 }
 
@@ -341,6 +372,16 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     writeSetting(SNAP_KEY, v ? "1" : "0");
     set({ snapEnabled: v });
   },
+  gridEnabled: readGridEnabled(),
+  setGridEnabled: (v) => {
+    writeSetting(GRID_KEY, v ? "1" : "0");
+    set({ gridEnabled: v });
+  },
+  snapGridEnabled: readSnapGridEnabled(),
+  setSnapGridEnabled: (v) => {
+    writeSetting(SNAP_GRID_KEY, v ? "1" : "0");
+    set({ snapGridEnabled: v });
+  },
   guides: [],
   guideSeq: 0,
   setGuides: (lines) => {
@@ -365,6 +406,8 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     writeSetting(HANDLE_SIZE_KEY, DIAGRAM_DEFAULTS.handleSize);
     writeSetting(LAYERS_KEY, DIAGRAM_DEFAULTS.layersVisible ? "1" : "0");
     writeSetting(SNAP_KEY, DIAGRAM_DEFAULTS.snapEnabled ? "1" : "0");
+    writeSetting(GRID_KEY, DIAGRAM_DEFAULTS.gridEnabled ? "1" : "0");
+    writeSetting(SNAP_GRID_KEY, DIAGRAM_DEFAULTS.snapGridEnabled ? "1" : "0");
     set({
       layoutMode: DIAGRAM_DEFAULTS.layoutMode,
       splitRatio: DIAGRAM_DEFAULTS.splitRatio,
@@ -373,6 +416,8 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       handleSize: DIAGRAM_DEFAULTS.handleSize,
       layersVisible: DIAGRAM_DEFAULTS.layersVisible,
       snapEnabled: DIAGRAM_DEFAULTS.snapEnabled,
+      gridEnabled: DIAGRAM_DEFAULTS.gridEnabled,
+      snapGridEnabled: DIAGRAM_DEFAULTS.snapGridEnabled,
     });
   },
 }));

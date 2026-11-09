@@ -1457,3 +1457,42 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-rotate-handle:hover {
   fill: var(--accent, #2d7ff9);
 }
+
+/* F3-5：网格层 + 标尺层（只做视觉辅助，绝不接收指针命中）。
+   网格线宽 / 标尺文字大小由 handleLayer.ts 按 unitScale 内联换算，任何缩放都屏幕恒定。 */
+.dg-grid-layer,
+.dg-ruler-layer {
+  pointer-events: none;
+}
+.dg-grid-line {
+  stroke: var(--line, #e0e0e0);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.dg-ruler-band {
+  fill: var(--bg-2, #f7f7f7);
+  opacity: 0.82;
+  pointer-events: none;
+}
+.dg-ruler-tick {
+  stroke: var(--txt-3, #9a9a9a);
+  pointer-events: none;
+}
+.dg-ruler-label {
+  fill: var(--txt-3, #9a9a9a);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  pointer-events: none;
+}
+/* F3-5：图层面板层级 z-order 工具行。 */
+.dg-zorder-actions {
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.dg-zorder-label {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt-3, #9a9a9a);
+  margin-right: 2px;
+}

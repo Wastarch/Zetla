@@ -47,6 +47,7 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { useSettingsStore } from "@/core/settings";
 import { useDiagramStore } from "./store";
 import {
+  applyDeltaEdit,
   applyDragEdit,
   applyGroupEdit,
   preloadTikzEngine,
@@ -72,10 +73,14 @@ import {
 import {
   applyLayerVisibility,
   buildHandleLayer,
+  createGridLayer,
   createGuideLayer,
+  createRulerLayer,
   createSelectionLayer,
   createTransformLayer,
+  drawGrid,
   drawGuides,
+  drawRuler,
   drawSelectionBox,
   drawTransformHandles,
 } from "./handleLayer";
@@ -145,6 +150,18 @@ import {
   type GuideLine,
   type WorldBox,
 } from "./guides";
+import { GRID_STEP_PT, snapToGrid } from "./grid";
+import {
+  getClipboard,
+  getLastMoveDelta,
+  hasClipboard,
+  minimalSourcePatch,
+  planDuplicateEdit,
+  planPaste,
+  setClipboard,
+  setLastMoveDelta,
+  topLevelBlocks,
+} from "./zOrder";
 import { ShapeToolbar } from "./ShapeToolbar";
 import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat";
 import {
@@ -308,6 +325,8 @@ export function DiagramCanvas() {
   // F3-4：智能参考线（会话态）。订阅以便 setGuides 触发画布重绘并落参考线。
   const guides = useDiagramStore((s) => s.guides);
   const setGuides = useDiagramStore((s) => s.setGuides);
+  // F3-5：网格 + 标尺显隐（挂载 effect 里重建，故需订阅其值）。
+  const gridEnabled = useDiagramStore((s) => s.gridEnabled);
   const setRenderMeta = useDiagramStore((s) => s.setRenderMeta);
   const activePath = useBuffersStore((s) => s.activePath);
   const tabVisible = activePath === DIAGRAM_PATH;
@@ -508,11 +527,16 @@ export function DiagramCanvas() {
     // F3-4：参考线层 + 变换柄层（永远在几何之上，拖拽实时预览换几何时一起保留）。
     createGuideLayer(node);
     createTransformLayer(node);
+    // F3-5：网格（底层，插到几何之前）+ 标尺（顶层）。仅开启时挂载，避免无谓 DOM。
+    if (gridEnabled) {
+      drawGrid(createGridLayer(node), result.viewBox, m);
+      drawRuler(createRulerLayer(node), result.viewBox, m);
+    }
     // F3-1：形状工具模式下不挂控制点，避免小圆点挡住起笔 / 抢 pointerdown。
     if (handlesOn && toolMode === "select" && result.handles.length > 0) {
       buildHandleLayer(node, result.handles, result.viewBox, result.compat, m);
     }
-  }, [result, zoom, previewMode, handlesOn, toolMode, handleSize, unitScale]);
+  }, [result, zoom, previewMode, handlesOn, toolMode, handleSize, unitScale, gridEnabled]);
 
   // 侧栏伸缩 / 分屏切换 / 窗口 resize 会改变 viewBox→px 的比例，重测一次单位比。
   // ResizeObserver 观察的是 stage 尺寸，replaceChildren 不会造成回调循环。
@@ -1343,7 +1367,17 @@ export function DiagramCanvas() {
       // F3-4：智能参考线吸附 —— 在指针位移上叠加对齐修正，并把命中参考线写入 store
       // 供 drawGuides 实时显示；未命中时清空（保证松手残留的参考线消失）。
       let effWorld = dWorld;
-      if (d.snap) {
+      const dragPrefs = useDiagramStore.getState();
+      // F3-5：吸附网格优先于智能参考线 —— 把元素落点对齐到最近网格交点，
+      // 与 drawGrid 画出的网格线同源（都在 world 空间取 step 整数倍）。
+      if (dragPrefs.snapGridEnabled) {
+        const target = snapToGrid(
+          { x: d.startWorld.x + dWorld.x, y: d.startWorld.y + dWorld.y },
+          GRID_STEP_PT,
+        );
+        effWorld = { x: target.x - d.startWorld.x, y: target.y - d.startWorld.y };
+        setDragGuides([]);
+      } else if (d.snap && dragPrefs.snapEnabled) {
         const snap = planDragSnap({
           selectedBoxes: d.snap.selected,
           otherBoxes: d.snap.others,
@@ -1458,6 +1492,46 @@ export function DiagramCanvas() {
         !!transformRef.current ||
         !!toolDragRef.current ||
         !!shapeSessionRef.current;
+      // F3-5：方向键 nudge / Ctrl+C/V/D（仅绘图 Tab + 焦点不在文本框 / 源码栏 + 非手势中）。
+      if (tabVisibleRef.current && !inGesture && !isTextEntryFocused(e)) {
+        const mod = e.ctrlKey || e.metaKey;
+        if (!mod && !e.altKey && useDiagramStore.getState().selectedIds.length > 0) {
+          const step = e.shiftKey ? 10 : 1;
+          const dir =
+            e.key === "ArrowLeft"
+              ? { x: -step, y: 0 }
+              : e.key === "ArrowRight"
+                ? { x: step, y: 0 }
+                : e.key === "ArrowUp"
+                  ? { x: 0, y: step }
+                  : e.key === "ArrowDown"
+                    ? { x: 0, y: -step }
+                    : null;
+          if (dir) {
+            e.preventDefault();
+            void nudgeSelection(dir.x, dir.y);
+            return;
+          }
+        }
+        if (mod && !e.shiftKey && !e.altKey) {
+          const k = e.key.toLowerCase();
+          if (k === "c") {
+            e.preventDefault();
+            copySelection();
+            return;
+          }
+          if (k === "v") {
+            e.preventDefault();
+            void pasteClipboard();
+            return;
+          }
+          if (k === "d") {
+            e.preventDefault();
+            void duplicateSelection();
+            return;
+          }
+        }
+      }
       const kind = shouldHandleHistoryKey(e, tabVisibleRef.current, inGesture);
       if (!kind) return;
       e.preventDefault();
@@ -1831,6 +1905,177 @@ export function DiagramCanvas() {
       tone: write.written ? "ok" : "warn",
       text: `已${t.kind === "rotate" ? "旋转" : "缩放"} ${plan.changedIds.length} 个图元${sk}${
         write.written ? " · Ctrl+Z 一次退回" : " · 源码栏未就绪，无撤销记录"
+      }`,
+    });
+  }
+
+  // ── F3-5 编辑效率：方向键 nudge / 复制粘贴 / Ctrl+D ─────────────────────────
+
+  /** 焦点落在源码栏 / 文本框 / 模态框时把按键交还给它们（不抢编辑器的方向键与 Ctrl+C/V）。 */
+  function isTextEntryFocused(e: KeyboardEvent): boolean {
+    const el = e.target instanceof Element ? e.target : document.activeElement;
+    if (!(el instanceof Element)) return false;
+    if (el.closest(".cm-editor")) return true;
+    const tag = el.tagName.toLowerCase();
+    const type = el.getAttribute("type")?.toLowerCase() ?? "text";
+    const nonText = new Set([
+      "button",
+      "checkbox",
+      "radio",
+      "submit",
+      "reset",
+      "file",
+      "range",
+      "color",
+      "image",
+    ]);
+    if (tag === "textarea") return true;
+    if (tag === "input" && !nonText.has(type)) return true;
+    if (el.closest('[contenteditable=""], [contenteditable="true"]')) return true;
+    if (
+      document.querySelector(
+        '.modal-layer, .switcher-overlay, .find-panel[role="dialog"], [role="dialog"].modal',
+      )
+    )
+      return true;
+    return false;
+  }
+
+  /** 方向键 nudge：批量位移选中图元；key 固定 "nudge"，连按合并成一组 history。 */
+  async function nudgeSelection(dx: number, dy: number): Promise<void> {
+    const state = useDiagramStore.getState();
+    const src = sourceRef.current;
+    const res = resultRef.current;
+    if (!res) return;
+    const ids = state.selectedIds.filter(
+      (id) => !isManuallyLocked(state.grouping, id) && !isManuallyHidden(state.grouping, id),
+    );
+    if (ids.length === 0) return;
+    const handles = res.handles.filter((h) => ids.includes(h.sourceRef?.sourceId ?? ""));
+    if (handles.length === 0) {
+      setNotice({ tone: "warn", text: "选中的图元没有可位移的控制点。" });
+      return;
+    }
+    const deltas = Object.fromEntries(ids.map((id) => [id, { x: dx, y: dy }]));
+    const plan = await applyDeltaEdit({
+      source: src,
+      handles,
+      deltas,
+      compat: res.compat,
+      grouping: state.grouping,
+    });
+    if (plan.status !== "ok") {
+      if (plan.status !== "empty") setNotice({ tone: "warn", text: plan.reason || "无法移动" });
+      return;
+    }
+    const write = commitDiagramPatch({
+      key: "nudge",
+      source: src,
+      nextSource: plan.nextSource,
+      fallback: setSource,
+    });
+    setLastMoveDelta(dx, dy);
+    setNotice({
+      tone: write.written ? "ok" : "warn",
+      text: `已微移 ${plan.movedElements.length} 个图元${
+        write.written ? " · 连按合并撤销" : " · 源码栏未就绪，无撤销记录"
+      }`,
+    });
+  }
+
+  /** 复制：把选中的顶层块原文放进会话剪贴板。 */
+  function copySelection(): void {
+    const state = useDiagramStore.getState();
+    const blocks = topLevelBlocks(sourceRef.current, state.renderMeta?.statements ?? []);
+    const want = new Set(state.selectedIds);
+    const texts = blocks.filter((b) => want.has(b.id)).map((b) => b.text);
+    if (texts.length === 0) {
+      setNotice({ tone: "warn", text: "没有可复制的顶层图元（嵌套图元请在源码里复制）。" });
+      return;
+    }
+    setClipboard(texts);
+    setNotice({ tone: "ok", text: `已复制 ${texts.length} 个图元语句。` });
+  }
+
+  /** 粘贴：把剪贴板块文本插到锚点块之后，并选中新副本。 */
+  async function pasteClipboard(): Promise<void> {
+    if (!hasClipboard()) {
+      setNotice({ tone: "warn", text: "剪贴板为空：先 Ctrl+C 复制图元。" });
+      return;
+    }
+    const state = useDiagramStore.getState();
+    const src = sourceRef.current;
+    const pasted = planPaste(src, state.renderMeta?.statements ?? [], getClipboard(), state.selectedIds);
+    if (!pasted) {
+      setNotice({ tone: "warn", text: "粘贴失败：源码结构不支持在该位置插入。" });
+      return;
+    }
+    const write = commitDiagramPatches({
+      patches: pasted.patches,
+      source: src,
+      nextSource: pasted.nextSource,
+      fallback: setSource,
+    });
+    // 重渲染新源码 → 选中插入区间内的块（id 由 renderTikz 确定性分配，与提交后 store 重渲染一致）。
+    const r = await renderTikz(pasted.nextSource);
+    const ids = topLevelBlocks(pasted.nextSource, r.statements)
+      .filter((b) => b.from >= pasted.from && b.from < pasted.to)
+      .map((b) => b.id);
+    if (ids.length > 0) useDiagramStore.getState().setSelectedIds(ids);
+    setNotice({
+      tone: write.written ? "ok" : "warn",
+      text: `已粘贴 ${ids.length || "若干"} 个图元${
+        write.written ? " · Ctrl+Z 可撤销" : " · 源码栏未就绪，无撤销记录"
+      }`,
+    });
+  }
+
+  /** Ctrl+D：复制选中顶层块并重复上一次位移（无则默认右下 0.5cm），一次性补丁 = 一次撤销。 */
+  async function duplicateSelection(): Promise<void> {
+    const state = useDiagramStore.getState();
+    const src = sourceRef.current;
+    const statements = state.renderMeta?.statements ?? [];
+    const ids = state.selectedIds.filter((id) => !isManuallyLocked(state.grouping, id));
+    const dup = planDuplicateEdit(src, statements, ids);
+    if (!dup) {
+      setNotice({ tone: "warn", text: "没有可复制的顶层图元。" });
+      return;
+    }
+    const delta = getLastMoveDelta() ?? { x: GRID_STEP_PT / 2, y: -GRID_STEP_PT / 2 };
+    const dupRender = await renderTikz(dup.nextSource);
+    const cloneIds = topLevelBlocks(dup.nextSource, dupRender.statements)
+      .filter((b) => dup.clones.some((c) => c.from === b.from))
+      .map((b) => b.id);
+    const cloneHandles = dupRender.handles.filter((h) =>
+      cloneIds.includes(h.sourceRef?.sourceId ?? ""),
+    );
+    let finalSource = dup.nextSource;
+    if (cloneHandles.length > 0) {
+      const move = await applyDeltaEdit({
+        source: dup.nextSource,
+        handles: cloneHandles,
+        deltas: Object.fromEntries(cloneIds.map((id) => [id, delta])),
+        compat: dupRender.compat,
+        grouping: state.grouping,
+      });
+      if (move.status === "ok") finalSource = move.nextSource;
+    }
+    const patch = minimalSourcePatch(src, finalSource);
+    if (!patch) {
+      setNotice({ tone: "warn", text: "没有可复制的顶层图元。" });
+      return;
+    }
+    const write = commitDiagramPatches({
+      patches: [patch],
+      source: src,
+      nextSource: finalSource,
+      fallback: setSource,
+    });
+    if (cloneIds.length > 0) useDiagramStore.getState().setSelectedIds(cloneIds);
+    setNotice({
+      tone: write.written ? "ok" : "warn",
+      text: `已复制 ${cloneIds.length || "若干"} 个图元并重复位移${
+        write.written ? " · Ctrl+Z 一次撤销" : " · 源码栏未就绪，无撤销记录"
       }`,
     });
   }

@@ -225,6 +225,10 @@ export function SettingsDialog() {
   const setDiagramLayersVisible = useDiagramStore((s) => s.setLayersVisible);
   const diagramSnapEnabled = useDiagramStore((s) => s.snapEnabled);
   const setDiagramSnapEnabled = useDiagramStore((s) => s.setSnapEnabled);
+  const diagramGridEnabled = useDiagramStore((s) => s.gridEnabled);
+  const setDiagramGridEnabled = useDiagramStore((s) => s.setGridEnabled);
+  const diagramSnapGrid = useDiagramStore((s) => s.snapGridEnabled);
+  const setDiagramSnapGrid = useDiagramStore((s) => s.setSnapGridEnabled);
   const resetDiagramPreferences = useDiagramStore((s) => s.resetDiagramPreferences);
   const moduleNames: Record<string, string> = {};
   for (const m of modules) moduleNames[m.id] = m.name;
@@ -798,7 +802,25 @@ export function SettingsDialog() {
                     onChange={(next) => setDiagramSnapEnabled(next)}
                   />
                 </Fld>
-                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板 / 智能参考线一次性重置">
+                <Fld
+                  label="画布网格 + 标尺"
+                  hint="F3-5：画布叠加 1cm 网格与顶部标尺（仅辅助显示，不写进源码）"
+                >
+                  <Switch
+                    checked={diagramGridEnabled}
+                    onChange={(next) => setDiagramGridEnabled(next)}
+                  />
+                </Fld>
+                <Fld
+                  label="吸附网格"
+                  hint="F3-5：拖图元时落点自动对齐到最近网格交点（优先级高于智能参考线）"
+                >
+                  <Switch
+                    checked={diagramSnapGrid}
+                    onChange={(next) => setDiagramSnapGrid(next)}
+                  />
+                </Fld>
+                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板 / 智能参考线 / 网格 / 吸附网格一次性重置">
                   <button
                     type="button"
                     className="btn"

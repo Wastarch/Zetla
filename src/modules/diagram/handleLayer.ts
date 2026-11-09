@@ -27,6 +27,7 @@ import {
   type HandleMetrics,
 } from "./handleVisual.ts";
 import { cornerPoint, guideToSvgSegment, type GuideLine, type SvgViewBoxLike, type WorldBox } from "./guides.ts";
+import { GRID_STEP_PT, gridLines, rulerTicks } from "./grid.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -337,4 +338,115 @@ export function drawTransformHandles(
       "stroke-width": fmtNum(stroke),
     }),
   );
+}
+
+/** 网格层（F3-5）：插到 SVG 最底层，几何图形覆盖其上；每次整层重写。 */
+export function createGridLayer(svg: SVGSVGElement): SVGGElement {
+  const layer = el("g", { class: "dg-grid-layer", "data-dg-grid-layer": "1" });
+  svg.insertBefore(layer, svg.firstChild);
+  return layer;
+}
+
+/** 在 SVG 用户坐标下画网格线；线宽按 unitScale 换算，任何缩放下都是细线。 */
+export function drawGrid(
+  layer: SVGGElement | null,
+  viewBox: TikzViewBox | null,
+  metrics: HandleMetrics,
+  step: number = GRID_STEP_PT,
+): void {
+  if (!layer) return;
+  layer.replaceChildren();
+  if (!viewBox) return;
+  const s = metrics.unitScale > 0 ? metrics.unitScale : 1;
+  const stroke = (1 / s).toFixed(4);
+  const { xs, ys } = gridLines(viewBox, step);
+  const x1 = fmtNum(viewBox.x);
+  const x2 = fmtNum(viewBox.x + viewBox.width);
+  const y1 = fmtNum(viewBox.y);
+  const y2 = fmtNum(viewBox.y + viewBox.height);
+  for (const x of xs) {
+    layer.appendChild(
+      el("line", {
+        class: "dg-grid-line",
+        "data-dg-grid-line": "1",
+        x1: fmtNum(x),
+        y1,
+        x2: fmtNum(x),
+        y2,
+        "stroke-width": stroke,
+      }),
+    );
+  }
+  for (const y of ys) {
+    layer.appendChild(
+      el("line", {
+        class: "dg-grid-line",
+        "data-dg-grid-line": "1",
+        x1,
+        y1: fmtNum(y),
+        x2,
+        y2: fmtNum(y),
+        "stroke-width": stroke,
+      }),
+    );
+  }
+}
+
+/** 标尺层（F3-5）：顶部刻度 + cm 标签，文字与刻度按 unitScale 恒屏（挂在最上层，pointer-events:none）。 */
+export function createRulerLayer(svg: SVGSVGElement): SVGGElement {
+  const layer = el("g", { class: "dg-ruler-layer", "data-dg-ruler-layer": "1" });
+  svg.appendChild(layer);
+  return layer;
+}
+
+export function drawRuler(
+  layer: SVGGElement | null,
+  viewBox: TikzViewBox | null,
+  metrics: HandleMetrics,
+  step: number = GRID_STEP_PT,
+): void {
+  if (!layer) return;
+  layer.replaceChildren();
+  if (!viewBox) return;
+  const s = metrics.unitScale > 0 ? metrics.unitScale : 1;
+  const stroke = (1 / s).toFixed(4);
+  const tickTop = fmtNum(viewBox.y);
+  const tickLen = 6 / s;
+  const tickBottom = fmtNum(viewBox.y + tickLen);
+  const fontSize = 10 / s;
+  // 顶部刻度带（半透明底色，避免与图形混读）
+  layer.appendChild(
+    el("rect", {
+      class: "dg-ruler-band",
+      "data-dg-ruler-band": "1",
+      x: fmtNum(viewBox.x),
+      y: tickTop,
+      width: fmtNum(viewBox.width),
+      height: fmtNum(tickLen * 1.6),
+    }),
+  );
+  for (const t of rulerTicks(viewBox, step)) {
+    layer.appendChild(
+      el("line", {
+        class: "dg-ruler-tick",
+        "data-dg-ruler-tick": "1",
+        x1: fmtNum(t.svgX),
+        y1: tickTop,
+        x2: fmtNum(t.svgX),
+        y2: tickBottom,
+        "stroke-width": stroke,
+      }),
+    );
+    if (t.cm !== 0) {
+      const text = el("text", {
+        class: "dg-ruler-label",
+        "data-dg-ruler-label": "1",
+        x: fmtNum(t.svgX + 3 / s),
+        y: fmtNum(viewBox.y + tickLen * 1.5),
+        "font-size": fmtNum(fontSize),
+      });
+      text.textContent = String(t.cm);
+      layer.appendChild(text);
+    }
+  }
 }

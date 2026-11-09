@@ -16,6 +16,8 @@ import {
   toggleSelection,
   type LayerRow,
 } from "./grouping.ts";
+import { planZOrderEdit, type ZOrderOp } from "./zOrder.ts";
+import { commitDiagramPatches } from "./diagramHistory";
 
 interface Notice {
   tone: "ok" | "warn";
@@ -24,6 +26,7 @@ interface Notice {
 
 export function LayersPanel() {
   const source = useDiagramStore((s) => s.source);
+  const setSource = useDiagramStore((s) => s.setSource);
   const renderMeta = useDiagramStore((s) => s.renderMeta);
   const grouping = useDiagramStore((s) => s.grouping);
   const setGrouping = useDiagramStore((s) => s.setGrouping);
@@ -42,6 +45,8 @@ export function LayersPanel() {
   const rows = useMemo(() => buildLayerRows(statements, grouping), [statements, grouping]);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const canGroup = selectedIds.length >= 2;
+  // z-order 只对顶层语句生效；需要一份新鲜的渲染结果才能拿到语句 span。
+  const canZ = fresh && selectedIds.length > 0;
   const activeGroup = grouping.groups.find((g) => g.id === activeGroupId) ?? null;
 
   function flash(text: string, tone: Notice["tone"] = "ok"): void {
@@ -108,6 +113,26 @@ export function LayersPanel() {
     setRenaming(null);
   }
 
+  /** F3-5：整段重排顶层语句（front/back/forward/backward），最小 span 补丁一次撤销。 */
+  function doZOrder(op: ZOrderOp): void {
+    if (!fresh || !renderMeta) return;
+    const edit = planZOrderEdit(source, renderMeta.statements, selectedIds, op);
+    if (!edit) {
+      flash("已在顶 / 底，或选中项里没有可重排的顶层图元", "warn");
+      return;
+    }
+    const write = commitDiagramPatches({
+      patches: edit.patches,
+      source,
+      nextSource: edit.nextSource,
+      fallback: setSource,
+    });
+    flash(
+      write.written ? "已调整层级顺序 · Ctrl+Z 一次撤销" : "已调整层级（源码栏未就绪，无撤销记录）",
+      write.written ? "ok" : "warn",
+    );
+  }
+
   return (
     <section className="dg-side-card dg-layer-card">
       <div className="dg-layer-head">
@@ -143,6 +168,47 @@ export function LayersPanel() {
               onClick={() => setSelectedIds([])}
             >
               清空选择
+            </button>
+          </div>
+
+          {/* F3-5：层级 z-order —— 重排源码语句顺序（整段移动，注释 / 缩进零改动） */}
+          <div className="dg-layer-actions dg-zorder-actions">
+            <span className="dg-zorder-label">层级</span>
+            <button
+              type="button"
+              className="dg-mini-btn"
+              disabled={!canZ}
+              onClick={() => doZOrder("front")}
+              title="移到最上层（源码最后绘制）"
+            >
+              置顶
+            </button>
+            <button
+              type="button"
+              className="dg-mini-btn"
+              disabled={!canZ}
+              onClick={() => doZOrder("forward")}
+              title="上移一层（与上一层交换顺序）"
+            >
+              上移
+            </button>
+            <button
+              type="button"
+              className="dg-mini-btn"
+              disabled={!canZ}
+              onClick={() => doZOrder("backward")}
+              title="下移一层（与下一层交换顺序）"
+            >
+              下移
+            </button>
+            <button
+              type="button"
+              className="dg-mini-btn"
+              disabled={!canZ}
+              onClick={() => doZOrder("back")}
+              title="移到最下层（源码最先绘制）"
+            >
+              置底
             </button>
           </div>
 

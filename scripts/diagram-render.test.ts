@@ -22,6 +22,30 @@ import {
   worldToSvgPoint,
 } from "../src/modules/diagram/dragEdit.ts";
 import {
+  applyBlockOrder,
+  clearLastMoveDelta,
+  getClipboard,
+  getLastMoveDelta,
+  hasClipboard,
+  matchClones,
+  minimalSourcePatch,
+  planDuplicate,
+  planDuplicateEdit,
+  planPaste,
+  planZOrder,
+  planZOrderEdit,
+  planZOrderMany,
+  setClipboard,
+  setLastMoveDelta,
+  topLevelBlocks,
+} from "../src/modules/diagram/zOrder.ts";
+import {
+  GRID_STEP_PT,
+  gridLines,
+  rulerTicks,
+  snapToGrid,
+} from "../src/modules/diagram/grid.ts";
+import {
   hasDrawableContent,
   sanitizeSvg,
 } from "../src/modules/diagram/tikzEditor/svg.ts";
@@ -2152,6 +2176,207 @@ const ceReIds = Array.from(new Set(ceRe.handles.map((h) => h.sourceRef?.sourceId
 const ceReBoxes = collectElementBoxes({ handles: ceRe.handles, elementIds: ceReIds, compat: ceRe.compat, grouping: EMPTY_GROUPING });
 const minXs = ceReBoxes.boxes.map((b) => b.box.minX);
 check(minXs.length === 3 && minXs.every((x) => Math.abs(x - minXs[0]) < 1e-6), "对齐写回后三图元左边缘一致");
+
+console.log("F3-5 · z-order 整段重排 + 复制插入（纯逻辑）");
+{
+  const Z_SRC = `\\begin{tikzpicture}
+  \\draw (0,0) rectangle (1,1);
+  % a comment between
+  \\begin{scope}[fill=red]
+    \\draw (2,0) rectangle (3,1);
+  \\end{scope}
+  \\fill (4,0) circle (0.5);
+\\end{tikzpicture}`;
+  const zRender = await renderTikz(Z_SRC);
+  const zStmts = zRender.statements.filter((s) => s.topLevel).sort((a, b) => a.span.from - b.span.from);
+  const zBlocks = topLevelBlocks(Z_SRC, zRender.statements);
+  check(zBlocks.length === 3, `顶层 3 段块（实得 ${zBlocks.length}）`);
+  const rebuilt =
+    Z_SRC.slice(0, zBlocks[0].from) +
+    zBlocks.map((b) => b.text).join("") +
+    Z_SRC.slice(zBlocks[zBlocks.length - 1].to);
+  check(rebuilt === Z_SRC, "head + 块文本 + tail 可无损重建源码");
+  check(
+    zBlocks.every((b, i) => i === 0 || b.from === zBlocks[i - 1].to),
+    "块间无缝（每段 from = 上一段 to）",
+  );
+
+  // 语句 body 文本是跨重渲染稳定的标识（renderTikz 的 id 会随位置重分配，不可作为跨次比较键）。
+  const bodyOrder = (src: string, render: Awaited<ReturnType<typeof renderTikz>>): string[] =>
+    topLevelBlocks(src, render.statements).map((b) => {
+      const st = render.statements.find((s) => s.id === b.id && s.topLevel);
+      return st ? src.slice(st.span.from, st.span.to).trim() : "";
+    });
+  const origBodies = bodyOrder(Z_SRC, zRender);
+
+  // 置顶：把第一段移到最后
+  const frontOrder = planZOrder(zBlocks, zBlocks[0].id, "front")!;
+  const zFront = applyBlockOrder(Z_SRC, zBlocks, frontOrder);
+  const zFrontRender = await renderTikz(zFront);
+  const zFrontBlocks = topLevelBlocks(zFront, zFrontRender.statements);
+  check(zFrontBlocks.length === 3, "置顶后仍是 3 段块");
+  const frontBodies = bodyOrder(zFront, zFrontRender);
+  check(frontBodies[2] === origBodies[0], "置顶后该段（draw）移到了最后绘制");
+  check(
+    [...frontBodies].sort().join("|") === [...origBodies].sort().join("|"),
+    "重排后各语句本体集合不变（仅顺序变化）",
+  );
+  check(zFront.includes("% a comment between"), "注释随所属块一起移动，未丢失");
+  check(zFront.includes("\\draw (2,0) rectangle (3,1)"), "嵌套 scope 内容完整保留");
+
+  // 置底：把最后一段移到最前
+  const backOrder = planZOrder(zBlocks, zBlocks[2].id, "back")!;
+  const zBack = applyBlockOrder(Z_SRC, zBlocks, backOrder);
+  const zBackRender = await renderTikz(zBack);
+  const zBackBlocks = topLevelBlocks(zBack, zBackRender.statements);
+  const backBodies = bodyOrder(zBack, zBackRender);
+  check(backBodies[0] === origBodies[2], "置底后该段（fill）移到了最前绘制");
+
+  // 上移 / 下移相邻交换
+  const fwd = planZOrder(zBlocks, zBlocks[1].id, "forward")!;
+  check(fwd[2] === zBlocks[1].id, "上移后该段与下一段交换位置");
+  const bwd = planZOrder(zBlocks, zBlocks[1].id, "backward")!;
+  check(bwd[0] === zBlocks[1].id, "下移后该段与上一段交换位置");
+
+  // 已在最底再下移 → 无变化，返回 null（UI 据此提示不报错）
+  check(planZOrder(zBlocks, zBlocks[0].id, "backward") === null, "已在最底再下移返回 null");
+  check(planZOrder(zBlocks, zBlocks[2].id, "front") === null, "已在最顶再置顶返回 null");
+  check(planZOrder(zBlocks, "nope", "front") === null, "不存在的 id 返回 null");
+
+  // 复制插入：克隆第一段，matchClones 找回克隆 id
+  const dup = planDuplicate(Z_SRC, zBlocks, [zBlocks[0].id]);
+  check(dup !== null, "planDuplicate 返回新源码");
+  const dupRender = await renderTikz(dup!.source);
+  const dupBlocks = topLevelBlocks(dup!.source, dupRender.statements);
+  const clones = matchClones(zBlocks, dupBlocks);
+  check(clones.has(zBlocks[0].id), "matchClones 找回克隆 id");
+  check(clones.get(zBlocks[0].id) !== zBlocks[0].id, "克隆 id 与原 id 不同");
+  const txt = zBlocks[0].text.trim();
+  const before = zBlocks.filter((b) => b.text.trim() === txt).length;
+  const after = dupBlocks.filter((b) => b.text.trim() === txt).length;
+  check(after === before + 1, "复制后该语句出现次数 +1");
+  check(dupBlocks.length === 4, "复制后顶层块数量 +1");
+
+  // Ctrl+D 核心：克隆图元可整体位移（delta 按元素 id 索引，vendor 写回）
+  const cloneId = clones.get(zBlocks[0].id)!;
+  const cloneHandles = dupRender.handles.filter((h) => h.sourceRef?.sourceId === cloneId);
+  const dmove = await applyDeltaEdit({
+    source: dup!.source,
+    handles: cloneHandles,
+    deltas: { [cloneId]: { x: 10, y: 0 } },
+    compat: dupRender.compat,
+    grouping: EMPTY_GROUPING,
+  });
+  check(dmove.status === "ok", "克隆图元可整体位移（Ctrl+D 核心路径）");
+}
+
+console.log("F3-5 · 层级重排 / 复制粘贴 / 网格吸附（编辑层纯逻辑）");
+{
+  const SRC = `\\begin{tikzpicture}
+  \\draw (0,0) rectangle (1,1);
+  \\draw (2,0) circle (1);
+  \\node at (4,0) {X};
+\\end{tikzpicture}`;
+  const r = await renderTikz(SRC);
+  const blocks = topLevelBlocks(SRC, r.statements);
+  check(blocks.length === 3, `顶层 3 段块（实得 ${blocks.length}）`);
+
+  // minimalSourcePatch：单段最小补丁可无损重建
+  const nextSrc = SRC.replace("(0,0)", "(0.5,0)");
+  const p = minimalSourcePatch(SRC, nextSrc)!;
+  check(p !== null, "minimalSourcePatch 返回补丁");
+  check(
+    SRC.slice(0, p.from) + p.insert + SRC.slice(p.to) === nextSrc,
+    "最小补丁可无损重建新源码",
+  );
+  check(minimalSourcePatch(SRC, SRC) === null, "相同源码返回 null");
+
+  // planZOrderMany：多选整体重排（保持相对顺序）
+  const manyFront = planZOrderMany(blocks, [blocks[0].id, blocks[1].id], "front")!;
+  check(
+    manyFront.slice(-2).join(",") === [blocks[0].id, blocks[1].id].join(","),
+    "多选置顶后保持相对顺序放在末尾",
+  );
+  const manyBack = planZOrderMany(blocks, [blocks[1].id, blocks[2].id], "back")!;
+  check(
+    manyBack.slice(0, 2).join(",") === [blocks[1].id, blocks[2].id].join(","),
+    "多选置底后放在最前",
+  );
+  check(planZOrderMany(blocks, [blocks[2].id], "front") === null, "单元素已在最顶置顶返回 null");
+
+  // planZOrderEdit：置顶第一段 → 该段落在最后绘制，补丁可无损重建
+  const edit = planZOrderEdit(SRC, r.statements, [blocks[0].id], "front")!;
+  check(edit !== null, "planZOrderEdit 产出补丁 + 新源码");
+  check(edit.nextSource !== SRC, "重排后源码变化");
+  check(
+    edit.patches.length === 1 &&
+      SRC.slice(0, edit.patches[0].from) + edit.patches[0].insert + SRC.slice(edit.patches[0].to) ===
+        edit.nextSource,
+    "planZOrderEdit 补丁可无损重建新源码",
+  );
+  const rEdit = await renderTikz(edit.nextSource);
+  const editBodies = topLevelBlocks(edit.nextSource, rEdit.statements).map((b) => {
+    const st = rEdit.statements.find((s) => s.id === b.id && s.topLevel);
+    return st ? edit.nextSource.slice(st.span.from, st.span.to).trim() : "";
+  });
+  check(
+    editBodies[editBodies.length - 1].includes("rectangle"),
+    "置顶后矩形语句移到末尾绘制",
+  );
+
+  // planDuplicateEdit：返回克隆区间，克隆文本出现 +1
+  const dupEdit = planDuplicateEdit(SRC, r.statements, [blocks[0].id])!;
+  check(dupEdit !== null && dupEdit.clones.length === 1, "planDuplicateEdit 返回 1 个克隆区间");
+  const dupRender = await renderTikz(dupEdit.nextSource);
+  const dupBlocks = topLevelBlocks(dupEdit.nextSource, dupRender.statements);
+  check(dupBlocks.length === 4, "复制后顶层块 +1");
+  check(
+    dupBlocks.some((b) => b.from === dupEdit.clones[0].from),
+    "克隆区间起点对应一个新顶层块",
+  );
+
+  // 剪贴板 + planPaste：复制第一段、锚点第二段粘贴 → 顶层块 +1
+  setClipboard([blocks[0].text]);
+  check(hasClipboard() && getClipboard().length === 1, "剪贴板写入 1 段");
+  const paste = planPaste(SRC, r.statements, getClipboard(), [blocks[1].id])!;
+  check(paste !== null, "planPaste 产出补丁 + 新源码");
+  const pasteRender = await renderTikz(paste.nextSource);
+  const pasteBlocks = topLevelBlocks(paste.nextSource, pasteRender.statements);
+  check(pasteBlocks.length === 4, "粘贴后顶层块 +1");
+  const inserted = pasteBlocks.filter((b) => b.from >= paste.from && b.from < paste.to);
+  check(inserted.length === 1, "粘贴插入区间内恰好一个新块");
+  setClipboard([]);
+  check(!hasClipboard(), "清空剪贴板");
+
+  // 上次位移记录（Ctrl+D 复用），零位移不覆盖
+  clearLastMoveDelta();
+  check(getLastMoveDelta() === null, "初始无上次位移");
+  setLastMoveDelta(5, -3);
+  check(getLastMoveDelta()?.x === 5 && getLastMoveDelta()?.y === -3, "记录上次位移");
+  setLastMoveDelta(0, 0);
+  check(getLastMoveDelta()?.x === 5, "零位移不覆盖已有记录");
+}
+
+console.log("F3-5 · 网格 / 标尺 / 吸附（纯逻辑）");
+{
+  const snapped = snapToGrid({ x: 30, y: -20 }, GRID_STEP_PT);
+  check(snapped.x === GRID_STEP_PT && snapped.y === -GRID_STEP_PT, "吸附到最近网格交点");
+  const near = snapToGrid({ x: 0.4, y: 0.4 }, 1);
+  check(near.x === 0 && near.y === 0, "1 步长吸附 0.4 → 0");
+  const half = snapToGrid({ x: 0.6, y: 0.6 }, 1);
+  check(half.x === 1 && half.y === 1, "1 步长吸附 0.6 → 1");
+
+  const vb = { x: 0, y: 0, width: GRID_STEP_PT * 3, height: GRID_STEP_PT * 2 };
+  const gl = gridLines(vb, GRID_STEP_PT);
+  check(gl.xs.includes(0) && gl.xs.includes(GRID_STEP_PT * 3), "竖网格线覆盖左右边界");
+  check(gl.ys.length >= 3, "横网格线覆盖高度范围");
+  check(gl.ys.includes(vb.height), "world y=0 的横线在 SVG 中位于底边");
+
+  const ticks = rulerTicks(vb, GRID_STEP_PT);
+  check(ticks.length === gl.xs.length, "标尺刻度数与竖网格线一致");
+  check(ticks[0].cm === 0, "首个刻度 cm=0");
+  check(ticks[ticks.length - 1].cm === 3, "末个刻度 cm=3（3 格）");
+}
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

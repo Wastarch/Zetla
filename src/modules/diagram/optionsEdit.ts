@@ -45,6 +45,8 @@ export interface TikzStatement {
   entries: TikzOptionEntry[];
   /** 无选项时插入 `[...]` 的位置（命令名 / `\begin{scope}` 之后）；-1 表示无法定位 */
   insertOffset: number;
+  /** F3-5：是否为 tikzpicture 的顶层语句（depth === 0）。嵌套在 scope/foreach 内为 false。 */
+  topLevel: boolean;
 }
 
 export type PropertyKey = "stroke" | "lineWidth" | "arrow" | "dash" | "fill";
@@ -212,6 +214,7 @@ export function collectStatements(figure: unknown, source: string): TikzStatemen
         optionsRaw: block?.raw ?? null,
         entries: block?.entries ?? [],
         insertOffset: computeInsertOffset(source, span.from, kind),
+        topLevel: depth === 0,
       });
       if (Array.isArray(item.body)) walk(item.body, depth + 1);
     }
