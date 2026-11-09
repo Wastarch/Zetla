@@ -8,7 +8,7 @@
 
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?logo=windows&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-In%20Progress-FCC624?logo=linux&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
-[![Version](https://img.shields.io/badge/Version-v0.2.7-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v0.2.8-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-0E4C92)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
 [![Language](https://img.shields.io/badge/Language-Rust%20%2F%20TS-DEA584)](https://www.rust-lang.org)
@@ -37,17 +37,20 @@
 5. **一键编译** ⚡：`Ctrl+B` 或点 ▶ 编译，内置 `latexmk` / `engine-direct`。
 6. **查看 PDF** 👁️：编译后右侧自动预览，支持源码 ↔ PDF 双向跳转。
 
+> [!TIP]
+> 需要执行 `latexmk`、`tlmgr` 或 git 时，打开底部日志面板的「终端」页签即可；终端 PATH 与编译引擎同源，支持多会话与独立终端设置。
+
 ## 功能 ✨
 
-Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编辑器、可编排编译、公式 / 表格 / 图片 / 拼图、参考文献与 PDF 预览。
+Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编辑器、可编排编译、内置终端、公式 / 表格 / 图片 / 拼图、参考文献与 PDF 预览。
 
 | 🗂️ 项目管理 | ✍️ 编辑器 | ⚙️ 可编排编译 |
 | :---: | :---: | :---: |
 | 模板库 · 多标签 · 自动保存 · GBK 不乱码 | 语法高亮 · 代码片段 · 公式/符号面板 | Tool/Recipe · 实时预览 · 双向跳转 |
 | 🧮 公式表格 | 🖼️ 图片拼图 | 📚 参考文献 |
 | 公式/符号面板 · 表格编辑 | 图片附件 · 拼图布局 | BibTeX 引用管理 |
-| 🔄 自动更新 | 🎨 主题外观 | 🪟 桌面体验 |
-| 自动更新 · 环境引导 | 亮暗主题 · 自定义标题栏 | 原生窗口 · 全局快捷键 |
+| 💻 内置终端 | 🔄 自动更新 | 🎨 主题外观 |
+| 多会话 · 终端设置 · 复用编译环境 | 自动更新 · 环境引导 | 亮暗主题 · 自定义标题栏 |
 
 > [!NOTE]
 > 完整功能逐项说明见 [功能介绍](docs/功能介绍.md)。
@@ -58,6 +61,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 
 | 能力 | Zetla | Overleaf | TeXstudio | VS Code + LaTeX Workshop |
 | :--- | :---: | :---: | :---: | :---: |
+| 内置终端（多会话、复用 TeX 环境） | ✅ 内置 | ❌ | ⚠️ 需另开窗口 | ✅ |
 | 拼图 · 多图论文插图可视化排版 | ✅ 专属面板 | ❌ | ❌ | ⚠️ 需手写 |
 | 首次启动 TeX 环境引导（一键装 / 接管 TeX Live） | ✅ 引导 | ✅ 云端内置 | ❌ 需自备 | ❌ 需自备 |
 | 可编排编译流程（Tool / Recipe 可视化） | ✅ 可视化 | ⚠️ 仅云端 | ⚠️ 单命令 | ⚠️ 需配置 |
@@ -76,7 +80,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 | 文档 | 内容 |
 | :--- | :--- |
 | [功能介绍（完整）](docs/功能介绍.md) | 全部功能逐项说明 |
-| [使用指南（完整）](docs/使用指南.md) | 安装、环境准备、编辑、编译、公式、表格、拼图、PDF 等全部用法与快捷键 |
+| [使用指南（完整）](docs/使用指南.md) | 安装、环境准备、编辑、编译、终端、公式、表格、拼图、PDF 等全部用法与快捷键 |
 | [常见问题](docs/常见问题.md) | 安装、编译、模板、拼图等高频疑问 |
 | [从源码运行](docs/从源码运行.md) | 构建环境、打包、版本号与测试、目录结构 |
 

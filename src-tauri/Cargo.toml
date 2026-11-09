@@ -1,6 +1,6 @@
 [package]
 name = "zetla"
-version = "0.2.7"
+version = "0.2.8"
 description = "A Tauri App"
 authors = ["Max"]
 license = "AGPL-3.0-or-later"
