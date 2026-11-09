@@ -112,7 +112,10 @@ import {
   isHandleSize,
   padBox,
   selectionCorners,
+  svgUnitScale,
   unionBoxes,
+  unitScaleFromCtm,
+  unitScaleFromRect,
   type HandleSize,
 } from "../src/modules/diagram/handleVisual.ts";
 import {
@@ -1165,18 +1168,64 @@ check(
   H_KEYS.every(
     (k) => Math.abs(H_M05[k] * 0.5 - H_M1[k]) < 1e-9 && Math.abs(H_M2[k] * 2 - H_M1[k]) < 1e-9,
   ),
-  "50%–200% 缩放下所有手柄 / 包围盒尺寸的屏幕像素量恒定"
+  "单位比 0.5–2 下所有手柄 / 包围盒尺寸的屏幕像素量恒定"
 );
 check(
   H_M1.visualR === 3.3 && H_M1.hitR === 10 && H_M1.lockOffset === 15,
-  "medium@1 的数值：视觉 3.3 / 命中 10 / 挂锁上移 15（命中+余量）"
+  "medium@单位比 1 的数值：视觉 3.3 / 命中 10 / 挂锁上移 15（命中+余量）"
 );
 check(H_M1.lockScale === 1, "挂锁缩放系数恒为 1，理由图标不会随节点缩小而看不清");
 const H_BAD = handleMetrics("bogus" as HandleSize, 0);
 check(
-  H_BAD.size === "medium" && H_BAD.zoom === 1 && H_KEYS.every((k) => Number.isFinite(H_BAD[k]) && H_BAD[k] > 0),
-  "非法档位 / 零 zoom 降级为 medium@1，绝不产出 NaN / Infinity 打进 SVG 属性"
+  H_BAD.size === "medium" && H_BAD.unitScale === 1 && H_KEYS.every((k) => Number.isFinite(H_BAD[k]) && H_BAD[k] > 0),
+  "非法档位 / 零单位比降级为 medium@1，绝不产出 NaN / Infinity 打进 SVG 属性"
 );
+
+// ── F3-2 后续修复：viewBox→px 的比例不能漏乘 ───────────────────────────────
+// 用户第二次反馈「控制点还是太大」：旧口径把屏幕 px 只除以 UI zoom（截图是 100%），
+// 但 SVG viewBox 124 单位被 width:100% 铺进约 400px 画布 → 1 单位 ≈ 3.2 屏幕 px，
+// 于是「3.3px 半径」实际显示成约 21px 直径。以下断言锁死这条换算链。
+const H_VB = { width: 124, height: 124 };
+check(unitScaleFromCtm({ a: 3.2, b: 0, c: 0, d: 3.2, e: 240, f: 180 }) === 3.2, "CTM 行列式平方根给出真实单位比（平移 e/f 不影响）");
+check(unitScaleFromCtm({ a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 }) === null, "退化 CTM 返回 null，交由布局回退");
+check(unitScaleFromCtm(null) === null && unitScaleFromCtm({ a: NaN, b: 0, c: 0, d: 2, e: 0, f: 0 }) === null, "缺失 / 非有限 CTM 返回 null");
+check(Math.abs((unitScaleFromRect({ width: 400, height: 400 }, H_VB, 1) ?? 0) - 400 / 124) < 1e-9, "布局回退按 preserveAspectRatio=meet 取 min(宽比, 高比)");
+check(Math.abs((unitScaleFromRect({ width: 400, height: 400 }, H_VB, 2) ?? 0) - 800 / 124) < 1e-9, "stage 回退要乘 UI zoom（svg width = zoom × stage）");
+check(unitScaleFromRect({ width: 0, height: 0 }, H_VB, 1) === null, "零尺寸布局（Tab 隐藏 / jsdom）返回 null");
+check(unitScaleFromRect({ width: 400, height: 400 }, { width: 0, height: 124 }, 1) === null, "零宽 viewBox 返回 null，不产出 Infinity");
+check(
+  svgUnitScale(
+    { isConnected: true, getScreenCTM: () => ({ a: 3.2, b: 0, c: 0, d: 3.2, e: 1, f: 2 }), getBoundingClientRect: () => ({ width: 400, height: 400 }) },
+    H_VB, 1, { width: 400, height: 400 },
+  ) === 3.2,
+  "已挂载 SVG 优先用 CTM 实测值，不再依赖 UI zoom 猜测"
+);
+check(
+  Math.abs(svgUnitScale({ isConnected: true, getBoundingClientRect: () => ({ width: 400, height: 400 }) }, H_VB, 1) - 400 / 124) < 1e-9,
+  "CTM 不可用时回退 svg 自身 rect（已含 zoom，故不再重复乘）"
+);
+check(
+  Math.abs(
+    svgUnitScale(
+      { isConnected: true, getScreenCTM: () => ({ a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 }), getBoundingClientRect: () => ({ width: 400, height: 400 }) },
+      H_VB, 1,
+    ) - 400 / 124,
+  ) < 1e-9,
+  "CTM 与布局相差过大（某些环境不含 viewBox 变换）时以布局为准，不退回放大 3 倍的老 bug"
+);
+check(
+  Math.abs(svgUnitScale({ isConnected: false }, H_VB, 2, { width: 400, height: 400 }) - 800 / 124) < 1e-9,
+  "SVG 未挂载时回退 stage rect × zoom"
+);
+check(svgUnitScale(null, H_VB, 1) === 1, "全部测量手段失效时降级为 1（旧口径），绝不产出 NaN 打进 SVG 属性");
+const H_REAL = handleMetrics("medium", 3.2);
+check(
+  Math.abs(H_REAL.visualR * 3.2 - 3.3) < 1e-9 && Math.abs(H_REAL.hitR * 3.2 - 10) < 1e-9,
+  "真实比例 3.2 下：视觉半径 3.3px / 命中半径 10px 都是**屏幕**尺寸，不再被放大 3.2 倍"
+);
+check(Math.abs(H_REAL.visualR * 2 * 3.2 - 6.6) < 1e-9, "修复后默认控制点屏幕直径 6.6px（用户截图里的 21px 是漏乘比例所致）");
+check(Math.abs(H_REAL.hitR * 2 * 3.2 - 20) < 1e-9, "命中圈屏幕直径 20px 且完全透明，视觉不变但更好点中");
+check(Math.abs(H_REAL.boxCorner * 3.2 - 6) < 1e-9 && Math.abs(H_REAL.boxStroke * 3.2 - 1.2) < 1e-9, "包围盒角块 6px / 虚线 1.2px 也按实测比例回到屏幕尺寸");
 
 check(
   JSON.stringify(unionBoxes([{ x: 0, y: 0, width: 10, height: 5 }, { x: -2, y: 3, width: 4, height: 8 }])) ===
@@ -1229,7 +1278,7 @@ const H_R = await renderTikz(H_SRC);
 check(H_R.handles.length >= 2 && H_R.compat.empty === true, "探针：简单直线产出可拖拽句柄且不被 F2-3 误锁");
 const H_SVG = g.document.createElementNS(H_NS, "svg");
 const H_SEL = createSelectionLayer(H_SVG);
-const H_LAYER = buildHandleLayer(H_SVG, H_R.handles, H_R.viewBox, 1, H_R.compat, H_M1);
+const H_LAYER = buildHandleLayer(H_SVG, H_R.handles, H_R.viewBox, H_R.compat, H_M1);
 check(H_SVG.children[0] === H_SEL && H_SVG.children[1] === H_LAYER, "选中层先于控制点层挂载，手柄画在虚线框之上");
 const H_VALID = H_R.handles
   .slice(0, MAX_VISIBLE_HANDLES)
@@ -1277,7 +1326,7 @@ const H_LOCK_REPORT = {
 };
 const H_SVG2 = g.document.createElementNS(H_NS, "svg");
 const H_M_S05 = handleMetrics("small", 0.5);
-buildHandleLayer(H_SVG2, H_R.handles.slice(0, 1), H_R.viewBox, 0.5, H_LOCK_REPORT, H_M_S05);
+buildHandleLayer(H_SVG2, H_R.handles.slice(0, 1), H_R.viewBox, H_LOCK_REPORT, H_M_S05);
 const H_LOCK = H_SVG2.querySelector(".dg-handle-lock");
 check(!!H_LOCK, "能力矩阵锁定的句柄仍画 F2-3 挂锁图标");
 check(
@@ -1298,7 +1347,19 @@ const H_HIT2 = H_SVG2.querySelector("circle.dg-handle-hit")!;
 check(
   Math.abs(Number(H_VIS2.getAttribute("r")) - 5.2) < 1e-6 &&
     Math.abs(Number(H_HIT2.getAttribute("r")) - 18) < 1e-6,
-  "small@50% 的 SVG 用户单位半径 = 屏幕 px / zoom（视觉 5.2 / 命中 18）"
+  "small@单位比 0.5 的 SVG 用户单位半径 = 屏幕 px / unitScale（视觉 5.2 / 命中 18）"
+);
+// 真实画布比例下挂锁也必须保持 10px 见方（旧口径会被放大 3.2 倍到 32px）
+const H_SVG3 = g.document.createElementNS(H_NS, "svg");
+buildHandleLayer(H_SVG3, H_R.handles.slice(0, 1), H_R.viewBox, H_LOCK_REPORT, H_REAL);
+const H_LOCK3 = H_SVG3.querySelector(".dg-handle-lock");
+check(
+  !!H_LOCK3 && (H_LOCK3.getAttribute("transform") ?? "").includes("scale(0.3125)"),
+  "实测单位比 3.2 时挂锁 transform = scale(1/3.2)，抵消 viewBox→px 放大"
+);
+check(
+  Math.abs(LOCK_BASE_PX * (H_REAL.lockScale / H_REAL.unitScale) * H_REAL.unitScale - LOCK_BASE_PX) < 1e-9,
+  "挂锁屏幕尺寸恒为 10px，不随画布比例 / UI 缩放 / 节点档位变化"
 );
 
 // 选中包围盒层

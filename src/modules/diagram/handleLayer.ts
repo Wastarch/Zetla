@@ -44,20 +44,22 @@ function el<K extends keyof SVGElementTagNameMap>(
 
 /**
  * F2-3 挂锁图标：锁体 + 锁梁 + 锁孔。内部坐标以屏幕 10px 见方写死，
- * 用 transform: scale(lockScale / zoom) 保持任何缩放下屏幕尺寸恒定。
+ * 用 transform: scale(lockScale / unitScale) 保持任何缩放下屏幕尺寸恒定。
+ * 注意这里必须用**实测单位比**而不是 UI zoom —— 只除 zoom 会让挂锁随
+ * viewBox→px 的比例同步放大（F3-2 用户反馈「控制点还是太大」的根因之一）。
  * lockScale 不随节点档位缩小 —— 理由图标必须始终看得清（F3-2 验收项）。
  */
 function appendLockGlyph(
   parent: SVGGElement,
   x: number,
   y: number,
-  zoom: number,
+  unitScale: number,
   compatLocked: boolean,
   lockScale = 1,
 ): void {
   const g = el("g", {
     class: `dg-handle-lock${compatLocked ? " is-compat" : ""}`,
-    transform: `translate(${fmtNum(x)} ${fmtNum(y)}) scale(${fmtNum(lockScale / zoom)})`,
+    transform: `translate(${fmtNum(x)} ${fmtNum(y)}) scale(${fmtNum(lockScale / unitScale)})`,
   });
   const body = el("rect", {
     class: "dg-handle-lock-body",
@@ -84,7 +86,6 @@ export function buildHandleLayer(
   svg: SVGSVGElement,
   handles: readonly TikzEditHandle[],
   viewBox: TikzViewBox,
-  zoom: number,
   compat: CompatReport | null,
   metrics: HandleMetrics,
 ): SVGGElement {
@@ -139,7 +140,7 @@ export function buildHandleLayer(
         layer,
         p.x,
         p.y - metrics.lockOffset,
-        zoom,
+        metrics.unitScale,
         compatLocked,
         metrics.lockScale,
       );

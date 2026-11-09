@@ -641,7 +641,9 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 }
 
 /* 控制点由 handleLayer.ts 用 DOM API 追加到已消毒的 SVG 上；
-   半径 / 线宽由 handleVisual.handleMetrics 除以 zoom，保证任何缩放下都是同样大小。
+   半径 / 线宽由 handleVisual.handleMetrics 除以**实测 unitScale**（屏幕 px / SVG 用户单位，
+   由 getScreenCTM 量出，已含 viewBox→px 与 UI zoom），保证任何缩放下都是同样大小。
+   只除 zoom 会漏掉 viewBox 铺满画布带来的 3 倍放大 —— F3-2 后「还是太大」的根因。
    F3-2：视觉圆只负责好看（pointer-events:none），透明命中圈负责接收指针，
    两者半径独立 —— 缩小节点不再等于难点中。 */
 .dg-handle {

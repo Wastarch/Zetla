@@ -67,6 +67,7 @@ import {
   clientRectToSvgBox,
   handleMetrics,
   handleSizeSummary,
+  svgUnitScale,
   unionBoxes,
   isHandleSize,
   type HandleSize,
@@ -112,7 +113,8 @@ const DIAGRAM_PATH = "diagram://editor";
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3];
 const MAX_DIAG = 5;
 const SVG_NS = "http://www.w3.org/2000/svg";
-/** F3-2：控制点 / 包围盒的恒屏尺寸统一由 handleVisual.handleMetrics(size, zoom) 给出 */
+/** F3-2：恒屏尺寸统一由 handleVisual.handleMetrics(size, 实测 unitScale) 给出；
+ *  单位比 = 屏幕 px / SVG 用户单位，已含 UI zoom 与 viewBox→px 缩放，不能只传 zoom。 */
 const DRAG_THRESHOLD_PX = 3;
 /** 常驻锁定清单最多列出几条；hover title 里始终带完整长说明 */
 const MAX_LOCK_ITEMS = 4;
@@ -233,10 +235,14 @@ export function DiagramCanvas() {
     key: () => false,
     cancel: () => undefined,
   });
-  // F3-2：控制点档位（localStorage 偏好），与 zoom 一起算出一组恒屏尺寸。
+  // F3-2：控制点档位（localStorage 偏好）× 实测单位比 → 一组真正恒屏的尺寸。
+  // unitScale 不能写成 zoom：SVG 的 viewBox 会按 width:100% 铺进画布，默认示例
+  // 124 单位 ≈ 400px，漏掉这层比例会让 3.3px 的手柄显示成 21px 直径。
   const handleSize = useDiagramStore((s) => s.handleSize);
   const setHandleSize = useDiagramStore((s) => s.setHandleSize);
-  const metrics = useMemo(() => handleMetrics(handleSize, zoom), [handleSize, zoom]);
+  const [unitScale, setUnitScale] = useState(1);
+  const unitScaleRef = useRef(1);
+  const metrics = useMemo(() => handleMetrics(handleSize, unitScale), [handleSize, unitScale]);
 
   const empty = source.trim().length === 0;
 
@@ -338,15 +344,43 @@ export function DiagramCanvas() {
       setError("引擎返回的 SVG 无法解析，已阻止注入画布。");
       return;
     }
-    // F3-2：先挂选中层（在控制点层之下），再挂控制点层。两层都只用 createElementNS
+    // F3-2：辅助层的「屏幕 px」要换算成 SVG 用户单位，必须先挂到 DOM 才能用
+    // getScreenCTM() 量出真实单位比（viewBox→CSS px 的缩放不等于 UI zoom）。
+    stage.replaceChildren(node);
+    const scale = svgUnitScale(node, result.viewBox, zoom, stage.getBoundingClientRect());
+    if (Math.abs(scale - unitScaleRef.current) > 1e-6) {
+      unitScaleRef.current = scale;
+      setUnitScale(scale);
+    }
+    // 首帧就用实测值建层，不等 setState 的重渲染，避免「先大后小」闪一下。
+    const m = handleMetrics(handleSize, scale);
+    // 先挂选中层（在控制点层之下），再挂控制点层。两层都只用 createElementNS
     // 追加到已消毒 SVG 之后；精确通道走 <img>，这里不会执行到。
     createSelectionLayer(node);
     // F3-1：形状工具模式下不挂控制点，避免小圆点挡住起笔 / 抢 pointerdown。
     if (handlesOn && toolMode === "select" && result.handles.length > 0) {
-      buildHandleLayer(node, result.handles, result.viewBox, zoom, result.compat, metrics);
+      buildHandleLayer(node, result.handles, result.viewBox, result.compat, m);
     }
-    stage.replaceChildren(node);
-  }, [result, zoom, previewMode, handlesOn, toolMode, metrics]);
+  }, [result, zoom, previewMode, handlesOn, toolMode, handleSize, unitScale]);
+
+  // 侧栏伸缩 / 分屏切换 / 窗口 resize 会改变 viewBox→px 的比例，重测一次单位比。
+  // ResizeObserver 观察的是 stage 尺寸，replaceChildren 不会造成回调循环。
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      const svg = stage.querySelector("svg") as SVGSVGElement | null;
+      const res = resultRef.current;
+      if (!svg || !res || previewMode === "precise") return;
+      const scale = svgUnitScale(svg, res.viewBox, zoom, stage.getBoundingClientRect());
+      if (Math.abs(scale - unitScaleRef.current) > 1e-6) {
+        unitScaleRef.current = scale;
+        setUnitScale(scale);
+      }
+    });
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [previewMode, zoom]);
 
   // F2-2 选中高亮：只 toggle class，不重建 SVG —— 重建会丢弃正在拖拽的 DOM 引用，
   // 也会让 CM6 视图之外的画布状态抖动。drop-shadow 不改变实际描边颜色，避免误以为改了色。
@@ -502,14 +536,20 @@ export function DiagramCanvas() {
     ellipse.setAttribute("class", "dg-shape-preview-ellipse");
     const dot = document.createElementNS(SVG_NS, "circle");
     dot.setAttribute("class", "dg-shape-preview-dot");
-    for (const el of [path, ellipse, dot]) {
-      el.setAttribute("visibility", "hidden");
-      el.setAttribute("stroke-width", fmtNum(1.4 / zoom));
-      el.setAttribute("stroke-dasharray", fmtNum(4 / zoom));
-    }
+    for (const el of [path, ellipse, dot]) el.setAttribute("visibility", "hidden");
     layer.append(path, ellipse, dot);
     svg.appendChild(layer);
+    applyPreviewMetrics(layer);
     return layer;
+  }
+
+  /** 预览线宽 / 虚线同样按实测单位比换算；缩放或窗口 resize 后每次绘制都刷新。 */
+  function applyPreviewMetrics(layer: SVGGElement): void {
+    const s = metrics.unitScale;
+    for (const el of Array.from(layer.children)) {
+      el.setAttribute("stroke-width", fmtNum(1.4 / s));
+      el.setAttribute("stroke-dasharray", fmtNum(4 / s));
+    }
   }
 
   /** 只更新属性、不重建 SVG，避免打断 F2-1 拖拽 / 反复触发渲染。 */
@@ -523,6 +563,7 @@ export function DiagramCanvas() {
     const res = resultRef.current;
     if (!svg || !res || points.length === 0) return;
     const layer = ensurePreviewLayer(svg);
+    applyPreviewMetrics(layer);
     const pathEl = layer.querySelector(".dg-shape-preview-path") as SVGPathElement | null;
     const ellipseEl = layer.querySelector(".dg-shape-preview-ellipse") as SVGEllipseElement | null;
     const dotEl = layer.querySelector(".dg-shape-preview-dot") as SVGCircleElement | null;
@@ -623,12 +664,12 @@ export function DiagramCanvas() {
       case "dot": {
         dotEl.setAttribute("cx", fmtNum(s[0].x));
         dotEl.setAttribute("cy", fmtNum(s[0].y));
-        dotEl.setAttribute("r", fmtNum(3 / zoom));
+        dotEl.setAttribute("r", fmtNum(3 / metrics.unitScale));
         dotEl.setAttribute("visibility", "visible");
         break;
       }
       case "text": {
-        const k = 8 / zoom;
+        const k = 8 / metrics.unitScale;
         showPath(
           `M ${fmtNum(s[0].x - k)} ${fmtNum(s[0].y)} L ${fmtNum(s[0].x + k)} ${fmtNum(s[0].y)} ` +
             `M ${fmtNum(s[0].x)} ${fmtNum(s[0].y - k)} L ${fmtNum(s[0].x)} ${fmtNum(s[0].y + k)}`,
