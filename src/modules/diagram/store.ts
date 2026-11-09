@@ -4,15 +4,17 @@
 // 统一收敛到本模块的读写入口（设置页「绘图」分区直接调用，见 resetDiagramPreferences）；
 // F2-2 把 F1-1 预留的 selectedId 接上画布点选，并新增 renderMeta（渲染派生的语句清单）；
 // F2-3 给 renderMeta 加 compat（同源的能力矩阵锁定报告），画布与侧栏共用一份判定。
+// F3-1 增 toolMode（基础图元工具），沿用同一套轻量 localStorage 偏好机制。
 //
-// 存储口径：绘图布局/预览模式是低风险 UI 状态，沿用 localStorage（键集中在此文件），
+// 存储口径：绘图布局/预览模式/当前工具是低风险 UI 状态，沿用 localStorage（键集中在此文件），
 // 不扩全局 AppSettings schema（那需要同步改 Rust AppConfig + 归一化 + 迁移，收益不抵风险）。
 // renderMeta / selectedId 是会话态，不持久化；renderMeta 自带 source 便于侧栏校验是否过期。
-// 后续切片扩展：F5 组件库插入。
+// 后续切片扩展：F6 组件库插入。
 import { create } from "zustand";
 import type { ExportMode, PreviewMode } from "@/types/diagram";
 import type { TikzStatement } from "./optionsEdit.ts";
 import type { CompatReport } from "./tikzEditor/compat.ts";
+import { DEFAULT_TOOL_MODE, isToolMode, type ToolMode } from "./shapeTools.ts";
 
 /** Tab 内三种布局：仅画布 / 仅源码 / 左右分屏（都是同一个 diagram://editor Tab 内的视图状态） */
 export type LayoutMode = "canvas" | "code" | "split";
@@ -20,6 +22,7 @@ export type LayoutMode = "canvas" | "code" | "split";
 const LAYOUT_KEY = "zetla.diagram.layoutMode";
 const RATIO_KEY = "zetla.diagram.splitRatio";
 const PREVIEW_KEY = "zetla.diagram.previewMode";
+const TOOL_KEY = "zetla.diagram.toolMode";
 
 export const MIN_SPLIT_RATIO = 0.2;
 export const MAX_SPLIT_RATIO = 0.8;
@@ -29,6 +32,7 @@ export const DIAGRAM_DEFAULTS = {
   layoutMode: "split" as LayoutMode,
   splitRatio: 0.5,
   previewMode: "local" as PreviewMode,
+  toolMode: DEFAULT_TOOL_MODE,
 };
 
 function clampRatio(n: number): number {
@@ -60,6 +64,16 @@ function readPreviewMode(): PreviewMode {
     return v === "local" || v === "precise" ? v : DIAGRAM_DEFAULTS.previewMode;
   } catch {
     return DIAGRAM_DEFAULTS.previewMode;
+  }
+}
+
+/** F3-1：上次用过的形状工具（白名单校验，防止旧值 / 手改 localStorage 造成崩溃）。 */
+function readToolMode(): ToolMode {
+  try {
+    const v = localStorage.getItem(TOOL_KEY);
+    return isToolMode(v) ? v : DIAGRAM_DEFAULTS.toolMode;
+  } catch {
+    return DIAGRAM_DEFAULTS.toolMode;
   }
 }
 
@@ -107,7 +121,10 @@ export interface DiagramState {
   /** F1-5：画布预览通道（local = tikz-editor / precise = XeLaTeX） */
   previewMode: PreviewMode;
   setPreviewMode: (m: PreviewMode) => void;
-  /** F1-4：侧栏导出方式；image / file 由 F3 落盘链路接入 */
+  /** F3-1：当前工具；select 保留 F2-1 拖拽控制点，其余为形状绘制工具 */
+  toolMode: ToolMode;
+  setToolMode: (m: ToolMode) => void;
+  /** F1-4：侧栏导出方式；image / file 由 F4 落盘链路接入 */
   exportMode: ExportMode;
   setExportMode: (m: ExportMode) => void;
   /** F1-4：插入时是否套 figure 环境 + caption/label */
@@ -117,7 +134,7 @@ export interface DiagramState {
   setCaption: (v: string) => void;
   label: string;
   setLabel: (v: string) => void;
-  /** F1-5：设置页「恢复默认」——把三项持久化偏好写回默认值 */
+  /** F1-5 / F3-1：设置页「恢复默认」——把四项持久化偏好写回默认值 */
   resetDiagramPreferences: () => void;
 }
 
@@ -154,6 +171,11 @@ export const useDiagramStore = create<DiagramState>((set) => ({
     writeSetting(PREVIEW_KEY, m);
     set({ previewMode: m });
   },
+  toolMode: readToolMode(),
+  setToolMode: (m) => {
+    writeSetting(TOOL_KEY, m);
+    set({ toolMode: m });
+  },
   exportMode: "source",
   setExportMode: (m) => set({ exportMode: m }),
   wrapFigure: false,
@@ -166,10 +188,12 @@ export const useDiagramStore = create<DiagramState>((set) => ({
     writeSetting(LAYOUT_KEY, DIAGRAM_DEFAULTS.layoutMode);
     writeSetting(RATIO_KEY, String(DIAGRAM_DEFAULTS.splitRatio));
     writeSetting(PREVIEW_KEY, DIAGRAM_DEFAULTS.previewMode);
+    writeSetting(TOOL_KEY, DIAGRAM_DEFAULTS.toolMode);
     set({
       layoutMode: DIAGRAM_DEFAULTS.layoutMode,
       splitRatio: DIAGRAM_DEFAULTS.splitRatio,
       previewMode: DIAGRAM_DEFAULTS.previewMode,
+      toolMode: DIAGRAM_DEFAULTS.toolMode,
     });
   },
 }));

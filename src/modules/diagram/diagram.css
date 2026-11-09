@@ -919,3 +919,102 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   border-color: var(--warn, #a86a12);
   color: var(--warn, #a86a12);
 }
+
+/* ── F3-1 基础图元工具调色板 + 绘制预览层 ─────────────────────────────
+   主题色全部走 zetla.css 的双主题 token（--bg* / --txt* / --line / --accent / --warn），
+   不引入硬编码深色或浅色，亮暗主题自动适配。 */
+.dg-tool-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line, #e0e0e0);
+  background: var(--bg-2, #f3f3f3);
+}
+.dg-tool-bar-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--txt-2, #888);
+  white-space: nowrap;
+}
+.dg-tool-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.dg-tool-btn {
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 16px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg, #fff);
+  color: var(--txt-2, #888);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dg-tool-btn:hover:not(:disabled) {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-tool-btn.on {
+  border-color: var(--accent, #2d7ff9);
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  color: var(--accent, #2d7ff9);
+  font-weight: 600;
+}
+.dg-tool-btn.is-select {
+  margin-right: 6px;
+  border-right-width: 2px;
+}
+.dg-tool-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dg-tool-blank {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--accent, #2d7ff9);
+  border-radius: 4px;
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  color: var(--accent, #2d7ff9);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dg-tool-readonly {
+  font-size: 11px;
+  color: var(--warn, #a86a12);
+  white-space: nowrap;
+}
+.dg-tool-hint {
+  margin-left: auto;
+  max-width: 46%;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.4;
+  color: var(--txt-2, #888);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-canvas-stage[data-tool]:not([data-tool="select"]) {
+  cursor: crosshair;
+}
+/* 预览层由 createElementNS 追加到已消毒 SVG 之后；纯装饰，不参与命中。 */
+.dg-shape-preview {
+  pointer-events: none;
+}
+.dg-shape-preview-path,
+.dg-shape-preview-ellipse {
+  fill: none;
+  stroke: var(--accent, #2d7ff9);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+.dg-shape-preview-dot {
+  fill: var(--accent, #2d7ff9);
+  stroke: none;
+  opacity: 0.7;
+}

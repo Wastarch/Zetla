@@ -19,7 +19,7 @@ export interface TikzDiagnostic {
   severity: "warning" | "error";
   message: string;
   code?: string;
-  /** 源码字符偏移，供 F4-1 反向编辑定位；F1 仅展示 */
+  /** 源码字符偏移，供 F5-1 反向编辑定位；F1 仅展示 */
   offset?: number;
 }
 
@@ -158,7 +158,7 @@ function readViewBox(raw: VendorRenderResult): TikzViewBox {
 }
 
 // 源码内容键（FNV-1a + 长度）+ 存原文比对，避免 hash 碰撞导致错图；
-// LRU 上限 32 条，足够覆盖 F4-2 之前的反复微调场景。
+// LRU 上限 32 条，足够覆盖反复微调与 F4-1 导出落盘之前的场景。
 const CACHE_LIMIT = 32;
 interface CacheEntry {
   source: string;

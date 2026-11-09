@@ -19,7 +19,7 @@ const LAYOUT_LABEL: Record<string, string> = {
   split: "左右分屏",
 };
 
-/** image / file 由 F3 的 tikz_export 落盘链路接入，v1 展示但禁用 */
+/** image / file 由 F4 的 tikz_export 落盘链路接入，v1 展示但禁用 */
 const EXPORT_MODES: { id: ExportMode; label: string; hint: string; ready: boolean }[] = [
   { id: "source", label: "TikZ 源码", hint: "插入完整 tikzpicture 环境", ready: true },
   { id: "image", label: "导出图片后插入", hint: "PDF / PNG / SVG → figure", ready: false },
@@ -78,7 +78,7 @@ export function DiagramSidebar() {
           神经网络 / 概率图 / 流程框图 / 张量矩阵 / 受力分析，5 类模板。
         </p>
         <button type="button" className="btn" disabled>
-          浏览组件（F5 接入）
+          浏览组件（F6 接入）
         </button>
       </section>
 
@@ -111,7 +111,7 @@ export function DiagramSidebar() {
             <label
               key={m.id}
               className={`dg-side-radio${exportMode === m.id ? " is-on" : ""}${m.ready ? "" : " is-off"}`}
-              title={m.ready ? m.hint : `${m.hint}（F3 接入）`}
+              title={m.ready ? m.hint : `${m.hint}（F4 接入）`}
             >
               <input
                 type="radio"
@@ -121,7 +121,7 @@ export function DiagramSidebar() {
                 onChange={() => setExportMode(m.id)}
               />
               <span>{m.label}</span>
-              {!m.ready && <em>F3</em>}
+              {!m.ready && <em>F4</em>}
             </label>
           ))}
         </div>
@@ -166,12 +166,12 @@ export function DiagramSidebar() {
           <p className="dg-side-warn">插入按钮已禁用：请先在 .tex 标签页活动时打开绘图 Tab。</p>
         )}
         {exportMode !== "source" && (
-          <p className="dg-side-warn">图片 / 仅保存依赖 F3 的 XeLaTeX 落盘链路，暂不可用。</p>
+          <p className="dg-side-warn">图片 / 仅保存依赖 F4 的 XeLaTeX 落盘链路，暂不可用。</p>
         )}
       </section>
 
       <p className="dg-side-note">
-        主文档已有 tikzpicture 的反向编辑（✎ 徽标）按约定延后到 F4，v1 仅支持「绘图 Tab → 插入主文档」。
+        主文档已有 tikzpicture 的反向编辑（✎ 徽标）按约定延后到 F5，v1 仅支持「绘图 Tab → 插入主文档」。
       </p>
     </div>
   );

@@ -1,7 +1,8 @@
-// M2·F1-2：绘图 Tab 内顶部布局开关（仅画布 / 仅源码 / 分屏）。
+// M2·F1-2 / F3-1：绘图 Tab 内顶部布局开关（仅画布 / 仅源码 / 分屏）+ 当前工具徽标。
 // 三种布局都是同一个 `diagram://editor` Tab 内部的视图状态，不新建/替换 Tab，
 // 主编辑区的其它 Tab 与 PDF 预览始终可用。
 import { useDiagramStore, type LayoutMode } from "./store";
+import { toolDef } from "./shapeTools";
 
 const LAYOUTS: { id: LayoutMode; label: string; title: string }[] = [
   { id: "canvas", label: "仅画布", title: "只显示 TikZ 画布" },
@@ -18,6 +19,7 @@ export function DiagramLayoutBar() {
   const setLayoutMode = useDiagramStore((s) => s.setLayoutMode);
   const source = useDiagramStore((s) => s.source);
   const targetTex = useDiagramStore((s) => s.targetTex);
+  const toolMode = useDiagramStore((s) => s.toolMode);
   const lineCount = source.split("\n").length;
 
   return (
@@ -38,7 +40,7 @@ export function DiagramLayoutBar() {
         ))}
       </div>
       <span className="dg-tab-meta">
-        {lineCount} 行 · 目标：{targetTex ? basename(targetTex) : "未锁定"}
+        {lineCount} 行 · 工具：{toolDef(toolMode).label} · 目标：{targetTex ? basename(targetTex) : "未锁定"}
       </span>
     </div>
   );

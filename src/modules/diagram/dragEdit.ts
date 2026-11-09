@@ -53,6 +53,41 @@ export function worldToSvgPoint(world: PointLike, vb: TikzViewBox): PointLike {
 }
 
 /**
+ * F3-1：SVG 用户坐标 → world 点（worldToSvgPoint 的逆）。
+ * 形状工具把「用户在画布上点的位置」变成 world pt，再交给 shapeInsert 生成 TikZ 坐标。
+ */
+export function svgToWorldPoint(svg: PointLike, vb: TikzViewBox): PointLike {
+  return { x: svg.x, y: 2 * vb.y + vb.height - svg.y };
+}
+
+/** getScreenCTM() 的完整仿射矩阵（F2-1 的位移换算只用 a/b/c/d，这里还要 e/f 平移）。 */
+export interface AffineMatrix extends MatrixLike {
+  e: number;
+  f: number;
+}
+
+/**
+ * F3-1：屏幕 client 坐标 → SVG 用户单位绝对坐标。
+ * 与 clientDeltaToSvgDelta 的区别：这里是**绝对点**，必须减去 e/f 平移，
+ * 否则 preserveAspectRatio 的居中留白与 SVG 在页面上的位置都会造成整体偏移。
+ * 退化矩阵（宽度 / 高度为 0）返回 null，调用方应取消本次绘制。
+ */
+export function clientToSvgPoint(
+  m: AffineMatrix,
+  clientX: number,
+  clientY: number,
+): PointLike | null {
+  const det = m.a * m.d - m.b * m.c;
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-9) return null;
+  const x = clientX - m.e;
+  const y = clientY - m.f;
+  return {
+    x: (m.d * x - m.c * y) / det,
+    y: (-m.b * x + m.a * y) / det,
+  };
+}
+
+/**
  * 由「整段旧源码 / 整段新源码」求最小单点补丁（公共前缀 + 公共后缀）。
  * 上游重写只替换一个坐标 span，所以这里必然是单 patch；返回 null 表示无变化。
  * 用最小补丁 dispatch 而不是整篇替换，CM6 的撤销记录才只有几字符、光标也不跳走。

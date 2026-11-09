@@ -1,4 +1,9 @@
-// M2·F1-3 / F1-6 / F2-1 / F2-2 / F2-3 / F2-4：TikZ 双通道画布 + 拖拽写回 + 点选图元 + 锁定提示 + 统一撤销栈。
+// M2·F1-3 / F1-6 / F2-1 / F2-2 / F2-3 / F2-4 / F3-1：TikZ 双通道画布 + 拖拽写回 + 点选图元 + 锁定提示 + 统一撤销栈 + 基础图元工具。
+//  F3-1 形状工具：选工具 → 画布 pointerdown/move/up（或多点单击）→ 屏幕坐标经
+//  getScreenCTM 完整仿射逆 → world pt → shapeInsert 生成标准 TikZ 语句 → 单点补丁
+//  → commitDiagramPatch 写回 CM6（与键盘 / 拖拽 / 属性同一条 history）→ 重渲染后
+//  按插入 span 自动选中。绘制预览层只用 createElementNS 追加到已消毒 SVG 之后。
+//  精确通道（XeLaTeX）没有语义句柄，工具条整体禁用，保持只读。
 //  本地通道：source → debounce 160ms → engine.renderTikz（动态加载 vendor bundle + LRU
 //            缓存 + 诊断归一化 + editHandles）→ svg.sanitizeSvg 白名单消毒 → importNode 挂载
 //            → 追加控制点 <circle> 图层（DOM API 创建，不经过 innerHTML）。
@@ -40,15 +45,38 @@ import { hasDrawableContent, sanitizeSvg } from "./tikzEditor/svg";
 import {
   MAX_VISIBLE_HANDLES,
   clientDeltaToSvgDelta,
+  clientToSvgPoint,
   dragDeltaLabel,
   handleLabel,
   isDraggableHandle,
   lockedHandleReason,
   svgDeltaToWorldDelta,
+  svgToWorldPoint,
   worldToSvgPoint,
+  type AffineMatrix,
   type MatrixLike,
   type PointLike,
 } from "./dragEdit";
+import {
+  addShapePoint,
+  canFinishShape,
+  createShapeSession,
+  isShapeComplete,
+  isToolMode,
+  popShapePoint,
+  shapeSessionHint,
+  toolDef,
+  type ShapePoint,
+  type ShapeSession,
+  type ToolMode,
+} from "./shapeTools";
+import {
+  arcSweepDegrees,
+  buildShapeStatement,
+  insertShapeStatement,
+  pickInsertedStatementId,
+} from "./shapeInsert";
+import { ShapeToolbar } from "./ShapeToolbar";
 import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat";
 import {
   commitDiagramPatch,
@@ -76,6 +104,35 @@ const HANDLE_STROKE_PX = 1.4;
 const DRAG_THRESHOLD_PX = 3;
 /** 常驻锁定清单最多列出几条；hover title 里始终带完整长说明 */
 const MAX_LOCK_ITEMS = 4;
+/** F3-1：形状工具的最小拖拽距离（屏幕 px），低于此值视为误点 */
+const SHAPE_THRESHOLD_PX = 3;
+/** 空白画布的默认环境（空源码时先建环境，才能在 SVG 上取坐标） */
+const BLANK_DIAGRAM = "\\begin{tikzpicture}\n  \n\\end{tikzpicture}";
+
+interface ToolDragState {
+  tool: ToolMode;
+  start: ShapePoint;
+  current: ShapePoint;
+  startClient: PointLike;
+  shift: boolean;
+  moved: boolean;
+}
+
+/** 插入后等待重渲染，再按 span 定位新语句的 id 自动选中。 */
+interface PendingSelection {
+  source: string;
+  from: number;
+  to: number;
+}
+
+/** window 级监听只注册一次，靠这个 ref 读最新的形状工具闭包（同 F2-1 的 commitDragRef 范式）。 */
+interface ShapeApi {
+  move: (e: PointerEvent) => void;
+  up: () => void;
+  /** 返回 true 表示该按键已被形状工具消费（Esc / Enter / Backspace） */
+  key: (e: KeyboardEvent) => boolean;
+  cancel: (silent?: boolean) => void;
+}
 
 function basename(p: string): string {
   return p.split(/[\\/]/).pop() || p;
@@ -230,6 +287,20 @@ export function DiagramCanvas() {
   const resultRef = useRef(result);
   resultRef.current = result;
   const commitDragRef = useRef<(d: DragState) => void>(() => undefined);
+  // F3-1：形状工具状态。会话 / 拖拽只留在本组件，不写进 store（不是跨组件共享数据）。
+  const toolMode = useDiagramStore((s) => s.toolMode);
+  const setToolMode = useDiagramStore((s) => s.setToolMode);
+  const [sessionHint, setSessionHint] = useState<string | null>(null);
+  const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
+  const shapeSessionRef = useRef<ShapeSession | null>(null);
+  const toolDragRef = useRef<ToolDragState | null>(null);
+  const shapeSeqRef = useRef(0);
+  const shapeApiRef = useRef<ShapeApi>({
+    move: () => undefined,
+    up: () => undefined,
+    key: () => false,
+    cancel: () => undefined,
+  });
 
   const empty = source.trim().length === 0;
 
@@ -331,11 +402,12 @@ export function DiagramCanvas() {
       setError("引擎返回的 SVG 无法解析，已阻止注入画布。");
       return;
     }
-    if (handlesOn && result.handles.length > 0) {
+    // F3-1：形状工具模式下不挂控制点，避免小圆点挡住起笔 / 抢 pointerdown。
+    if (handlesOn && toolMode === "select" && result.handles.length > 0) {
       buildHandleLayer(node, result.handles, result.viewBox, zoom, result.compat);
     }
     stage.replaceChildren(node);
-  }, [result, zoom, previewMode, handlesOn]);
+  }, [result, zoom, previewMode, handlesOn, toolMode]);
 
   // F2-2 选中高亮：只 toggle class，不重建 SVG —— 重建会丢弃正在拖拽的 DOM 引用，
   // 也会让 CM6 视图之外的画布状态抖动。drop-shadow 不改变实际描边颜色，避免误以为改了色。
@@ -351,6 +423,28 @@ export function DiagramCanvas() {
   useEffect(() => {
     setDiagOpen(null);
   }, [result]);
+
+  // F3-1：插入形状 → 源码变化 → debounce → renderTikz → 这里才会拿到与新源码同批的
+  // statements。用 renderMeta.source 校验，绝不在 debounce 期间拿旧图元的 span 误选中。
+  useEffect(() => {
+    if (!pendingSelection || !result) return;
+    const meta = useDiagramStore.getState().renderMeta;
+    if (!meta || meta.source !== pendingSelection.source) {
+      if (error) setPendingSelection(null); // 新语句导致渲染失败：放弃自动选中
+      return;
+    }
+    const id = pickInsertedStatementId(meta.statements, {
+      from: pendingSelection.from,
+      to: pendingSelection.to,
+    });
+    if (id) setSelectedId(id);
+    setPendingSelection(null);
+  }, [result, pendingSelection, error, setSelectedId]);
+
+  // F3-1：换工具 / 切预览通道时取消未完成的绘制会话（精确通道全程只读）。
+  useEffect(() => {
+    shapeApiRef.current.cancel(true);
+  }, [toolMode, previewMode]);
 
   // 拖拽提交：只算一次新源码，再以最小 span 补丁写回 CM6（F2-1 与键盘编辑同撤销栈）。
   // F2-4：同一控制点的连续微调并入一组 history，一次 Ctrl+Z 回到这一串调整之前。
@@ -395,6 +489,380 @@ export function DiagramCanvas() {
     });
   };
 
+  // ── F3-1 形状工具：坐标反算 / 预览层 / 会话状态机 / 写回 ──────────────────
+  function stageSvg(): SVGSVGElement | null {
+    return (stageRef.current?.querySelector("svg") as SVGSVGElement | null) ?? null;
+  }
+
+  /** 屏幕绝对点 → SVG 用户单位（完整仿射逆，含 e/f）→ world pt（Y 翻转）。 */
+  function pointerWorld(clientX: number, clientY: number): ShapePoint | null {
+    const svg = stageSvg();
+    const res = resultRef.current;
+    if (!svg || !res) return null;
+    const ctm = svg.getScreenCTM?.();
+    if (!ctm) return null;
+    const m: AffineMatrix = { a: ctm.a, b: ctm.b, c: ctm.c, d: ctm.d, e: ctm.e, f: ctm.f };
+    const p = clientToSvgPoint(m, clientX, clientY);
+    return p ? svgToWorldPoint(p, res.viewBox) : null;
+  }
+
+  function clearShapePreview(): void {
+    stageSvg()?.querySelector("[data-dg-shape-preview]")?.remove();
+  }
+
+  /** 预览层一律用 createElementNS 追加到**已消毒**的 SVG 之后，绝不拼 innerHTML。 */
+  function ensurePreviewLayer(svg: SVGSVGElement): SVGGElement {
+    const found = svg.querySelector("[data-dg-shape-preview]") as SVGGElement | null;
+    if (found) return found;
+    const layer = document.createElementNS(SVG_NS, "g");
+    layer.setAttribute("class", "dg-shape-preview");
+    layer.setAttribute("data-dg-shape-preview", "1");
+    const path = document.createElementNS(SVG_NS, "path");
+    path.setAttribute("class", "dg-shape-preview-path");
+    const ellipse = document.createElementNS(SVG_NS, "ellipse");
+    ellipse.setAttribute("class", "dg-shape-preview-ellipse");
+    const dot = document.createElementNS(SVG_NS, "circle");
+    dot.setAttribute("class", "dg-shape-preview-dot");
+    for (const el of [path, ellipse, dot]) {
+      el.setAttribute("visibility", "hidden");
+      el.setAttribute("stroke-width", fmtNum(1.4 / zoom));
+      el.setAttribute("stroke-dasharray", fmtNum(4 / zoom));
+    }
+    layer.append(path, ellipse, dot);
+    svg.appendChild(layer);
+    return layer;
+  }
+
+  /** 只更新属性、不重建 SVG，避免打断 F2-1 拖拽 / 反复触发渲染。 */
+  function drawShapePreview(
+    tool: ToolMode,
+    points: readonly ShapePoint[],
+    shift: boolean,
+    hover: ShapePoint | null,
+  ): void {
+    const svg = stageSvg();
+    const res = resultRef.current;
+    if (!svg || !res || points.length === 0) return;
+    const layer = ensurePreviewLayer(svg);
+    const pathEl = layer.querySelector(".dg-shape-preview-path") as SVGPathElement | null;
+    const ellipseEl = layer.querySelector(".dg-shape-preview-ellipse") as SVGEllipseElement | null;
+    const dotEl = layer.querySelector(".dg-shape-preview-dot") as SVGCircleElement | null;
+    if (!pathEl || !ellipseEl || !dotEl) return;
+    pathEl.setAttribute("visibility", "hidden");
+    ellipseEl.setAttribute("visibility", "hidden");
+    dotEl.setAttribute("visibility", "hidden");
+
+    const vb = res.viewBox;
+    const s = points.map((p) => worldToSvgPoint(p, vb));
+    const h = hover ? worldToSvgPoint(hover, vb) : null;
+    const poly = (pts: PointLike[], close = false) =>
+      pts.map((p, i) => `${i === 0 ? "M" : "L"} ${fmtNum(p.x)} ${fmtNum(p.y)}`).join(" ") +
+      (close ? " Z" : "");
+    const showPath = (d: string) => {
+      pathEl.setAttribute("d", d);
+      pathEl.setAttribute("visibility", "visible");
+    };
+
+    switch (tool) {
+      case "line":
+      case "arrowLine":
+        if (s.length >= 2) showPath(poly([s[0], h ?? s[1]]));
+        break;
+      case "rectangle": {
+        if (s.length < 2) break;
+        const b = h ?? s[1];
+        let x2 = b.x;
+        let y2 = b.y;
+        if (shift) {
+          const side = Math.max(Math.abs(b.x - s[0].x), Math.abs(b.y - s[0].y));
+          x2 = s[0].x + (b.x < s[0].x ? -side : side);
+          y2 = s[0].y + (b.y < s[0].y ? -side : side);
+        }
+        showPath(
+          poly(
+            [
+              { x: s[0].x, y: s[0].y },
+              { x: x2, y: s[0].y },
+              { x: x2, y: y2 },
+              { x: s[0].x, y: y2 },
+            ],
+            true,
+          ),
+        );
+        break;
+      }
+      case "circle":
+      case "ellipse": {
+        if (s.length < 2) break;
+        const b = h ?? s[1];
+        let cx: number;
+        let cy: number;
+        let rx: number;
+        let ry: number;
+        if (tool === "circle" && !shift) {
+          cx = s[0].x;
+          cy = s[0].y;
+          rx = ry = Math.hypot(b.x - cx, b.y - cy);
+        } else {
+          cx = (s[0].x + b.x) / 2;
+          cy = (s[0].y + b.y) / 2;
+          rx = Math.abs(b.x - s[0].x) / 2;
+          ry = Math.abs(b.y - s[0].y) / 2;
+          if (shift || tool === "circle") rx = ry = Math.max(rx, ry);
+        }
+        ellipseEl.setAttribute("cx", fmtNum(cx));
+        ellipseEl.setAttribute("cy", fmtNum(cy));
+        ellipseEl.setAttribute("rx", fmtNum(rx));
+        ellipseEl.setAttribute("ry", fmtNum(ry));
+        ellipseEl.setAttribute("visibility", "visible");
+        break;
+      }
+      case "arc": {
+        if (points.length >= 3) {
+          // TikZ arc 是 world 逆时针；SVG y 向下，故 sweep-flag = 0、角度递减。
+          const p1 = s[0];
+          const c = s[1];
+          const r = Math.hypot(p1.x - c.x, p1.y - c.y);
+          const phi1 = Math.atan2(p1.y - c.y, p1.x - c.x);
+          const delta = (arcSweepDegrees(points[0], points[1], points[2]) * Math.PI) / 180;
+          const ex = c.x + r * Math.cos(phi1 - delta);
+          const ey = c.y + r * Math.sin(phi1 - delta);
+          showPath(
+            `M ${fmtNum(p1.x)} ${fmtNum(p1.y)} A ${fmtNum(r)} ${fmtNum(r)} 0 ${delta > Math.PI ? 1 : 0} 0 ${fmtNum(ex)} ${fmtNum(ey)}`,
+          );
+        } else if (s.length > 0) {
+          showPath(poly(h ? [...s, h] : s));
+        }
+        break;
+      }
+      case "polygon":
+      case "polyline": {
+        const pts = h ? [...s, h] : s;
+        if (pts.length > 0) showPath(poly(pts, tool === "polygon" && !h));
+        break;
+      }
+      case "dot": {
+        dotEl.setAttribute("cx", fmtNum(s[0].x));
+        dotEl.setAttribute("cy", fmtNum(s[0].y));
+        dotEl.setAttribute("r", fmtNum(3 / zoom));
+        dotEl.setAttribute("visibility", "visible");
+        break;
+      }
+      case "text": {
+        const k = 8 / zoom;
+        showPath(
+          `M ${fmtNum(s[0].x - k)} ${fmtNum(s[0].y)} L ${fmtNum(s[0].x + k)} ${fmtNum(s[0].y)} ` +
+            `M ${fmtNum(s[0].x)} ${fmtNum(s[0].y - k)} L ${fmtNum(s[0].x)} ${fmtNum(s[0].y + k)}`,
+        );
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  function cancelShape(silent = false): void {
+    toolDragRef.current = null;
+    shapeSessionRef.current = null;
+    clearShapePreview();
+    setSessionHint(null);
+    setDragLabel(null);
+    if (!silent) setNotice({ tone: "warn", text: "已取消绘制，源码未改动。" });
+  }
+
+  /** 生成语句 → 单点补丁 → commitDiagramPatch（与键盘 / 拖拽 / 属性同一条 CM6 history）。 */
+  function commitShape(tool: ToolMode, points: readonly ShapePoint[], shift: boolean): void {
+    const built = buildShapeStatement(tool, points, { shift });
+    if (!built.ok) {
+      setNotice({ tone: "warn", text: built.reason });
+      return;
+    }
+    const src = sourceRef.current;
+    const ins = insertShapeStatement(src, built.statement);
+    // 唯一 key：相邻画出的两个形状是两次独立操作，绝不能被 1.5s 并组窗口合成一次撤销。
+    const write = commitDiagramPatch({
+      key: `shape:${tool}:${(shapeSeqRef.current += 1)}`,
+      source: src,
+      nextSource: ins.source,
+      fallback: (s) => setSource(s),
+    });
+    resetDiagramHistorySession();
+    setSelectedId(null);
+    setPendingSelection({ source: ins.source, from: ins.selection.from, to: ins.selection.to });
+    const suffix = write.written ? " · Ctrl+Z 可撤销" : " · 源码栏未就绪，无撤销记录";
+    setNotice({
+      tone: write.written ? "ok" : "warn",
+      text: `已插入${built.label}${ins.note ? ` · ${ins.note}` : ""}${suffix} · 重渲染后自动选中`,
+    });
+  }
+
+  /** 空白源码时先建一个空环境，才有 SVG 可承接指针与 getScreenCTM。 */
+  function newBlankDiagram(): void {
+    const src = sourceRef.current;
+    if (src.trim()) return;
+    const write = commitDiagramPatch({
+      key: `shape:blank:${(shapeSeqRef.current += 1)}`,
+      source: src,
+      nextSource: BLANK_DIAGRAM,
+      fallback: (s) => setSource(s),
+    });
+    resetDiagramHistorySession();
+    setNotice({
+      tone: "ok",
+      text: `已新建空白 tikzpicture 环境${write.written ? " · Ctrl+Z 可撤销" : " · 源码栏未就绪，无撤销记录"}`,
+    });
+  }
+
+  function finishMultiSession(): void {
+    const s = shapeSessionRef.current;
+    if (!s) return;
+    const def = toolDef(s.tool);
+    if (!canFinishShape(s)) {
+      setNotice({ tone: "warn", text: `${def.label}至少需要 ${def.minPoints} 个点，请继续单击。` });
+      return;
+    }
+    commitShape(s.tool, s.points, s.shift);
+    shapeSessionRef.current = null;
+    clearShapePreview();
+    setSessionHint(null);
+  }
+
+  /** React 的 pointerdown 走这里；window 级 move/up/key 走下面注册的 ref。 */
+  function beginShapeAt(e: ReactPointerEvent<HTMLDivElement>): void {
+    if (previewMode !== "local") {
+      setNotice({ tone: "warn", text: "XeLaTeX 精确通道只读，请切回本地即时预览再绘制。" });
+      return;
+    }
+    if (!isToolMode(toolMode) || toolMode === "select") return;
+    const def = toolDef(toolMode);
+    const p = pointerWorld(e.clientX, e.clientY);
+    if (!p) {
+      setNotice({ tone: "warn", text: "画布尚未就绪（或坐标矩阵退化），请稍后再试。" });
+      return;
+    }
+
+    if (def.interaction === "click") {
+      commitShape(toolMode, [p], false);
+      clearShapePreview();
+      return;
+    }
+
+    if (def.interaction === "multi") {
+      // 双击的第二次 pointerdown（detail >= 2）不再加点，直接闭合；
+      // 这样「点 3 个顶点后在最后一个点上双击」得到的是 3 边形而不是 4 边形。
+      if (e.detail >= 2) {
+        finishMultiSession();
+        return;
+      }
+      let s = shapeSessionRef.current;
+      if (!s || s.tool !== toolMode) s = createShapeSession(toolMode);
+      s = addShapePoint(s, p);
+      shapeSessionRef.current = s;
+      if (isShapeComplete(s)) {
+        finishMultiSession(); // 圆弧集满三点自动提交
+      } else {
+        setSessionHint(shapeSessionHint(s));
+        drawShapePreview(toolMode, s.points, s.shift, null);
+      }
+      return;
+    }
+
+    // drag：先确认矩阵可逆，再记录起点，预览只更新属性。
+    const svg = stageSvg();
+    const ctm = svg?.getScreenCTM?.();
+    if (!ctm) return;
+    const m: AffineMatrix = { a: ctm.a, b: ctm.b, c: ctm.c, d: ctm.d, e: ctm.e, f: ctm.f };
+    if (!clientToSvgPoint(m, e.clientX, e.clientY)) return;
+    toolDragRef.current = {
+      tool: toolMode,
+      start: p,
+      current: p,
+      startClient: { x: e.clientX, y: e.clientY },
+      shift: e.shiftKey,
+      moved: false,
+    };
+    drawShapePreview(toolMode, [p, p], e.shiftKey, null);
+    setSessionHint(`${def.label} · 拖到终点松开（Shift 约束正形）· Esc 取消`);
+  }
+
+  function onToolMove(e: PointerEvent): void {
+    if (!toolDragRef.current && !shapeSessionRef.current) return;
+    const hover = pointerWorld(e.clientX, e.clientY);
+    const d = toolDragRef.current;
+    if (d) {
+      const dxPx = e.clientX - d.startClient.x;
+      const dyPx = e.clientY - d.startClient.y;
+      if (!d.moved && Math.hypot(dxPx, dyPx) < SHAPE_THRESHOLD_PX) return;
+      d.moved = true;
+      if (hover) d.current = hover;
+      d.shift = e.shiftKey;
+      drawShapePreview(d.tool, [d.start, d.current], d.shift, null);
+      setDragLabel(dragDeltaLabel(d.current.x - d.start.x, d.current.y - d.start.y));
+      return;
+    }
+    const s = shapeSessionRef.current;
+    if (s) drawShapePreview(s.tool, s.points, s.shift, hover);
+  }
+
+  function onToolUp(): void {
+    const d = toolDragRef.current;
+    if (!d) return;
+    toolDragRef.current = null;
+    setDragLabel(null);
+    setSessionHint(null);
+    clearShapePreview();
+    if (!d.moved) {
+      setNotice({ tone: "warn", text: "拖拽距离太小，形状未生成。" });
+      return;
+    }
+    commitShape(d.tool, [d.start, d.current], d.shift);
+  }
+
+  /** 返回 true 表示按键已被形状工具消费（不让 F2-1 的 Esc / F2-4 的撤销再处理）。 */
+  function onToolKey(e: KeyboardEvent): boolean {
+    // window 级监听的 target 偶尔是 body，用 activeElement 兜底（同 F2-4 的判定口径）。
+    const el =
+      e.target instanceof Element
+        ? e.target
+        : document.activeElement instanceof Element
+          ? document.activeElement
+          : null;
+    // 焦点在源码栏 / 输入框时不抢按键，否则会破坏正常输入。
+    if (el?.closest(".cm-editor, input, textarea, [contenteditable]")) return false;
+    const s = shapeSessionRef.current;
+    if (e.key === "Escape") {
+      if (toolDragRef.current || s) {
+        cancelShape();
+        return true;
+      }
+      if (toolMode !== "select") {
+        setToolMode("select");
+        return true;
+      }
+      return false;
+    }
+    if (e.key === "Enter" && s) {
+      e.preventDefault();
+      finishMultiSession();
+      return true;
+    }
+    if ((e.key === "Backspace" || e.key === "Delete") && s) {
+      e.preventDefault();
+      shapeSessionRef.current = popShapePoint(s);
+      setSessionHint(shapeSessionHint(shapeSessionRef.current));
+      drawShapePreview(s.tool, shapeSessionRef.current.points, s.shift, null);
+      return true;
+    }
+    return false;
+  }
+
+  shapeApiRef.current = {
+    move: onToolMove,
+    up: onToolUp,
+    key: onToolKey,
+    cancel: cancelShape,
+  };
+
   // window 级拖拽监听：即使指针移出 SVG / 画布仍能持续跟随，松手统一提交。
   useEffect(() => {
     const resetMarker = (d: DragState) => {
@@ -404,6 +872,8 @@ export function DiagramCanvas() {
       if (d.guide) d.guide.setAttribute("visibility", "hidden");
     };
     const onMove = (e: PointerEvent) => {
+      // F3-1：形状工具会话优先；无会话时该函数立即返回，不影响 F2-1 控制点拖拽。
+      shapeApiRef.current.move(e);
       const d = dragRef.current;
       if (!d) return;
       const dxPx = e.clientX - d.startClient.x;
@@ -424,6 +894,8 @@ export function DiagramCanvas() {
       setDragLabel(dragDeltaLabel(dWorld.x, dWorld.y));
     };
     const onUp = () => {
+      // F3-1：形状工具松手提交；多点工具无 toolDragRef，这里会直接返回。
+      shapeApiRef.current.up();
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
@@ -440,13 +912,16 @@ export function DiagramCanvas() {
       setDragLabel(null);
     };
     const onKey = (e: KeyboardEvent) => {
+      // F3-1：Esc / Enter / Backspace 先给形状工具会话，绘制中不触发撤销栈。
+      if (shapeApiRef.current.key(e)) return;
       if (e.key === "Escape" && dragRef.current) {
         onCancel();
         return;
       }
       // F2-4：仅画布布局（或焦点在画布 / 侧栏而非源码栏）时 CM6 收不到按键，
       // 由这里把撤销 / 重做转发到同一条 history；分屏里焦点在源码栏时应交回 CM6。
-      const kind = shouldHandleHistoryKey(e, tabVisibleRef.current, !!dragRef.current);
+      const inGesture = !!dragRef.current || !!toolDragRef.current || !!shapeSessionRef.current;
+      const kind = shouldHandleHistoryKey(e, tabVisibleRef.current, inGesture);
       if (!kind) return;
       e.preventDefault();
       if (runDiagramHistoryCommand(kind)) {
@@ -580,6 +1055,14 @@ export function DiagramCanvas() {
     if (e.button !== 0) return;
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
+    // F3-1：非「选择」工具时画布归形状工具，绝不触发 F2-1 的控制点拖拽 / 点选。
+    if (toolMode !== "select") {
+      if (previewMode === "local") {
+        e.preventDefault();
+        beginShapeAt(e);
+      }
+      return;
+    }
     const sid = resolveSelectedId(e.target);
     if (useDiagramStore.getState().selectedId !== sid) setSelectedId(sid);
     startDragFromEvent(e.target);
@@ -621,6 +1104,12 @@ export function DiagramCanvas() {
   const compatLocked = compat?.lockedHandleCount ?? 0;
   const compatItemCount = compatIssues.length + compatUnrendered.length;
   const showCompatBar = !!compat && !compat.empty;
+  const footHint =
+    previewMode !== "local"
+      ? "精确预览只读 · 切回本地即时可绘制"
+      : toolMode === "select"
+        ? `拖动控制点写回坐标 · ${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · 选中 ${selectedId ?? "无"}（侧栏改属性）`
+        : `${toolDef(toolMode).label}工具已启用 · 绘制时隐藏控制点 · 选中 ${selectedId ?? "无"}（插入后自动选中）`;
 
   return (
     <div className="dg-canvas">
@@ -714,6 +1203,9 @@ export function DiagramCanvas() {
         </div>
       </div>
 
+      {/* F3-1：基础图元工具调色板。精确通道只读，组件内部整条禁用并给出常驻说明。 */}
+      <ShapeToolbar sessionHint={sessionHint} onNewBlank={newBlankDiagram} />
+
       {/* 覆盖缺口会被引擎静默丢弃（如 \pic{angle} / angles 库），画布看起来"正常"但少元素。
           常驻显式提示 + 一键切 XeLaTeX 精确预览，避免用户以为是自己代码写错。
           精确通道下不再挂按钮：成功已还原无需操作，失败时下方 XeLaTeX 报错列表本来就常驻，
@@ -799,6 +1291,7 @@ export function DiagramCanvas() {
         <div
           className="dg-canvas-stage"
           ref={stageRef}
+          data-tool={toolMode}
           hidden={previewMode === "precise"}
           onPointerDown={onStagePointerDown}
         />
@@ -909,11 +1402,7 @@ export function DiagramCanvas() {
                 ? "编译失败"
                 : "—"}
         </span>
-        <span>
-          {previewMode === "local"
-            ? `拖动控制点写回坐标 · ${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · 选中 ${selectedId ?? "无"}（侧栏改属性）`
-            : "精确预览只读 · 切回本地即时可拖拽"}
-        </span>
+        <span>{footHint}</span>
         <span>插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>
       </div>
     </div>

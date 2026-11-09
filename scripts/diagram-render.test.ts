@@ -10,11 +10,13 @@ import {
 import {
   MAX_VISIBLE_HANDLES,
   clientDeltaToSvgDelta,
+  clientToSvgPoint,
   dragDeltaLabel,
   isDraggableHandle,
   lockedHandleReason,
   singleSpanPatch,
   svgDeltaToWorldDelta,
+  svgToWorldPoint,
   worldToSvgPoint,
 } from "../src/modules/diagram/dragEdit.ts";
 import {
@@ -73,6 +75,32 @@ import {
   type MergeSession,
 } from "../src/modules/diagram/historyMerge.ts";
 import { shouldHandleHistoryKey } from "../src/modules/diagram/diagramHistory.ts";
+import {
+  DEFAULT_TOOL_MODE,
+  MAX_SHAPE_POINTS,
+  TOOL_DEFS,
+  addShapePoint,
+  canFinishShape,
+  createShapeSession,
+  isShapeComplete,
+  isToolMode,
+  popShapePoint,
+  shapeSessionHint,
+  toolDef,
+} from "../src/modules/diagram/shapeTools.ts";
+import {
+  TIKZ_PT_PER_CM,
+  arcSweepDegrees,
+  buildShapeStatement,
+  findInsertionPoint,
+  fmtCoord,
+  fmtLength,
+  fmtTikzNumber,
+  insertShapeStatement,
+  pickInsertedStatementId,
+  ptToCm,
+  sanitizeNodeText,
+} from "../src/modules/diagram/shapeInsert.ts";
 
 // svg.ts 只在函数内部访问 DOM API，模块加载时不碰 DOM，故可先 import 再注入全局。
 const dom = new JSDOM("<!doctype html><html><body><div id=\"host\"></div></body></html>");
@@ -922,6 +950,162 @@ check(
   shouldHandleHistoryKey(mkKey(canvasEl), false, false) === null,
   "切到 .tex / PDF 后不抢主文档的撤销栈"
 );
+
+// ── F3-1 · 基础图元工具 ────────────────────────────────────────────────────
+const S_CM = TIKZ_PT_PER_CM;
+const S_P = (x: number, y: number) => ({ x, y });
+
+console.log("\nF3-1 · 单位换算与数值格式化（探针实测 1cm = 28.4527559055pt）");
+check(Math.abs(S_CM - 28.45275590551181) < 1e-9, "TIKZ_PT_PER_CM 与 TeX 定义一致");
+check(Math.abs(ptToCm(S_CM) - 1) < 1e-9, "28.4528pt → 1cm");
+check(fmtTikzNumber(0) === "0" && fmtTikzNumber(-0.001) === "0", "整数不带小数、-0 归一为 0");
+check(fmtTikzNumber(1.234) === "1.23" && fmtTikzNumber(-2.5) === "-2.5", "保留 2 位小数、负数正常");
+check(fmtTikzNumber(NaN) === "0" && fmtTikzNumber(Infinity) === "0", "非法数值兜底为 0");
+check(fmtCoord(S_P(0, S_CM)) === "(0,1)", "world pt 点 → TikZ 坐标 (0,1)");
+check(fmtCoord(S_P(S_CM * 1.41, S_CM * 2.11)) === "(1.41,2.11)", "小数 cm 坐标格式干净");
+check(fmtLength(S_CM * 0.75) === "0.75", "半径 / 轴长换算为 cm 数值");
+check(
+  !/[{}%\\\n]/.test(sanitizeNodeText("中文{a}\\b%c\n")) && sanitizeNodeText("中文{a}\\b%c\n").includes("中文"),
+  "文本节点去掉破坏源码的字符、保留中文"
+);
+check(sanitizeNodeText("{}%\\") === "text" && sanitizeNodeText("x".repeat(80)).length === 40,
+  "文本节点空值兜底 + 40 字截断");
+
+console.log("F3-1 · 九类形状语句生成");
+const S_LINE = buildShapeStatement("line", [S_P(0, 0), S_P(2 * S_CM, S_CM)]);
+check(S_LINE.ok && S_LINE.statement === String.raw`\draw (0,0) -- (2,1);`, "直线语句");
+const S_ARROW = buildShapeStatement("arrowLine", [S_P(0, 0), S_P(2 * S_CM, S_CM)]);
+check(S_ARROW.ok && S_ARROW.statement === String.raw`\draw[->] (0,0) -- (2,1);`, "带箭头直线语句");
+const S_RECT = buildShapeStatement("rectangle", [S_P(0, 0), S_P(2 * S_CM, S_CM)]);
+check(S_RECT.ok && S_RECT.statement === String.raw`\draw (0,0) rectangle (2,1);`, "矩形语句");
+const S_RECT_S = buildShapeStatement("rectangle", [S_P(0, 0), S_P(3 * S_CM, S_CM)], { shift: true });
+check(S_RECT_S.ok && S_RECT_S.statement.endsWith("rectangle (3,3);"), "Shift 矩形约束为正方形");
+const S_CIRCLE = buildShapeStatement("circle", [S_P(0, 0), S_P(2 * S_CM, 0)]);
+check(S_CIRCLE.ok && S_CIRCLE.statement === String.raw`\draw (0,0) circle (2);`, "圆：圆心拖出半径");
+const S_CIRCLE_S = buildShapeStatement("circle", [S_P(0, 0), S_P(2 * S_CM, S_CM)], { shift: true });
+check(S_CIRCLE_S.ok && S_CIRCLE_S.statement === String.raw`\draw (1,1) circle (1);`, "Shift 圆：从边界起算的正圆");
+const S_ELL = buildShapeStatement("ellipse", [S_P(0, 0), S_P(2 * S_CM, S_CM)]);
+check(S_ELL.ok && S_ELL.statement === String.raw`\draw (1,0.5) ellipse (1 and 0.5);`, "椭圆：对角拖拽求中心与双轴");
+const S_ELL_S = buildShapeStatement("ellipse", [S_P(0, 0), S_P(2 * S_CM, S_CM)], { shift: true });
+check(S_ELL_S.ok && S_ELL_S.statement.endsWith("ellipse (1 and 1);"), "Shift 椭圆约束为正圆");
+const S_POLY = buildShapeStatement("polygon", [S_P(0, 0), S_P(S_CM, S_CM), S_P(2 * S_CM, 0)]);
+check(S_POLY.ok && S_POLY.statement === String.raw`\draw (0,0) -- (1,1) -- (2,0) -- cycle;`, "多边形以 -- cycle 闭合");
+const S_POLYLINE = buildShapeStatement("polyline", [S_P(0, 0), S_P(2 * S_CM, S_CM)]);
+check(S_POLYLINE.ok && S_POLYLINE.statement === String.raw`\draw (0,0) -- (2,1);`, "折线不闭合");
+const S_ARC = buildShapeStatement("arc", [S_P(S_CM, 0), S_P(0, 0), S_P(0, S_CM)]);
+check(S_ARC.ok && S_ARC.statement === String.raw`\draw (1,0) arc (0:90:1);`, "圆弧：起点 / 圆心 / 终止角");
+const S_ARC_REV = buildShapeStatement("arc", [S_P(S_CM, 0), S_P(0, 0), S_P(0, -S_CM)]);
+check(S_ARC_REV.ok && S_ARC_REV.statement === String.raw`\draw (1,0) arc (0:270:1);`, "圆弧角度按逆时针归一到 0–360");
+check(arcSweepDegrees(S_P(S_CM, 0), S_P(0, 0), S_P(0, S_CM)) === 90, "预览弧角度与语句一致");
+const S_DOT = buildShapeStatement("dot", [S_P(S_CM, 2 * S_CM)]);
+check(S_DOT.ok && S_DOT.statement === String.raw`\node[circle,fill] at (1,2) {};`, "圆点节点");
+const S_TEXT = buildShapeStatement("text", [S_P(S_CM, 2 * S_CM)], { text: "hello" });
+check(S_TEXT.ok && S_TEXT.statement === String.raw`\node at (1,2) {hello};`, "文本节点");
+const S_TEXT_DEF = buildShapeStatement("text", [S_P(0, 0)]);
+check(S_TEXT_DEF.ok && S_TEXT_DEF.statement.includes("{text}"), "文本节点默认占位文本");
+check(!buildShapeStatement("select", [S_P(0, 0)]).ok, "选择工具不生成语句");
+check(!buildShapeStatement("rectangle", [S_P(0, 0)]).ok, "拖拽类工具点数不足时拒绝");
+check(!buildShapeStatement("line", [S_P(0, 0), S_P(0, 0)]).ok, "拖拽距离过小时拒绝");
+check(!buildShapeStatement("polygon", [S_P(0, 0), S_P(S_CM, 0)]).ok, "多边形少于 3 点时拒绝");
+check(!buildShapeStatement("line", [S_P(NaN, 0), S_P(1, 1)]).ok, "非法坐标拒绝");
+
+console.log("F3-1 · 插入点 / 最小补丁 / 自动选中");
+const S_BASE = String.raw`\begin{tikzpicture}
+  \draw (0,0) rectangle (3,2);
+\end{tikzpicture}`;
+const S_PT = findInsertionPoint(S_BASE);
+check(S_PT.mode === "inside" && S_PT.indent === "  ", "完整环境：插在 \\end 行前且沿用正文缩进");
+check(S_BASE.slice(S_PT.at).startsWith(String.raw`\end{tikzpicture}`), "插入点正好是 \\end 行首");
+const S_INS = insertShapeStatement(S_BASE, S_RECT.ok ? S_RECT.statement : "");
+check(S_INS.mode === "inside" && S_INS.note === null, "完整环境无需补结尾、无额外说明");
+check(
+  S_INS.source.slice(S_INS.selection.from, S_INS.selection.to) === (S_RECT.ok ? S_RECT.statement : ""),
+  "selection 精确覆盖新语句"
+);
+const S_MIN = singleSpanPatch(S_BASE, S_INS.source);
+check(!!S_MIN && S_MIN.from === S_PT.at && S_MIN.to === S_PT.at, "插入是单点纯插入补丁，其余源码零改动");
+check(S_INS.source.includes(S_BASE.split("\n")[1]), "原有语句一字不动");
+const S_INS2 = insertShapeStatement(S_INS.source, S_ARROW.ok ? S_ARROW.statement : "");
+check(S_INS2.source.includes(S_RECT.ok ? S_RECT.statement : "") && S_INS2.source.includes(S_ARROW.ok ? S_ARROW.statement : ""), "连续插入两条形状互不覆盖");
+check((S_INS2.source.match(/\\end\{tikzpicture\}/g) ?? []).length === 1, "连续插入不会重复补 \\end");
+const S_OPEN = String.raw`\begin{tikzpicture}
+  \draw (0,0) -- (1,1);`;
+const S_PT_OPEN = findInsertionPoint(S_OPEN);
+const S_INS_OPEN = insertShapeStatement(S_OPEN, S_LINE.ok ? S_LINE.statement : "");
+check(S_PT_OPEN.mode === "append" && S_INS_OPEN.source.includes(String.raw`\end{tikzpicture}`) && !!S_INS_OPEN.note, "残缺源码自动补齐环境结尾并给出说明");
+const S_EMPTY_PT = findInsertionPoint("  \n ");
+const S_INS_EMPTY = insertShapeStatement("", S_RECT.ok ? S_RECT.statement : "");
+check(S_EMPTY_PT.mode === "wrap" && S_INS_EMPTY.mode === "wrap" && !!S_INS_EMPTY.note, "空白源码直接生成完整 tikzpicture 环境");
+check(S_INS_EMPTY.source.startsWith(String.raw`\begin{tikzpicture}`) && S_INS_EMPTY.source.endsWith(String.raw`\end{tikzpicture}`), "wrap 产物自包含");
+check(S_INS_EMPTY.source.slice(S_INS_EMPTY.selection.from, S_INS_EMPTY.selection.to) === (S_RECT.ok ? S_RECT.statement : ""), "wrap 模式 selection 仍精确覆盖语句");
+check(pickInsertedStatementId([{ id: "path:1", span: { from: 10, to: 40 } }], { from: 5, to: 50 }) === "path:1", "按 span 命中新语句 id");
+check(pickInsertedStatementId([{ id: "path:0", span: { from: 0, to: 4 } }], { from: 10, to: 40 }) === null, "区间外的旧语句不会被误选中");
+check(pickInsertedStatementId([], { from: 0, to: 10 }) === null, "空语句清单安全返回 null");
+
+console.log("F3-1 · 工具定义与多点会话状态机");
+check(TOOL_DEFS.length === 11 && new Set(TOOL_DEFS.map((d) => d.id)).size === 11, "11 个工具定义且 id 唯一（选择 + 9 类图元 + 箭头线）");
+check(DEFAULT_TOOL_MODE === "select" && isToolMode("rectangle") && !isToolMode("bogus") && !isToolMode(null), "默认工具与 localStorage 白名单校验");
+check(toolDef("arc").exactPoints === 3 && toolDef("polygon").exactPoints === null, "圆弧固定三点、多边形点数开放");
+let S_SESS = createShapeSession("polygon");
+S_SESS = addShapePoint(S_SESS, S_P(0, 0));
+S_SESS = addShapePoint(S_SESS, S_P(S_CM, 0));
+check(!canFinishShape(S_SESS) && S_SESS.points.length === 2, "多边形 2 点还不能闭合");
+S_SESS = addShapePoint(S_SESS, S_P(S_CM, S_CM));
+check(canFinishShape(S_SESS), "多边形 3 点可闭合");
+check(popShapePoint(S_SESS).points.length === 2, "Backspace 退一点");
+check(addShapePoint(S_SESS, S_P(NaN, 0)).points.length === S_SESS.points.length, "非法点不会进入会话");
+check(shapeSessionHint(S_SESS).includes("双击 / Enter 闭合") && shapeSessionHint(S_SESS).includes("Esc"), "会话提示常驻说明闭合 / 取消方式");
+let S_ARC_SESS = createShapeSession("arc");
+S_ARC_SESS = addShapePoint(S_ARC_SESS, S_P(0, 0));
+S_ARC_SESS = addShapePoint(S_ARC_SESS, S_P(S_CM, 0));
+check(!isShapeComplete(S_ARC_SESS), "圆弧 2 点不自动提交");
+S_ARC_SESS = addShapePoint(S_ARC_SESS, S_P(0, S_CM));
+check(isShapeComplete(S_ARC_SESS) && addShapePoint(S_ARC_SESS, S_P(1, 1)).points.length === 3, "圆弧集满 3 点自动完成且不再加点");
+let S_MANY = createShapeSession("polyline");
+for (let i = 0; i < MAX_SHAPE_POINTS + 6; i++) S_MANY = addShapePoint(S_MANY, S_P(i, i));
+check(S_MANY.points.length === MAX_SHAPE_POINTS, "多点工具有点数上限，避免画布被拖垮");
+
+console.log("F3-1 · 屏幕绝对坐标反算");
+const S_IDM = { a: 1, b: 0, c: 0, d: 1, e: 100, f: 50 };
+const S_Q1 = clientToSvgPoint(S_IDM, 110, 60);
+check(!!S_Q1 && S_Q1.x === 10 && S_Q1.y === 10, "含 e/f 平移的绝对点换算（相对位移算法会漏掉平移）");
+const S_Q2 = clientToSvgPoint({ a: 2, b: 0, c: 0, d: 2, e: 100, f: 50 }, 120, 70);
+check(!!S_Q2 && S_Q2.x === 10 && S_Q2.y === 10, "缩放矩阵下的绝对点换算");
+const S_Q3 = clientToSvgPoint({ a: 0, b: 1, c: -1, d: 0, e: 0, f: 0 }, 10, 20);
+check(!!S_Q3 && S_Q3.x === 20 && S_Q3.y === -10, "旋转 / 剪切矩阵也能求逆");
+check(clientToSvgPoint({ a: 0, b: 0, c: 0, d: 0, e: 0, f: 0 }, 1, 2) === null, "退化矩阵返回 null 供调用方取消");
+const S_VB = { x: -12, y: -12, width: 124, height: 124 };
+const S_WP = { x: S_CM, y: S_CM * 2 };
+const S_BACK = svgToWorldPoint(worldToSvgPoint(S_WP, S_VB), S_VB);
+check(Math.abs(S_BACK.x - S_WP.x) < 1e-9 && Math.abs(S_BACK.y - S_WP.y) < 1e-9, "world ↔ SVG 绝对点互逆（viewBox 非 0 起点）");
+
+console.log("F3-1 · 真实引擎接线：九类语句可渲染 / 可写回 / 自动选中 / 不误锁");
+const S_STMTS: { label: string; statement: string }[] = [
+  S_LINE, S_ARROW, S_RECT, S_CIRCLE, S_ELL, S_POLY, S_POLYLINE, S_ARC, S_DOT, S_TEXT,
+].filter((r): r is { ok: true; statement: string; label: string } => r.ok).map((r) => ({ label: r.label, statement: r.statement }));
+check(S_STMTS.length === 10, "九类图元 + 箭头线全部生成成功");
+for (const item of S_STMTS) {
+  const rr = await renderTikz(`\\begin{tikzpicture}\n  ${item.statement}\n\\end{tikzpicture}`);
+  check(
+    rr.statements.length > 0 && rr.svg.includes("data-source-id") && !rr.diagnostics.some((d) => d.severity === "error"),
+    `${item.label}：上游可解析 / 有 data-source-id / 无 error 诊断`
+  );
+}
+const S_END = await renderTikz(S_INS.source);
+const S_NEW_ID = pickInsertedStatementId(S_END.statements, S_INS.selection);
+check(!!S_NEW_ID && S_END.svg.includes(`data-source-id="${S_NEW_ID}"`), "插入后按 span 自动选中新语句（id 与 SVG 一致）");
+check(S_END.compat.empty === true, "新插入的基础图元不会被 F2-3 能力矩阵误锁");
+const S_NEW_HANDLE = S_END.handles.find(
+  (h) => h.sourceRef?.sourceId === S_NEW_ID && (h.rewriteMode === "direct" || h.rewriteMode === "delta")
+);
+check(!!S_NEW_HANDLE, "新形状立即产生可拖拽控制点");
+if (S_NEW_HANDLE) {
+  const S_MOVED = await applyDragEdit(S_INS.source, S_END.handles, S_NEW_HANDLE.id, {
+    x: S_NEW_HANDLE.world.x + S_CM,
+    y: S_NEW_HANDLE.world.y + S_CM,
+  });
+  check(S_MOVED.status === "ok" && S_MOVED.newSource !== S_INS.source, "新形状的控制点可立即拖拽写回（F2-1 无回归）");
+}
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);
