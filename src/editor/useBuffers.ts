@@ -292,7 +292,13 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
       set((s) => ({
         buffers: s.buffers.map((b) =>
           b.path === path
-            ? { ...b, savedContent: written, encoding: d.encoding, eol: d.eol }
+            ? {
+                ...b,
+                savedContent: written,
+                encoding: d.encoding,
+                eol: d.eol,
+                externallyChanged: false,
+              }
             : b,
         ),
         // 静默模式（自动保存）成功不弹 toast；往返有差异仅在手动保存时提示

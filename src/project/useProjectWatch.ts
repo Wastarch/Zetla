@@ -10,12 +10,20 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { projectApi } from "@/ipc/invoke";
 import type { FileChanged, ProjectChanged } from "@/types";
 
+/** 比较磁盘与编辑器文本时忽略平台换行符差异，避免自身保存 CRLF 文件后误报。 */
+function normalizeEol(text: string): string {
+  return text.replace(/\r\n?/g, "\n");
+}
+
 export function useProjectWatch(): void {
   useEffect(() => {
     let alive = true;
     const unlisteners: Array<() => void> = [];
     let refreshing = false;
     let pending = false;
+    // notify 可能为一次落盘连续发送多条 Modify；按路径合并，并用序号丢弃过期异步读取。
+    const fileChangeTimers = new Map<string, number>();
+    const fileChangeSeq = new Map<string, number>();
 
     const run = async (root: string): Promise<void> => {
       const st = useProjectStore.getState();
@@ -48,26 +56,41 @@ export function useProjectWatch(): void {
       else un();
     });
 
-    // M1-9：文件被外部修改 → 与内存内容比对，不一致则提示重载
-    // （自身保存回显时文件与内存 content 一致，不会误报）
+    // M1-9：文件被外部修改 → 与内存内容比对，不一致则提示重载。
+    // 同一路径短时间内的事件只读取一次；读取完成前若又有新事件，旧结果作废。
     void onKernelEvent<FileChanged>(RustEvents.fileChanged, (e) => {
       if (!alive) return;
       const cur = useBuffersStore
         .getState()
         .buffers.find((b) => b.path === e.path && b.kind === "text");
       if (!cur) return;
-      void projectApi
-        .readFile(e.path)
-        .then((d) => {
-          const now = useBuffersStore
-            .getState()
-            .buffers.find((b) => b.path === e.path);
-          if (!now) return;
-          useBuffersStore.getState().setExternalChanged(e.path, d.content !== now.content);
-        })
-        .catch(() => {
-          /* 读取失败（文件已删等）→ 交给树刷新/打开逻辑处理 */
-        });
+
+      const seq = (fileChangeSeq.get(e.path) ?? 0) + 1;
+      fileChangeSeq.set(e.path, seq);
+      const oldTimer = fileChangeTimers.get(e.path);
+      if (oldTimer !== undefined) window.clearTimeout(oldTimer);
+
+      const timer = window.setTimeout(() => {
+        fileChangeTimers.delete(e.path);
+        void projectApi
+          .readFile(e.path)
+          .then((d) => {
+            if (!alive || fileChangeSeq.get(e.path) !== seq) return;
+            const now = useBuffersStore
+              .getState()
+              .buffers.find((b) => b.path === e.path && b.kind === "text");
+            if (!now) return;
+            const changed =
+              normalizeEol(d.content) !== normalizeEol(now.content) ||
+              d.eol !== now.eol ||
+              d.encoding.toLowerCase() !== now.encoding.toLowerCase();
+            useBuffersStore.getState().setExternalChanged(e.path, changed);
+          })
+          .catch(() => {
+            /* 读取失败（文件已删等）→ 交给树刷新/打开逻辑处理 */
+          });
+      }, 180);
+      fileChangeTimers.set(e.path, timer);
     }).then((un) => {
       if (alive) unlisteners.push(un);
       else un();
@@ -75,6 +98,9 @@ export function useProjectWatch(): void {
 
     return () => {
       alive = false;
+      fileChangeTimers.forEach((timer) => window.clearTimeout(timer));
+      fileChangeTimers.clear();
+      fileChangeSeq.clear();
       unlisteners.forEach((u) => u());
     };
   }, []);
