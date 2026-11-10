@@ -284,6 +284,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         compileStep: null,
       });
       useAppStore.getState().clearLog();
+      // 打开项目后默认打开根目录 main.tex；不存在时保持当前空编辑区行为。
+      // 使用扫描结果确认文件确实存在，避免额外文件系统调用和路径大小写差异。
+      const defaultMain = findFileByPath(tree.nodes, joinPath(root, "main.tex"));
+      if (defaultMain) {
+        await useBuffersStore.getState().openFiles([defaultMain.path]);
+      }
       // M0-10b：主文件同目录已有编译产物时直接加载，不必先编译（不强制展开预览栏）
       if (tree.mainFile) {
         const existing = findFileByPath(tree.nodes, expectedPdfPath(tree.mainFile));

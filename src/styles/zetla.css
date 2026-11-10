@@ -1957,6 +1957,17 @@ body {
   background: var(--bg-2);
 }
 
+.settings-config-path {
+  display: inline-block;
+  max-width: min(48ch, 42vw);
+  overflow: hidden;
+  color: var(--txt-2);
+  font-family: var(--font-mono);
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
 /* ── 从模板新建向导（M0-7；M1-9 三栏模板库口径：同尺寸 + 单模板 + 可返回） ─────── */
 .modal.wizard {
   /* 与 .modal.tl-modal 保持同一尺寸，避免从模板库跳转时窗口跳动 */

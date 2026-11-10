@@ -988,6 +988,12 @@ pub fn config_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join(CONFIG_FILE_NAME))
 }
 
+/// 返回当前平台实际使用的应用配置文件路径，供设置界面展示。
+#[tauri::command]
+pub fn get_app_config_path(app: tauri::AppHandle) -> Result<String, String> {
+    Ok(config_path(&app)?.to_string_lossy().into_owned())
+}
+
 /// 读配置：文件缺失 / 读取失败 / JSON 损坏 → 默认值（不自动回写，避免误覆盖用户手工编辑）
 pub fn read_config(path: &std::path::Path) -> AppConfig {
     let text = match std::fs::read_to_string(path) {
