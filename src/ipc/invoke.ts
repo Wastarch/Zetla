@@ -151,6 +151,8 @@ export const projectApi = {
 export const configApi = {
   loadAppConfig: () => call<AppSettings>("load_app_config"),
   saveAppConfig: (config: AppSettings) => call<void>("save_app_config", { config }),
+  /** 当前平台实际使用的全局配置文件绝对路径（设置页展示用） */
+  getAppConfigPath: () => call<string>("get_app_config_path"),
   // M1-15a：项目注册表（最近/置顶/归档）；均返回更新后的完整列表，供前端同步镜像
   listRecentProjects: () => call<ProjectEntry[]>("list_recent_projects"),
   registerRecentProject: (root: string) =>
