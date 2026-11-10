@@ -21,6 +21,7 @@ import { SyntaxHighlightDialog } from "@/ui/SyntaxHighlightDialog";
 import { RecipePane } from "@/ui/RecipePane";
 import { SnippetsPane, resetSnippetsDraft } from "@/ui/SnippetsPane";
 import { flushSnippets, hasDirtySnippets } from "@/ui/snippetsPaneBridge";
+import { configApi } from "@/ipc/invoke";
 import {
   DEFAULT_AUX_EXTENSIONS,
   LIVE_PREVIEW_DELAY_PRESETS,
@@ -52,6 +53,26 @@ const ZOOM_OPTIONS: { value: PdfDefaultZoom; label: string }[] = [
   { value: "125", label: "125%" },
   { value: "150", label: "150%" },
 ];
+
+/** 路径过长时保留末尾目录和文件名；完整值仍放在 title 中。 */
+function compactPath(path: string, maxLength = 48): string {
+  if (path.length <= maxLength) return path;
+  const separator = path.includes("\\") ? "\\" : "/";
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  if (parts.length === 0) return path;
+
+  let suffix = parts.pop()!;
+  if (suffix.length + 1 >= maxLength) {
+    return `…${suffix.slice(-(maxLength - 1))}`;
+  }
+  while (parts.length > 0) {
+    const candidate = `${parts[parts.length - 1]}${separator}${suffix}`;
+    if (candidate.length + 2 > maxLength) break;
+    suffix = candidate;
+    parts.pop();
+  }
+  return `…${separator}${suffix}`;
+}
 
 /** 设置行：左侧标题+说明（tooltip 可标注置灰原因），右侧控件 */
 function Fld({
@@ -123,11 +144,16 @@ export function SettingsDialog() {
   // 回退值取构建期生成的 APP_VERSION（与 package.json 唯一版本源联动）；
   // 正常情况下 getVersion() 会拿到 tauri.conf.json 的真实版本覆盖它。
   const [version, setVersion] = useState(APP_VERSION);
+  const [configPath, setConfigPath] = useState("config.json");
 
   useEffect(() => {
     void getVersion()
       .then(setVersion)
       .catch(() => {}); // 权限受限时回退默认
+    void configApi
+      .getAppConfigPath()
+      .then(setConfigPath)
+      .catch(() => {}); // 非 Tauri 预览环境回退为通用文件名
   }, []);
 
   const update = useCallback(
@@ -929,11 +955,12 @@ export function SettingsDialog() {
         </div>
         <div className="modal-foot">
           <div className="hint">
-            设置即时生效（保存后写入本地配置文件
+            设置即时生效（存于
             <span
-              style={{ fontFamily: "var(--font-mono)", color: "var(--txt-2)" }}
+              className="settings-config-path"
+              title={configPath}
             >
-              %APPDATA%\Zetla\config.json
+              {compactPath(configPath)}
             </span>
             ）
           </div>
