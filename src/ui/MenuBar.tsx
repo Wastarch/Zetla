@@ -53,16 +53,11 @@ function withView(
   if (v) fn(v);
 }
 
+/** 原生关闭确认放行标记：确认后再次 close 时不重复弹窗。 */
+let closeApproved = false;
+let closePromptOpen = false;
+
 async function quitApp() {
-  const bs = useBuffersStore.getState();
-  const dirty = bs.dirtyCount();
-  if (dirty > 0) {
-    const ok = await confirm(`有 ${dirty} 个文件尚未保存，仍要退出吗？`, {
-      title: "退出 Zetla",
-      kind: "warning",
-    });
-    if (!ok) return;
-  }
   await getCurrentWindow().close();
 }
 
@@ -97,13 +92,65 @@ export function MenuBar() {
   const moduleViews = useModuleViews();
   // 自定义标题栏：追踪最大化状态以切换金刚键图标（decorations:false 后无系统键）
   const [maximized, setMaximized] = useState(false);
+  // macOS 进入系统全屏后原生交通灯会隐藏，此时菜单无需继续预留左侧空间。
+  const [fullscreen, setFullscreen] = useState(false);
+
+  // 统一接管窗口关闭请求：macOS 原生红色按钮、系统快捷键和自绘关闭键均走同一保护。
+  useEffect(() => {
+    const w = getCurrentWindow();
+    let alive = true;
+    let unlisten: (() => void) | undefined;
+    void w
+      .onCloseRequested(async (event) => {
+        if (closeApproved) return;
+        const dirty = useBuffersStore.getState().dirtyCount();
+        if (dirty === 0) return;
+
+        event.preventDefault();
+        if (closePromptOpen) return;
+        closePromptOpen = true;
+        try {
+          const ok = await confirm(`有 ${dirty} 个文件尚未保存，仍要退出吗？`, {
+            title: "退出 Zetla",
+            kind: "warning",
+          });
+          if (!ok) return;
+          closeApproved = true;
+          try {
+            await w.close();
+          } catch (e) {
+            closeApproved = false;
+            throw e;
+          }
+        } finally {
+          closePromptOpen = false;
+        }
+      })
+      .then((u) => {
+        if (alive) unlisten = u;
+        else u();
+      });
+    return () => {
+      alive = false;
+      unlisten?.();
+    };
+  }, []);
+
   useEffect(() => {
     const w = getCurrentWindow();
     let unlisten: (() => void) | undefined;
-    void w.isMaximized().then(setMaximized);
+    const refreshWindowState = () => {
+      void Promise.all([w.isMaximized(), w.isFullscreen()]).then(
+        ([nextMaximized, nextFullscreen]) => {
+          setMaximized(nextMaximized);
+          setFullscreen(nextFullscreen);
+        },
+      );
+    };
+    refreshWindowState();
     void w
       .onResized(() => {
-        void w.isMaximized().then(setMaximized);
+        refreshWindowState();
       })
       .then((u) => {
         unlisten = u;
@@ -690,7 +737,11 @@ export function MenuBar() {
 
   return (
     <>
-      <div className="menubar" ref={barRef} role="menubar">
+      <div
+        className={fullscreen ? "menubar is-fullscreen" : "menubar"}
+        ref={barRef}
+        role="menubar"
+      >
         {/* 左区：logo + 菜单 */}
         <img className="nav-logo" src="/logo.svg" alt="Zetla" draggable={false} />
         {menus.map((m, i) => (

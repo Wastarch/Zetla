@@ -324,6 +324,25 @@ body {
   color: #fff;
 }
 
+/* macOS：窗口装饰由 tauri.macos.conf.json 恢复，使用原生红黄绿按钮。 */
+html[data-platform="darwin"] .win-ctl-group,
+html[data-platform="darwin"] .resize-frame {
+  display: none;
+}
+
+html[data-platform="darwin"] .menubar {
+  padding-left: 78px;
+}
+
+/* 系统全屏时交通灯隐藏，撤销为它预留的左侧空间。 */
+html[data-platform="darwin"] .menubar.is-fullscreen {
+  padding-left: 8px;
+}
+
+html[data-platform="darwin"] .nav-logo {
+  display: none;
+}
+
 /* ── 自定义窗口缩放边（decorations:false 后补足系统边缘缩放） ── */
 .resize-frame {
   position: fixed;
