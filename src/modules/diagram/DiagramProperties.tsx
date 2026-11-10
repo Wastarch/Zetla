@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useDiagramStore } from "./store";
 import { commitDiagramPatch } from "./diagramHistory";
 import { isManuallyLocked } from "./grouping.ts";
+import { canEditDiagramSource } from "./editability.ts";
 import {
   PROPERTY_LABELS,
   PROPERTY_PRESETS,
@@ -100,6 +101,10 @@ export function DiagramProperties() {
   const selectedId = useDiagramStore((s) => s.selectedId);
   const setSelectedId = useDiagramStore((s) => s.setSelectedId);
   const renderMeta = useDiagramStore((s) => s.renderMeta);
+  const previewMode = useDiagramStore((s) => s.previewMode);
+  // F3-6：精确通道只读 —— 属性写回是写源码，统一走全模块判定。
+  const permission = canEditDiagramSource({ previewMode });
+  const readonly = !permission.ok;
   const setSource = useDiagramStore((s) => s.setSource);
   const grouping = useDiagramStore((s) => s.grouping);
   const selectedIds = useDiagramStore((s) => s.selectedIds);
@@ -128,13 +133,21 @@ export function DiagramProperties() {
   const manualLock = selected && isManuallyLocked(grouping, selected.id)
     ? "该图元已在图层面板主动锁定，先解锁后再编辑。"
     : null;
-  const editable =
+  const lockedEdit =
     (compatLock || manualLock) && baseEdit
       ? { ...baseEdit, editable: false, reason: compatLock ?? manualLock ?? "" }
       : baseEdit;
+  // 精确通道优先：把属性区整体收敛成只读理由条，不渲染任何可写下拉 / 输入框。
+  const editable =
+    readonly && lockedEdit
+      ? { ...lockedEdit, editable: false, reason: permission.reason }
+      : lockedEdit;
 
   function commit(key: PropertyKey, value: string | null): void {
-    if (!selected) return;
+    if (!selected || !permission.ok) {
+      setNotice({ tone: "warn", text: permission.reason });
+      return;
+    }
     if (manualLock) {
       setNotice({ tone: "warn", text: manualLock });
       return;
@@ -166,6 +179,7 @@ export function DiagramProperties() {
   return (
     <section className="dg-side-card dg-prop-card">
       <h3 className="dg-side-card-title">属性 · 选中图元</h3>
+      {readonly && <div className="dg-panel-readonly">{permission.reason}</div>}
       {statements.length === 0 ? (
         <p className="dg-side-card-sub">
           {source.trim()

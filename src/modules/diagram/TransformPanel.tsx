@@ -22,6 +22,7 @@ import {
   type TransformKey,
 } from "./transform";
 import { boxHeight, boxWidth, formatCm, unionWorldBox, type WorldBox } from "./guides";
+import { canEditDiagramSource } from "./editability.ts";
 
 type Tone = "ok" | "warn" | "err";
 
@@ -55,6 +56,10 @@ export function TransformPanel() {
   const source = useDiagramStore((s) => s.source);
   const setSource = useDiagramStore((s) => s.setSource);
   const setGuides = useDiagramStore((s) => s.setGuides);
+  const previewMode = useDiagramStore((s) => s.previewMode);
+  // F3-6：全模块统一只读判定 —— 精确通道下对齐 / 分布 / 变换一律禁用并常驻提示。
+  const permission = canEditDiagramSource({ previewMode });
+  const readonly = !permission.ok;
   const [msg, setMsg] = useState<{ tone: Tone; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Record<TransformKey, string>>({
@@ -76,7 +81,10 @@ export function TransformPanel() {
   }
 
   async function runAlign(kind: AlignKind): Promise<void> {
-    if (busy) return;
+    if (busy || !permission.ok) {
+      if (!permission.ok) setMsg({ tone: "warn", text: permission.reason });
+      return;
+    }
     setBusy(true);
     try {
       const { r, boxes } = await selectionBoxes(source);
@@ -119,7 +127,10 @@ export function TransformPanel() {
   }
 
   async function runDistribute(kind: DistributeKind): Promise<void> {
-    if (busy) return;
+    if (busy || !permission.ok) {
+      if (!permission.ok) setMsg({ tone: "warn", text: permission.reason });
+      return;
+    }
     setBusy(true);
     try {
       const { r, boxes } = await selectionBoxes(source);
@@ -161,7 +172,10 @@ export function TransformPanel() {
   }
 
   async function applyTransform(key: TransformKey, raw: string | null): Promise<void> {
-    if (busy) return;
+    if (busy || !permission.ok) {
+      if (!permission.ok) setMsg({ tone: "warn", text: permission.reason });
+      return;
+    }
     setBusy(true);
     try {
       const { r, ids: sel } = await selectionBoxes(source);
@@ -209,6 +223,10 @@ export function TransformPanel() {
   }
 
   function refreshReadout(): void {
+    if (!permission.ok) {
+      setMsg({ tone: "warn", text: permission.reason });
+      return;
+    }
     void (async () => {
       const { boxes } = await selectionBoxes(source);
       const u = unionWorldBox(boxes.map((b) => b.box));
@@ -225,13 +243,14 @@ export function TransformPanel() {
     })();
   }
 
-  const alignDisabled = count < 2 || busy;
-  const distDisabled = count < 3 || busy;
-  const transformDisabled = count < 1 || busy;
+  const alignDisabled = count < 2 || busy || readonly;
+  const distDisabled = count < 3 || busy || readonly;
+  const transformDisabled = count < 1 || busy || readonly;
 
   return (
     <div className="dg-transform-panel">
       <div className="dg-panel-title">对齐 · 变换</div>
+      {readonly && <div className="dg-panel-readonly">{permission.reason}</div>}
 
       {count === 0 ? (
         <div className="dg-panel-hint">未选中图元 · 在画布点选 / 框选后可用</div>
@@ -239,7 +258,12 @@ export function TransformPanel() {
         <>
           <div className="dg-panel-sub">
             已选 {count} 项
-            <button type="button" className="dg-mini-btn" onClick={refreshReadout}>
+            <button
+              type="button"
+              className="dg-mini-btn"
+              disabled={readonly}
+              onClick={refreshReadout}
+            >
               测包围盒
             </button>
           </div>

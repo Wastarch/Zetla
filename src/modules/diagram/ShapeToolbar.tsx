@@ -3,6 +3,7 @@
 // 工具定义与状态机在 shapeTools.ts。精确通道是 XeLaTeX 只读结果，整条工具条禁用。
 import { useDiagramStore } from "./store";
 import { TOOL_DEFS, isToolMode, toolDef } from "./shapeTools";
+import { canEditDiagramSource } from "./editability.ts";
 import "./diagram.css";
 
 interface ShapeToolbarProps {
@@ -17,7 +18,9 @@ export function ShapeToolbar({ sessionHint, onNewBlank }: ShapeToolbarProps) {
   const setToolMode = useDiagramStore((s) => s.setToolMode);
   const previewMode = useDiagramStore((s) => s.previewMode);
   const source = useDiagramStore((s) => s.source);
-  const readonly = previewMode !== "local";
+  // F3-6：走全模块统一的只读判定，文案与侧栏面板 / 画布键盘一致。
+  const permission = canEditDiagramSource({ previewMode });
+  const readonly = !permission.ok;
   const empty = source.trim().length === 0;
   const current = toolDef(isToolMode(toolMode) ? toolMode : "select");
 
@@ -40,7 +43,7 @@ export function ShapeToolbar({ sessionHint, onNewBlank }: ShapeToolbarProps) {
         ))}
       </div>
       {readonly ? (
-        <span className="dg-tool-readonly">精确通道只读 · 切回「本地即时」可绘制</span>
+        <span className="dg-tool-readonly">{permission.reason}</span>
       ) : empty ? (
         <button type="button" className="dg-tool-blank" onClick={onNewBlank}>
           新建空白图

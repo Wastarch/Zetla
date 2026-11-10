@@ -152,6 +152,12 @@ import {
 } from "./guides";
 import { GRID_STEP_PT, snapToGrid } from "./grid";
 import {
+  canEditDiagramSource,
+  isDiagramEditKey,
+  isPreciseReadonly,
+} from "./editability.ts";
+import { pickNearestHandle, type HitCandidate } from "./handleHit.ts";
+import {
   getClipboard,
   getLastMoveDelta,
   hasClipboard,
@@ -1492,8 +1498,17 @@ export function DiagramCanvas() {
         !!transformRef.current ||
         !!toolDragRef.current ||
         !!shapeSessionRef.current;
-      // F3-5：方向键 nudge / Ctrl+C/V/D（仅绘图 Tab + 焦点不在文本框 / 源码栏 + 非手势中）。
-      if (tabVisibleRef.current && !inGesture && !isTextEntryFocused(e)) {
+      // F3-6：统一只读判定 —— 精确通道下 F3-5 的 nudge / 复制粘贴 / Ctrl+D 一律拦截，
+      // 焦点 / 手势 / Tab 隐藏等其它理由则静默放行，绝不抢键或弹无谓提示。
+      const inTextEntry = isTextEntryFocused(e);
+      const permission = canEditDiagramSource({
+        previewMode: useDiagramStore.getState().previewMode,
+        tabVisible: tabVisibleRef.current,
+        inTextEntry,
+        inGesture,
+      });
+      // F3-5：方向键 nudge / Ctrl+C/V/D（绘图 Tab + 焦点不在文本框 + 非手势 + 可写源码）。
+      if (tabVisibleRef.current && !inTextEntry && permission.ok) {
         const mod = e.ctrlKey || e.metaKey;
         if (!mod && !e.altKey && useDiagramStore.getState().selectedIds.length > 0) {
           const step = e.shiftKey ? 10 : 1;
@@ -1531,6 +1546,17 @@ export function DiagramCanvas() {
             return;
           }
         }
+      } else if (
+        tabVisibleRef.current &&
+        !inTextEntry &&
+        !inGesture &&
+        isPreciseReadonly(permission) &&
+        isDiagramEditKey(e)
+      ) {
+        // 精确通道只读：编辑键给出统一理由，Ctrl+Z / Y 仍落到下面的撤销栈分支。
+        e.preventDefault();
+        setNotice({ tone: "warn", text: permission.reason });
+        return;
       }
       const kind = shouldHandleHistoryKey(e, tabVisibleRef.current, inGesture);
       if (!kind) return;
@@ -1575,7 +1601,7 @@ export function DiagramCanvas() {
   }, [notice]);
 
   /** 命中控制点，或直接拖图元本体（自动取它的 node-position 句柄）。 */
-  function startDragFromEvent(target: EventTarget | null): void {
+  function startDragFromEvent(target: EventTarget | null, client?: PointLike): void {
     if (previewMode !== "local" || !result || !handlesOn) return;
     // 实时预览让「连续快速拖拽」变常见：源码已提交但画布还在 160ms debounce 时，
     // result 仍是旧一批句柄，直接拖会因 sourceFingerprint 不符而写回失败。
@@ -1591,7 +1617,33 @@ export function DiagramCanvas() {
     let hit: TikzEditHandle | undefined;
     const markerEl = target.closest("[data-dg-handle-id]");
     if (markerEl) {
-      const id = markerEl.getAttribute("data-dg-handle-id");
+      let id = markerEl.getAttribute("data-dg-handle-id");
+      // F3-6：相邻控制点命中圈重叠时，浏览器按绘制顺序分发会选错。只有确实重叠
+      // （落在 hitR 内的候选 > 1）才按「指针距离」覆盖 DOM 结果，否则原链路零回归。
+      // 距离与 hitR 都用 SVG 用户单位，50%–200% 缩放判定一致。
+      if (client) {
+        const ctm = svg.getScreenCTM?.();
+        if (ctm) {
+          const p = clientToSvgPoint(
+            { a: ctm.a, b: ctm.b, c: ctm.c, d: ctm.d, e: ctm.e, f: ctm.f },
+            client.x,
+            client.y,
+          );
+          if (p) {
+            const cands: HitCandidate[] = [];
+            for (const c of Array.from(svg.querySelectorAll("[data-dg-hit-id]"))) {
+              const cid = c.getAttribute("data-dg-hit-id") ?? "";
+              const cx = Number(c.getAttribute("cx"));
+              const cy = Number(c.getAttribute("cy"));
+              if (cid && Number.isFinite(cx) && Number.isFinite(cy)) {
+                cands.push({ id: cid, x: cx, y: cy });
+              }
+            }
+            const pick = pickNearestHandle(cands, p, metrics.hitR);
+            if (pick.overlapping > 1 && pick.id) id = pick.id;
+          }
+        }
+      }
       hit = result.handles.find((h) => h.id === id);
     } else {
       const shape = target.closest("[data-source-id]");
@@ -1608,7 +1660,9 @@ export function DiagramCanvas() {
     if (!hit) return;
     const state = useDiagramStore.getState();
     const shapeEl = target.closest("[data-source-id]");
-    const sid = shapeEl?.getAttribute("data-source-id") ?? null;
+    // F3-6：择优后把 sid 对齐到真正命中的句柄 —— 既避免「高亮 A、拖了 B」，也补上
+    // 原先「点控制点时 sid 为 null、主动锁定检查被跳过」的 F3-3 绕过漏洞。
+    const sid = hit.sourceRef?.sourceId ?? shapeEl?.getAttribute("data-source-id") ?? null;
     // F3-3：主动锁定优先于一切拖拽（与 F2-3 的能力矩阵锁定是两套语义）。
     if (sid && isManuallyLocked(state.grouping, sid)) {
       setNotice({ tone: "warn", text: "该图元已在图层面板主动锁定，先解锁后再拖动。" });
@@ -2095,6 +2149,9 @@ export function DiagramCanvas() {
 
   function onStagePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
     if (e.button !== 0) return;
+    // F3-6：精确通道 stage 本来就 hidden，这里用统一只读判定再显式收口一次，
+    // 保证选择 / 框选 / 拖拽 / 变换柄等所有画布编辑手势不会在该通道被触发。
+    if (!canEditDiagramSource({ previewMode }).ok) return;
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
     // F3-1：非「选择」工具时画布归形状工具，绝不触发 F2-1 的控制点拖拽 / 点选。
@@ -2140,7 +2197,7 @@ export function DiagramCanvas() {
       setMarqueeRect(null);
     }
     // Shift 点击只做加选 / 减选，绝不起拖，避免误改几何。
-    if (sid && !additive) startDragFromEvent(e.target);
+    if (sid && !additive) startDragFromEvent(e.target, { x: e.clientX, y: e.clientY });
     if (dragRef.current || marqueeRef.current) e.preventDefault();
   }
 

@@ -46,6 +46,14 @@ import {
   snapToGrid,
 } from "../src/modules/diagram/grid.ts";
 import {
+  PRECISE_READONLY_REASON,
+  canEditDiagramSource,
+  isDiagramEditKey,
+  isPreciseReadonly,
+  type EditKeyLike,
+} from "../src/modules/diagram/editability.ts";
+import { pickNearestHandle } from "../src/modules/diagram/handleHit.ts";
+import {
   hasDrawableContent,
   sanitizeSvg,
 } from "../src/modules/diagram/tikzEditor/svg.ts";
@@ -2376,6 +2384,139 @@ console.log("F3-5 · 网格 / 标尺 / 吸附（纯逻辑）");
   check(ticks.length === gl.xs.length, "标尺刻度数与竖网格线一致");
   check(ticks[0].cm === 0, "首个刻度 cm=0");
   check(ticks[ticks.length - 1].cm === 3, "末个刻度 cm=3（3 格）");
+}
+
+console.log("F3-6 · 统一只读判定 + 精确通道编辑键拦截（纯逻辑）");
+{
+  const ok = canEditDiagramSource({ previewMode: "local" });
+  check(ok.ok && ok.reason === "", "本地即时通道可写源码");
+  const precise = canEditDiagramSource({ previewMode: "precise" });
+  check(!precise.ok && precise.reason === PRECISE_READONLY_REASON, "精确通道只读且理由统一");
+  check(isPreciseReadonly(precise), "精确通道理由可被 isPreciseReadonly 识别");
+  check(
+    !isPreciseReadonly(canEditDiagramSource({ previewMode: "local", inGesture: true })),
+    "手势理由不算精确只读（静默放行，不弹提示）",
+  );
+  check(
+    canEditDiagramSource({ previewMode: "local", tabVisible: false }).reason === "绘图 Tab 未激活",
+    "Tab 隐藏给出独立理由",
+  );
+  check(!canEditDiagramSource({ previewMode: "local", inTextEntry: true }).ok, "焦点在文本框不可写");
+  check(!canEditDiagramSource({ previewMode: "local", inGesture: true }).ok, "手势中不可写");
+  check(
+    canEditDiagramSource({ previewMode: "precise", inGesture: true, inTextEntry: true }).reason ===
+      PRECISE_READONLY_REASON,
+    "精确通道理由优先级高于手势 / 焦点",
+  );
+
+  const ek = (key: string, o: Partial<EditKeyLike> = {}): EditKeyLike => ({
+    key,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    altKey: false,
+    ...o,
+  });
+  check(isDiagramEditKey(ek("ArrowLeft")), "方向键是编辑键");
+  check(isDiagramEditKey(ek("ArrowUp", { shiftKey: true })), "Shift+方向键仍是编辑键（放大步长）");
+  check(isDiagramEditKey(ek("d", { ctrlKey: true })), "Ctrl+D 是编辑键");
+  check(isDiagramEditKey(ek("V", { metaKey: true })), "Cmd+V 是编辑键（大小写无关）");
+  check(isDiagramEditKey(ek("c", { ctrlKey: true })), "Ctrl+C 是编辑键");
+  check(!isDiagramEditKey(ek("z", { ctrlKey: true })), "Ctrl+Z 归 F2-4 撤销栈，不作为编辑键拦截");
+  check(!isDiagramEditKey(ek("ArrowLeft", { altKey: true })), "Alt+方向键不拦截");
+  check(!isDiagramEditKey(ek("d", { ctrlKey: true, shiftKey: true })), "Ctrl+Shift+D 不拦截");
+  check(!isDiagramEditKey(ek("a")), "普通字母不是编辑键");
+  // 全章收口：精确通道下每个 F3-5 编辑键都必须「只读 + 被识别为编辑键」
+  const f35Keys: EditKeyLike[] = [
+    ek("ArrowLeft"), ek("ArrowRight"), ek("ArrowUp"), ek("ArrowDown"),
+    ek("ArrowDown", { shiftKey: true }),
+    ek("c", { ctrlKey: true }), ek("v", { ctrlKey: true }), ek("d", { ctrlKey: true }),
+  ];
+  check(
+    isPreciseReadonly(precise) && f35Keys.every((k) => isDiagramEditKey(k)),
+    "精确通道只读覆盖 F3-5 全部编辑键（方向键 / Shift 方向键 / Ctrl+C/V/D）",
+  );
+}
+
+console.log("F3-6 · 相邻控制点命中圈距离择优（纯逻辑）");
+{
+  const cands = [
+    { id: "h0", x: 0, y: 0 },
+    { id: "h1", x: 3, y: 0 },
+    { id: "h2", x: 30, y: 0 },
+  ];
+  const none = pickNearestHandle(cands, { x: 100, y: 100 }, 8);
+  check(none.id === null && none.overlapping === 0, "指针在全部命中圈外返回 null");
+  const solo = pickNearestHandle(cands, { x: 30, y: 0 }, 8);
+  check(solo.id === "h2" && solo.overlapping === 1, "不重叠时只有一个候选（调用方保持 DOM 分发零回归）");
+  // 两个命中圈重叠：指针更靠近 h1，但 DOM 后绘制的 h0 会盖住 —— 择优应取 h1
+  const overlap = pickNearestHandle(
+    [
+      { id: "h0", x: 0, y: 0 },
+      { id: "h1", x: 3, y: 0 },
+    ],
+    { x: 2.6, y: 0 },
+    8,
+  );
+  check(overlap.overlapping === 2, "两个控制点都落在 hitR 内 → 判定为重叠");
+  check(overlap.id === "h1", "重叠时选距离指针更近的控制点（不按 DOM 绘制顺序）");
+  check(Math.abs(overlap.distance - 0.4) < 1e-9, "返回最近距离便于回归断言");
+  const tie = pickNearestHandle(
+    [
+      { id: "a", x: 1, y: 1 },
+      { id: "b", x: 1, y: 1 },
+    ],
+    { x: 1, y: 1 },
+    5,
+  );
+  check(tie.overlapping === 2 && tie.id === "a", "严格重合时按输入顺序取先者（结果确定）");
+  const scaled = pickNearestHandle(
+    [
+      { id: "a", x: 0, y: 0 },
+      { id: "b", x: 6, y: 0 },
+    ],
+    { x: 5.5, y: 0 },
+    16,
+  );
+  check(scaled.id === "b" && scaled.overlapping === 2, "大 hitR（低缩放）下仍能择优");
+  const dirty = pickNearestHandle(
+    [
+      { id: "", x: NaN, y: 0 },
+      { id: "ok", x: 1, y: 1 },
+    ],
+    { x: 1, y: 1 },
+    4,
+  );
+  check(dirty.id === "ok" && dirty.overlapping === 1, "空 id / NaN 坐标候选被过滤");
+}
+
+console.log("F3-6 · F2-3 挂锁 / F2-4 撤销栈联动抽查（端到端）");
+{
+  // F3-5 的 nudge / 对齐 / Ctrl+D 都走 applyDeltaEdit → planGroupMove，
+  // 其内部 resolveHandleLock 让能力矩阵锁定的构造被跳过，绝不静默改语义。
+  const lockPlan = await applyDeltaEdit({
+    source: FOREACH_SRC,
+    handles: foreachRender.handles,
+    deltas: { "foreach:0": { x: 20, y: 0 } },
+    compat: foreachRender.compat,
+    grouping: EMPTY_GROUPING,
+  });
+  check(
+    lockPlan.status !== "ok" || lockPlan.movedElements.length === 0,
+    "F2-3 挂锁联动：nudge 不会移动 \\foreach 展开构造",
+  );
+  check(
+    lockPlan.skipped.some((s) => s.id === "foreach:0" || s.id === "*"),
+    "被跳过的锁定图元给出 skipped 理由（与画布挂锁同源）",
+  );
+  // 只读判定在入口，写回规划本身仍可独立工作（UI 守卫禁止在精确通道调用它）。
+  const zSrc = `\\begin{tikzpicture}\n  \\draw (0,0) circle (1);\n  \\fill (3,0) circle (1);\n\\end{tikzpicture}`;
+  const zr = await renderTikz(zSrc);
+  const zEdit = planZOrderEdit(zSrc, zr.statements, [topLevelBlocks(zSrc, zr.statements)[0].id], "front");
+  check(
+    !!zEdit && !canEditDiagramSource({ previewMode: "precise" }).ok,
+    "F1-6 精确通道只读在入口拦截：写回规划可用但该通道不允许调用",
+  );
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);

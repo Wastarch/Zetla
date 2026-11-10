@@ -1458,30 +1458,48 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   fill: var(--accent, #2d7ff9);
 }
 
-/* F3-5：网格层 + 标尺层（只做视觉辅助，绝不接收指针命中）。
-   网格线宽 / 标尺文字大小由 handleLayer.ts 按 unitScale 内联换算，任何缩放都屏幕恒定。 */
+/* F3-5 / F3-6：网格层 + 标尺层（只做视觉辅助，绝不接收指针命中）。
+   网格线宽 / 标尺文字大小由 handleLayer.ts 按 unitScale 内联换算，任何缩放都屏幕恒定。
+   **双主题口径**：引擎 SVG 是黑字黑线，画布底色 `--paper` 与墨色 `--paper-ink`
+   在亮 / 暗主题下都恒定（浅纸 / 深墨），因此画在纸面上的辅助层一律用 paper / paper-ink
+   配低透明度 —— 绝不能用随主题翻转的 `--line` / `--bg-2` / `--txt-3`，否则暗主题下
+   会出现「深色标尺带 + 浅色刻度」压在浅纸画布上的割裂感（F3-6 修正）。 */
 .dg-grid-layer,
 .dg-ruler-layer {
   pointer-events: none;
 }
 .dg-grid-line {
-  stroke: var(--line, #e0e0e0);
-  opacity: 0.7;
+  stroke: var(--paper-ink, #22242a);
+  opacity: 0.16;
   pointer-events: none;
 }
 .dg-ruler-band {
-  fill: var(--bg-2, #f7f7f7);
-  opacity: 0.82;
+  fill: var(--paper, #fbfaf7);
+  opacity: 0.92;
   pointer-events: none;
 }
 .dg-ruler-tick {
-  stroke: var(--txt-3, #9a9a9a);
+  stroke: var(--paper-ink, #22242a);
+  opacity: 0.5;
   pointer-events: none;
 }
 .dg-ruler-label {
-  fill: var(--txt-3, #9a9a9a);
+  fill: var(--paper-ink, #22242a);
+  opacity: 0.78;
   font-family: var(--font-mono, ui-monospace, monospace);
   pointer-events: none;
+}
+/* F3-6：精确通道只读的常驻提示（属性 / 变换 / 图层面板共用同一文案口径）。 */
+.dg-panel-readonly {
+  margin: 6px 0 2px;
+  padding: 5px 8px;
+  border: 1px solid var(--line, #d8dee5);
+  border-left: 3px solid var(--warn, #a86a12);
+  border-radius: 4px;
+  background: var(--bg-2, #f4f6f8);
+  color: var(--txt-2, #3a3939);
+  font-size: 11px;
+  line-height: 1.5;
 }
 /* F3-5：图层面板层级 z-order 工具行。 */
 .dg-zorder-actions {
@@ -1495,4 +1513,10 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   font-weight: 600;
   color: var(--txt-3, #9a9a9a);
   margin-right: 2px;
+}
+.dg-zorder-readonly {
+  flex: none;
+  font-size: 11px;
+  color: var(--warn, #a86a12);
+  cursor: help;
 }

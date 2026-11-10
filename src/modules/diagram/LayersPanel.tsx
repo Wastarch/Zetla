@@ -18,6 +18,7 @@ import {
 } from "./grouping.ts";
 import { planZOrderEdit, type ZOrderOp } from "./zOrder.ts";
 import { commitDiagramPatches } from "./diagramHistory";
+import { canEditDiagramSource } from "./editability.ts";
 
 interface Notice {
   tone: "ok" | "warn";
@@ -34,6 +35,10 @@ export function LayersPanel() {
   const setSelectedIds = useDiagramStore((s) => s.setSelectedIds);
   const layersVisible = useDiagramStore((s) => s.layersVisible);
   const setLayersVisible = useDiagramStore((s) => s.setLayersVisible);
+  const previewMode = useDiagramStore((s) => s.previewMode);
+  // F3-6：z-order 会重排源码语句，精确通道只读必须禁；分组 / 隐藏 / 主动锁定是
+  // 编辑器侧元数据（不写 TikZ），按唯一真源口径仍然可用。
+  const permission = canEditDiagramSource({ previewMode });
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
@@ -45,8 +50,8 @@ export function LayersPanel() {
   const rows = useMemo(() => buildLayerRows(statements, grouping), [statements, grouping]);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
   const canGroup = selectedIds.length >= 2;
-  // z-order 只对顶层语句生效；需要一份新鲜的渲染结果才能拿到语句 span。
-  const canZ = fresh && selectedIds.length > 0;
+  // z-order 只对顶层语句生效；需要一份新鲜的渲染结果才能拿到语句 span；精确通道只读禁用。
+  const canZ = fresh && selectedIds.length > 0 && permission.ok;
   const activeGroup = grouping.groups.find((g) => g.id === activeGroupId) ?? null;
 
   function flash(text: string, tone: Notice["tone"] = "ok"): void {
@@ -115,6 +120,10 @@ export function LayersPanel() {
 
   /** F3-5：整段重排顶层语句（front/back/forward/backward），最小 span 补丁一次撤销。 */
   function doZOrder(op: ZOrderOp): void {
+    if (!permission.ok) {
+      flash(permission.reason, "warn");
+      return;
+    }
     if (!fresh || !renderMeta) return;
     const edit = planZOrderEdit(source, renderMeta.statements, selectedIds, op);
     if (!edit) {
@@ -174,6 +183,11 @@ export function LayersPanel() {
           {/* F3-5：层级 z-order —— 重排源码语句顺序（整段移动，注释 / 缩进零改动） */}
           <div className="dg-layer-actions dg-zorder-actions">
             <span className="dg-zorder-label">层级</span>
+            {!permission.ok && (
+              <span className="dg-zorder-readonly" title={permission.reason}>
+                只读
+              </span>
+            )}
             <button
               type="button"
               className="dg-mini-btn"
