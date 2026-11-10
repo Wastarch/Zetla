@@ -93,8 +93,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 
 
 QQ交流群:1129325600
-
-
+<img src="docs/image/qrcode_1794298725347.jpg" width="50%">
 
 
 
