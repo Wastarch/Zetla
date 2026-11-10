@@ -91,6 +91,12 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 
 欢迎通过 [GitHub Issues](https://github.com/Wastarch/Zetla/issues) 反馈问题或提出建议。提交代码前请先确认改动符合项目当前阶段的范围。
 
+
+QQ交流群:1129325600
+<img src="docs/image/qrcode_1794298725347.jpg" width="50%">
+
+
+
 ## 许可证 📄
 
 本项目采用 **GNU Affero General Public License v3（AGPLv3）**
