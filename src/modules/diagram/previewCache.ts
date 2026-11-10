@@ -37,6 +37,11 @@ export function setCachedPreview(key: string, r: TikzPreviewResult): void {
   }
 }
 
+/** 手动重编译时只失效当前 key，不影响其他已缓存的成功预览 */
+export function removeCachedPreview(key: string): void {
+  cache.delete(key);
+}
+
 export function clearPrecisePreviewCache(): void {
   cache.clear();
 }

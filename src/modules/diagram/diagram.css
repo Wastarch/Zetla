@@ -650,6 +650,11 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   color: var(--accent, #2d7ff9);
   border-color: var(--accent, #2d7ff9);
 }
+/* 精确通道的手动重编译：与只读状态区分，但仍复用同一套控件规格 */
+.dg-edit-tools button.dg-recompile-btn {
+  color: var(--accent, #2d7ff9);
+  border-color: var(--accent, #2d7ff9);
+}
 
 /* 控制点由 handleLayer.ts 用 DOM API 追加到已消毒的 SVG 上；
    半径 / 线宽由 handleVisual.handleMetrics 除以**实测 unitScale**（屏幕 px / SVG 用户单位，

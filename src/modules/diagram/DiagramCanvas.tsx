@@ -498,6 +498,20 @@ export function DiagramCanvas() {
     };
   }, [source, empty, previewMode, tabVisible]);
 
+  // 手动重编译：跳过 800ms debounce 与成功缓存，立即用当前源码跑一次 XeLaTeX。
+  // 主要解决「刚改完源码但看到的还是上一次结果」时无法强制刷新的问题。
+  const recompilePrecise = async () => {
+    if (empty || preciseBusy) return;
+    const engine = useSettingsStore.getState().settings.build.engine;
+    setPreciseBusy(true);
+    try {
+      const r = await requestPrecisePreview(source, engine, true);
+      setPrecise(r);
+    } finally {
+      setPreciseBusy(false);
+    }
+  };
+
   // 消毒后挂载本地 SVG。精确模式下清空 stage（改由 <img> 显示，不内联注入）。
   // 每次重建都丢弃旧拖拽持有的 DOM 引用，避免把位移写到已被替换的控制点上。
   useEffect(() => {
@@ -2301,6 +2315,17 @@ export function DiagramCanvas() {
         {/* F2-4：撤销 / 重做操作的是源码 history，与预览通道无关，两个通道常驻；
             控制点只在本地即时通道有意义。 */}
         <div className="dg-edit-tools">
+          {previewMode === "precise" && (
+            <button
+              type="button"
+              className="dg-recompile-btn"
+              disabled={empty || preciseBusy}
+              title="忽略缓存并立即用当前 TikZ 源码重新跑一次 XeLaTeX"
+              onClick={recompilePrecise}
+            >
+              {preciseBusy ? "编译中…" : "重新编译"}
+            </button>
+          )}
           {previewMode === "local" && (
             <button
               type="button"

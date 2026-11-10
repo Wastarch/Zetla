@@ -349,7 +349,13 @@ pub async fn tikz_preview(
         let log = std::fs::read_to_string(work.join("snippet.log"))
             .unwrap_or_else(|_| String::from_utf8_lossy(&out.stdout).into_owned());
         let errors = parse_errors(&log, &work, preamble_lines);
-        let brief = brief_failure(&log, &out);
+        // -file-line-error 把真实错误写成 `./snippet.tex:22: Package pgf Error: ...`，
+        // 没有 `!` 前缀；brief_failure 只认 `!`，会误把 XeTeX 启动横幅当错误贴出来。
+        // 结构化解析已经拿到了这条错误，优先用它，兜底才读原始日志/stdout。
+        let brief = errors
+            .first()
+            .map(|e| e.raw.clone())
+            .unwrap_or_else(|| brief_failure(&log, &out));
         let _ = std::fs::remove_dir_all(&work);
         return Ok(failure(
             format!("{} 编译失败：{}", engine_name, brief),
@@ -491,6 +497,20 @@ mod tests {
         assert_eq!(lines[n as usize], "% \\usetikzlibrary{angles,quotes}");
         assert_eq!(lines[(n + 1) as usize], "\\begin{tikzpicture}");
         assert_eq!(lines[(n + 2) as usize], "  \\draw (0,0)--(1,1);");
+    }
+
+    #[test]
+    fn file_line_error_is_structured_for_brief_message() {
+        // -file-line-error 的错误行没有 `!` 前缀，旧 brief_failure 会漏掉它。
+        let log = "This is XeTeX, Version 3.141592653\n\
+                   ./snippet.tex:22: Package pgf Error: Unknown arrow tip kind 'Latex'.\n";
+        let errors = parse_errors(log, Path::new("."), 4);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0].raw,
+            "Package pgf Error: Unknown arrow tip kind 'Latex'."
+        );
+        assert_eq!(errors[0].line, 18);
     }
 
     #[test]

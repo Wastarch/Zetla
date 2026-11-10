@@ -92,6 +92,7 @@ import {
   clearPrecisePreviewCache,
   getCachedPreview,
   previewKey,
+  removeCachedPreview,
   setCachedPreview,
   svgDataUrl,
 } from "../src/modules/diagram/previewCache.ts";
@@ -392,6 +393,9 @@ setCachedPreview(keyA, { ...okResult, status: "error", svg: undefined });
 check(getCachedPreview(keyA) === undefined, "失败结果不进缓存（环境修好后可重试）");
 setCachedPreview(keyA, okResult);
 check(getCachedPreview(keyA)?.svg === okResult.svg, "成功结果写入并命中缓存");
+removeCachedPreview(keyA);
+check(getCachedPreview(keyA) === undefined, "手动重编译可定向失效当前 key");
+setCachedPreview(keyA, okResult);
 for (let i = 0; i < MAX_PREVIEW_CACHE + 2; i += 1) {
   setCachedPreview(previewKey(`src-${i}`, "xelatex"), okResult);
 }
