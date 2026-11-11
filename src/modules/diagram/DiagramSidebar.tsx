@@ -90,15 +90,14 @@ export function DiagramSidebar() {
           神经网络 / 概率图 / 流程框图 / 张量矩阵 / 受力分析，5 类模板。
         </p>
         <button type="button" className="btn" disabled>
-          浏览组件（F6 接入）
+          浏览组件（即将支持）
         </button>
       </section>
 
       <section className="dg-side-card">
         <h3 className="dg-side-card-title">画布与布局</h3>
         <p className="dg-side-card-sub">
-          独立 Tab 内提供「仅画布 / 仅源码 / 左右分屏」三种布局，开关在 Tab 顶部工具条；
-          源码栏复用 Zetla 既有 LaTeXEditor。画布可切「本地 / 精确（XeLaTeX）」双通道。
+          仅画布 / 仅源码 / 左右分屏三种布局在 Tab 顶部切换；预览可切「本地即时 / XeLaTeX 精确」两个通道。
         </p>
         <button type="button" className="btn" onClick={handleOpenDiagram}>
           {diagramOpen ? "切换到绘图 Tab" : "打开绘图 Tab"}
@@ -123,7 +122,7 @@ export function DiagramSidebar() {
             <label
               key={m.id}
               className={`dg-side-radio${exportMode === m.id ? " is-on" : ""}${m.ready ? "" : " is-off"}`}
-              title={m.ready ? m.hint : `${m.hint}（F4 接入）`}
+              title={m.ready ? m.hint : `${m.hint}（即将支持）`}
             >
               <input
                 type="radio"
@@ -133,7 +132,7 @@ export function DiagramSidebar() {
                 onChange={() => setExportMode(m.id)}
               />
               <span>{m.label}</span>
-              {!m.ready && <em>F4</em>}
+              {!m.ready && <em>即将</em>}
             </label>
           ))}
         </div>
@@ -177,7 +176,7 @@ export function DiagramSidebar() {
 
         <button
           type="button"
-          className="btn primary"
+          className="btn primary dg-side-primary"
           disabled={!canInsert}
           onClick={() => insertDiagramCode()}
         >
@@ -190,12 +189,12 @@ export function DiagramSidebar() {
           <p className="dg-side-warn">插入按钮已禁用：请先在 .tex 标签页活动时打开绘图 Tab。</p>
         )}
         {exportMode !== "source" && (
-          <p className="dg-side-warn">图片 / 仅保存依赖 F4 的 XeLaTeX 落盘链路，暂不可用。</p>
+          <p className="dg-side-warn">图片导出 / 仅保存文件将在后续版本支持，暂不可用。</p>
         )}
       </section>
 
       <p className="dg-side-note">
-        主文档已有 tikzpicture 的反向编辑（✎ 徽标）按约定延后到 F5，v1 仅支持「绘图 Tab → 插入主文档」。
+        主文档已有 tikzpicture 的反向编辑（✎ 徽标）将在后续版本支持，当前仅支持「绘图 Tab → 插入主文档」。
       </p>
     </div>
   );

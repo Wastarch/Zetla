@@ -4,6 +4,30 @@
    - 画布（DiagramCanvas）：F1-3 起渲染 tikz-editor 的 SVG（白纸底 + 消毒注入）
    主题 token 统一用 zetla.css 的 --txt / --txt-2 / --bg / --line / --paper / --accent。 */
 
+/* ── F3-8：设计 token 与间距刻度（纯表现层）──────────────────────────────
+   口径：只复用 zetla.css 既有 token，不新增 --fg，也不改全局主题系统。
+   · UI 控件（工具条 / 侧栏 / 设置页）走 --txt* / --bg* / --line / --accent，随主题翻转；
+   · 画在纸面上的层（网格 / 标尺 / 纸张框 / 画布内状态浮层）继续恒定走
+     --paper / --paper-ink，否则暗色主题下浅字会落在浅纸上看不见。
+   间距只用 4 / 8 / 12 / 16 四档，字号只用 10 / 11 / 12 / 13 四档。 */
+.dg-tab,
+.dg-side,
+.set-pane {
+  --dg-space-1: 4px;
+  --dg-space-2: 8px;
+  --dg-space-3: 12px;
+  --dg-space-4: 16px;
+  --dg-radius-sm: 4px;
+  --dg-radius: 6px;
+  --dg-radius-lg: 10px;
+  --dg-ctrl-h: 24px;
+  --dg-fs-xs: 10px;
+  --dg-fs-sm: 11px;
+  --dg-fs-md: 12px;
+  --dg-fs-lg: 13px;
+  --dg-fw-title: 600;
+}
+
 .dg-side {
   flex: 1;
   min-height: 0;
@@ -1588,4 +1612,483 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   font-size: 11px;
   color: var(--warn, #a86a12);
   cursor: help;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   F3-8 · UI 视觉规范化 —— 统一覆盖层（纯表现层，零逻辑改动）
+   --------------------------------------------------------------------------
+   放在文件末尾，只覆盖颜色 / 间距 / 字号 / 圆角 / 状态样式，
+   不新增任何 DOM 行为、不改事件、不改条件渲染、不改任何 SVG 几何口径。
+   ① 卡片与信息层级  ② 控件规格  ③ 画布 head 分组  ④ 图元工具条分组
+   ⑤ 状态提示收敛    ⑥ 空 / 加载 / 错误态  ⑦ 状态栏  ⑧ 缩放适配
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ① 卡片与信息层级 ───────────────────────────────────────────────────── */
+.dg-side {
+  gap: var(--dg-space-2);
+  padding: var(--dg-space-3);
+}
+.dg-side-head {
+  padding: 0 0 var(--dg-space-2);
+  border-bottom: 1px solid var(--line, #e0e0e0);
+}
+.dg-side-title {
+  font-size: var(--dg-fs-lg);
+  font-weight: var(--dg-fw-title);
+  letter-spacing: 0.01em;
+}
+.dg-side .dg-side-card,
+.dg-side .dg-transform-panel {
+  gap: var(--dg-space-2);
+  padding: var(--dg-space-3);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius);
+  background: var(--bg-2, #f7f7f7);
+}
+.dg-side .dg-side-card-title,
+.dg-side .dg-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--dg-fs-md);
+  font-weight: var(--dg-fw-title);
+  line-height: 1.4;
+  color: var(--txt, #353333);
+}
+/* 统一「卡片标题」的层级标记：一条 2px 主色竖线，不引入图标包 */
+.dg-side .dg-side-card-title::before,
+.dg-side .dg-panel-title::before {
+  content: "";
+  flex: none;
+  width: 2px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--accent, #2d7ff9);
+  opacity: 0.75;
+}
+.dg-side .dg-side-card-sub,
+.dg-side .dg-panel-hint {
+  margin: 0;
+  font-size: var(--dg-fs-sm);
+  line-height: 1.6;
+  color: var(--txt-2, #6b6b6b);
+  opacity: 0.9;
+}
+.dg-side .dg-layer-head {
+  align-items: center;
+  gap: var(--dg-space-2);
+}
+.dg-side .dg-layer-head .dg-side-card-title {
+  flex: 1;
+  min-width: 0;
+}
+.dg-side .dg-layer-toggle {
+  min-height: var(--dg-ctrl-h);
+  padding: 0 var(--dg-space-2);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  background: transparent;
+  color: var(--txt-2, #6b6b6b);
+  font-size: var(--dg-fs-xs);
+  cursor: pointer;
+}
+.dg-side .dg-side-note {
+  font-size: var(--dg-fs-xs);
+  line-height: 1.6;
+  color: var(--txt-3, #9a9a9a);
+  opacity: 0.9;
+}
+/* 主操作「插入到文档」提升为整行填充按钮（原 .btn.primary 配色不变） */
+.dg-side .dg-side-primary.btn {
+  align-self: stretch;
+  width: 100%;
+  min-height: 34px;
+  border-radius: var(--dg-radius);
+  font-size: var(--dg-fs-md);
+  font-weight: var(--dg-fw-title);
+  letter-spacing: 0.01em;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+}
+.dg-side .dg-side-primary.btn:disabled {
+  box-shadow: none;
+}
+
+/* ② 控件规格：同类控件在任何面板里长得一样 ───────────────────────────── */
+.dg-side .btn,
+.dg-tab .dg-tab-layout,
+.dg-tab .dg-mode-switch button,
+.dg-tab .dg-edit-tools button,
+.dg-tab .dg-view-btn,
+.dg-tab .dg-zoom-btn,
+.dg-tab .dg-tool-btn,
+.dg-tab .dg-tool-blank,
+.dg-tab .dg-diag-toggle,
+.dg-tab .dg-canvas-alert button,
+.dg-tab .dg-lock-head button,
+.dg-side .dg-mini-btn,
+.dg-side .dg-align-grid button,
+.dg-side .dg-dist-grid button,
+.dg-side .dg-transform-row button,
+.dg-side .dg-prop-clear,
+.dg-side .dg-layer-icon {
+  min-height: var(--dg-ctrl-h);
+  border-radius: var(--dg-radius-sm);
+  font-size: var(--dg-fs-sm);
+  line-height: 1.3;
+  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+}
+.dg-side .dg-side-input,
+.dg-side .dg-prop-select,
+.dg-side .dg-layer-rename,
+.dg-side .dg-transform-row input,
+.dg-side .dg-prop-custom .dg-side-input,
+.dg-tab .dg-handle-size select,
+.set-pane .set-inline select,
+.set-pane .set-inline input {
+  min-height: var(--dg-ctrl-h);
+  padding: 0 var(--dg-space-2);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  background: var(--bg, #fff);
+  color: var(--txt, #353333);
+  font-size: var(--dg-fs-sm);
+}
+/* 统一的键盘焦点：所有可交互控件共用一条 2px 主色描边 */
+.dg-side button:focus-visible,
+.dg-side select:focus-visible,
+.dg-side input:focus-visible,
+.dg-tab button:focus-visible,
+.dg-tab select:focus-visible,
+.set-pane button:focus-visible,
+.set-pane select:focus-visible,
+.set-pane input:focus-visible {
+  outline: 2px solid var(--accent, #2d7ff9);
+  outline-offset: 1px;
+}
+/* 统一的禁用 / 只读态：判定仍全部来自 canEditDiagramSource，这里只管外观 */
+.dg-side button:disabled,
+.dg-side input:disabled,
+.dg-side select:disabled,
+.dg-tab button:disabled,
+.dg-tab select:disabled,
+.set-pane button:disabled,
+.set-pane input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.dg-side .dg-side-radio,
+.dg-side .dg-side-check {
+  min-height: var(--dg-ctrl-h);
+  font-size: var(--dg-fs-sm);
+  color: var(--txt, #353333);
+}
+.dg-side .dg-side-radio.is-off,
+.dg-side .dg-side-radio.is-off span {
+  color: var(--txt-3, #9a9a9a);
+}
+
+/* ③ 画布 head：分组标签 + 允许换行，窄窗口 / 高缩放不挤爆 ─────────────── */
+.dg-tab .dg-canvas-head {
+  flex-wrap: wrap;
+  gap: var(--dg-space-2) var(--dg-space-3);
+  padding: var(--dg-space-2) var(--dg-space-3);
+}
+.dg-tab .dg-head-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dg-space-1);
+  padding-left: var(--dg-space-3);
+  border-left: 1px solid var(--line, #e0e0e0);
+}
+/* 分段控件本身已有边框与连体按钮，不再插分组标签 */
+.dg-tab .dg-head-group::before {
+  content: attr(data-label);
+  flex: none;
+  font-size: var(--dg-fs-xs);
+  font-weight: var(--dg-fw-title);
+  letter-spacing: 0.04em;
+  color: var(--txt-3, #9a9a9a);
+  white-space: nowrap;
+}
+.dg-tab .dg-head-group.dg-mode-switch {
+  padding-left: var(--dg-space-1);
+  border-left: 0;
+}
+.dg-tab .dg-head-group.dg-mode-switch::before {
+  display: none;
+}
+.dg-tab .dg-mode-switch {
+  border-radius: var(--dg-radius);
+}
+.dg-tab .dg-canvas-badge {
+  border-radius: var(--dg-radius-lg);
+  font-size: var(--dg-fs-xs);
+  font-weight: var(--dg-fw-title);
+}
+.dg-tab .dg-canvas-hint {
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-3, #9a9a9a);
+}
+.dg-tab .dg-view-tools {
+  margin-left: var(--dg-space-2);
+  padding-left: var(--dg-space-3);
+  border-left: 1px solid var(--line, #e0e0e0);
+}
+.dg-tab .dg-zoom {
+  margin-left: auto;
+  padding-left: var(--dg-space-3);
+  border-left: 0;
+}
+.dg-tab .dg-zoom-val {
+  font-size: var(--dg-fs-sm);
+  font-weight: var(--dg-fw-title);
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-tab .dg-handle-size {
+  gap: var(--dg-space-1);
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-2, #6b6b6b);
+}
+
+/* ④ 图元工具条：选择 / 几何 / 线 / 节点 四组，统一的方形按钮规格 ─────── */
+.dg-tab .dg-tool-bar {
+  gap: var(--dg-space-2) var(--dg-space-3);
+  padding: var(--dg-space-2) var(--dg-space-3);
+}
+.dg-tab .dg-tool-bar-label {
+  font-size: var(--dg-fs-xs);
+  font-weight: var(--dg-fw-title);
+  letter-spacing: 0.04em;
+  color: var(--txt-3, #9a9a9a);
+}
+.dg-tab .dg-tool-buttons {
+  align-items: center;
+  gap: var(--dg-space-3);
+}
+.dg-tab .dg-tool-group {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dg-space-1);
+  padding-left: var(--dg-space-2);
+  border-left: 1px dashed var(--line, #e0e0e0);
+}
+.dg-tab .dg-tool-group:first-child {
+  padding-left: 0;
+  border-left: 0;
+}
+.dg-tab .dg-tool-group-label {
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-3, #9a9a9a);
+  white-space: nowrap;
+}
+.dg-tab .dg-tool-btn {
+  min-width: 34px;
+  padding: 0 var(--dg-space-2);
+  border-color: var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  color: var(--txt-2, #6b6b6b);
+  text-align: center;
+}
+.dg-tab .dg-tool-btn.is-select {
+  margin-right: 0;
+  border-right-width: 1px;
+}
+.dg-tab .dg-tool-btn.on {
+  border-color: var(--accent, #2d7ff9);
+  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
+  color: var(--accent, #2d7ff9);
+}
+.dg-tab .dg-tool-hint {
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-3, #9a9a9a);
+}
+
+/* ⑤ 状态提示收敛：一套 info / warn 条，左侧色条 + 统一按钮规格 ─────────
+   注意：仍**常驻默认展开**、理由清单与一键切 XeLaTeX 一条不删，只改外观。 */
+.dg-tab .dg-notice {
+  --dg-notice-tone: var(--warn, #a86a12);
+  border-left: 3px solid var(--dg-notice-tone);
+  border-bottom: 1px solid color-mix(in srgb, var(--dg-notice-tone) 40%, var(--line, #e0e0e0));
+  padding: var(--dg-space-2) var(--dg-space-3);
+  font-size: var(--dg-fs-sm);
+  line-height: 1.55;
+}
+.dg-tab .dg-canvas-alert.dg-notice {
+  --dg-notice-tone: var(--alert-tone);
+  border-bottom: 0;
+  background: color-mix(in srgb, var(--alert-tone) 8%, var(--bg-3, #fff));
+}
+.dg-tab .dg-notice.is-ok {
+  --dg-notice-tone: var(--ok, #218a5c);
+}
+.dg-tab .dg-notice.is-err {
+  --dg-notice-tone: var(--err, #c2382f);
+}
+.dg-tab .dg-notice strong,
+.dg-tab .dg-notice .dg-lock-head strong {
+  font-size: var(--dg-fs-sm);
+  font-weight: var(--dg-fw-title);
+  color: var(--dg-notice-tone);
+}
+.dg-tab .dg-notice button {
+  min-height: var(--dg-ctrl-h);
+  padding: 0 var(--dg-space-2);
+  border: 1px solid var(--dg-notice-tone);
+  border-radius: var(--dg-radius-sm);
+  background: transparent;
+  color: var(--dg-notice-tone);
+  font-size: var(--dg-fs-sm);
+  cursor: pointer;
+}
+.dg-tab .dg-notice .dg-lock-toggle {
+  border-color: var(--line, #e0e0e0);
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-tab .dg-lock-badge {
+  border-radius: var(--dg-radius-sm);
+  font-size: var(--dg-fs-xs);
+  font-weight: var(--dg-fw-title);
+}
+.dg-tab .dg-lock-list {
+  max-height: 132px;
+  padding: 0 var(--dg-space-3) var(--dg-space-1);
+}
+.dg-tab .dg-lock-tag,
+.dg-tab .dg-diag-sev {
+  border-radius: var(--dg-radius-sm);
+  font-size: var(--dg-fs-xs);
+}
+.dg-tab .dg-diag-list {
+  padding: var(--dg-space-1) var(--dg-space-3);
+  border-top: 1px solid var(--line, #e0e0e0);
+  font-size: var(--dg-fs-sm);
+}
+/* 只读 / 警告文案在四个面板里共用同一套外观（判定逻辑一律不动） */
+.dg-side .dg-panel-readonly,
+.dg-tab .dg-tool-readonly,
+.dg-side .dg-zorder-readonly,
+.dg-side .dg-side-warn {
+  padding: var(--dg-space-1) var(--dg-space-2);
+  border: 1px solid color-mix(in srgb, var(--warn, #a86a12) 35%, var(--line, #e0e0e0));
+  border-left: 3px solid var(--warn, #a86a12);
+  border-radius: var(--dg-radius-sm);
+  background: color-mix(in srgb, var(--warn, #a86a12) 7%, var(--bg-2, #f7f7f7));
+  color: var(--txt-2, #6b6b6b);
+  font-size: var(--dg-fs-xs);
+  line-height: 1.5;
+}
+.dg-side .dg-side-warn {
+  margin: 0;
+}
+
+/* ⑥ 空 / 加载 / 错误态：统一状态徽标 + 层级。
+   浮在恒定浅纸上 → 文字与卡片必须走 --paper / --paper-ink（双主题都可读）。 */
+.dg-tab .dg-canvas-overlay.dg-state {
+  gap: var(--dg-space-3);
+  color: var(--paper-ink, #22242a);
+}
+.dg-tab .dg-canvas-overlay.dg-state::before {
+  content: "i";
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--paper-ink, #22242a);
+  border-radius: 50%;
+  font-size: var(--dg-fs-md);
+  font-weight: var(--dg-fw-title);
+  line-height: 1;
+  opacity: 0.55;
+}
+.dg-tab .dg-canvas-overlay.dg-state.is-error::before {
+  content: "!";
+  border-color: var(--err, #c2382f);
+  color: var(--err, #c2382f);
+  opacity: 1;
+}
+.dg-tab .dg-canvas-overlay.dg-state.is-warn::before {
+  content: "!";
+  border-color: var(--warn, #a86a12);
+  color: var(--warn, #a86a12);
+  opacity: 1;
+}
+.dg-tab .dg-canvas-overlay.dg-state.is-loading::before {
+  content: "";
+  border-style: dashed;
+  border-color: var(--accent, #2d7ff9);
+  opacity: 0.8;
+}
+.dg-tab .dg-canvas-overlay.dg-state strong {
+  font-size: var(--dg-fs-lg);
+  font-weight: var(--dg-fw-title);
+  color: var(--paper-ink, #22242a);
+}
+.dg-tab .dg-canvas-overlay.dg-state p {
+  max-width: min(560px, 100%);
+  padding: var(--dg-space-2) var(--dg-space-3);
+  border: 1px solid color-mix(in srgb, var(--paper-ink, #22242a) 22%, transparent);
+  border-radius: var(--dg-radius);
+  background: var(--paper, #fbfaf7);
+  color: var(--paper-ink, #22242a);
+  font-size: var(--dg-fs-sm);
+}
+.dg-tab .dg-canvas-overlay.dg-state span {
+  font-size: var(--dg-fs-sm);
+  color: var(--paper-ink, #22242a);
+  opacity: 0.65;
+}
+/* 不再用整屏白 / 黑底盖住纸面（暗色主题下会突兀） */
+.dg-tab .dg-canvas-overlay.dg-canvas-error,
+.dg-tab .dg-canvas-overlay.dg-canvas-warn {
+  background: transparent;
+  opacity: 1;
+}
+
+/* ⑦ 状态栏：单行、等宽数字、条目间点分隔 ─────────────────────────────── */
+.dg-tab .dg-canvas-foot {
+  gap: var(--dg-space-1) var(--dg-space-3);
+  padding: var(--dg-space-2) var(--dg-space-3);
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-tab .dg-foot-item {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.dg-tab .dg-foot-item + .dg-foot-item::before {
+  content: "·";
+  margin-right: var(--dg-space-2);
+  color: var(--txt-3, #9a9a9a);
+}
+
+/* ⑧ 缩放 / 窄视口适配：200% 缩放时 CSS 视口变窄，分组标签收起、工具条换行 */
+@media (max-width: 1180px) {
+  .dg-tab .dg-head-group::before,
+  .dg-tab .dg-tool-group-label,
+  .dg-tab .dg-tool-bar-label {
+    display: none;
+  }
+  .dg-tab .dg-head-group {
+    padding-left: var(--dg-space-1);
+  }
+  .dg-tab .dg-tool-group {
+    padding-left: var(--dg-space-1);
+  }
+}
+@media (max-width: 900px) {
+  .dg-tab .dg-canvas-hint,
+  .dg-tab .dg-tool-hint {
+    display: none;
+  }
+  .dg-tab .dg-canvas-head {
+    gap: var(--dg-space-1) var(--dg-space-2);
+    padding: var(--dg-space-1) var(--dg-space-2);
+  }
+  .dg-tab .dg-zoom {
+    margin-left: 0;
+    padding-left: 0;
+  }
 }

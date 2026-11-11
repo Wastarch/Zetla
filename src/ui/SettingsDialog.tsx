@@ -796,7 +796,7 @@ export function SettingsDialog() {
                 </Fld>
                 <Fld
                   label="图层面板"
-                  hint="F3-3：侧栏「图层 · 分组」区默认展开；分组 / 隐藏 / 锁定数据不受此开关影响"
+                  hint="侧栏「图层 · 分组」区默认展开；分组 / 隐藏 / 锁定数据不受此开关影响"
                 >
                   <Switch
                     checked={diagramLayersVisible}
@@ -805,7 +805,7 @@ export function SettingsDialog() {
                 </Fld>
                 <Fld
                   label="智能参考线吸附"
-                  hint="F3-4：拖图元时与其他图元的边 / 中心或画布中心对齐，显示临时参考线并吸附"
+                  hint="拖图元时与其他图元的边 / 中心或画布中心对齐，显示临时参考线并吸附"
                 >
                   <Switch
                     checked={diagramSnapEnabled}
@@ -814,7 +814,7 @@ export function SettingsDialog() {
                 </Fld>
                 <Fld
                   label="画布网格 + 标尺"
-                  hint="F3-5：画布叠加 1cm 网格与顶部标尺（仅辅助显示，不写进源码）"
+                  hint="画布叠加 1cm 网格与顶部标尺（仅辅助显示，不写进源码）"
                 >
                   <Switch
                     checked={diagramGridEnabled}
@@ -823,7 +823,7 @@ export function SettingsDialog() {
                 </Fld>
                 <Fld
                   label="吸附网格"
-                  hint="F3-5：拖图元时落点自动对齐到最近网格交点（优先级高于智能参考线）"
+                  hint="拖图元时落点自动对齐到最近网格交点（优先级高于智能参考线）"
                 >
                   <Switch
                     checked={diagramSnapGrid}
@@ -831,7 +831,7 @@ export function SettingsDialog() {
                   />
                 </Fld>
                 <Fld
-                  label="画布尺寸（F3-7）"
+                  label="画布尺寸"
                   hint="宽取主文档正文宽（A4 约 15cm），高默认 10cm 且不超过该纸张正文高；纸张框只是编辑参考，绝不写进 TikZ 源码"
                 >
                   <div className="set-inline">

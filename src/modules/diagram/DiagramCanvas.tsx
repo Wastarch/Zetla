@@ -2495,7 +2495,7 @@ export function DiagramCanvas() {
     <div className="dg-canvas">
       <div className="dg-canvas-head">
         <span className="dg-canvas-badge">画布预览</span>
-        <div className="dg-mode-switch" role="group" aria-label="预览通道">
+        <div className="dg-mode-switch dg-head-group" data-label="预览" role="group" aria-label="预览通道">
           <button
             type="button"
             className={previewMode === "local" ? "on" : ""}
@@ -2520,7 +2520,7 @@ export function DiagramCanvas() {
         </span>
         {/* F2-4：撤销 / 重做操作的是源码 history，与预览通道无关，两个通道常驻；
             控制点只在本地即时通道有意义。 */}
-        <div className="dg-edit-tools">
+        <div className="dg-edit-tools dg-head-group" data-label="编辑" role="group" aria-label="编辑操作">
           {previewMode === "precise" && (
             <button
               type="button"
@@ -2546,7 +2546,7 @@ export function DiagramCanvas() {
           {/* F3-2：三档视觉半径；命中范围始终独立且更大。设置页「绘图」分区可改默认值。 */}
           {previewMode === "local" && (
             <label className="dg-handle-size" title={handleSizeSummary(handleSize)}>
-              <span>节点</span>
+              <span>控制点</span>
               <select
                 value={handleSize}
                 aria-label="控制点大小"
@@ -2611,7 +2611,7 @@ export function DiagramCanvas() {
           </button>
         )}
         {/* F3-7：视图分组。视角手势只改组件 state，不写源码 / 不入 history。 */}
-        <div className="dg-view-tools" role="group" aria-label="视图">
+        <div className="dg-view-tools dg-head-group" data-label="视图" role="group" aria-label="视图">
           <button
             type="button"
             className={`dg-view-btn${handTool ? " is-active" : ""}`}
@@ -2647,7 +2647,7 @@ export function DiagramCanvas() {
             适应内容
           </button>
         </div>
-        <div className="dg-zoom">
+        <div className="dg-zoom dg-head-group" data-label="缩放" role="group" aria-label="缩放">
           <button
             type="button"
             className="dg-zoom-btn"
@@ -2689,7 +2689,7 @@ export function DiagramCanvas() {
           精确通道下不再挂按钮：成功已还原无需操作，失败时下方 XeLaTeX 报错列表本来就常驻，
           原「查看诊断」调用的 setDiagOpen 在精确通道没有任何可见效果（死点击）。 */}
       {unsupportedCount > 0 && !error && (
-        <div className={`dg-canvas-alert is-${alertTone}`} role="status">
+        <div className={`dg-canvas-alert dg-notice is-${alertTone}`} role="status">
           <strong>
             {preciseFailed
               ? "XeLaTeX 编译失败"
@@ -2717,7 +2717,7 @@ export function DiagramCanvas() {
       {/* F2-3：能力矩阵锁定清单。默认展开、理由常驻，用户可收起但不做「只有一个折叠按钮」。
           与上面的「预览不完整」提示互补：那条讲渲染缺口，这条讲编辑缺口（哪些对象不能拖 / 改属性）。 */}
       {showCompatBar && compat && (
-        <div className="dg-lock-bar" role="status">
+        <div className="dg-lock-bar dg-notice is-warn" role="status">
           <div className="dg-lock-head">
             <span className="dg-lock-badge">
               {compatLocked > 0 ? "已锁定编辑" : "编辑能力提示"}
@@ -2790,36 +2790,36 @@ export function DiagramCanvas() {
           )}
         </div>
         {empty && (
-          <div className="dg-canvas-overlay">
+          <div className="dg-canvas-overlay dg-state is-empty">
             源码为空。请切到「仅源码」或「左右分屏」编写 TikZ 代码。
           </div>
         )}
         {!empty && previewMode === "local" && error && (
-          <div className="dg-canvas-overlay dg-canvas-error">
+          <div className="dg-canvas-overlay dg-canvas-error dg-state is-error">
             <strong>渲染失败</strong>
             <p>{error}</p>
             <span>修正源码后会自动重渲染；主文档不受影响。</span>
           </div>
         )}
         {!empty && previewMode === "local" && !error && !result && (
-          <div className="dg-canvas-overlay">
+          <div className="dg-canvas-overlay dg-state is-loading">
             {engineReady ? "正在渲染…" : "正在加载渲染引擎（首次约 3.4 MB）…"}
           </div>
         )}
         {!empty && blankSvg && (
-          <div className="dg-canvas-overlay dg-canvas-warn">
+          <div className="dg-canvas-overlay dg-canvas-warn dg-state is-warn">
             画布为空：本地引擎未识别到可绘制对象。请检查 TikZ 语法、展开诊断，或切到 XeLaTeX 精确预览。
           </div>
         )}
         {!empty && previewMode === "precise" && !preciseImg && !preciseFailed && (
-          <div className="dg-canvas-overlay">
+          <div className="dg-canvas-overlay dg-state is-loading">
             {preciseBusy
               ? "正在用 XeLaTeX 编译 TikZ 片段（首次可能较慢）…"
               : "等待精确预览…"}
           </div>
         )}
         {!empty && preciseFailed && (
-          <div className="dg-canvas-overlay dg-canvas-error">
+          <div className="dg-canvas-overlay dg-canvas-error dg-state is-error">
             <strong>XeLaTeX 编译失败</strong>
             <p>{precise?.message ?? "未知错误"}</p>
             <span>
@@ -2890,7 +2890,7 @@ export function DiagramCanvas() {
       )}
 
       <div className="dg-canvas-foot">
-        <span>
+        <span className="dg-foot-item">
           {previewMode === "local"
             ? result
               ? `${result.fromCache ? "缓存命中" : `渲染 ${result.elapsedMs.toFixed(0)} ms`} · ${result.viewBox.width.toFixed(0)}×${result.viewBox.height.toFixed(0)}`
@@ -2902,12 +2902,12 @@ export function DiagramCanvas() {
                 : "—"}
         </span>
         {/* F3-7：倍率 + 指针 world 坐标 + 纸张尺寸，全部是视角元数据，不写源码 */}
-        <span>
+        <span className="dg-foot-item">
           {Math.round(zoom * 100)}% · {pointerWorldLabel}
           {canvasSize.preset !== "auto" && ` · 画布 ${canvasSize.widthCm.toFixed(1)}×${canvasSize.heightCm.toFixed(1)}cm`}
         </span>
-        <span>{footHint}</span>
-        <span>插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>
+        <span className="dg-foot-item">{footHint}</span>
+        <span className="dg-foot-item">插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>
       </div>
     </div>
   );
