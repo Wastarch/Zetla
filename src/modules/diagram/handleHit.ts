@@ -7,7 +7,9 @@
 //
 // 这里只做「选谁」的纯计算；调用方（startDragFromEvent）**仅在 overlapping > 1 时**
 // 才用它覆盖 DOM 分发结果，不重叠时保持原有命中链路零回归。
-import type { PointLike } from "./dragEdit.ts";
+import { isDraggableHandle, lockedHandleReason, type PointLike } from "./dragEdit.ts";
+import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat.ts";
+import type { TikzEditHandle } from "./tikzEditor/engine.ts";
 
 export interface HitCandidate {
   id: string;
@@ -48,4 +50,48 @@ export function pickNearestHandle(
     if (inside[i].d < best.d) best = inside[i];
   }
   return { id: best.c.id, overlapping: inside.length, distance: best.d };
+}
+
+/** 世界坐标重合容差（pt）：只吞掉真正同一个点的重复句柄，不碰邻近锚点。 */
+const SHADOW_EPSILON_PT = 1e-6;
+
+/**
+ * F2-3 补充：被可写 node-position 句柄「遮住」的命名坐标句柄。
+ *
+ * 典型来源是 `\draw (a) -- (b);`：箭头端点 `(a)` / `(b)` 是命名坐标，拖动会把
+ * 引用改写成绝对坐标、静默断开关联，因此引擎标为 unsupported 并画挂锁；但这两个
+ * 坐标与 `\node (a) at (...)` / `\node (b) at (...)` 的 node-position 句柄**完全重合**，
+ * 后者是可写的。此时挂锁属于重复控制点，视觉上却像「节点被锁住」，点击还会抢走
+ * 节点句柄的命中。这里只识别「命名坐标 + 与另一条语句的可写 node-position 重合」
+ * 这一种情形，把锁图标和命中圈一起省掉，节点照常拖动、箭头继续跟随引用。
+ *
+ * 不解锁其他情形：没有可写节点句柄的命名坐标、极坐标、F2-3 展开 / 计算型锁定、
+ * 能力矩阵锁定、主动图层锁定全部保留。
+ */
+export function shadowedLockedHandleIds(
+  handles: readonly TikzEditHandle[],
+  compat: CompatReport | null = null,
+): ReadonlySet<string> {
+  const writableNodes: TikzEditHandle[] = [];
+  for (const h of handles) {
+    if (h.kind !== "node-position" || !h.world) continue;
+    if (!Number.isFinite(h.world.x) || !Number.isFinite(h.world.y)) continue;
+    if (!isDraggableHandle(h)) continue;
+    if (resolveHandleLock(compat, h.id, true, lockedHandleReason(h)) !== null) continue;
+    writableNodes.push(h);
+  }
+  const shadowed = new Set<string>();
+  for (const h of handles) {
+    if (h.coordinateForm !== "named" || isDraggableHandle(h) || !h.world) continue;
+    if (!Number.isFinite(h.world.x) || !Number.isFinite(h.world.y)) continue;
+    const covered = writableNodes.some((w) => {
+      if (w.sourceRef?.sourceId === h.sourceRef?.sourceId) return false;
+      return (
+        Math.abs(w.world.x - h.world.x) <= SHADOW_EPSILON_PT &&
+        Math.abs(w.world.y - h.world.y) <= SHADOW_EPSILON_PT
+      );
+    });
+    if (covered) shadowed.add(h.id);
+  }
+  return shadowed;
 }

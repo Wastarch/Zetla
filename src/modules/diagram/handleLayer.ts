@@ -20,6 +20,7 @@ import {
   worldToSvgPoint,
 } from "./dragEdit.ts";
 import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat.ts";
+import { shadowedLockedHandleIds } from "./handleHit.ts";
 import {
   padBox,
   selectionCorners,
@@ -95,8 +96,12 @@ export function buildHandleLayer(
   metrics: HandleMetrics,
 ): SVGGElement {
   const layer = el("g", { "data-dg-handle-layer": "1" });
+  // F2-3 补充：`\draw (a) -- (b)` 的命名坐标端点与节点 position 句柄重合时，
+  // 它是重复且不可写的控制点；连命中圈一起省掉，节点才能被直接拖动，箭头仍跟随引用。
+  const shadowed = shadowedLockedHandleIds(handles, compat);
   for (const h of handles.slice(0, MAX_VISIBLE_HANDLES)) {
     if (!h.world || !Number.isFinite(h.world.x) || !Number.isFinite(h.world.y)) continue;
+    if (shadowed.has(h.id)) continue;
     const p = worldToSvgPoint(h.world, viewBox);
     const lockReason = resolveHandleLock(
       compat,

@@ -52,7 +52,10 @@ import {
   isPreciseReadonly,
   type EditKeyLike,
 } from "../src/modules/diagram/editability.ts";
-import { pickNearestHandle } from "../src/modules/diagram/handleHit.ts";
+import {
+  pickNearestHandle,
+  shadowedLockedHandleIds,
+} from "../src/modules/diagram/handleHit.ts";
 import {
   CANVAS_PRESETS,
   CM_TO_PT,
@@ -2570,6 +2573,61 @@ console.log("F3-6 · F2-3 挂锁 / F2-4 撤销栈联动抽查（端到端）");
     !!zEdit && !canEditDiagramSource({ previewMode: "precise" }).ok,
     "F1-6 精确通道只读在入口拦截：写回规划可用但该通道不允许调用",
   );
+}
+
+console.log("F3-6 补充 · 命名坐标重复句柄不再遮挡节点拖拽（F2-3 安全收口）");
+{
+  const NAMED_SRC = String.raw`\begin{tikzpicture}
+\draw[thick, rounded corners] (0,0) rectangle (3,2);
+  \node[draw, circle, fill=blue!20] (a) at (0.88,1.31) {A};
+  \node[draw, circle, fill=red!20] (b) at (1.96,0.9) {B};
+\draw[->, thick] (a) -- (b);
+\end{tikzpicture}`;
+  const nr = await renderTikz(NAMED_SRC);
+  const nodeHandles = nr.handles.filter((h) => h.kind === "node-position");
+  const namedHandles = nr.handles.filter((h) => h.coordinateForm === "named");
+  check(nodeHandles.length === 2 && namedHandles.length === 2, "箭头两端命名坐标与两个节点 position 句柄同时存在");
+  const shadowed = shadowedLockedHandleIds(nr.handles, nr.compat);
+  check(shadowed.size === 2 && namedHandles.every((h) => shadowed.has(h.id)), "与可写节点句柄重合的两条命名坐标锁被识别为重复句柄");
+  check(nodeHandles.every((h) => !shadowed.has(h.id)), "节点自身 position 句柄绝不进抑制集合");
+
+  const N_SVG = g.document.createElementNS(H_NS, "svg");
+  const N_LAYER = buildHandleLayer(N_SVG, nr.handles, nr.viewBox, nr.compat, H_M1);
+  check(N_LAYER.querySelectorAll("g.dg-handle-lock").length === 0, "画布上两条重复挂锁不再渲染");
+  check(namedHandles.every((h) => !N_SVG.querySelector(`[data-dg-hit-id="${h.id}"]`)), "重复命名坐标句柄的命中圈一并移除，不再抢走节点拖拽");
+  check(nodeHandles.every((h) => !!N_SVG.querySelector(`[data-dg-hit-id="${h.id}"]`)), "节点 position 句柄仍完整可点可拖");
+
+  const oneNamed = namedHandles[0];
+  const shifted = {
+    ...oneNamed,
+    id: "handle:named:shifted",
+    world: { x: oneNamed.world.x + 5, y: oneNamed.world.y },
+  };
+  check(!shadowedLockedHandleIds([...nr.handles, shifted], nr.compat).has(shifted.id), "坐标不重合的命名坐标仍保留挂锁");
+  const polar = {
+    ...oneNamed,
+    id: "handle:polar:shifted",
+    coordinateForm: "polar" as typeof oneNamed.coordinateForm,
+  };
+  check(!shadowedLockedHandleIds([...nr.handles, polar], nr.compat).has(polar.id), "极坐标锁定不在抑制范围");
+  const sameStmt = {
+    ...oneNamed,
+    id: "handle:named:same-stmt",
+    sourceRef: { ...oneNamed.sourceRef!, sourceId: nodeHandles[0].sourceRef!.sourceId },
+  };
+  check(!shadowedLockedHandleIds([...nr.handles, sameStmt], nr.compat).has(sameStmt.id), "同一语句内的重合句柄不互相抑制");
+
+  const firstNode = nodeHandles[0];
+  const paired = namedHandles.find(
+    (h) => Math.abs(h.world.x - firstNode.world.x) <= 1e-6 && Math.abs(h.world.y - firstNode.world.y) <= 1e-6,
+  )!;
+  const compatLocked = {
+    ...nr.compat,
+    handleReasons: { ...nr.compat.handleReasons, [firstNode.id]: "测试：能力矩阵锁定" },
+  };
+  const shLocked = shadowedLockedHandleIds(nr.handles, compatLocked);
+  check(shLocked.size === 1 && !shLocked.has(paired.id), "可写节点被能力矩阵锁定时，对应命名坐标挂锁保留");
+  check(shadowedLockedHandleIds(nr.handles.filter((h) => h.kind !== "node-position"), nr.compat).size === 0, "没有节点句柄承接时绝不静默解锁命名坐标");
 }
 
 console.log("F3-7 · 固定画布尺寸 / 主文档推断 / 视角纯逻辑");
