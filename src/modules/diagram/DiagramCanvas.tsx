@@ -142,14 +142,23 @@ import {
 } from "./shapeInsert";
 import {
   boxCenter,
+  boxHeight,
+  boxWidth,
   DEFAULT_SNAP_THRESHOLD_PT,
   rotationFromDrag,
   scaleFromDrag,
   snapAngle,
+  svgBoxToWorldBox,
   unionWorldBox,
   type GuideLine,
   type WorldBox,
 } from "./guides";
+import {
+  planSizePatches,
+  sizeValueToPt,
+  sizeValuesFromDrag,
+  type SizeValues,
+} from "./sizeEdit.ts";
 import { GRID_STEP_PT, snapToGrid } from "./grid";
 import {
   canEditDiagramSource,
@@ -316,6 +325,11 @@ interface TransformDrag {
   elementIds: string[];
   previewSource: string | null;
   previewFailures: number;
+  /** F4-1：起手时的节点基准尺寸（world pt），优先读现有选项、否则用视觉外接框 */
+  baseWidthPt: number;
+  baseHeightPt: number;
+  /** F4-1：非 Shift 尺寸路径最后一帧的值；null = 仍走 F3-4 的 scale= */
+  sizeValues: SizeValues | null;
 }
 
 interface Notice {
@@ -409,6 +423,8 @@ export function DiagramCanvas() {
   const commitDragRef = useRef<(d: DragState) => void>(() => undefined);
   // F3-4：旋转 / 缩放手势独立一路，不占用坐标拖拽的 dragRef。
   const transformRef = useRef<TransformDrag | null>(null);
+  // F4-1：refreshSelectionChrome 算出的视觉外接框（world pt），供尺寸柄起手读基准 W/H。
+  const selectionBoxWorldRef = useRef<WorldBox | null>(null);
   // F3-4：setGuides 仅在参考线集合变化时触发重绘（避免每帧重渲染）。
   const lastGuideKeyRef = useRef<string>("");
   function setDragGuides(g: GuideLine[]): void {
@@ -763,6 +779,7 @@ export function DiagramCanvas() {
       previewMode === "local" && handlesOn && toolMode === "select" && picked.size > 0;
     const ctm = editable ? svg.getScreenCTM?.() : null;
     if (!ctm) {
+      selectionBoxWorldRef.current = null;
       drawSelectionBox(layer, null, metrics);
       return;
     }
@@ -781,6 +798,19 @@ export function DiagramCanvas() {
       .filter((r) => !(r.width === 0 && r.height === 0))
       .map((r) => clientRectToSvgBox(r, m));
     const selBox = unionBoxes(boxes);
+    // F4-1：视觉外接框翻回 world，统一 8 点尺寸柄与 collectElementBoxes 两套包围盒口径。
+    const vb = resultRef.current?.viewBox;
+    selectionBoxWorldRef.current = selBox && vb
+      ? svgBoxToWorldBox(
+          {
+            minX: selBox.x,
+            minY: selBox.y,
+            maxX: selBox.x + selBox.width,
+            maxY: selBox.y + selBox.height,
+          },
+          vb,
+        )
+      : null;
     drawSelectionBox(layer, selBox, metrics);
     // F3-4：参考线层从 store 读取（拖拽吸附 / 对齐 / 分布后短暂显示）。
     const guideLayer = svg.querySelector("[data-dg-guide-layer]") as SVGGElement | null;
@@ -2019,12 +2049,33 @@ export function DiagramCanvas() {
       compat: result.compat,
       grouping: state.grouping,
     });
-    if (boxes.length === 0) {
-      setNotice({ tone: "warn", text: "没有可写控制点，无法参与旋转 / 缩放。" });
+    // F4-1：两套包围盒统一 —— collectElementBoxes 为空时不再误报「没有可写控制点」，
+    // 回退到 getBoundingClientRect 的视觉外接框（节点尺寸柄必须以视觉为准）。
+    const visual = selectionBoxWorldRef.current;
+    const startBox = boxes.length > 0
+      ? unionWorldBox(boxes.map((b) => b.box))
+      : (visual ?? null);
+    if (!startBox) {
+      setNotice({ tone: "warn", text: "没有可用的包围盒，无法参与旋转 / 缩放 / 尺寸编辑。" });
       return;
     }
-    const startBox = unionWorldBox(boxes.map((b) => b.box));
-    if (!startBox) return;
+    // F4-1：基准尺寸优先读选中节点已有的 text width / minimum height，
+    // 读不到则用视觉外接框（getBoundingClientRect 口径），绝不拿可写控制点包围盒冒充节点大小。
+    const fallbackW = visual ? boxWidth(visual) : boxWidth(startBox);
+    const fallbackH = visual ? boxHeight(visual) : boxHeight(startBox);
+    let baseWidthPt = fallbackW > 1e-6 ? fallbackW : 28.45275590551181;
+    let baseHeightPt = fallbackH > 1e-6 ? fallbackH : 28.45275590551181;
+    const primary = result.statements.find((st) => st.id === selIds[0]);
+    if (primary && primary.command === "node") {
+      const readSize = (key: string): number | null => {
+        const hit = primary.entries.find(
+          (e) => e.value !== null && e.key.trim().toLowerCase() === key,
+        );
+        return sizeValueToPt(hit?.value ?? null);
+      };
+      baseWidthPt = readSize("text width") ?? baseWidthPt;
+      baseHeightPt = readSize("minimum height") ?? baseHeightPt;
+    }
     const center = boxCenter(startBox);
     const startWorld = pointerWorld(e.clientX, e.clientY) ?? center;
     transformRef.current = {
@@ -2041,6 +2092,9 @@ export function DiagramCanvas() {
       elementIds: selIds,
       previewSource: null,
       previewFailures: 0,
+      baseWidthPt,
+      baseHeightPt,
+      sizeValues: null,
     };
     previewActiveRef.current = true;
     lastPointer.x = e.clientX;
@@ -2079,17 +2133,49 @@ export function DiagramCanvas() {
       });
       if (!res) return;
       value = res.scale;
-      const plan = planTransformPatches({
-        source: t.sourceAtStart,
-        statements: t.resultAtStart.statements,
-        elementIds: t.elementIds,
-        key: "scale",
-        value: String(value),
-        compat: t.compat,
-        grouping: t.grouping,
-      });
-      if (plan.status === "ok") candidate = plan.nextSource;
-      setDragLabel(`缩放 ${value.toFixed(2)}×`);
+      const hasNode = t.resultAtStart.statements.some(
+        (st) => t.elementIds.includes(st.id) && st.command === "node",
+      );
+      // F4-1：Shift 等比、或选中集合里没有 \node → 仍走 F3-4 的 scale=，零回归。
+      if (e.shiftKey || !hasNode) {
+        t.sizeValues = null;
+        const plan = planTransformPatches({
+          source: t.sourceAtStart,
+          statements: t.resultAtStart.statements,
+          elementIds: t.elementIds,
+          key: "scale",
+          value: String(value),
+          compat: t.compat,
+          grouping: t.grouping,
+        });
+        if (plan.status === "ok") candidate = plan.nextSource;
+        setDragLabel(`缩放 ${value.toFixed(2)}×`);
+      } else {
+        // 按轴改节点文本框尺寸：sx/sy 分别写 text width / minimum height，绝不合并成 scale。
+        const vals = sizeValuesFromDrag({
+          baseWidthPt: t.baseWidthPt,
+          baseHeightPt: t.baseHeightPt,
+          sx: res.sx,
+          sy: res.sy,
+          corner: t.corner,
+        });
+        const values: SizeValues = {};
+        if (vals.width) values["text width"] = vals.width;
+        if (vals.height) values["minimum height"] = vals.height;
+        t.sizeValues = Object.keys(values).length > 0 ? values : null;
+        const plan = t.sizeValues
+          ? planSizePatches({
+              source: t.sourceAtStart,
+              statements: t.resultAtStart.statements,
+              elementIds: t.elementIds,
+              values,
+              compat: t.compat,
+              grouping: t.grouping,
+            })
+          : null;
+        if (plan?.status === "ok") candidate = plan.nextSource;
+        setDragLabel(`尺寸 ${vals.width ?? "—"} × ${vals.height ?? "—"}`);
+      }
     }
     t.value = value;
     if (!candidate || candidate === t.sourceAtStart) return;
@@ -2116,18 +2202,28 @@ export function DiagramCanvas() {
     setDragLabel(null);
     setDragGuides([]);
     previewActiveRef.current = false;
-    const plan = planTransformPatches({
-      source: t.sourceAtStart,
-      statements: t.resultAtStart.statements,
-      elementIds: t.elementIds,
-      key: t.kind,
-      value:
-        t.kind === "rotate"
-          ? String(Math.round(t.value))
-          : String(Math.round(t.value * 1000) / 1000),
-      compat: t.compat,
-      grouping: t.grouping,
-    });
+    const sizeValues = t.sizeValues;
+    const plan = sizeValues
+      ? planSizePatches({
+          source: t.sourceAtStart,
+          statements: t.resultAtStart.statements,
+          elementIds: t.elementIds,
+          values: sizeValues,
+          compat: t.compat,
+          grouping: t.grouping,
+        })
+      : planTransformPatches({
+          source: t.sourceAtStart,
+          statements: t.resultAtStart.statements,
+          elementIds: t.elementIds,
+          key: t.kind,
+          value:
+            t.kind === "rotate"
+              ? String(Math.round(t.value))
+              : String(Math.round(t.value * 1000) / 1000),
+          compat: t.compat,
+          grouping: t.grouping,
+        });
     if (plan.status !== "ok") {
       restoreTransformPreview();
       if (plan.status !== "empty") {
@@ -2147,7 +2243,7 @@ export function DiagramCanvas() {
       : "";
     setNotice({
       tone: write.written ? "ok" : "warn",
-      text: `已${t.kind === "rotate" ? "旋转" : "缩放"} ${plan.changedIds.length} 个图元${sk}${
+      text: `已${sizeValues ? "修改尺寸" : t.kind === "rotate" ? "旋转" : "缩放"} ${plan.changedIds.length} 个图元${sk}${
         write.written ? " · Ctrl+Z 一次退回" : " · 源码栏未就绪，无撤销记录"
       }`,
     });

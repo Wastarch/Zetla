@@ -239,6 +239,22 @@ import {
   type ElementBox,
 } from "../src/modules/diagram/transform.ts";
 import {
+  SIZE_KEYS,
+  isSizeKey,
+  normalizeSizeValue,
+  planSizePatch,
+  planSizePatches,
+  ptToSizeString,
+  sizeValueToPt,
+  sizeValuesFromDrag,
+} from "../src/modules/diagram/sizeEdit.ts";
+import {
+  findStyleUsers,
+  scanSharedStyles,
+  sharedStyleHint,
+  styleNamesForStatement,
+} from "../src/modules/diagram/sharedStyle.ts";
+import {
   DEFAULT_SNAP_THRESHOLD_PT,
   formatCm,
   guideToSvgSegment,
@@ -2710,6 +2726,133 @@ console.log("F3-7 · 固定画布尺寸 / 主文档推断 / 视角纯逻辑");
   check(keyCanvasOn !== keyA, "按画布导出打开时缓存 key 与现状不同");
   check(keyCanvasOn !== keyCanvasOther, "画布尺寸变化 key 变化（防串图）");
   check(keyCanvasOff === keyA, "开关关闭时 key 与现状完全一致（零回归）");
+}
+
+
+console.log("\nF4-1 · 节点尺寸键 / 最小补丁 / 按轴拖拽 / 共享样式");
+{
+  // ① 尺寸键与数值白名单（含空格键、正向白名单天然拒绝注入字符）
+  check(SIZE_KEYS.includes("text width") && SIZE_KEYS.includes("minimum height"), "尺寸键白名单含空格键 text width / minimum height");
+  check(isSizeKey("inner sep") && !isSizeKey("scale"), "isSizeKey 只认尺寸键、不认 F3-4 的 scale");
+  const nOk = normalizeSizeValue("text width", "3cm");
+  check("value" in nOk && nOk.value === "3cm", "text width=3cm 放行（含空格键）");
+  const nPt = normalizeSizeValue("minimum height", "40");
+  check("value" in nPt && nPt.value === "40pt", "纯数字按 pt 补全");
+  check("error" in normalizeSizeValue("text width", "3cm, red"), "含逗号的值被拒绝");
+  check("error" in normalizeSizeValue("text width", "\\mywidth"), "含反斜杠的值被拒绝");
+  check("error" in normalizeSizeValue("text width", "3cm}"), "含花括号的值被拒绝");
+  check("error" in normalizeSizeValue("text width", "-2cm"), "负数尺寸被拒绝");
+  check(Math.abs(Number(ptToSizeString(28.45275590551181, "cm").replace("cm", "")) - 1) < 1e-6, "world pt → cm 字符串换算正确");
+  check(Math.abs((sizeValueToPt("3cm") ?? 0) - 3 * 28.45275590551181) < 1e-6, "读取 text width=3cm 换算回 world pt");
+  check(sizeValueToPt("40pt") === 40, "读取 40pt 换算正确");
+  check(sizeValueToPt("bad") === null && sizeValueToPt(null) === null, "非法 / 空尺寸值返回 null（回退到视觉外接框）");
+
+  // ② 按轴拖拽：边中柄只改一个轴，角柄两键分别写、绝不合并成 scale
+  const axisX = sizeValuesFromDrag({ baseWidthPt: 100, baseHeightPt: 60, sx: 1.5, sy: 2.2, corner: 3 });
+  check(axisX.width !== null && axisX.height === null, "右中柄只写 text width（X 轴）");
+  const axisY = sizeValuesFromDrag({ baseWidthPt: 100, baseHeightPt: 60, sx: 1.5, sy: 2.2, corner: 1 });
+  check(axisY.width === null && axisY.height !== null, "上中柄只写 minimum height（Y 轴）");
+  const cornerBoth = sizeValuesFromDrag({ baseWidthPt: 100, baseHeightPt: 60, sx: 1.5, sy: 2.2, corner: 4 });
+  check(cornerBoth.width !== null && cornerBoth.height !== null, "角柄两轴都写");
+  check(cornerBoth.width !== cornerBoth.height, "角柄 sx/sy 分别生效，不合并成单一比例");
+  check(sizeValuesFromDrag({ baseWidthPt: 0, baseHeightPt: 0, sx: 1, sy: 1, corner: 0 }).width === null, "零基准不产出非法尺寸");
+
+  // ③ 单语句最小 span 补丁：插入 / 替换 / 移除 / 保持其余选项与注释
+  const SZ_SRC = String.raw`\begin{tikzpicture}
+  % 保留这一行注释
+  \node[draw] (a) at (0,0) {A};
+  \node[draw, text width=2cm] (b) at (3,0) {B};
+  \node[draw] (c) at (6,0) {C};
+  \draw (0,-1) -- (6,-1);
+\end{tikzpicture}`;
+  const sz = await renderTikz(SZ_SRC);
+  const nodes = sz.statements.filter((s) => s.command === "node");
+  check(nodes.length === 3, "解析出 3 条 \\node 语句");
+  const pIns = planSizePatch(SZ_SRC, nodes[0], { "text width": "4cm", "minimum height": "2cm" });
+  check(pIns.status === "ok" && pIns.patches.length === 1, "两个新增尺寸键合并成单个不重叠补丁");
+  if (pIns.status === "ok") {
+    const merged = mergeSourcePatches(SZ_SRC, pIns.patches);
+    check(!!merged && merged.nextSource.includes("[draw, text width=4cm, minimum height=2cm]"), "新增 W/H 写进同一选项块");
+    check(!!merged && merged.nextSource.includes("% 保留这一行注释"), "注释一字不改");
+    check(!!merged && merged.nextSource.split("\n").length === SZ_SRC.split("\n").length, "换行数量不变");
+  }
+  const pRep = planSizePatch(SZ_SRC, nodes[1], { "text width": "4cm" });
+  check(pRep.status === "ok", "已有 text width 走替换");
+  if (pRep.status === "ok") {
+    const merged = mergeSourcePatches(SZ_SRC, pRep.patches);
+    check(!!merged && merged.nextSource.includes("text width=4cm") && !merged.nextSource.includes("text width=2cm"), "替换后旧值消失、无重复键");
+  }
+  const pDel = planSizePatch(SZ_SRC, nodes[1], { "text width": null });
+  check(pDel.status === "ok", "移除尺寸键生成补丁");
+  if (pDel.status === "ok") {
+    const merged = mergeSourcePatches(SZ_SRC, pDel.patches);
+    check(!!merged && !merged.nextSource.includes("text width"), "移除后源码不含该键");
+    check(!!merged && merged.nextSource.includes("[draw]"), "移除时其余选项原样保留");
+  }
+  check(planSizePatch(SZ_SRC, nodes[1], { "text width": "2cm" }).status === "noop", "已是该值时 noop");
+  check(planSizePatch(SZ_SRC, nodes[1], { "text width": "3cm, red" }).status === "error", "非法值整次不写");
+  const drawStmt = sz.statements.find((s) => s.command === "draw");
+  check(!!drawStmt && planSizePatch(SZ_SRC, drawStmt!, { "text width": "3cm" }).status === "error", "\\draw 不写节点尺寸选项");
+
+  // ④ 批量：一次 dispatch = 一条 Ctrl+Z；锁定逐元素 skip、不半写
+  const pAll = planSizePatches({
+    source: SZ_SRC, statements: sz.statements,
+    elementIds: nodes.map((n) => n.id),
+    values: { "text width": "4cm", "minimum height": "2cm" },
+    compat: sz.compat, grouping: EMPTY_GROUPING,
+  });
+  check(pAll.status === "ok" && pAll.changedIds.length === 3, "3 个节点批量改尺寸");
+  check(pAll.nextSource.split("text width=4cm").length - 1 === 3, "批量后 3 处 text width 生效");
+  check(pAll.patches.length > 0 && !!mergeSourcePatches(SZ_SRC, pAll.patches), "批量补丁互不重叠、可一次合并");
+  const pLocked = planSizePatches({
+    source: SZ_SRC, statements: sz.statements,
+    elementIds: nodes.map((n) => n.id),
+    values: { "text width": "4cm" },
+    compat: { ...emptyCompatReport(), lockReasons: { [nodes[0].id]: "测试锁定" } },
+    grouping: EMPTY_GROUPING,
+  });
+  check(pLocked.skipped.length === 1 && pLocked.changedIds.length === 2, "能力矩阵锁定逐元素跳过、其余照常写");
+  const pManual = planSizePatches({
+    source: SZ_SRC, statements: sz.statements,
+    elementIds: nodes.map((n) => n.id),
+    values: { "text width": "4cm" },
+    compat: sz.compat,
+    grouping: { ...EMPTY_GROUPING, lockedIds: [nodes[1].id] },
+  });
+  check(pManual.skipped.length === 1 && pManual.skipped[0].reason.includes("锁定"), "主动锁定跳过并给理由");
+
+  // ⑤ 共享 .style 只读扫描：UI 提示 + 同类集合，绝不伪装成 TikzStatement
+  const SS_SRC = String.raw`\begin{tikzpicture}[box/.style={draw, text width=2cm, minimum height=1cm}]
+  \node[box] (a) at (0,0) {A};
+  \node[box] (b) at (3,0) {B};
+  \node[draw] (c) at (6,0) {C};
+\end{tikzpicture}`;
+  const defs = scanSharedStyles(SS_SRC);
+  const boxDef = defs.find((d) => d.name === "box");
+  check(!!boxDef, "扫描到环境选项里的 box/.style 定义");
+  check(!!boxDef && boxDef.sizeKeys.includes("text width") && boxDef.sizeKeys.includes("minimum height"), "共享样式含 text width / minimum height");
+  check(!!boxDef && boxDef.definitionSpan.from > 0 && boxDef.definitionSpan.to > boxDef.definitionSpan.from, "定义处 span 合法");
+  const ss = await renderTikz(SS_SRC);
+  const ssNodes = ss.statements.filter((s) => s.command === "node");
+  check(ssNodes.length === 3, "带环境选项的源码仍被上游解析（探针结论）");
+  check(styleNamesForStatement(ssNodes[0], defs).includes("box"), "选中节点继承共享样式 box");
+  check(!styleNamesForStatement(ssNodes[2], defs).includes("box"), "未使用 box 的节点不被误判为同类");
+  check(findStyleUsers(defs, ss.statements, ["box"]).length === 2, "同类集合恰好是 2 个 box 节点");
+  const hint = sharedStyleHint(defs, ["box"]);
+  check(!!hint && hint.includes("共享 .style"), "属性坞提示条含共享样式名");
+  check(scanSharedStyles(SZ_SRC).length === 0, "无共享样式时零命中、不抛异常");
+  check(sharedStyleHint(defs, []) === null, "未继承样式时不显示提示条");
+  const TIKZSET_SRC = String.raw`\tikzset{frame/.style={draw, inner sep=4pt}}
+\begin{tikzpicture}
+  \node[frame] at (0,0) {A};
+\end{tikzpicture}`;
+  const setDefs = scanSharedStyles(TIKZSET_SRC);
+  check(setDefs.some((d) => d.name === "frame" && d.sizeKeys.includes("inner sep")), "扫描 \\tikzset 里的 .style 尺寸定义");
+
+  // ⑥ 精确通道只读：统一判定覆盖所有写源码入口
+  const precise = canEditDiagramSource({ previewMode: "precise" });
+  check(!precise.ok && isPreciseReadonly(precise), "精确通道返回统一只读理由（尺寸柄 / W-H 面板 / 应用开关共用）");
+  check(canEditDiagramSource({ previewMode: "local" }).ok, "本地即时通道可写尺寸");
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);

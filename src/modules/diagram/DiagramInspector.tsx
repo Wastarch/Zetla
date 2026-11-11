@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { useDiagramStore } from "./store";
 import { DiagramProperties } from "./DiagramProperties";
+import { SizePanel } from "./SizePanel";
 import { TransformPanel } from "./TransformPanel";
 import "./diagram.css";
 
@@ -58,6 +59,8 @@ export function DiagramInspector() {
             选中画布图元后在此改线条 / 填充 / 对齐与变换；改动只写 TikZ 源码，与右侧代码区共用一条撤销栈。
           </p>
           <DiagramProperties />
+          {/* F4-1：节点尺寸与 F3-4 几何变换分区并列，写不同的选项键 */}
+          <SizePanel />
           <TransformPanel />
         </div>
       )}

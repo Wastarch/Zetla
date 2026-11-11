@@ -2416,3 +2416,183 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   font-size: var(--dg-fs-xs);
   line-height: 1.4;
 }
+
+/* ══════════════════════════════════════════════════════════════════════
+   F4-1 · 节点尺寸面板（挂在预览右侧属性坞，沿用 F3-8 卡片 / 控件规格）
+   ══════════════════════════════════════════════════════════════════════ */
+.dg-size-card {
+  gap: var(--dg-space-2);
+}
+.dg-size-hint {
+  padding: var(--dg-space-1) var(--dg-space-2);
+  border: 1px solid color-mix(in srgb, var(--accent, #2d7ff9) 30%, var(--line, #e0e0e0));
+  border-left: 3px solid var(--accent, #2d7ff9);
+  border-radius: var(--dg-radius-sm);
+  background: var(--accent-soft, rgba(43, 98, 207, 0.08));
+  color: var(--txt-2, #6b6b6b);
+  font-size: var(--dg-fs-xs);
+  line-height: 1.5;
+}
+.dg-size-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto var(--dg-ctrl-h);
+  align-items: center;
+  gap: var(--dg-space-1);
+}
+.dg-size-row label {
+  font-size: var(--dg-fs-sm);
+  font-weight: var(--dg-fw-title);
+  color: var(--txt-2, #6b6b6b);
+  text-align: center;
+}
+.dg-size-row input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--dg-ctrl-h);
+  padding: 0 var(--dg-space-2);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  background: var(--bg, #fff);
+  color: var(--txt, #353333);
+  font-size: var(--dg-fs-sm);
+}
+.dg-size-unit {
+  min-width: 20px;
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-3, #9a9a9a);
+  text-align: right;
+}
+.dg-size-row button {
+  min-height: var(--dg-ctrl-h);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  background: transparent;
+  color: var(--txt-2, #6b6b6b);
+  font-size: var(--dg-fs-xs);
+  cursor: pointer;
+}
+.dg-size-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--dg-space-2);
+}
+.dg-size-actions select {
+  width: 64px;
+  flex: none;
+}
+.dg-size-actions .dg-mini-btn {
+  flex: 1;
+  min-height: var(--dg-ctrl-h);
+  border: 1px solid var(--accent, #2d7ff9);
+  border-radius: var(--dg-radius-sm);
+  background: var(--accent, #2d7ff9);
+  color: var(--bg, #fff);
+  font-size: var(--dg-fs-sm);
+  font-weight: var(--dg-fw-title);
+  cursor: pointer;
+}
+.dg-size-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--dg-ctrl-h);
+  font-size: var(--dg-fs-sm);
+  color: var(--txt-2, #6b6b6b);
+  line-height: 1.4;
+}
+.dg-size-readout {
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-3, #9a9a9a);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   F4-1 · 节点尺寸面板（挂在预览右侧属性坞，沿用 F3-8 卡片 / 控件规格）
+   ══════════════════════════════════════════════════════════════════════ */
+.dg-size-card {
+  gap: var(--dg-space-2);
+}
+.dg-size-hint {
+  padding: var(--dg-space-1) var(--dg-space-2);
+  border: 1px solid color-mix(in srgb, var(--accent, #2d7ff9) 30%, var(--line, #e0e0e0));
+  border-left: 3px solid var(--accent, #2d7ff9);
+  border-radius: var(--dg-radius-sm);
+  background: var(--accent-soft, rgba(43, 98, 207, 0.08));
+  color: var(--txt-2, #6b6b6b);
+  font-size: var(--dg-fs-xs);
+  line-height: 1.5;
+}
+.dg-size-row {
+  display: grid;
+  grid-template-columns: 14px 1fr auto var(--dg-ctrl-h);
+  align-items: center;
+  gap: var(--dg-space-1);
+}
+.dg-size-row label {
+  font-size: var(--dg-fs-sm);
+  font-weight: var(--dg-fw-title);
+  color: var(--txt-2, #6b6b6b);
+  text-align: center;
+}
+.dg-size-row input {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: var(--dg-ctrl-h);
+  padding: 0 var(--dg-space-2);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  background: var(--bg, #fff);
+  color: var(--txt, #353333);
+  font-size: var(--dg-fs-sm);
+}
+.dg-size-unit {
+  min-width: 20px;
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-3, #9a9a9a);
+  text-align: right;
+}
+.dg-size-row button {
+  min-height: var(--dg-ctrl-h);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  background: transparent;
+  color: var(--txt-2, #6b6b6b);
+  font-size: var(--dg-fs-xs);
+  cursor: pointer;
+}
+.dg-size-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--dg-space-2);
+}
+.dg-size-actions select {
+  width: 64px;
+  flex: none;
+}
+.dg-size-actions .dg-mini-btn {
+  flex: 1;
+  min-height: var(--dg-ctrl-h);
+  border: 1px solid var(--accent, #2d7ff9);
+  border-radius: var(--dg-radius-sm);
+  background: var(--accent, #2d7ff9);
+  color: var(--bg, #fff);
+  font-size: var(--dg-fs-sm);
+  font-weight: var(--dg-fw-title);
+  cursor: pointer;
+}
+.dg-size-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--dg-ctrl-h);
+  font-size: var(--dg-fs-sm);
+  color: var(--txt-2, #6b6b6b);
+  line-height: 1.4;
+}
+.dg-size-readout {
+  font-size: var(--dg-fs-xs);
+  color: var(--txt-3, #9a9a9a);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
