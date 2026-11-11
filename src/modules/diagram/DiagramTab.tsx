@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { DiagramLayoutBar } from "./DiagramLayoutBar";
 import { DiagramCanvas } from "./DiagramCanvas";
+import { DiagramInspector } from "./DiagramInspector";
 import { DiagramCodePane } from "./DiagramCodePane";
 import { useDiagramStore } from "./store";
 import "./diagram.css";
@@ -56,7 +57,12 @@ export default function DiagramTab() {
           hidden={layoutMode === "code"}
           style={split ? { width: `calc(${splitRatio * 100}% - 2.5px)` } : undefined}
         >
-          <DiagramCanvas />
+          {/* F3-9：预览区 = 画布 + 右侧属性坞。属性面板只挂在预览侧，
+              绝不进入下面的 .dg-pane-code —— 代码区仍只有 LaTeXEditor 一个孩子。 */}
+          <div className="dg-canvas-workspace">
+            <DiagramCanvas />
+            <DiagramInspector />
+          </div>
         </div>
         {split && (
           <div
