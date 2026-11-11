@@ -258,6 +258,15 @@ import {
   styleNamesForStatement,
 } from "../src/modules/diagram/sharedStyle.ts";
 import {
+  enhanceMathInSvg,
+  estimateTextWidth,
+  lineStartX,
+  normalizeMathSvg,
+  sanitizeMathTex,
+  splitMathText,
+  MATH_HEIGHT_FACTOR,
+} from "../src/modules/diagram/tikzEditor/mathText.ts";
+import {
   DEFAULT_SNAP_THRESHOLD_PT,
   formatCm,
   guideToSvgSegment,
@@ -2912,6 +2921,87 @@ console.log("\nF4-1 · 节点尺寸键 / 最小补丁 / 按轴拖拽 / 共享样
   check(!precise.ok && isPreciseReadonly(precise), "精确通道返回统一只读理由（尺寸柄 / W-H 面板 / 应用开关共用）");
   check(canEditDiagramSource({ previewMode: "local" }).ok, "本地即时通道可写尺寸");
 }
+
+
+console.log("F4-2 · MathJax 节点公式增强（分段 / 消毒 / 混排 / 回退）");
+{
+  // ① 分段：与 captionRender.splitCaption 同款正则（$$ 优先、$ 不跨行）
+  check(splitMathText("速度 $v$ 与 $\\theta$").length === 4, "混排切成 文本/公式/文本/公式 四段");
+  check(splitMathText("$$x^2$$").length === 1 && splitMathText("$$x^2$$")[0].display === true, "$$...$$ 识别为行间公式");
+  check(splitMathText("$a$ $b$").filter((x) => x.type === "math").length === 2, "同行两个公式分别切出");
+  const noMath = splitMathText("纯文本 A");
+  check(noMath.length === 1 && noMath[0].type === "text", "无 $ 时只有一段文本");
+  check(splitMathText("未闭合 $x").every((x) => x.type === "text"), "未配对 $ 不切公式、不吞字符");
+  check(splitMathText("a $b\nc$ d").every((x) => x.type === "text"), "$ 不跨行（与 captionRender 口径一致）");
+
+  // ② 喂给 MathJax 前的净化：PGF / 危险宏拒绝，普通 TeX 放行
+  check(sanitizeMathTex("\\theta^2") === "\\theta^2", "常规 TeX 公式放行");
+  check(sanitizeMathTex("  x^2  ") === "x^2", "首尾空白被裁剪");
+  check(sanitizeMathTex("\\pgfmathparse{1+1}") === null, "pgfmath 构造拒绝喂给 MathJax");
+  check(sanitizeMathTex("\\draw (0,0) -- (1,1)") === null, "TikZ 绘图命令拒绝");
+  check(sanitizeMathTex("\\write18{ls}") === null, "写文件命令拒绝");
+  check(sanitizeMathTex("   ") === null, "空公式回退原文");
+
+  // ③ MathJax 字形 → 消毒器安全片段（真实 MathJax 3.2.2 输出结构）
+  const MJ_RAW = String.raw`<svg style="vertical-align: -0.186ex;" xmlns="http://www.w3.org/2000/svg" width="6.109ex" height="2.072ex" role="img" focusable="false" viewBox="0 -833.9 2700 915.9" xmlns:xlink="http://www.w3.org/1999/xlink" aria-hidden="true"><defs><path id="MJX-1-TEX-I-1D465" d="M52 289Z"></path></defs><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><g data-mml-node="math"><g data-mml-node="mi"><use data-c="1D465" xlink:href="#MJX-1-TEX-I-1D465"></use></g></g></g></svg>`;
+  const glyph = normalizeMathSvg(MJ_RAW, "#123456", "dgm0");
+  check(!!glyph && glyph.vbW === 2700 && glyph.vbH === 915.9, "解析 viewBox 宽高");
+  check(!!glyph && !glyph.inner.includes("xlink:href") && glyph.inner.includes('href="#dgm0-MJX-1-TEX-I-1D465"'), "xlink:href → href 且 id 加前缀、内部引用同步改写");
+  check(!!glyph && !glyph.inner.includes("currentColor") && glyph.inner.includes("#123456"), "currentColor → 实体颜色（绕开 svg.ts 删 style/color）");
+  check(!!glyph && !/style\s*=/.test(glyph.inner), "style 属性已剥离");
+  check(!!glyph && glyph.inner.includes('id="dgm0-MJX-1-TEX-I-1D465"'), "defs path id 同样加前缀，避免多公式撞 id");
+  check(normalizeMathSvg('<svg viewBox="0 0 10 10"><foreignObject>x</foreignObject></svg>', "#000", "z") === null, "foreignObject 输出拒绝（消毒白名单会删、canvas 会污染）");
+  check(normalizeMathSvg('<svg viewBox="0 0 10 10"><script>alert(1)</script></svg>', "#000", "z") === null, "script 输出拒绝");
+  check(normalizeMathSvg('<svg width="1ex"><path d="M0 0"/></svg>', "#000", "z") === null, "无 viewBox 的输出拒绝");
+  check(normalizeMathSvg('<svg viewBox="0 0 10 10"><use xlink:href="https://evil/x"></use></svg>', "#000", "z") !== null, "外链 href 被剔除但不整段拒绝（字形可能仍有 path）");
+
+  // ④ 混排布局：宽度估算与 text-anchor 起点
+  check(estimateTextWidth("中", 10) === 10 && estimateTextWidth("i", 10) === 3, "CJK ≈ 1em、窄拉丁 ≈ 0.3em");
+  check(lineStartX(100, 40, "middle") === 80 && lineStartX(100, 40, "end") === 60 && lineStartX(100, 40, "start") === 100, "text-anchor 三种起点正确");
+  check(MATH_HEIGHT_FACTOR === 1, "公式高度系数默认 1× font-size（真机可微调）");
+
+  // ⑤ 端到端：引擎真实 <text> → 增强 markup，再过 svg.ts 消毒仍保留字形
+  const MATH_SRC = String.raw`\begin{tikzpicture}
+  \node (a) at (0,0) {$\theta$};
+  \node (b) at (2,0) {速度 $v$ 与 $\theta$};
+  \node (c) at (4,0) {A};
+\end{tikzpicture}`;
+  const mr = await renderTikz(MATH_SRC);
+  check((mr.svg.match(/<text\b/g) || []).length === 3, "引擎为三个节点各输出一个 <text>");
+  check(mr.svg.includes("$\\theta$"), "引擎把 $\\theta$ 原样字面输出（未排版）");
+  let calls = 0;
+  const fakeResolve = async (tex: string, display: boolean) => {
+    calls++;
+    return display ? null : MJ_RAW.replace("1D465", tex === "v" ? "1D466" : "1D465");
+  };
+  const boost = await enhanceMathInSvg(mr.svg, fakeResolve);
+  check(calls === 3, "三个公式段各调用一次 resolver（A 节点无公式不调用）");
+  check(boost.enhanced === 3 && boost.failed === 0, "三段公式全部渲染成功");
+  check(!boost.svg.includes("$\\theta$") && !boost.svg.includes("$v$"), "增强后源码串里不再有字面 $...$");
+  check(boost.svg.includes("速度 ") && boost.svg.includes(" 与 "), "混排的文本段仍保留（中文不断字）");
+  check((boost.svg.match(/data-dg-math-run="1"/g) || []).length === 2, "两个含公式的节点被包成 dg-math-run");
+  check(boost.svg.includes('data-source-id="path:2"'), "无公式节点 C 的 data-source-id 原样保留");
+  check((boost.svg.match(/<svg\b/g) || []).length === 4, "根 svg + 三个公式段内嵌 svg 共四个（含同节点两段）");
+  // 关键：增强结果过真实消毒器后，<use href="#..."> 必须还在（否则公式空白）
+  const cleanMath = sanitizeSvg(boost.svg, mr.viewBox, 1);
+  check(!!cleanMath, "增强后的 SVG 仍可被消毒器解析");
+  check(!!cleanMath && cleanMath.querySelectorAll("use[href^='#dgm']").length >= 2, "消毒后字形 <use href> 未被剔除（公式可见）");
+  check(!!cleanMath && cleanMath.querySelectorAll("[data-source-id]").length === 3, "消毒后三个节点的命中 id 齐全，选中 / 拖拽不受影响");
+  check(!!cleanMath && cleanMath.querySelectorAll(".dg-math-run").length === 2, "消毒后公式包裹层保留");
+
+  // ⑥ 失败回退：resolver 全失败 → 字面量原样保留、不抛异常、不白屏
+  const fallback = await enhanceMathInSvg(mr.svg, async () => null);
+  check(fallback.failed === 3 && fallback.enhanced === 0, "resolver 全失败时三段都计入回退");
+  check(fallback.svg.includes("$\\theta$") && fallback.svg.includes("$v$"), "失败后 $...$ 字面量原样保留（信息不丢）");
+  check(!fallback.svg.includes("dg-math-run"), "失败时不出空字形组、不白屏");
+  const throwAway = await enhanceMathInSvg(mr.svg, async () => { throw new Error("MathJax 脚本加载失败"); });
+  check(throwAway.failed === 3 && throwAway.svg.includes("$\\theta$"), "resolver 抛异常被逐段吞掉并回退字面量");
+
+  // ⑦ 唯一真源：增强函数签名不含 source、不产源码补丁；原引擎 svg 字符串未被改动
+  check(mr.svg.includes("$\\theta$"), "增强是纯函数：原 engine 结果未被就地改写（缓存内容干净）");
+  check(!/\\\\node|\\\\draw/.test(boost.svg), "增强输出只有 SVG markup，不含任何 TikZ 源码");
+}
+
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

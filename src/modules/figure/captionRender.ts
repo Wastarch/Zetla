@@ -33,7 +33,7 @@ export interface RenderedCaption {
 
 let mjPromise: Promise<unknown> | null = null;
 
-function ensureMathJax(): Promise<any> {
+export function ensureMathJax(): Promise<any> {
   if (mjPromise) return mjPromise as Promise<any>;
   mjPromise = new Promise((resolve, reject) => {
     const w = window as any;
@@ -52,15 +52,35 @@ function ensureMathJax(): Promise<any> {
     s.onload = () => {
       const mj = w.MathJax;
       if (mj && mj.startup && mj.startup.promise) {
-        mj.startup.promise.then(() => resolve(mj)).catch(reject);
+        mj.startup.promise.then(() => resolve(mj)).catch((e: unknown) => {
+          mjPromise = null; // 启动失败允许下次重试（禁用脚本 / 网络抖动后恢复）
+          reject(e);
+        });
       } else {
+        mjPromise = null;
         reject(new Error("MathJax 启动失败"));
       }
     };
-    s.onerror = () => reject(new Error("MathJax 脚本加载失败"));
+    s.onerror = () => {
+      mjPromise = null; // 禁用 / 加载失败不永久锁死，重渲染时可重试
+      reject(new Error("MathJax 脚本加载失败"));
+    };
     document.head.appendChild(s);
   });
   return mjPromise as Promise<any>;
+}
+
+/**
+ * F4-2：把一段 TeX 公式渲染为 MathJax 原生 <svg> 字符串（fontCache:'local' 单例）。
+ * 与 figure 子标题共用同一个 ensureMathJax 脚本 / 配置，不新增依赖、不重复加载 2MB 脚本。
+ * 只负责产出字形 markup；消毒与混排交给 diagram/tikzEditor/mathText.ts。
+ */
+export async function renderMathGlyph(tex: string, display: boolean): Promise<string> {
+  const mj = await ensureMathJax();
+  const container = mj.tex2svg(tex, { display });
+  const svg = container?.querySelector?.("svg") as SVGSVGElement | null;
+  if (!svg) throw new Error("MathJax 未产出 svg");
+  return new XMLSerializer().serializeToString(svg);
 }
 
 /* ------------------------------------------------------------------ *

@@ -166,6 +166,7 @@ import {
   isPreciseReadonly,
 } from "./editability.ts";
 import { pickNearestHandle, type HitCandidate } from "./handleHit.ts";
+import { enhanceDiagramMath } from "./tikzEditor/mathRender";
 import {
   getClipboard,
   getLastMoveDelta,
@@ -501,9 +502,24 @@ export function DiagramCanvas() {
     setBusy(true);
     const timer = window.setTimeout(() => {
       renderTikz(source).then(
-        (r) => {
+        async (r) => {
           if (cancelled) return;
-          setResult(r);
+          // F4-2：MathJax 公式增强只改预览 SVG 字符串，绝不写 source。
+          // 放在 sanitizeSvg 之前合成 → 沿用既有消毒 / 注入 / 唯一真源管线，
+          // cancelled 与本地渲染共用：源码在 await 期间变化则整帧丢弃，不覆盖新几何。
+          // 无 `$` 时零调用（纯视觉增强不拖慢无公式的图）。
+          let svg = r.svg;
+          if (svg.includes("$")) {
+            try {
+              const boost = await enhanceDiagramMath(svg);
+              if (cancelled) return;
+              if (boost.enhanced > 0) svg = boost.svg;
+            } catch {
+              // MathJax 不可用 → 保留引擎原文（$...$ 字面量），不白屏、不报错中断渲染。
+            }
+          }
+          if (cancelled) return;
+          setResult({ ...r, svg });
           setError(null);
           setBusy(false);
           setRenderMeta({ source, statements: r.statements, compat: r.compat });
