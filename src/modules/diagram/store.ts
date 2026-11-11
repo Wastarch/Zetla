@@ -33,8 +33,14 @@ import {
   type GroupingState,
 } from "./grouping.ts";
 import type { GuideLine } from "./guides.ts";
+import {
+  DEFAULT_CANVAS_SIZE,
+  normalizeCanvasSize,
+  type CanvasSize,
+} from "./canvasSize.ts";
 
 export type { HandleSize } from "./handleVisual.ts";
+export type { CanvasSize } from "./canvasSize.ts";
 
 /** Tab 内三种布局：仅画布 / 仅源码 / 左右分屏（都是同一个 diagram://editor Tab 内的视图状态） */
 export type LayoutMode = "canvas" | "code" | "split";
@@ -48,6 +54,9 @@ const LAYERS_KEY = "zetla.diagram.layersVisible";
 const SNAP_KEY = "zetla.diagram.snapEnabled";
 const GRID_KEY = "zetla.diagram.gridEnabled";
 const SNAP_GRID_KEY = "zetla.diagram.snapGridEnabled";
+const CANVAS_SIZE_KEY = "zetla.diagram.canvasSize";
+const CANVAS_AUTO_KEY = "zetla.diagram.canvasSizeAuto";
+const EXPORT_USE_CANVAS_KEY = "zetla.diagram.exportUseCanvas";
 const GROUPING_KEY = "zetla.diagram.grouping.v1";
 
 export const MIN_SPLIT_RATIO = 0.2;
@@ -64,6 +73,11 @@ export const DIAGRAM_DEFAULTS = {
   snapEnabled: true,
   gridEnabled: false,
   snapGridEnabled: false,
+  /** F3-7：固定画布尺寸（配置持久化；viewport 不持久化） */
+  canvasSize: DEFAULT_CANVAS_SIZE as CanvasSize,
+  canvasSizeAuto: true,
+  /** F3-7：侧栏「按画布尺寸导出」开关，默认关 */
+  exportUseCanvas: false,
 };
 
 function clampRatio(n: number): number {
@@ -155,6 +169,35 @@ function readSnapGridEnabled(): boolean {
     return v === null ? DIAGRAM_DEFAULTS.snapGridEnabled : v === "1";
   } catch {
     return DIAGRAM_DEFAULTS.snapGridEnabled;
+  }
+}
+
+/** F3-7：画布尺寸（对象型偏好，照 grouping 的 JSON 范式 + 白名单校验）。 */
+function readCanvasSize(): CanvasSize {
+  try {
+    return normalizeCanvasSize(JSON.parse(localStorage.getItem(CANVAS_SIZE_KEY) ?? "null"));
+  } catch {
+    return { ...DEFAULT_CANVAS_SIZE };
+  }
+}
+
+/** F3-7：画布尺寸是否跟随主文档（手改后关闭，刷新不再覆盖用户选择）。 */
+function readCanvasSizeAuto(): boolean {
+  try {
+    const v = localStorage.getItem(CANVAS_AUTO_KEY);
+    return v === null ? DIAGRAM_DEFAULTS.canvasSizeAuto : v === "1";
+  } catch {
+    return DIAGRAM_DEFAULTS.canvasSizeAuto;
+  }
+}
+
+/** F3-7：按画布尺寸导出开关（默认关，布尔偏好）。 */
+function readExportUseCanvas(): boolean {
+  try {
+    const v = localStorage.getItem(EXPORT_USE_CANVAS_KEY);
+    return v === null ? DIAGRAM_DEFAULTS.exportUseCanvas : v === "1";
+  } catch {
+    return DIAGRAM_DEFAULTS.exportUseCanvas;
   }
 }
 
@@ -266,6 +309,20 @@ export interface DiagramState {
   snapGridEnabled: boolean;
   setSnapGridEnabled: (v: boolean) => void;
   /**
+   * F3-7：固定画布尺寸（第十项持久化偏好）。只是编辑器侧纸张辅助层 / 导出片段尺寸，
+   * 绝不写进 TikZ / CM6 source；默认由 documentPaper 从主文档推断后可被用户覆盖。
+   */
+  canvasSize: CanvasSize;
+  /** 手改尺寸后关闭自动推断，刷新保留用户选择；重新打开绘图 Tab 不覆盖 */
+  canvasSizeAuto: boolean;
+  setCanvasSize: (size: CanvasSize) => void;
+  /** 主文档推断结果：写尺寸但保持 auto 打开（否则 effect 会自我触发死循环） */
+  setCanvasSizeFromDocument: (size: CanvasSize) => void;
+  setCanvasSizeAuto: (v: boolean) => void;
+  /** F3-7：侧栏「按画布尺寸导出」开关（第十一项持久化偏好，默认关） */
+  exportUseCanvas: boolean;
+  setExportUseCanvas: (v: boolean) => void;
+  /**
    * F3-4：对齐操作后短暂显示的参考线（会话态，不持久化）。
    * guideSeq 每次自增，保证「连续两次对齐到同一条线」也能触发画布重画。
    */
@@ -288,7 +345,7 @@ export interface DiagramState {
   setCaption: (v: string) => void;
   label: string;
   setLabel: (v: string) => void;
-  /** F1-5 / F3-1 / F3-2 / F3-3 / F3-4 / F3-5：设置页「恢复默认」——把九项持久化偏好写回默认值 */
+  /** F1-5 / F3-1 / F3-2 / F3-3 / F3-4 / F3-5 / F3-7：设置页「恢复默认」——把十一项持久化偏好写回默认值 */
   resetDiagramPreferences: () => void;
 }
 
@@ -382,6 +439,28 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     writeSetting(SNAP_GRID_KEY, v ? "1" : "0");
     set({ snapGridEnabled: v });
   },
+  canvasSize: readCanvasSize(),
+  canvasSizeAuto: readCanvasSizeAuto(),
+  setCanvasSize: (size) => {
+    const v = normalizeCanvasSize(size);
+    writeSetting(CANVAS_SIZE_KEY, JSON.stringify(v));
+    writeSetting(CANVAS_AUTO_KEY, "0");
+    set({ canvasSize: v, canvasSizeAuto: false });
+  },
+  setCanvasSizeFromDocument: (size) => {
+    const v = normalizeCanvasSize(size);
+    writeSetting(CANVAS_SIZE_KEY, JSON.stringify(v));
+    set({ canvasSize: v });
+  },
+  setCanvasSizeAuto: (v) => {
+    writeSetting(CANVAS_AUTO_KEY, v ? "1" : "0");
+    set({ canvasSizeAuto: v });
+  },
+  exportUseCanvas: readExportUseCanvas(),
+  setExportUseCanvas: (v) => {
+    writeSetting(EXPORT_USE_CANVAS_KEY, v ? "1" : "0");
+    set({ exportUseCanvas: v });
+  },
   guides: [],
   guideSeq: 0,
   setGuides: (lines) => {
@@ -408,6 +487,9 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     writeSetting(SNAP_KEY, DIAGRAM_DEFAULTS.snapEnabled ? "1" : "0");
     writeSetting(GRID_KEY, DIAGRAM_DEFAULTS.gridEnabled ? "1" : "0");
     writeSetting(SNAP_GRID_KEY, DIAGRAM_DEFAULTS.snapGridEnabled ? "1" : "0");
+    writeSetting(CANVAS_SIZE_KEY, JSON.stringify(DIAGRAM_DEFAULTS.canvasSize));
+    writeSetting(CANVAS_AUTO_KEY, DIAGRAM_DEFAULTS.canvasSizeAuto ? "1" : "0");
+    writeSetting(EXPORT_USE_CANVAS_KEY, DIAGRAM_DEFAULTS.exportUseCanvas ? "1" : "0");
     set({
       layoutMode: DIAGRAM_DEFAULTS.layoutMode,
       splitRatio: DIAGRAM_DEFAULTS.splitRatio,
@@ -418,6 +500,9 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       snapEnabled: DIAGRAM_DEFAULTS.snapEnabled,
       gridEnabled: DIAGRAM_DEFAULTS.gridEnabled,
       snapGridEnabled: DIAGRAM_DEFAULTS.snapGridEnabled,
+      canvasSize: { ...DIAGRAM_DEFAULTS.canvasSize },
+      canvasSizeAuto: DIAGRAM_DEFAULTS.canvasSizeAuto,
+      exportUseCanvas: DIAGRAM_DEFAULTS.exportUseCanvas,
     });
   },
 }));

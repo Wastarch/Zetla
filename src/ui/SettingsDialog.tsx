@@ -35,6 +35,12 @@ import {
   type LayoutMode,
 } from "@/modules/diagram/store";
 import { HANDLE_SIZE_LABELS, handleSizeSummary } from "@/modules/diagram/handleVisual";
+import {
+  CANVAS_PRESET_LABELS,
+  canvasSizeForPreset,
+  presetMaxHeightCm,
+  type CanvasPreset,
+} from "@/modules/diagram/canvasSize";
 import type { PreviewMode } from "@/types/diagram";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
@@ -229,6 +235,10 @@ export function SettingsDialog() {
   const setDiagramGridEnabled = useDiagramStore((s) => s.setGridEnabled);
   const diagramSnapGrid = useDiagramStore((s) => s.snapGridEnabled);
   const setDiagramSnapGrid = useDiagramStore((s) => s.setSnapGridEnabled);
+  const diagramCanvasSize = useDiagramStore((s) => s.canvasSize);
+  const setDiagramCanvasSize = useDiagramStore((s) => s.setCanvasSize);
+  const diagramCanvasAuto = useDiagramStore((s) => s.canvasSizeAuto);
+  const setDiagramCanvasAuto = useDiagramStore((s) => s.setCanvasSizeAuto);
   const resetDiagramPreferences = useDiagramStore((s) => s.resetDiagramPreferences);
   const moduleNames: Record<string, string> = {};
   for (const m of modules) moduleNames[m.id] = m.name;
@@ -820,7 +830,72 @@ export function SettingsDialog() {
                     onChange={(next) => setDiagramSnapGrid(next)}
                   />
                 </Fld>
-                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板 / 智能参考线 / 网格 / 吸附网格一次性重置">
+                <Fld
+                  label="画布尺寸（F3-7）"
+                  hint="宽取主文档正文宽（A4 约 15cm），高默认 10cm 且不超过该纸张正文高；纸张框只是编辑参考，绝不写进 TikZ 源码"
+                >
+                  <div className="set-inline">
+                    <select
+                      value={diagramCanvasSize.preset}
+                      onChange={(e) =>
+                        setDiagramCanvasSize(
+                          canvasSizeForPreset(e.target.value as CanvasPreset, diagramCanvasSize),
+                        )
+                      }
+                    >
+                      {(Object.keys(CANVAS_PRESET_LABELS) as CanvasPreset[]).map((key) => (
+                        <option key={key} value={key}>
+                          {CANVAS_PRESET_LABELS[key]}
+                        </option>
+                      ))}
+                    </select>
+                    {diagramCanvasSize.preset === "custom" && (
+                      <>
+                        <input
+                          type="number"
+                          min={1}
+                          max={200}
+                          step={0.5}
+                          value={diagramCanvasSize.widthCm}
+                          title="正文宽 cm"
+                          onChange={(e) =>
+                            setDiagramCanvasSize({
+                              ...diagramCanvasSize,
+                              widthCm: Number(e.target.value),
+                            })
+                          }
+                        />
+                        <input
+                          type="number"
+                          min={1}
+                          max={presetMaxHeightCm("custom")}
+                          step={0.5}
+                          value={diagramCanvasSize.heightCm}
+                          title="正文高 cm"
+                          onChange={(e) =>
+                            setDiagramCanvasSize({
+                              ...diagramCanvasSize,
+                              heightCm: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={diagramCanvasAuto}
+                      title="重新按主文档 \textwidth 推断默认尺寸"
+                      onClick={() => {
+                        setDiagramCanvasAuto(true);
+                        notify("画布尺寸已切回按主文档推断", "ok");
+                      }}
+                    >
+                      按文档宽度
+                    </button>
+                  </div>
+                </Fld>
+                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板 / 智能参考线 / 网格 / 吸附网格 / 画布尺寸 / 按画布导出一次性重置">
                   <button
                     type="button"
                     className="btn"

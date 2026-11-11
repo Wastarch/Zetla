@@ -7,14 +7,28 @@ export const MAX_PREVIEW_CACHE = 12;
 /** key → 成功结果（Map 迭代序即 LRU 序） */
 const cache = new Map<string, TikzPreviewResult>();
 
+/**
+ * F3-7：按画布尺寸导出的两个维度也进 key，避免开关 / 尺寸切换后误命中旧产物。
+ * 开关关闭（或第三参省略）时 key 与 F1-6 完全一致 —— 现有调用点与回归零改动。
+ */
+export interface PreviewCanvasKey {
+  widthPt: number;
+  heightPt: number;
+  useCanvas: boolean;
+}
+
 /** FNV-1a 32 位；附长度进一步降低碰撞概率 */
-export function previewKey(source: string, engine: string): string {
+export function previewKey(source: string, engine: string, canvas?: PreviewCanvasKey): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < source.length; i += 1) {
     h ^= source.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
-  return `${engine}:${(h >>> 0).toString(16)}:${source.length}`;
+  const base = `${engine}:${(h >>> 0).toString(16)}:${source.length}`;
+  if (!canvas?.useCanvas) return base;
+  const w = Number.isFinite(canvas.widthPt) ? Math.round(canvas.widthPt * 100) / 100 : 0;
+  const hh = Number.isFinite(canvas.heightPt) ? Math.round(canvas.heightPt * 100) / 100 : 0;
+  return `${base}|c:${w}:${hh}`;
 }
 
 export function getCachedPreview(key: string): TikzPreviewResult | undefined {

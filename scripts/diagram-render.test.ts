@@ -54,6 +54,39 @@ import {
 } from "../src/modules/diagram/editability.ts";
 import { pickNearestHandle } from "../src/modules/diagram/handleHit.ts";
 import {
+  CANVAS_PRESETS,
+  CM_TO_PT,
+  DEFAULT_CANVAS_SIZE,
+  canvasPaperRect,
+  canvasSizeForPreset,
+  canvasSizeLabel,
+  canvasSizeToPt,
+  DEFAULT_CANVAS_HEIGHT_CM,
+  normalizeCanvasSize,
+  presetMaxHeightCm,
+} from "../src/modules/diagram/canvasSize.ts";
+import {
+  inferDocumentPaper,
+  lengthToCm,
+} from "../src/modules/diagram/documentPaper.ts";
+import {
+  DEFAULT_VIEWPORT,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  centerViewport,
+  clampZoom,
+  fitCanvasViewport,
+  fitContentZoom,
+  fitTo,
+  renderScale,
+  normalizeViewport,
+  panBy,
+  pointerFromStageCenter,
+  viewportTransform,
+  zoomAtPointer,
+  zoomStep,
+} from "../src/modules/diagram/viewport.ts";
+import {
   hasDrawableContent,
   sanitizeSvg,
 } from "../src/modules/diagram/tikzEditor/svg.ts";
@@ -2521,6 +2554,162 @@ console.log("F3-6 · F2-3 挂锁 / F2-4 撤销栈联动抽查（端到端）");
     !!zEdit && !canEditDiagramSource({ previewMode: "precise" }).ok,
     "F1-6 精确通道只读在入口拦截：写回规划可用但该通道不允许调用",
   );
+}
+
+console.log("F3-7 · 固定画布尺寸 / 主文档推断 / 视角纯逻辑");
+{
+  check(
+    Math.abs(CM_TO_PT - 28.45275590551181) < 1e-9,
+    "cm→pt 与 F3-1 探针实测一致（1cm=28.45275590551181pt）",
+  );
+  const a4 = normalizeCanvasSize(CANVAS_PRESETS.a4);
+  check(a4.preset === "a4" && a4.widthCm === 15, "A4 预设正文宽 15cm");
+  check(
+    normalizeCanvasSize({ preset: "nonsense", widthCm: 1 }).preset === DEFAULT_CANVAS_SIZE.preset,
+    "非法预设回退到 A4 兜底",
+  );
+  const custom = normalizeCanvasSize({ preset: "custom", widthCm: 12.5, heightCm: 18 });
+  check(custom.preset === "custom" && custom.widthCm === 12.5 && custom.heightCm === 18, "自定义 W×H 保留");
+  const badCustom = normalizeCanvasSize({ preset: "custom", widthCm: NaN, heightCm: -3 }, custom);
+  check(badCustom.widthCm === 12.5 && badCustom.heightCm === 18, "自定义非法数值回退、不产出 NaN");
+  check(normalizeCanvasSize({ preset: "auto" }).widthCm === 0, "自适应尺寸为零（不画纸张层）");
+  check(canvasSizeForPreset("a5", custom).widthCm === 10.5, "切预设覆盖自定义尺寸");
+  const pt = canvasSizeToPt(a4);
+  check(Math.abs(pt.widthPt - 15 * CM_TO_PT) < 1e-6, "A4 正文宽换算为 world pt");
+  const vb = { x: -10, y: -10, width: 100, height: 80 };
+  const paper = canvasPaperRect(a4, vb);
+  check(!!paper && Math.abs(paper.width - pt.widthPt) < 1e-6, "纸张框宽=正文宽 pt");
+  check(
+    !!paper &&
+      Math.abs(paper.x - (vb.x + vb.width / 2 - pt.widthPt / 2)) < 1e-6 &&
+      Math.abs(paper.y - (vb.y + vb.height / 2 - pt.heightPt / 2)) < 1e-6,
+    "纸张框以图形包围盒中心为纸面中心（不再锚在 world 原点）",
+  );
+  const paperShift = canvasPaperRect(a4, { x: 200, y: 120, width: 60, height: 40 });
+  check(
+    !!paperShift &&
+      Math.abs(paperShift.x + paperShift.width / 2 - 230) < 1e-6 &&
+      Math.abs(paperShift.y + paperShift.height / 2 - 140) < 1e-6,
+    "图元整体平移后纸张框仍跟着内容居中",
+  );
+  check(canvasPaperRect({ preset: "auto", widthCm: 0, heightCm: 0 }, vb) === null, "自适应不生成纸张框");
+  check(canvasSizeLabel(a4).includes("15.0×10.0"), "尺寸说明含正文宽高");
+  check(a4.heightCm === DEFAULT_CANVAS_HEIGHT_CM, "预设高度取默认工作区高度，不铺满整张纸");
+  check(
+    normalizeCanvasSize({ preset: "a4", heightCm: 99 }).heightCm === presetMaxHeightCm("a4"),
+    "高度被钳制在该纸张正文高以内",
+  );
+  check(
+    canvasSizeForPreset("a4", a4).heightCm === DEFAULT_CANVAS_HEIGHT_CM &&
+      !("maxHeightCm" in canvasSizeForPreset("a4", a4)),
+    "预设切换不把 maxHeightCm 带进存储的尺寸对象",
+  );
+
+  check(lengthToCm("15cm") === 15, "cm 长度解析");
+  check(Math.abs((lengthToCm("150mm") ?? 0) - 15) < 1e-9, "mm 长度解析");
+  check(Math.abs((lengthToCm("425.2pt") ?? 0) - 15) < 0.01, "pt 长度解析");
+  check(lengthToCm("not-a-length") === null, "非法长度返回 null");
+  const docA4 = inferDocumentPaper("\\documentclass[a4paper,11pt]{article}\n\\begin{document}x\\end{document}");
+  check(docA4.preset === "a4" && docA4.source === "document", "从 documentclass 推断 A4");
+  check(docA4.widthCm === 15 && docA4.detail.includes("a4paper"), "推断值取正文宽且给出来源");
+  check(
+    docA4.heightCm === DEFAULT_CANVAS_HEIGHT_CM && docA4.maxHeightCm === presetMaxHeightCm("a4"),
+    "推断高度取默认工作区并带出纸张正文高上限",
+  );
+  const docA5 = inferDocumentPaper("\\documentclass[a5paper]{article}");
+  check(
+    docA5.preset === "a5" && docA5.heightCm <= presetMaxHeightCm("a5"),
+    "A5 文档的默认高度不超过 A5 正文高",
+  );
+  const docGeom = inferDocumentPaper(
+    "\\documentclass{article}\n\\usepackage[textwidth=14cm]{geometry}\n\\setlength{\\textwidth}{13cm}",
+  );
+  check(docGeom.widthCm === 14, "geometry 的 textwidth 优先于 setlength");
+  const docFallback = inferDocumentPaper("\\begin{tikzpicture}\\draw(0,0)--(1,1);\\end{tikzpicture}");
+  check(
+    docFallback.preset === "a4" && docFallback.source === "fallback" && docFallback.detail.includes("A4"),
+    "片段 / 无声明兜底 A4 并提示",
+  );
+
+  check(clampZoom(99) === MAX_ZOOM && clampZoom(0) === MIN_ZOOM, "缩放钳位在 25%–1600%");
+  check(clampZoom(NaN) === 1, "非法缩放回落到 1");
+  const pv = normalizeViewport({ zoom: 99, panX: NaN, panY: 12 });
+  check(pv.zoom === MAX_ZOOM && pv.panX === 0 && pv.panY === 12, "视角归一化逐字段收敛");
+  check(panBy(pv, 10, -5).panX === 10 && panBy(pv, 10, -5).panY === 7, "平移只改 pan");
+  check(viewportTransform({ zoom: 1, panX: 24, panY: -8 }).includes("24.00px"), "容器 transform 含 pan");
+  check(
+    !viewportTransform({ zoom: 1, panX: 0, panY: 0 }).includes("50%"),
+    "容器 transform 不带 -50% 位移（容器已 inset:0，否则内容整体偏左上）",
+  );
+  check(centerViewport().zoom === 1 && centerViewport().panX === 0, "居中重置视角");
+
+  const stage = { x: 100, y: 50, width: 400, height: 300 };
+  const ptr = { x: 380, y: 120 };
+  const v0 = { zoom: 1, panX: 20, panY: -10 };
+  const v1 = zoomAtPointer(v0, ptr, stage, 2);
+  const cx = stage.x + stage.width / 2;
+  const cy = stage.y + stage.height / 2;
+  check(
+    Math.abs((ptr.x - cx - v1.panX) - (ptr.x - cx - v0.panX) * 2) < 1e-6 &&
+      Math.abs((ptr.y - cy - v1.panY) - (ptr.y - cy - v0.panY) * 2) < 1e-6,
+    "指针锚点缩放：锚点下 SVG 点屏幕偏移按 zoom 比例保持",
+  );
+  check(zoomStep(v0, -100, ptr, stage).zoom > v0.zoom, "滚轮向上放大");
+  check(zoomStep(v0, 100, ptr, stage).zoom < v0.zoom, "滚轮向下缩小");
+  check(zoomAtPointer(v0, ptr, { x: 0, y: 0, width: 0, height: 0 }, 2).panX === v0.panX, "退化 stage 不移动 pan");
+  const fitContent = fitTo(vb, vb);
+  check(fitContent.zoom === 1 && fitContent.panX === 0, "适应内容 = 适应窗口（zoom 1）");
+  check(fitTo({ width: 200, height: 160 }, vb).zoom === 0.5, "适应画布按 target/viewBox 比例缩放");
+  check(pointerFromStageCenter(ptr, stage, v0).x === 60, "指针相对中心偏移已扣 pan");
+
+  // F3-7：zoom=1 必须是「整张固定画布完整可见」，而不是「内容包围盒铺满窗口」。
+  const st = { x: 0, y: 0, width: 800, height: 600 };
+  const vb2 = { x: -12, y: -12, width: 110, height: 82 };
+  const paper2 = { x: 0, y: 0, width: 426, height: 702 };
+  const baseContent = Math.min(st.width / vb2.width, st.height / vb2.height);
+  const baseCanvas = Math.min(st.width / paper2.width, st.height / paper2.height);
+  const pct1 = renderScale(1, st, vb2, paper2);
+  check(Math.abs(pct1 - baseCanvas / baseContent) < 1e-9, "zoom=1 → pct = 画布基准/内容基准");
+  check(
+    paper2.width * pct1 * baseContent <= st.width + 1e-6 &&
+      paper2.height * pct1 * baseContent <= st.height + 1e-6,
+    "zoom=1 时整张纸宽高都不超出视口（不再一放大就裁）",
+  );
+  check(renderScale(1, st, vb2, null) === 1, "无固定画布时 pct 退回 zoom（F1-6 现状）");
+  check(renderScale(2, st, vb2, paper2) > pct1, "放大提高 pct（推近）");
+  const contentZoom = fitContentZoom(st, vb2, paper2);
+  check(contentZoom > 1, "适应内容倍率 > 1（内容比纸小）");
+  check(Math.abs(renderScale(contentZoom, st, vb2, paper2) - 1) < 1e-9, "适应内容时 pct=1（内容铺满窗口）");
+  check(fitContentZoom(st, vb2, null) === 1, "无画布时适应内容 = 1");
+
+  // 纸张框不以 viewBox 中心对称：适应画布必须同时把纸张中心平移到窗口中心。
+  const fitCv = fitCanvasViewport(st, vb2, paper2);
+  const canvasScale = Math.min(st.width / paper2.width, st.height / paper2.height);
+  const screenCx = st.width / 2 + fitCv.panX + (paper2.x + paper2.width / 2 - (vb2.x + vb2.width / 2)) * canvasScale;
+  const screenCy = st.height / 2 + fitCv.panY + (paper2.y + paper2.height / 2 - (vb2.y + vb2.height / 2)) * canvasScale;
+  check(fitCv.zoom === 1, "适应画布 zoom=1");
+  check(Math.abs(screenCx - st.width / 2) < 1e-6, "适应画布：纸张中心对齐窗口中心（X）");
+  check(Math.abs(screenCy - st.height / 2) < 1e-6, "适应画布：纸张中心对齐窗口中心（Y）");
+  check(fitCanvasViewport(st, vb2, null).panX === 0, "无画布时适应画布不偏移");
+
+  const keyCanvasOn = previewKey(LIB_SRC, "xelatex", {
+    widthPt: pt.widthPt,
+    heightPt: pt.heightPt,
+    useCanvas: true,
+  });
+  const keyCanvasOther = previewKey(LIB_SRC, "xelatex", {
+    widthPt: 400,
+    heightPt: pt.heightPt,
+    useCanvas: true,
+  });
+  const keyCanvasOff = previewKey(LIB_SRC, "xelatex", {
+    widthPt: pt.widthPt,
+    heightPt: pt.heightPt,
+    useCanvas: false,
+  });
+  check(keyCanvasOn !== keyA, "按画布导出打开时缓存 key 与现状不同");
+  check(keyCanvasOn !== keyCanvasOther, "画布尺寸变化 key 变化（防串图）");
+  check(keyCanvasOff === keyA, "开关关闭时 key 与现状完全一致（零回归）");
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);

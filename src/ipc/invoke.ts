@@ -161,11 +161,17 @@ export const configApi = {
     call<ProjectEntry[]>("archive_project", { path, archived }),
 };
 
-// ── 绘图模块（M2 · F1-6 XeLaTeX 精确预览）────────────────────
+// ── 绘图模块（M2 · F1-6 XeLaTeX 精确预览 / F3-7 按画布尺寸导出）────────────────────
+/** F3-7：固定画布尺寸（world pt），只在 Rust 的派生 standalone 片段里生效，绝不写 CM6 source */
+export interface TikzCanvasSizeArg {
+  widthPt: number;
+  heightPt: number;
+}
+
 export const diagramApi = {
   /** 只编译 tikzpicture 片段 → standalone PDF → SVG 文本；失败以 status:"error" 返回 */
-  tikzPreview: (source: string, engine: string) =>
-    call<TikzPreviewResult>("tikz_preview", { source, engine }),
+  tikzPreview: (source: string, engine: string, canvas?: TikzCanvasSizeArg) =>
+    call<TikzPreviewResult>("tikz_preview", { source, engine, canvas: canvas ?? null }),
 };
 
 // ── 用户自定义快捷输入片段（M2-5a，独立 snippets.json）──────

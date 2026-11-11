@@ -297,28 +297,92 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   font-variant-numeric: tabular-nums;
 }
 
+/* F3-7：视图分组（抓手 / 适应内容 / 适应画布 / 100% / 居中）。只切视角 state。 */
+.dg-view-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--line, #ddd);
+}
+.dg-view-btn {
+  height: 24px;
+  padding: 0 7px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--txt-2, #59626d);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dg-view-btn:hover:not(:disabled) {
+  background: var(--bg-2, #f0f2f5);
+  color: var(--txt, #23272d);
+}
+.dg-view-btn.is-active {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-view-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .dg-canvas-body {
   position: relative;
   flex: 1;
   min-height: 0;
+  /* F3-7：**这里是唯一裁剪层**（= 视口窗口）。放大后超出窗口的内容由 pan 拖进来查看；
+     若把裁剪放在 .dg-canvas-stage 上，裁剪框会跟着 pan 一起移动 → 放大即「被裁」。 */
   overflow: hidden;
-  /* 舞台外围：浅色网格，暗示这是一张「纸」而不是编辑器背景 */
-  background: repeating-linear-gradient(
-    45deg,
-    var(--bg-2, #f6f6f6) 0 12px,
-    transparent 12px 24px
-  );
+  /* 画布底色恒定用纸面（双通道一致：本地 SVG 与 XeLaTeX 精确图都落在纸面上） */
+  background: var(--paper, #fbfaf7);
+  color: var(--paper-ink, #22242a);
+}
+/* F3-7：视角容器只做 translate(pan)，与 zoom 解耦；SVG 仍靠 width/height 百分比缩放，
+   于是 getScreenCTM() 的线性部分只含 zoom、平移只进 e/f，既有坐标换算零改动。 */
+.dg-viewport {
+  position: absolute;
+  inset: 0;
+  transform-origin: center center;
+  will-change: transform;
+}
+.dg-viewport[data-pan="1"] .dg-canvas-stage,
+.dg-viewport[data-pan="1"] .dg-precise-img {
+  cursor: grab;
 }
 /* stage 由 DiagramCanvas 的 useEffect 用 replaceChildren 注入 <svg>；
    React 不管理其 children。display:flex + 子 svg 的 margin:auto：
-   内容小于容器时居中，放大后溢出时不会把左上裁掉。 */
+   内容小于容器时居中；F3-7 起放大溢出由容器视角平移接管，不再叠加滚动条双套位移。 */
 .dg-canvas-stage {
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   display: flex;
-  overflow: auto;
-  background: var(--paper, #fbfaf7);
-  color: var(--paper-ink, #22242a);
+  /* F3-7：放大后 SVG 会大于容器，必须显式居中，否则 flex 默认 flex-start
+     会让内容贴左上角、看起来像「放大即被裁剪」。溢出部分交给视角 pan 查看。 */
+  align-items: center;
+  justify-content: center;
+  /* 裁剪只发生在 .dg-canvas-body；这一层必须放开，否则 pan 时裁剪框跟着跑，
+     放大后的边缘永远露不出来（首轮真机反馈：滚轮放大仍然被裁）。 */
+  overflow: visible;
+  background: transparent;
+}
+/* F3-7：固定画布纸张辅助层。画在纸面上 → 只能用恒定的 paper/paper-ink，
+   不随主题翻转；pointer-events:none 不抢控制点 / 图元命中。 */
+.dg-paper-rect {
+  /* 画布底本身就是纸面（--paper），所以纸张框只画虚线圈：
+     它是「正文区」的唯一标识，透明度比早先略高一点，缩放后也看得清。 */
+  fill: none;
+  stroke: var(--paper-ink, #22242a);
+  stroke-width: 1;
+  stroke-dasharray: 6 4;
+  opacity: 0.4;
+  vector-effect: non-scaling-stroke;
 }
 .dg-canvas-stage > svg {
   flex: none;

@@ -41,6 +41,10 @@ export function DiagramSidebar() {
   const setExportMode = useDiagramStore((s) => s.setExportMode);
   const wrapFigure = useDiagramStore((s) => s.wrapFigure);
   const setWrapFigure = useDiagramStore((s) => s.setWrapFigure);
+  // F3-7：按画布尺寸导出开关（默认关）；只影响派生导出片段，绝不改 CM6 source。
+  const exportUseCanvas = useDiagramStore((s) => s.exportUseCanvas);
+  const setExportUseCanvas = useDiagramStore((s) => s.setExportUseCanvas);
+  const canvasSize = useDiagramStore((s) => s.canvasSize);
   const caption = useDiagramStore((s) => s.caption);
   const setCaption = useDiagramStore((s) => s.setCaption);
   const label = useDiagramStore((s) => s.label);
@@ -141,6 +145,18 @@ export function DiagramSidebar() {
             onChange={(e) => setWrapFigure(e.target.checked)}
           />
           套 figure 环境（caption / label）
+        </label>
+        <label
+          className="dg-side-check"
+          title="打开后，XeLaTeX 精确预览与导出按固定画布留白；只在派生片段加 bounding box，绘图源码一字不改"
+        >
+          <input
+            type="checkbox"
+            checked={exportUseCanvas}
+            disabled={canvasSize.preset === "auto"}
+            onChange={(e) => setExportUseCanvas(e.target.checked)}
+          />
+          按画布尺寸导出（{canvasSize.preset === "auto" ? "需先设置纸张" : `${canvasSize.widthCm.toFixed(1)}×${canvasSize.heightCm.toFixed(1)}cm`}）
         </label>
         {wrapFigure && (
           <div className="dg-side-fields">

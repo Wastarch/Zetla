@@ -184,11 +184,29 @@ import {
   svgDataUrl,
 } from "./precisePreview";
 import type { TikzPreviewResult } from "@/types/diagram";
+import { getEditorView } from "@/editor/activeView";
+import {
+  canvasPaperRect,
+  canvasSizeToPt,
+} from "./canvasSize.ts";
+import { inferDocumentPaper } from "./documentPaper.ts";
+import {
+  DEFAULT_VIEWPORT,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  clampZoom,
+  fitCanvasViewport,
+  fitContentZoom,
+  panBy,
+  renderScale,
+  viewportTransform,
+  zoomStep,
+  type Viewport,
+} from "./viewport.ts";
 
 const LOCAL_DEBOUNCE_MS = 160;
 const PRECISE_DEBOUNCE_MS = 800;
 const DIAGRAM_PATH = "diagram://editor";
-const ZOOM_STEPS = [0.5, 0.75, 1, 1.5, 2, 3];
 const MAX_DIAG = 5;
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** F3-2：恒屏尺寸统一由 handleVisual.handleMetrics(size, 实测 unitScale) 给出；
@@ -333,6 +351,11 @@ export function DiagramCanvas() {
   const setGuides = useDiagramStore((s) => s.setGuides);
   // F3-5：网格 + 标尺显隐（挂载 effect 里重建，故需订阅其值）。
   const gridEnabled = useDiagramStore((s) => s.gridEnabled);
+  // F3-7：画布尺寸 / 导出开关是配置（持久化）；viewport 只留组件 state，刷新即重置。
+  const canvasSize = useDiagramStore((s) => s.canvasSize);
+  const canvasSizeAuto = useDiagramStore((s) => s.canvasSizeAuto);
+  const setCanvasSizeFromDocument = useDiagramStore((s) => s.setCanvasSizeFromDocument);
+  const exportUseCanvas = useDiagramStore((s) => s.exportUseCanvas);
   const setRenderMeta = useDiagramStore((s) => s.setRenderMeta);
   const activePath = useBuffersStore((s) => s.activePath);
   const tabVisible = activePath === DIAGRAM_PATH;
@@ -341,7 +364,11 @@ export function DiagramCanvas() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [engineReady, setEngineReady] = useState(false);
-  const [zoom, setZoom] = useState(1);
+  // F3-7：视角 state（不持久化）。zoom 派生自它，既有渲染 / 预览链路零改动。
+  const [viewport, setViewport] = useState<Viewport>({ ...DEFAULT_VIEWPORT });
+  const zoom = viewport.zoom;
+  const [handTool, setHandTool] = useState(false);
+  const [pointerWorldLabel, setPointerWorldLabel] = useState("—");
   // null = 跟随默认（有覆盖缺口就自动展开）；true/false = 用户手动展开/收起
   const [diagOpen, setDiagOpen] = useState<boolean | null>(null);
   const [precise, setPrecise] = useState<TikzPreviewResult | null>(null);
@@ -352,6 +379,19 @@ export function DiagramCanvas() {
   // F2-3 锁定清单：默认展开且常驻，不做「只有一个折叠按钮」的死 UI
   const [lockOpen, setLockOpen] = useState(true);
   const stageRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // F3-7 手势：空格 / 抓手 / 中键平移，靠 ref 让只注册一次的 window 监听读到最新值。
+  const spaceRef = useRef(false);
+  const handRef = useRef(false);
+  const panRef = useRef<{ clientX: number; clientY: number; panX: number; panY: number } | null>(null);
+  const viewportRef = useRef(viewport);
+  viewportRef.current = viewport;
+  // F3-7：zoom → SVG width/height 百分比的换算结果（依赖 stage 尺寸，供事件 / 预览读取）。
+  const renderPctRef = useRef(1);
+  // 视角初始化：画布尺寸变化（含首次拿到纸张）时按「整页居中」重置一次；
+  // 之后用户手动 pan / zoom 一律不再覆盖（zoom 变化不会重复触发，见 mount effect）。
+  const fitKeyRef = useRef("");
+  const lastPointerLabelRef = useRef(0);
   const dragRef = useRef<DragState | null>(null);
   // F3-3：框选手势 + 屏幕矩形（position:fixed 直接用 client 坐标，无需再减容器偏移）
   const marqueeRef = useRef<MarqueeDrag | null>(null);
@@ -469,6 +509,26 @@ export function DiagramCanvas() {
     };
   }, [source, empty]);
 
+  // F3-7：开关关闭时传 undefined → 缓存 key / Rust 派生片段与 F1-6 逐字节一致。
+  const canvasPt = canvasSizeToPt(canvasSize);
+  const previewCanvasArg =
+    exportUseCanvas && canvasSize.preset !== "auto"
+      ? { widthPt: canvasPt.widthPt, heightPt: canvasPt.heightPt, useCanvas: true }
+      : undefined;
+
+  // F3-7：默认画布尺寸从主文档推断（正文宽），用户手改后不再覆盖；换目标文档重新推断。
+  useEffect(() => {
+    if (!canvasSizeAuto || !targetTex) return;
+    const doc = getEditorView(targetTex)?.state.doc.toString() ?? "";
+    if (!doc) return;
+    const paper = inferDocumentPaper(doc);
+    setCanvasSizeFromDocument({
+      preset: paper.preset,
+      widthCm: paper.widthCm,
+      heightCm: paper.heightCm,
+    });
+  }, [targetTex, canvasSizeAuto, setCanvasSizeFromDocument]);
+
   // 精确通道：只在 Tab 激活 + 精确模式 + 有源码时编译。
   // 缓存命中直接出图；同 key 并发由 precisePreview 单飞；旧结果用 cancelled 丢弃。
   useEffect(() => {
@@ -477,7 +537,7 @@ export function DiagramCanvas() {
       return;
     }
     const engine = useSettingsStore.getState().settings.build.engine;
-    const hit = getCachedPreview(previewKey(source, engine));
+    const hit = getCachedPreview(previewKey(source, engine, previewCanvasArg));
     if (hit) {
       setPrecise(hit);
       setPreciseBusy(false);
@@ -486,7 +546,7 @@ export function DiagramCanvas() {
     let cancelled = false;
     setPreciseBusy(true);
     const timer = window.setTimeout(() => {
-      requestPrecisePreview(source, engine).then((r) => {
+      requestPrecisePreview(source, engine, false, previewCanvasArg).then((r) => {
         if (cancelled) return;
         setPrecise(r);
         setPreciseBusy(false);
@@ -496,7 +556,7 @@ export function DiagramCanvas() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [source, empty, previewMode, tabVisible]);
+  }, [source, empty, previewMode, tabVisible, exportUseCanvas, canvasSize]);
 
   // 手动重编译：跳过 800ms debounce 与成功缓存，立即用当前源码跑一次 XeLaTeX。
   // 主要解决「刚改完源码但看到的还是上一次结果」时无法强制刷新的问题。
@@ -505,12 +565,61 @@ export function DiagramCanvas() {
     const engine = useSettingsStore.getState().settings.build.engine;
     setPreciseBusy(true);
     try {
-      const r = await requestPrecisePreview(source, engine, true);
+      const r = await requestPrecisePreview(source, engine, true, previewCanvasArg);
       setPrecise(r);
     } finally {
       setPreciseBusy(false);
     }
   };
+
+  // F3-7：滚轮以指针为锚点连续缩放。挂在 canvas body（双通道共用），
+  // {passive:false} 才能阻止页面滚动；源码栏 / 输入控件 / 手势中不抢事件。
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!tabVisibleRef.current || !e.deltaY) return;
+      const el = e.target instanceof Element ? e.target : null;
+      if (el?.closest(".cm-editor, input, textarea, [contenteditable]")) return;
+      if (dragRef.current || marqueeRef.current || transformRef.current ||
+          shapeSessionRef.current || toolDragRef.current || panRef.current) return;
+      e.preventDefault();
+      const rect = body.getBoundingClientRect();
+      setViewport(zoomStep(
+        viewportRef.current,
+        e.deltaY,
+        { x: e.clientX, y: e.clientY },
+        { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+      ));
+    };
+    body.addEventListener("wheel", onWheel, { passive: false });
+    return () => body.removeEventListener("wheel", onWheel);
+  }, []);
+
+  // F3-7：空格键按下期间临时切抓手。先过焦点守卫，绝不抢源码栏 / 输入框的空格。
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || !tabVisibleRef.current) return;
+      const el = e.target instanceof Element ? e.target : document.activeElement;
+      if (!(el instanceof Element) ||
+          el.closest(".cm-editor, input, textarea, [contenteditable], .modal-layer, [role=\"dialog\"]")) return;
+      spaceRef.current = true;
+      e.preventDefault();
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === "Space") spaceRef.current = false;
+    };
+    const blur = () => { spaceRef.current = false; };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
+      spaceRef.current = false;
+    };
+  }, []);
 
   // 消毒后挂载本地 SVG。精确模式下清空 stage（改由 <img> 显示，不内联注入）。
   // 每次重建都丢弃旧拖拽持有的 DOM 引用，避免把位移写到已被替换的控制点上。
@@ -525,7 +634,13 @@ export function DiagramCanvas() {
       stage.replaceChildren();
       return;
     }
-    const node = sanitizeSvg(result.svg, result.viewBox, zoom);
+    // F3-7：固定画布时 zoom=1 表示「整张纸完整可见」，需换算成 SVG 的 width/height 百分比；
+    // auto 时 renderPct 退回 zoom（与 F1-6 一致）。
+    const paper = canvasPaperRect(canvasSize, result.viewBox);
+    const stageRect = stage.getBoundingClientRect();
+    const pct = renderScale(zoom, stageRect, result.viewBox, paper);
+    renderPctRef.current = pct;
+    const node = sanitizeSvg(result.svg, result.viewBox, pct);
     if (!node) {
       stage.replaceChildren();
       setError("引擎返回的 SVG 无法解析，已阻止注入画布。");
@@ -534,13 +649,31 @@ export function DiagramCanvas() {
     // F3-2：辅助层的「屏幕 px」要换算成 SVG 用户单位，必须先挂到 DOM 才能用
     // getScreenCTM() 量出真实单位比（viewBox→CSS px 的缩放不等于 UI zoom）。
     stage.replaceChildren(node);
-    const scale = svgUnitScale(node, result.viewBox, zoom, stage.getBoundingClientRect());
+    const scale = svgUnitScale(node, result.viewBox, pct, stageRect);
     if (Math.abs(scale - unitScaleRef.current) > 1e-6) {
       unitScaleRef.current = scale;
       setUnitScale(scale);
     }
     // 首帧就用实测值建层，不等 setState 的重渲染，避免「先大后小」闪一下。
     const m = handleMetrics(handleSize, scale);
+    // F3-7：固定画布 = SVG 内的纸张辅助层（几何底部、pointer-events:none）。
+    // 矩形按 world 0..W / 0..H 经与 worldToSvgPoint 同式换算；viewBox 保持引擎值不动。
+    if (paper) {
+      // 纸张框通常大于引擎包围盒（A4 正文 426×702pt vs 默认图 110×82pt），
+      // 根 SVG 默认 overflow:hidden 会把它裁掉 → 只允许这一层溢出，viewBox 仍不动。
+      node.style.overflow = "visible";
+      const layer = document.createElementNS(SVG_NS, "g");
+      layer.setAttribute("data-dg-paper", "1");
+      layer.setAttribute("pointer-events", "none");
+      const rect = document.createElementNS(SVG_NS, "rect");
+      rect.setAttribute("class", "dg-paper-rect");
+      rect.setAttribute("x", String(paper.x));
+      rect.setAttribute("y", String(paper.y));
+      rect.setAttribute("width", String(paper.width));
+      rect.setAttribute("height", String(paper.height));
+      layer.appendChild(rect);
+      node.insertBefore(layer, node.firstChild);
+    }
     // 先挂选中层（在控制点层之下），再挂控制点层。两层都只用 createElementNS
     // 追加到已消毒 SVG 之后；精确通道走 <img>，这里不会执行到。
     createSelectionLayer(node);
@@ -556,10 +689,18 @@ export function DiagramCanvas() {
     if (handlesOn && toolMode === "select" && result.handles.length > 0) {
       buildHandleLayer(node, result.handles, result.viewBox, result.compat, m);
     }
-  }, [result, zoom, previewMode, handlesOn, toolMode, handleSize, unitScale, gridEnabled]);
+    // 纸张尺寸变化（首帧拿到画布 / 用户改尺寸）→ 整页居中重置一次；
+    // 只在 key 变化时触发，所以缩放 / 拖拽不会被反复拉回。
+    const fitKey = `${canvasSize.preset}:${canvasSize.widthCm}x${canvasSize.heightCm}:${paper ? 1 : 0}`;
+    if (paper && fitKey !== fitKeyRef.current && stageRect.width > 0 && stageRect.height > 0) {
+      fitKeyRef.current = fitKey;
+      setViewport(fitCanvasViewport(stageRect, result.viewBox, paper));
+    }
+  }, [result, zoom, previewMode, handlesOn, toolMode, handleSize, unitScale, gridEnabled, canvasSize]);
 
-  // 侧栏伸缩 / 分屏切换 / 窗口 resize 会改变 viewBox→px 的比例，重测一次单位比。
-  // ResizeObserver 观察的是 stage 尺寸，replaceChildren 不会造成回调循环。
+  // 侧栏伸缩 / 分屏切换 / 窗口 resize 会改变 viewBox→px 的比例，也改变「整张纸适配窗口」
+  // 的换算基准（renderScale）。这里只更新 SVG 的 width/height 属性并重测 unitScale，
+  // 不重建 DOM（重建会让辅助层闪一下）；辅助层在 SVG 用户坐标里，自动跟随新尺寸。
   useEffect(() => {
     const stage = stageRef.current;
     if (!stage || typeof ResizeObserver === "undefined") return;
@@ -567,7 +708,14 @@ export function DiagramCanvas() {
       const svg = stage.querySelector("svg") as SVGSVGElement | null;
       const res = resultRef.current;
       if (!svg || !res || previewMode === "precise") return;
-      const scale = svgUnitScale(svg, res.viewBox, zoom, stage.getBoundingClientRect());
+      const rect = stage.getBoundingClientRect();
+      const paper = canvasPaperRect(canvasSize, res.viewBox);
+      const pct = renderScale(viewportRef.current.zoom, rect, res.viewBox, paper);
+      renderPctRef.current = pct;
+      const attr = `${Math.round(pct * 100)}%`;
+      svg.setAttribute("width", attr);
+      svg.setAttribute("height", attr);
+      const scale = svgUnitScale(svg, res.viewBox, pct, rect);
       if (Math.abs(scale - unitScaleRef.current) > 1e-6) {
         unitScaleRef.current = scale;
         setUnitScale(scale);
@@ -575,7 +723,7 @@ export function DiagramCanvas() {
     });
     ro.observe(stage);
     return () => ro.disconnect();
-  }, [previewMode, zoom]);
+  }, [previewMode, canvasSize]);
 
   /**
    * F2-2 选中高亮 + F3-2 选中包围盒。抽成函数是为了让「实时预览换几何」也能复用：
@@ -681,7 +829,7 @@ export function DiagramCanvas() {
       markup: base.resultAtStart.svg,
       baseViewBox: vb,
       candidateViewBox: vb,
-      zoom,
+      zoom: renderPctRef.current,
       live: false,
     });
     if (!ok) return;
@@ -782,7 +930,7 @@ export function DiagramCanvas() {
         markup: candidate.svg,
         baseViewBox: d.resultAtStart.viewBox,
         candidateViewBox: candidate.viewBox,
-        zoom,
+        zoom: renderPctRef.current,
         live: true,
       });
       if (!changed) {
@@ -1355,6 +1503,23 @@ export function DiagramCanvas() {
     const onMove = (e: PointerEvent) => {
       lastPointer.x = e.clientX;
       lastPointer.y = e.clientY;
+      // F3-7：视角平移最高优先级（空格 / 中键 / 抓手），不产生任何源码补丁 / 撤销步。
+      const pan = panRef.current;
+      if (pan) {
+        setViewport((v) => panBy(
+          { ...v, panX: pan.panX, panY: pan.panY },
+          e.clientX - pan.clientX,
+          e.clientY - pan.clientY,
+        ));
+        return;
+      }
+      // F3-7：状态栏指针坐标（world pt） throttle 到 ~8fps，避免每帧 setState。
+      const now = performance.now();
+      if (now - lastPointerLabelRef.current > 120) {
+        lastPointerLabelRef.current = now;
+        const w = pointerWorld(e.clientX, e.clientY);
+        setPointerWorldLabel(w ? `(${w.x.toFixed(1)}, ${w.y.toFixed(1)}) pt` : "—");
+      }
       // F3-1：形状工具会话优先；无会话时该函数立即返回，不影响 F2-1 控制点拖拽。
       shapeApiRef.current.move(e);
       // F3-3：空白区框选。屏幕矩形直接用 client 坐标，命中判定用
@@ -1447,6 +1612,11 @@ export function DiagramCanvas() {
     };
 
     const onUp = (e: PointerEvent) => {
+      // F3-7：视角平移松手只清状态，绝不写源码 / 留撤销步。
+      if (panRef.current) {
+        panRef.current = null;
+        return;
+      }
       // F3-1：形状工具松手提交；多点工具无 toolDragRef，这里会直接返回。
       shapeApiRef.current.up();
       if (marqueeRef.current) {
@@ -1469,6 +1639,10 @@ export function DiagramCanvas() {
       else previewApiRef.current.deactivate();
     };
     const onCancel = () => {
+      if (panRef.current) {
+        panRef.current = null;
+        return;
+      }
       // F3-3：pointercancel 时丢弃框选，不加选任何东西。
       if (marqueeRef.current) {
         marqueeRef.current = null;
@@ -1511,7 +1685,9 @@ export function DiagramCanvas() {
         !!marqueeRef.current ||
         !!transformRef.current ||
         !!toolDragRef.current ||
-        !!shapeSessionRef.current;
+        !!shapeSessionRef.current ||
+        !!panRef.current ||
+        spaceRef.current;
       // F3-6：统一只读判定 —— 精确通道下 F3-5 的 nudge / 复制粘贴 / Ctrl+D 一律拦截，
       // 焦点 / 手势 / Tab 隐藏等其它理由则静默放行，绝不抢键或弹无谓提示。
       const inTextEntry = isTextEntryFocused(e);
@@ -1800,7 +1976,7 @@ export function DiagramCanvas() {
       markup: base.svg,
       baseViewBox: base.viewBox,
       candidateViewBox: base.viewBox,
-      zoom,
+      zoom: renderPctRef.current,
       live: false,
     });
     const layer = svg.querySelector("[data-dg-handle-layer]") as SVGGElement | null;
@@ -1925,7 +2101,7 @@ export function DiagramCanvas() {
         markup: r.svg,
         baseViewBox: t.resultAtStart.viewBox,
         candidateViewBox: r.viewBox,
-        zoom,
+        zoom: renderPctRef.current,
         live: true,
       });
       if (ok) t.previewSource = candidate;
@@ -2161,7 +2337,28 @@ export function DiagramCanvas() {
     return null;
   }
 
+  /** F3-7：空格 / 中键 / 抓手起视角平移；返回 true 表示已消费该次 pointerdown。 */
+  function beginPan(e: ReactPointerEvent<HTMLElement>): boolean {
+    if (panRef.current) return true;
+    if (!tabVisibleRef.current) return false;
+    if (!(spaceRef.current || e.button === 1 || handRef.current)) return false;
+    e.preventDefault();
+    panRef.current = {
+      clientX: e.clientX,
+      clientY: e.clientY,
+      panX: viewportRef.current.panX,
+      panY: viewportRef.current.panY,
+    };
+    return true;
+  }
+
+  /** F3-7：精确通道 stage 隐藏，平移要从外层 body 接管（只读通道视角操作仍可用）。 */
+  function onBodyPointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
+    beginPan(e);
+  }
+
   function onStagePointerDown(e: ReactPointerEvent<HTMLDivElement>): void {
+    if (beginPan(e)) return;
     if (e.button !== 0) return;
     // F3-6：精确通道 stage 本来就 hidden，这里用统一只读判定再显式收口一次，
     // 保证选择 / 框选 / 拖拽 / 变换柄等所有画布编辑手势不会在该通道被触发。
@@ -2250,9 +2447,18 @@ export function DiagramCanvas() {
     [precise],
   );
 
-  const zoomIndex = ZOOM_STEPS.indexOf(zoom);
-  const canZoomOut = zoomIndex > 0;
-  const canZoomIn = zoomIndex >= 0 && zoomIndex < ZOOM_STEPS.length - 1;
+  const canZoomOut = zoom > MIN_ZOOM + 1e-6;
+  const canZoomIn = zoom < MAX_ZOOM - 1e-6;
+  const currentViewBox = result?.viewBox ?? { x: 0, y: 0, width: 1, height: 1 };
+  const currentPaper = canvasPaperRect(canvasSize, currentViewBox);
+  // 精确通道的 <img> 与本地画布共用同一「纸面倍率」：zoom=1 时两边的图一样大。
+  // 本地通道不渲染（stage 清空）时也要能跟随 zoom，所以在渲染期直接算一次。
+  const preciseScale = renderScale(
+    zoom,
+    bodyRef.current?.getBoundingClientRect() ?? null,
+    currentViewBox,
+    currentPaper,
+  );
   const localDiags = result?.diagnostics ?? [];
   const unsupported = result?.unsupported ?? [];
   const showDiags = diagOpen ?? unsupported.length > 0;
@@ -2404,25 +2610,70 @@ export function DiagramCanvas() {
             {localDiags.length} 条诊断
           </button>
         )}
+        {/* F3-7：视图分组。视角手势只改组件 state，不写源码 / 不入 history。 */}
+        <div className="dg-view-tools" role="group" aria-label="视图">
+          <button
+            type="button"
+            className={`dg-view-btn${handTool ? " is-active" : ""}`}
+            title="抓手：按住拖拽平移（空格可临时切换）"
+            onClick={() => {
+              handRef.current = !handTool;
+              setHandTool(!handTool);
+            }}
+          >
+            抓手
+          </button>
+          <button
+            type="button"
+            className="dg-view-btn"
+            title="适应画布（100%：整张纸完整可见并居中）"
+            onClick={() => {
+              const rect = bodyRef.current?.getBoundingClientRect();
+              setViewport(fitCanvasViewport(rect, currentViewBox, currentPaper));
+            }}
+          >
+            适应画布
+          </button>
+          <button
+            type="button"
+            className="dg-view-btn"
+            title="适应内容：把图形包围盒铺满窗口（纸张会超出视口）"
+            onClick={() => {
+              const rect = bodyRef.current?.getBoundingClientRect();
+              const zoomNext = fitContentZoom(rect, currentViewBox, currentPaper);
+              setViewport({ zoom: zoomNext, panX: 0, panY: 0 });
+            }}
+          >
+            适应内容
+          </button>
+        </div>
         <div className="dg-zoom">
           <button
             type="button"
             className="dg-zoom-btn"
             disabled={!canZoomOut}
             title="缩小"
-            onClick={() => setZoom(ZOOM_STEPS[zoomIndex - 1] ?? 1)}
+            onClick={() => setViewport((v) => ({ ...v, zoom: clampZoom(v.zoom / 1.25) }))}
           >
             −
           </button>
-          <button type="button" className="dg-zoom-btn" title="适应窗口" onClick={() => setZoom(1)}>
-            适应
+          <button
+            type="button"
+            className="dg-zoom-btn"
+            title="整页（画布完整可见并居中）"
+            onClick={() => {
+              const rect = bodyRef.current?.getBoundingClientRect();
+              setViewport(fitCanvasViewport(rect, currentViewBox, currentPaper));
+            }}
+          >
+            整页
           </button>
           <button
             type="button"
             className="dg-zoom-btn"
             disabled={!canZoomIn}
             title="放大"
-            onClick={() => setZoom(ZOOM_STEPS[zoomIndex + 1] ?? 1)}
+            onClick={() => setViewport((v) => ({ ...v, zoom: clampZoom(v.zoom * 1.25) }))}
           >
             ＋
           </button>
@@ -2514,22 +2765,30 @@ export function DiagramCanvas() {
         </div>
       )}
 
-      <div className="dg-canvas-body">
+      <div className="dg-canvas-body" ref={bodyRef} onPointerDown={onBodyPointerDown}>
+        {/* F3-7：视角容器只做平移；zoom 仍走 SVG width/height 百分比与精确 img 的 scale，
+            保证 getScreenCTM / svgUnitScale 的既有换算口径不变。 */}
         <div
-          className="dg-canvas-stage"
-          ref={stageRef}
-          data-tool={toolMode}
-          hidden={previewMode === "precise"}
-          onPointerDown={onStagePointerDown}
-        />
-        {previewMode === "precise" && preciseImg && (
-          <img
-            className="dg-precise-img"
-            src={preciseImg}
-            alt="XeLaTeX 精确预览"
-            style={{ transform: `scale(${zoom})` }}
+          className="dg-viewport"
+          style={{ transform: viewportTransform(viewport) }}
+          data-pan={handTool ? "1" : undefined}
+        >
+          <div
+            className="dg-canvas-stage"
+            ref={stageRef}
+            data-tool={toolMode}
+            hidden={previewMode === "precise"}
+            onPointerDown={onStagePointerDown}
           />
-        )}
+          {previewMode === "precise" && preciseImg && (
+            <img
+              className="dg-precise-img"
+              src={preciseImg}
+              alt="XeLaTeX 精确预览"
+              style={{ transform: `scale(${preciseScale})` }}
+            />
+          )}
+        </div>
         {empty && (
           <div className="dg-canvas-overlay">
             源码为空。请切到「仅源码」或「左右分屏」编写 TikZ 代码。
@@ -2641,6 +2900,11 @@ export function DiagramCanvas() {
               : precise?.status === "error"
                 ? "编译失败"
                 : "—"}
+        </span>
+        {/* F3-7：倍率 + 指针 world 坐标 + 纸张尺寸，全部是视角元数据，不写源码 */}
+        <span>
+          {Math.round(zoom * 100)}% · {pointerWorldLabel}
+          {canvasSize.preset !== "auto" && ` · 画布 ${canvasSize.widthCm.toFixed(1)}×${canvasSize.heightCm.toFixed(1)}cm`}
         </span>
         <span>{footHint}</span>
         <span>插入目标：{targetTex ? basename(targetTex) : "未锁定"}</span>

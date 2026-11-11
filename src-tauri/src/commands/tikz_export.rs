@@ -10,7 +10,7 @@
 // 导言区是包了一层的，所以 log 里的行号要减去 preamble_lines 才对应绘图 Tab 的源码行。
 // F2 导出落盘 / PNG 输出复用本文件的编译内核，不另起一套。
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -45,6 +45,15 @@ const FORBIDDEN: [&str; 12] = [
     "\\begin{document}",
     "\\end{document}",
 ];
+
+/// F3-7：按画布尺寸导出时的固定画布（world pt）。仅作用于派生的 standalone 片段，
+/// 绝不写回 CM6 源码；未传 / 开关关闭时所有行为与 F1-6 完全一致。
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TikzCanvasSize {
+    pub width_pt: f64,
+    pub height_pt: f64,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -137,9 +146,42 @@ fn strip_library_lines(source: &str) -> String {
         .join("\n")
 }
 
+/// F3-7：只在**派生的源码副本**里注入固定画布 bounding box，行数不变（不换行），
+/// 保证 log 行号减 preamble_lines 仍精确映射绘图 Tab 源码。找不到 tikzpicture 时原样返回。
+fn apply_canvas_bounding_box(source: &str, canvas: TikzCanvasSize) -> String {
+    const NEEDLE: &str = "\\begin{tikzpicture}";
+    let Some(pos) = source.find(NEEDLE) else {
+        return source.to_string();
+    };
+    let mut at = pos + NEEDLE.len();
+    // \begin{tikzpicture}[options] 时把插入点放到选项之后，避免破坏环境开头语法。
+    if source[at..].starts_with('[') {
+        if let Some(close) = source[at..].find(']') {
+            at += close + 1;
+        }
+    }
+    let w = if canvas.width_pt.is_finite() && canvas.width_pt > 0.0 { canvas.width_pt } else { 1.0 };
+    let h = if canvas.height_pt.is_finite() && canvas.height_pt > 0.0 { canvas.height_pt } else { 1.0 };
+    let insert = format!("\\use as bounding box (0,0) rectangle ({w:.4}pt,{h:.4}pt);");
+    let mut out = String::with_capacity(source.len() + insert.len());
+    out.push_str(&source[..at]);
+    out.push_str(&insert);
+    out.push_str(&source[at..]);
+    out
+}
+
 /// 生成最小 standalone 文档；返回 (文档文本, 导言区行数)。
 /// 只有 Unicode 引擎且源码含非 ASCII 时才加载 ctex，避免纯英文图因缺 ctex 编译失败。
 fn build_document(source: &str, unicode_engine: bool) -> (String, u32) {
+    build_document_with_canvas(source, unicode_engine, None)
+}
+
+/// F3-7：带固定画布的派生文档。canvas=None 时逐字节等价于 F1-6 的原包装。
+fn build_document_with_canvas(
+    source: &str,
+    unicode_engine: bool,
+    canvas: Option<TikzCanvasSize>,
+) -> (String, u32) {
     let mut doc = String::new();
     doc.push_str("\\documentclass[tikz,border=4pt]{standalone}\n");
     doc.push_str("\\usepackage{tikz}\n");
@@ -153,7 +195,11 @@ fn build_document(source: &str, unicode_engine: bool) -> (String, u32) {
     }
     doc.push_str("\\begin{document}\n");
     let preamble_lines = doc.lines().count() as u32;
-    doc.push_str(&strip_library_lines(source.trim_end()));
+    let body = strip_library_lines(source.trim_end());
+    match canvas {
+        Some(size) => doc.push_str(&apply_canvas_bounding_box(&body, size)),
+        None => doc.push_str(&body),
+    }
     doc.push_str("\n\\end{document}\n");
     (doc, preamble_lines)
 }
@@ -289,6 +335,7 @@ pub async fn tikz_preview(
     app: AppHandle,
     source: String,
     engine: String,
+    canvas: Option<TikzCanvasSize>,
 ) -> Result<TikzPreviewResult, String> {
     let started = Instant::now();
     if let Err(e) = validate_source(&source) {
@@ -322,7 +369,11 @@ pub async fn tikz_preview(
     if let Err(e) = std::fs::create_dir_all(&work) {
         return Err(format!("创建临时编译目录失败：{e}"));
     }
-    let (doc, preamble_lines) = build_document(&source, engine_name != "pdflatex");
+    let (doc, preamble_lines) = build_document_with_canvas(
+        &source,
+        engine_name != "pdflatex",
+        canvas,
+    );
     if let Err(e) = std::fs::write(work.join("snippet.tex"), &doc) {
         let _ = std::fs::remove_dir_all(&work);
         return Err(format!("写入临时 .tex 失败：{e}"));
@@ -441,6 +492,32 @@ mod tests {
     use super::*;
 
     const SRC: &str = "\\begin{tikzpicture}\n  \\draw (0,0) -- (1,1);\n\\end{tikzpicture}";
+
+    #[test]
+    fn canvas_none_is_byte_identical_to_legacy() {
+        assert_eq!(
+            build_document(SRC, false),
+            build_document_with_canvas(SRC, false, None)
+        );
+    }
+
+    #[test]
+    fn canvas_bounding_box_in_derived_copy_only() {
+        let size = TikzCanvasSize { width_pt: 426.79, height_pt: 702.78 };
+        let (doc, lines) = build_document_with_canvas(SRC, false, Some(size));
+        assert!(doc.contains("\\use as bounding box (0,0) rectangle (426.7900pt,702.7800pt);"));
+        assert_eq!(doc.lines().count(), build_document(SRC, false).0.lines().count());
+        assert_eq!(lines, build_document(SRC, false).1);
+        assert!(doc.contains("\\draw (0,0) -- (1,1);"));
+    }
+
+    #[test]
+    fn canvas_bounding_box_after_environment_options() {
+        let src = "\\begin{tikzpicture}[>=Stealth]\n  \\draw (0,0)--(1,1);\n\\end{tikzpicture}";
+        let size = TikzCanvasSize { width_pt: 100.0, height_pt: 100.0 };
+        let (doc, _) = build_document_with_canvas(src, false, Some(size));
+        assert!(doc.contains("\\begin{tikzpicture}[>=Stealth]\\use as bounding box"));
+    }
 
     #[test]
     fn accepts_plain_tikzpicture() {
