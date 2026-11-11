@@ -5,6 +5,7 @@
 // F3-9（工作台布局重排）：基础元素按钮整体搬到**左侧栏** `ShapePalette`，
 // 画布顶部只留 `ShapeToolbar` 紧凑提示条（当前工具 / 绘制会话 / 新建空白图）。
 // 两者共用 TOOL_DEFS、TOOL_GROUPS 与全模块唯一只读判定，不新增任何状态机。
+import { Fragment } from "react";
 import { useDiagramStore } from "./store";
 import { TOOL_DEFS, isToolMode, toolDef, type ToolMode } from "./shapeTools";
 import { canEditDiagramSource } from "./editability.ts";
@@ -42,8 +43,8 @@ function groupedTools(): { key: string; label: string; ids: string[] }[] {
 function ToolGlyph({ id }: { id: ToolMode }) {
   const common = {
     viewBox: "0 0 24 24",
-    width: 20,
-    height: 20,
+    width: 16,
+    height: 16,
     fill: "none",
     stroke: "currentColor",
     strokeWidth: 1.6,
@@ -94,33 +95,34 @@ export function ShapePalette() {
   const permission = canEditDiagramSource({ previewMode });
   const readonly = !permission.ok;
 
+  // F3-9 二次优化：**所有工具连续排进一个密网格**，组之间只插一条 1px 竖线
+  // （占一个格子、不换行），不再让每组独占一行 + 一条「细线夹小字」分节标题。
+  // 组名进 tooltip，当前工具名提到侧栏手风琴标题右侧，两处都不再占垂直空间。
   return (
     <div className="dg-element-palette" role="toolbar" aria-label="基础元素">
-      {groupedTools().map((g) => {
-        const items = TOOL_DEFS.filter((d) => g.ids.includes(d.id));
-        if (items.length === 0) return null;
-        return (
-          <div key={g.key} className="dg-element-group">
-            <span className="dg-element-group-label">{g.label}</span>
-            <div className="dg-element-grid" role="group" aria-label={g.label}>
-              {items.map((d) => (
-                <button
-                  key={d.id}
-                  type="button"
-                  className={`dg-element-btn${toolMode === d.id ? " on" : ""}`}
-                  aria-pressed={toolMode === d.id}
-                  disabled={readonly}
-                  title={`${d.title}${d.sample ? ` · ${d.sample}` : ""}${readonly ? ` · ${permission.reason}` : ""}`}
-                  onClick={() => setToolMode(d.id)}
-                >
-                  <ToolGlyph id={d.id} />
-                  <span>{d.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        );
-      })}
+      <div className="dg-element-grid">
+        {groupedTools().map((g, gi) => (
+          <Fragment key={g.key}>
+            {gi > 0 && (
+              <span className="dg-element-sep" title={g.label} aria-hidden="true" />
+            )}
+            {TOOL_DEFS.filter((d) => g.ids.includes(d.id)).map((d) => (
+              <button
+                key={d.id}
+                type="button"
+                className={`dg-element-btn${toolMode === d.id ? " on" : ""}`}
+                aria-pressed={toolMode === d.id}
+                aria-label={d.label}
+                disabled={readonly}
+                title={`${g.label} · ${d.label} · ${d.title}${d.sample ? ` · ${d.sample}` : ""}${readonly ? ` · ${permission.reason}` : ""}`}
+                onClick={() => setToolMode(d.id)}
+              >
+                <ToolGlyph id={d.id} />
+              </button>
+            ))}
+          </Fragment>
+        ))}
+      </div>
       {readonly && <span className="dg-tool-readonly">{permission.reason}</span>}
     </div>
   );

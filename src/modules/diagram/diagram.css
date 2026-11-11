@@ -2208,7 +2208,7 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   align-items: center;
   gap: 6px;
   list-style: none;
-  padding: var(--dg-space-2) var(--dg-space-1);
+  padding: 5px var(--dg-space-1);
   border-radius: var(--dg-radius-sm);
   font-size: var(--dg-fs-md);
   font-weight: var(--dg-fw-title);
@@ -2255,69 +2255,70 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-accordion-body {
   display: flex;
   flex-direction: column;
-  gap: var(--dg-space-2);
-  padding: var(--dg-space-1) var(--dg-space-1) var(--dg-space-3);
+  gap: var(--dg-space-1);
+  padding: 2px var(--dg-space-1) 6px;
 }
 .dg-accordion-body.is-flush {
-  padding: var(--dg-space-1) 0 var(--dg-space-3);
+  padding: 2px 0 6px;
 }
 
 /* ③ 基础元素网格（从画布工具条搬到侧栏） ─────────────────────────────── */
+/* 连续密网格（二次优化）：11 个工具 + 3 条组间竖线 = 14 格，
+   auto-fill 约 9 列 → 只占 2 行。分组不再各起一行、不再用「细线夹小字」
+   标题（那 4 条分节线比图标本身还高），组名进 tooltip。
+   当前工具名提到手风琴标题右侧，这里不再单独占一行。 */
 .dg-element-palette {
   display: flex;
   flex-direction: column;
-  gap: var(--dg-space-2);
-}
-.dg-element-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--dg-space-1);
-}
-.dg-element-group-label {
-  font-size: var(--dg-fs-xs);
-  font-weight: var(--dg-fw-title);
-  letter-spacing: 0.04em;
-  color: var(--txt-3, #9a9a9a);
+  gap: 4px;
 }
 .dg-element-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(22px, 1fr));
+  align-items: center;
+  gap: 2px;
+}
+/* 组间分隔：只占一个格子、1px 宽竖线，不强制换行 */
+.dg-element-sep {
+  justify-self: center;
+  align-self: center;
+  width: 1px;
+  height: 14px;
+  border-left: 1px solid var(--line, #e0e0e0);
+  opacity: 0.7;
 }
 .dg-element-btn {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-height: 52px;
-  padding: 6px 2px;
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: var(--dg-radius);
-  background: var(--bg, #fff);
+  height: 22px;
+  min-height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
   color: var(--txt-2, #6b6b6b);
-  font-size: var(--dg-fs-sm);
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease, background-color 120ms ease;
+  transition: border-color 100ms ease, color 100ms ease, background-color 100ms ease;
 }
 .dg-element-btn svg {
   flex: none;
 }
 .dg-element-btn:hover:not(:disabled) {
-  border-color: var(--accent, #2d7ff9);
-  color: var(--accent, #2d7ff9);
+  border-color: var(--line, #e0e0e0);
+  background: var(--bg, #fff);
+  color: var(--txt, #353333);
 }
 .dg-element-btn:active:not(:disabled) {
-  transform: scale(0.96);
+  transform: scale(0.92);
 }
 .dg-element-btn.on {
   border-color: var(--accent, #2d7ff9);
   background: var(--accent-soft, rgba(43, 98, 207, 0.11));
   color: var(--accent, #2d7ff9);
-  font-weight: var(--dg-fw-title);
 }
 .dg-element-btn:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
 }
 
@@ -2328,14 +2329,15 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
 }
 .dg-library-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 6px;
-  padding: 6px var(--dg-space-2);
+  min-height: 20px;
+  padding: 1px 6px;
   border-radius: var(--dg-radius-sm);
   font-size: var(--dg-fs-sm);
   color: var(--txt-2, #6b6b6b);
@@ -2346,11 +2348,10 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-library-item em {
   flex: none;
   font-style: normal;
-  font-size: var(--dg-fs-xs);
-  padding: 0 4px;
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: 3px;
+  font-size: 9px;
+  padding: 0;
   color: var(--txt-3, #9a9a9a);
+  opacity: 0.8;
 }
 
 /* ⑤ 画布顶部紧凑提示条（按钮已在侧栏） ───────────────────────────────── */
@@ -2397,4 +2398,21 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   .dg-inspector-hint {
     display: none;
   }
+}
+
+
+/* F3-9 二次优化（2026-11-11 19:03）：侧栏垂直密度
+   截图里大半栏高是空白 —— 手风琴标题/内容 padding、分区 gap、
+   组件库每行 6px 上下 padding 叠加。这里统一收一圈，
+   属性坞因 .dg-tab .dg-inspector 的 padding/gap 覆盖不受影响。 */
+.dg-side {
+  gap: 6px;
+  padding: 8px 10px 12px;
+}
+.dg-side-head {
+  padding-bottom: 4px;
+}
+.dg-accordion-body .dg-side-card-sub {
+  font-size: var(--dg-fs-xs);
+  line-height: 1.4;
 }

@@ -14,6 +14,7 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
 import { LayersPanel } from "./LayersPanel";
 import { ShapePalette } from "./ShapeToolbar";
+import { isToolMode, toolDef } from "./shapeTools";
 import { insertDiagramCode } from "./insert";
 import type { ExportMode } from "@/types/diagram";
 import "./diagram.css";
@@ -73,6 +74,7 @@ function Accordion({
 
 export function DiagramSidebar() {
   const source = useDiagramStore((s) => s.source);
+  const toolMode = useDiagramStore((s) => s.toolMode);
   const targetTex = useDiagramStore((s) => s.targetTex);
   const layoutMode = useDiagramStore((s) => s.layoutMode);
   const previewMode = useDiagramStore((s) => s.previewMode);
@@ -115,7 +117,8 @@ export function DiagramSidebar() {
         <span className="dg-side-meta">{lineCount} 行源码</span>
       </div>
 
-      <Accordion title="基础元素" meta="选工具后在画布绘制">
+      {/* 当前工具名放在折叠标题右侧（跟随 store），不再单独占一行 */}
+      <Accordion title="基础元素" meta={`当前：${toolDef(isToolMode(toolMode) ? toolMode : "select").label}`}>
         <ShapePalette />
       </Accordion>
 
@@ -128,9 +131,7 @@ export function DiagramSidebar() {
             </li>
           ))}
         </ul>
-        <p className="dg-side-card-sub">
-          与基础元素严格区分：这里是高层可复用模板，接入后一次性生成标准 TikZ 语句。
-        </p>
+        <p className="dg-side-card-sub">高层可复用模板，接入后一次性生成标准 TikZ 语句。</p>
       </Accordion>
 
       {/* F3-3：图层 / 虚拟分组面板留在侧栏；面板自带的折叠开关不重复包一层 */}
