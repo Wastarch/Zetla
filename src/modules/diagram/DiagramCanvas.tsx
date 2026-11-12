@@ -1887,6 +1887,7 @@ export function DiagramCanvas() {
     // 开关关闭时控制点层本来就不存在；即使残留 DOM 也不接管，避免绕过开关。
     if (markerEl && !handlesOn) return;
     let bodySid: string | null = null;
+    let bodyWritableCount = 0;
     let fitTargetIds: string[] = [];
     if (markerEl) {
       let id = markerEl.getAttribute("data-dg-handle-id");
@@ -1921,13 +1922,15 @@ export function DiagramCanvas() {
       const shape = target.closest("[data-source-id]");
       bodySid = shape?.getAttribute("data-source-id") ?? null;
       if (bodySid) {
-        const writable = (id: string) =>
-          result.handles.find(
+        const writableAll = (id: string) =>
+          result.handles.filter(
             (h) =>
               h.sourceRef?.sourceId === id &&
               resolveHandleLock(result.compat, h.id, isDraggableHandle(h), lockedHandleReason(h)) === null,
           );
+        const writable = (id: string) => writableAll(id)[0];
         const own = result.handles.filter((h) => h.sourceRef?.sourceId === bodySid);
+        bodyWritableCount = writableAll(bodySid!).length;
         hit = own.find((h) => h.kind === "node-position" && writable(bodySid!) === h) ?? writable(bodySid!);
         // fit 节点坐标由被引用节点推导（F2-3 锁），不硬写它的 node-position；
         // 改为把被引用节点作为移动目标，fit 框会随之整体平移，语义不破。
@@ -1952,6 +1955,16 @@ export function DiagramCanvas() {
             return;
           }
         }
+        if (!hit) {
+          const reason = result.compat.lockReasons[bodySid];
+          setNotice({
+            tone: "warn",
+            text: reason
+              ? `该图元暂不支持拖动：${reason}`
+              : "该图元没有可写控制点，请在源码栏编辑。",
+          });
+          return;
+        }
       }
     }
     if (!hit) return;
@@ -1969,13 +1982,21 @@ export function DiagramCanvas() {
       setNotice({ tone: "warn", text: "该图元已在图层面板主动锁定，先解锁后再拖动。" });
       return;
     }
-    // fit 平移目标优先；否则命中图元本体（不是控制点）且多选 > 1 → 整体平移整组。
-    // 命中控制点仍走 F2-1 的单点几何编辑，保证拖拽语义不被多选抢走。
-    const groupIds = fitTargetIds.length > 0
-      ? fitTargetIds
-      : !markerEl && bodySid && state.selectedIds.length > 1 && state.selectedIds.includes(bodySid)
-        ? state.selectedIds.filter((id) => !isManuallyHidden(state.grouping, id))
-        : null;
+    // 拖「图元本体 / 选中框边」= 平移意图。line / rectangle / polygon 有多个 path-point，
+    // 若走单点 applyDragEdit 只会拽走第一个端点、形状变形（看着像「不能整体移动」）。
+    // 因此多句柄图元（以及 fit 代理 / 多选）统一走 groupMove 整体平移；单句柄图元
+    // （node / circle）保留 F2-1 单写回，以维持 F2-4 连续微调的撤销并组语义。
+    // 命中具体控制点（markerEl）始终走单点编辑，保留变形能力。
+    let groupIds: string[] | null = null;
+    if (fitTargetIds.length > 0) {
+      groupIds = fitTargetIds;
+    } else if (!markerEl && bodySid) {
+      if (state.selectedIds.length > 1 && state.selectedIds.includes(bodySid)) {
+        groupIds = state.selectedIds.filter((id) => !isManuallyHidden(state.grouping, id));
+      } else if (bodyWritableCount > 1) {
+        groupIds = [bodySid];
+      }
+    }
     // F2-3：能力矩阵归因的锁定优先，理由更具体；F2-1 的 rewriteMode 兜底在后。
     const lockReason = resolveHandleLock(
       result.compat,
@@ -2024,7 +2045,8 @@ export function DiagramCanvas() {
       previewSource: null,
       previewWorld: null,
       previewOutcome: null,
-      groupIds: groupIds && groupIds.length > 1 ? groupIds : null,
+      // 单个图元也要走组拖：planGroupMove 会平移它的全部可写句柄（多 path-point 图形关键）。
+      groupIds: groupIds && groupIds.length > 0 ? groupIds : null,
       previewGroup: null,
       previewFailures: 0,
       snap: null,

@@ -3354,5 +3354,77 @@ console.log("\nF6 补强 · 隐藏控制点后仍可移动（本体 / 选中框 
   check(!selLayer.querySelector(".dg-sel-hit"), "清空选中框时透明代理一并移除");
 }
 
+console.log("F3-3 · 单图元本体平移：全部可写 path-point 同步位移（不按图形名分支）");
+{
+  const bodySrc = "aaaa bbbb cccc";
+  const bodyHandles = [
+    { id: "ba1", kind: "path-point", rewriteMode: "direct", world: { x: 0, y: 0 }, sourceRef: { sourceId: "a" } },
+    { id: "ba2", kind: "path-point", rewriteMode: "direct", world: { x: 2, y: 0 }, sourceRef: { sourceId: "a" } },
+    { id: "bb", kind: "path-point", rewriteMode: "direct", world: { x: 0, y: 1 }, sourceRef: { sourceId: "b" } },
+  ];
+  const bodySpans: Record<string, { from: number; to: number; insert: string }> = {
+    ba1: { from: 0, to: 4, insert: "w" },
+    ba2: { from: 5, to: 9, insert: "x" },
+    bb: { from: 10, to: 14, insert: "y" },
+  };
+  const seen: Record<string, { x: number; y: number }> = {};
+  const bodyIntent = (_s: string, _h: unknown, id: string, world: { x: number; y: number }) => {
+    seen[id] = world;
+    return { ok: true as const, patches: [bodySpans[id]] };
+  };
+  const planA = planGroupMove({
+    source: bodySrc, handles: bodyHandles as never, elementIds: ["a"],
+    delta: { x: 10, y: 20 }, compat: null, grouping: EMPTY_GROUPING, intent: bodyIntent as never,
+  });
+  check(
+    planA.status === "ok" && planA.patches.length === 2 && planA.movedElements.join("|") === "a",
+    "单选一个双端点图元 → 两段补丁，只移动该图元",
+  );
+  check(
+    seen.ba1?.x === 10 && seen.ba1?.y === 20 && seen.ba2?.x === 12 && seen.ba2?.y === 20,
+    "两个端点收到同一 delta，相对关系不变（形状不被拉伸）",
+  );
+  check(!seen.bb, "未选中的图元句柄不参与写回");
+  check(planA.status === "ok" && planA.nextSource === "w x cccc", "单图元整组写回替换全部可写坐标");
+
+  const BODY_SRC = [
+    "\\begin{tikzpicture}",
+    "  \\draw (0,0) -- (2,0);",
+    "  \\draw (0,1) rectangle (2,2);",
+    "  \\draw (0,3) -- (1,4) -- (2,3) -- cycle;",
+    "\\end{tikzpicture}",
+  ].join("\n");
+  const bodyRender = await renderTikz(BODY_SRC);
+  check(bodyRender.diagnostics.length === 0, "线 / 矩形 / 多边形样例可正常渲染");
+  const expectedCounts = [2, 2, 3];
+  for (let i = 0; i < expectedCounts.length; i += 1) {
+    const id = bodyRender.statements[i].id;
+    const orig = bodyRender.handles.filter((h) => h.sourceRef?.sourceId === id);
+    const plan = await applyGroupEdit({
+      source: BODY_SRC, handles: bodyRender.handles, elementIds: [id],
+      delta: { x: 10, y: 20 }, compat: bodyRender.compat, grouping: EMPTY_GROUPING,
+    });
+    check(
+      orig.length === expectedCounts[i] && plan.status === "ok" && plan.patches.length === expectedCounts[i],
+      `真实引擎：${["线", "矩形", "多边形"][i]}单选本体改写全部 ${expectedCounts[i]} 个端点`,
+    );
+    if (plan.status !== "ok") continue;
+    const re = await renderTikz(plan.nextSource);
+    const moved = re.handles.filter((h) => h.sourceRef?.sourceId === id);
+    // 上游按 cm 两位小数回写（0.35cm），故 pt 级容差取 0.1pt。
+    check(
+      moved.length === orig.length &&
+        moved.every((h, j) => Math.abs(h.world.x - (orig[j].world.x + 10)) < 0.1 &&
+                              Math.abs(h.world.y - (orig[j].world.y + 20)) < 0.1),
+      `${["线", "矩形", "多边形"][i]}整体平移后所有端点同位移，形状保持`,
+    );
+    const untouched = bodyRender.statements.filter((s) => s.id !== id);
+    check(
+      untouched.every((s) => plan.nextSource.includes(BODY_SRC.slice(s.span.from, s.span.to))),
+      `${["线", "矩形", "多边形"][i]}平移不牵连其它语句`,
+    );
+  }
+}
+
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);
