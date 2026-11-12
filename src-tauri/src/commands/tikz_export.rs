@@ -203,7 +203,7 @@ async fn convert_pdf_to_svg(pdf: &Path, work: &Path, dirs: &[PathBuf]) -> Result
     };
     if product.is_file() {
         Ok(product)
-    } else if let Some(p) = find_svg(work) {
+    } else if let Some(p) = find_product(work, "svg") {
         Ok(p)
     } else {
         let brief = String::from_utf8_lossy(&out.stderr).trim().to_string();
@@ -231,12 +231,11 @@ async fn convert_pdf_to_png(pdf: &Path, work: &Path, dirs: &[PathBuf]) -> Result
     let product = work.join("preview.png");
     let args = vec![
         "-png".to_string(),
+        // -singlefile：只输出第一页，且**不给文件名追加页码后缀**（pdftocairo 官方仅对
+        // PNG/JPEG/TIFF 提供此参数）。少了它会得到 preview-1.png，导致按 preview.png 取产物失败。
+        "-singlefile".to_string(),
         "-r".to_string(),
         "300".to_string(),
-        "-f".to_string(),
-        "1".to_string(),
-        "-l".to_string(),
-        "1".to_string(),
         pdf.to_string_lossy().to_string(),
         product.to_string_lossy().to_string(),
     ];
@@ -246,14 +245,24 @@ async fn convert_pdf_to_png(pdf: &Path, work: &Path, dirs: &[PathBuf]) -> Result
     };
     if product.is_file() {
         Ok(product)
+    } else if let Some(p) = find_product(work, "png") {
+        // 兜底：个别 pdftocairo 版本不支持 / 忽略 -singlefile，仍写出 preview-1.png。
+        Ok(p)
     } else {
-        let brief = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let brief = if stderr.is_empty() { stdout } else { stderr };
+        let code = out
+            .status
+            .code()
+            .map(|c| c.to_string())
+            .unwrap_or_else(|| "?".to_string());
         Err(format!(
-            "pdftocairo 未生成 PNG{}",
+            "pdftocairo 未生成 PNG（退出码 {code}）{}",
             if brief.is_empty() {
                 String::new()
             } else {
-                format!("：{}", brief.chars().take(160).collect::<String>())
+                format!("：{}", brief.chars().take(200).collect::<String>())
             }
         ))
     }
@@ -440,7 +449,8 @@ fn split_preamble_decls(source: &str) -> (Vec<String>, Vec<String>, String) {
     (libs, pkgs, out_lines.join("\n"))
 }
 
-/// 仅抽取库名列表（供测试与潜在复用）；正文注释逻辑见 `split_preamble_decls`。
+/// 仅抽取库名列表；仅回归测试使用（生产路径走 `split_preamble_decls` 一次拿全）。
+#[cfg(test)]
 fn collect_libraries(source: &str) -> Vec<String> {
     split_preamble_decls(source).0
 }
@@ -471,6 +481,8 @@ fn apply_canvas_bounding_box(source: &str, canvas: TikzCanvasSize) -> String {
 
 /// 生成最小 standalone 文档；返回 (文档文本, 导言区行数)。
 /// 只有 Unicode 引擎且源码含非 ASCII 时才加载 ctex，避免纯英文图因缺 ctex 编译失败。
+/// F1-6 的 legacy 基线别名，仅用于「canvas=None 与旧包装逐字节等价」的回归测试。
+#[cfg(test)]
 fn build_document(source: &str, unicode_engine: bool) -> (String, u32) {
     build_document_with_canvas(source, unicode_engine, None)
 }
@@ -615,17 +627,37 @@ fn brief_failure(log: &str, out: &std::process::Output) -> String {
     }
 }
 
-/// 单页时 pdftocairo 输出 <name>.svg，多页时可能输出 <name>-1.svg，兜底扫目录。
-fn find_svg(work: &Path) -> Option<PathBuf> {
-    std::fs::read_dir(work).ok().and_then(|it| {
+/// pdftocairo 的产物名并不保证等于传入的文件名：一旦它判定需要「按页输出」，会给产物
+/// 追加页码后缀（`preview.svg` → `preview-1.svg`、`preview.png` → `preview-1.png`）。
+/// 所以取产物必须按扩展名扫目录兜底，并**优先选择没有页码后缀**的那个，保证单页结果稳定。
+/// （PNG 曾因只认死 `preview.png`、没有兜底而误报「pdftocairo 未生成 PNG」。）
+fn find_product(work: &Path, ext: &str) -> Option<PathBuf> {
+    let mut cands: Vec<PathBuf> = Vec::new();
+    if let Ok(it) = std::fs::read_dir(work) {
         for entry in it.flatten() {
             let p = entry.path();
-            if p.extension().and_then(|s| s.to_str()) == Some("svg") {
-                return Some(p);
+            if p.extension().and_then(|s| s.to_str()) == Some(ext) {
+                cands.push(p);
             }
         }
-        None
-    })
+    }
+    // false(无后缀) < true(有 `-N` 页码后缀)，使无后缀产物排在前面；
+    // 同组内按文件名排序，确保结果确定、不随目录枚举顺序抖动。
+    cands.sort_by(|a, b| {
+        has_page_suffix(a)
+            .cmp(&has_page_suffix(b))
+            .then_with(|| a.file_name().cmp(&b.file_name()))
+    });
+    cands.into_iter().next()
+}
+
+/// `preview-1.png` / `preview-12.png` 这类由 pdftocairo 追加页码的产物。
+fn has_page_suffix(p: &Path) -> bool {
+    p.file_stem()
+        .and_then(|s| s.to_str())
+        .and_then(|s| s.rfind('-').map(|i| &s[i + 1..]))
+        .map(|tail| !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit()))
+        .unwrap_or(false)
 }
 
 /// XeLaTeX 精确预览：把 tikzpicture 片段单独编译成矢量 SVG。
@@ -982,5 +1014,25 @@ mod tests {
     #[test]
     fn workdirs_are_unique() {
         assert_ne!(temp_workdir(), temp_workdir());
+    }
+
+    #[test]
+    fn find_product_tolerates_page_suffix_and_prefers_plain_name() {
+        // 复现 PNG 导出失败的现场：pdftocairo 把产物写成 preview-1.png，
+        // 旧实现只认 preview.png，于是误报「未生成 PNG」。
+        let dir = temp_workdir();
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("preview-1.png"), b"x").unwrap();
+        let found = find_product(&dir, "png").expect("应能兜底找到带页码后缀的产物");
+        assert_eq!(found.file_name().unwrap().to_str(), Some("preview-1.png"));
+
+        // 一旦出现无后缀版本，必须优先选它（单页导出的正常产物）。
+        std::fs::write(dir.join("preview.png"), b"x").unwrap();
+        let found = find_product(&dir, "png").expect("应能找到产物");
+        assert_eq!(found.file_name().unwrap().to_str(), Some("preview.png"));
+
+        // 扩展名互不干扰：当前目录没有 svg。
+        assert!(find_product(&dir, "svg").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
