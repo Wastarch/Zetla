@@ -204,7 +204,9 @@ import {
   applyLayerVisibility,
   buildHandleLayer,
   createSelectionLayer,
+  createTransformLayer,
   drawSelectionBox,
+  drawTransformHandles,
 } from "../src/modules/diagram/handleLayer.ts";
 import {
   applyPreviewGeometry,
@@ -276,6 +278,8 @@ import {
 } from "../src/modules/diagram/tikzEditor/mathText.ts";
 import {
   DEFAULT_SNAP_THRESHOLD_PT,
+  boxHeight,
+  boxWidth,
   formatCm,
   guideToSvgSegment,
   makeWorldBox,
@@ -284,6 +288,7 @@ import {
   scaleFromDrag,
   snapAngle,
   svgBoxToWorldBox,
+  svgCornerForWorld,
   worldBoxToSvgBox,
 } from "../src/modules/diagram/guides.ts";
 
@@ -3208,6 +3213,79 @@ console.log("\nF3-5 补强 · Delete 删除选中图元（顶层块整段 / 一�
   const commentBlocks = topLevelBlocks(commentSrc, commentRender.statements);
   const keepComment = planDeleteEdit(commentSrc, commentRender.statements, [commentBlocks[2].id]);
   check(!!keepComment && keepComment.nextSource.includes("% keep"), "删除别的块时注释原样保留");
+}
+
+console.log("\nF6 补强 · 选中框 / 8 点柄 / 旋转柄可用性（fit 放行 / 角点镜像 / 命中圈）");
+{
+  // ① fit 节点：坐标锁仍在，但选项类变换（scale / rotate / 尺寸）可写回。
+  const fitSrc = [
+    "\\begin{tikzpicture}",
+    "  \\node[circle,draw] (a) at (0,0) {A};",
+    "  \\node[circle,draw] (b) at (3,0) {B};",
+    "  \\node[draw,fit=(a)(b)] {};",
+    "\\end{tikzpicture}",
+  ].join("\n");
+  const fr = await renderTikz(fitSrc);
+  const fitStmt = fr.statements.find((s) => s.id === "path:2")!;
+  check(!!fr.compat.lockReasons[fitStmt.id], "fit 节点仍被 F2-3 锁坐标（控制点拖拽保持只读）");
+  check(!!fr.compat.coordinateOnlyLockIds[fitStmt.id], "fit 的锁被标为「只锁坐标」，选项变换可放行");
+  const fitScale = planTransformPatches({
+    source: fitSrc, statements: fr.statements, elementIds: [fitStmt.id],
+    key: "scale", value: "1.2", compat: fr.compat, grouping: EMPTY_GROUPING,
+  });
+  const fitRot = planTransformPatches({
+    source: fitSrc, statements: fr.statements, elementIds: [fitStmt.id],
+    key: "rotate", value: "15", compat: fr.compat, grouping: EMPTY_GROUPING,
+  });
+  const fitSize = planSizePatches({
+    source: fitSrc, statements: fr.statements, elementIds: [fitStmt.id],
+    values: { "text width": "4cm" }, compat: fr.compat, grouping: EMPTY_GROUPING,
+  });
+  check(fitScale.status === "ok" && fitScale.nextSource.includes("scale=1.2"), "fit 的 scale 柄可写回（不再静默拒绝）");
+  check(fitRot.status === "ok" && fitRot.nextSource.includes("rotate=15"), "fit 的旋转柄可写回");
+  check(fitSize.status === "ok" && fitSize.nextSource.includes("text width=4cm"), "fit 的尺寸柄可写回");
+  const fitZoom = await renderTikz(fitScale.nextSource);
+  check(fitZoom.diagnostics.length === 0, "fit + scale 选项可被本地引擎正常渲染（无诊断错误）");
+
+  // 非 optionTransformSafe 的锁仍整条拒绝（foreach / draw 的普通坐标锁）。
+  const hardLock = { ...emptyCompatReport(), lockReasons: { [fitStmt.id]: "测试：foreach 循环锁定" } };
+  const hard = planTransformPatches({
+    source: fitSrc, statements: fr.statements, elementIds: [fitStmt.id],
+    key: "scale", value: "1.2", compat: hardLock, grouping: EMPTY_GROUPING,
+  });
+  check(hard.status !== "ok", "未列入放行表的锁仍拒绝选项变换（不放宽 F2-3 全局）");
+
+  // ② 角点编号：SVG（Y 向下）画柄位置必须按 world 编号上下翻转。
+  check(svgCornerForWorld(0) === 6 && svgCornerForWorld(6) === 0, "world 左上 ↔ SVG 编号 6 互换");
+  check(svgCornerForWorld(2) === 4 && svgCornerForWorld(4) === 2, "world 右上 ↔ SVG 编号 4 互换");
+  check(svgCornerForWorld(1) === 5 && svgCornerForWorld(3) === 3, "边中柄上下互换、左右柄不变");
+
+  // DOM 断言：8 柄的 data-corner 保留 world 语义，视觉方块画在镜像后的 SVG 位置，
+  // 且每组都有透明大命中圈（closest 从命中圈取到同一 data-corner）。
+  const tSvg = g.document.createElementNS(H_NS, "svg");
+  const tLayer = createTransformLayer(tSvg);
+  const svgBox = { minX: 0, minY: 10, maxX: 100, maxY: 30 };
+  drawTransformHandles(tLayer, svgBox, H_M1);
+  const groups = Array.from(tLayer.querySelectorAll("g[data-dg-transform-handle]"));
+  const scaleGroups = groups.filter((el) => el.getAttribute("data-dg-transform-kind") === "scale");
+  check(scaleGroups.length === 8, "变换层画了 8 个缩放柄组");
+  check(scaleGroups.every((el) => el.querySelector(".dg-scale-hit") && el.querySelector(".dg-scale-handle")), "每组都有透明命中圈 + 视觉方块");
+  const topLeft = scaleGroups.find((el) => el.getAttribute("data-dg-corner") === "0")!;
+  const tlRect = topLeft.querySelector(".dg-scale-handle") as SVGRectElement;
+  check(Number(tlRect.getAttribute("y")) < 15, "world 0 号柄画在 SVG 上边（不是镜像到下边）");
+  const hit = topLeft.querySelector(".dg-scale-hit")!;
+  check(Number(hit.getAttribute("width")) > Number(tlRect.getAttribute("width")) * 2, "命中圈明显大于视觉柄（约 3×）");
+  const rotGroup = groups.find((el) => el.getAttribute("data-dg-transform-kind") === "rotate")!;
+  check(!!rotGroup.querySelector(".dg-rotate-hit") && !!rotGroup.querySelector(".dg-rotate-handle"), "旋转柄也有透明大命中圆");
+
+  // ③ 零面积包围盒：单 node 的锚点盒退化，视觉框优先才能保证缩放比不全为 1。
+  const oneNode = await renderTikz("\\begin{tikzpicture}\\node (a) at (1,2) {A};\\end{tikzpicture}");
+  const nb = collectElementBoxes({
+    handles: oneNode.handles, elementIds: ["path:0"], compat: oneNode.compat, grouping: EMPTY_GROUPING,
+  });
+  check(nb.boxes.length === 1, "单个 node 只产出一个锚点盒（1 个 node-position 句柄）");
+  const degenerate = nb.boxes[0].box;
+  check(boxWidth(degenerate) < 1e-6 && boxHeight(degenerate) < 1e-6, "该锚点盒退化成零面积（旧口径下缩放恒为 1）");
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);

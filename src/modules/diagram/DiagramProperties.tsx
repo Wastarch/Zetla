@@ -130,7 +130,11 @@ export function DiagramProperties() {
   const baseEdit = selected ? statementEditability(selected) : null;
   // F2-3：capabilityMatrix 归因的锁定优先于 F2-2 的语句类型判定，理由更具体
   // （例如 \draw … let \p1 在 F2-2 里被当成普通可编辑 Path）。
-  const compatLock = selected ? (compat?.lockReasons[selected.id] ?? null) : null;
+  // F6-补强：fit 只锁坐标写回，颜色 / 线宽 / 箭头等属性与变换选项同样安全，
+  // 与画布 / planTransformPatches 共用 coordinateOnlyLockIds 放行表。
+  const compatLock = selected && !compat?.coordinateOnlyLockIds[selected.id]
+    ? (compat?.lockReasons[selected.id] ?? null)
+    : null;
   // F3-3：图层面板的主动锁定与 F2-3 能力锁定并列，理由要区分开。
   const manualLock = selected && isManuallyLocked(grouping, selected.id)
     ? "该图元已在图层面板主动锁定，先解锁后再编辑。"

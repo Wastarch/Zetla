@@ -402,7 +402,9 @@ export function DiagramCanvas() {
   const [diagOpen, setDiagOpen] = useState<boolean | null>(null);
   const [precise, setPrecise] = useState<TikzPreviewResult | null>(null);
   const [preciseBusy, setPreciseBusy] = useState(false);
-  const [handlesOn, setHandlesOn] = useState(true);
+  // F3-2 补强：TikZ 控制点小圆点默认隐藏（视觉干扰）；选中框 / 8 点柄 / 旋转柄
+  // 是独立的编辑层，不再依赖此开关，仍可拖框、改尺寸、旋转。
+  const [handlesOn, setHandlesOn] = useState(false);
   const [dragLabel, setDragLabel] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
   // F4-3：双击节点就地编辑文字 / 公式（本地即时通道专属，精确通道只读）
@@ -809,8 +811,8 @@ export function DiagramCanvas() {
     const layer = svg.querySelector("[data-dg-selection-layer]") as SVGGElement | null;
     if (!layer) return;
     // 多选虚线框 = 所有选中图元包围盒的并集，同时也是虚拟分组的淡色外框。
-    const editable =
-      previewMode === "local" && handlesOn && toolMode === "select" && picked.size > 0;
+    // 与 TikZ 控制点开关解耦：小圆点可隐藏，但选中框 / 8 点柄 / 旋转柄始终可编辑。
+    const editable = previewMode === "local" && toolMode === "select" && picked.size > 0;
     const ctm = editable ? svg.getScreenCTM?.() : null;
     if (!ctm) {
       selectionBoxWorldRef.current = null;
@@ -2091,12 +2093,18 @@ export function DiagramCanvas() {
       compat: result.compat,
       grouping: state.grouping,
     });
-    // F4-1：两套包围盒统一 —— collectElementBoxes 为空时不再误报「没有可写控制点」，
-    // 回退到 getBoundingClientRect 的视觉外接框（节点尺寸柄必须以视觉为准）。
+    // F6-补强：8 点柄 / 旋转柄画在**视觉外接框**上（refreshSelectionChrome 用
+    // getBoundingClientRect 画的虚线框），变换基准必须同一口径。
+    // 过去优先用 collectElementBoxes（可写控制点包围盒）：单个 \node 只有 1 个
+    // node-position 句柄 → 退化成零面积盒 → 缩放比恒为 1、旋转中心落在节点锚点，
+    // 这就是「8 点柄拖了没反应 / 旋转乱飞」的根因。现在视觉框优先，锚点盒仅兜底。
     const visual = selectionBoxWorldRef.current;
-    const startBox = boxes.length > 0
-      ? unionWorldBox(boxes.map((b) => b.box))
-      : (visual ?? null);
+    const anchor = boxes.length > 0 ? unionWorldBox(boxes.map((b) => b.box)) : null;
+    const anchorUsable =
+      !!anchor &&
+      boxWidth(anchor) > 1e-3 &&
+      boxHeight(anchor) > 1e-3;
+    const startBox = visual ?? (anchorUsable ? anchor : null);
     if (!startBox) {
       setNotice({ tone: "warn", text: "没有可用的包围盒，无法参与旋转 / 缩放 / 尺寸编辑。" });
       return;
@@ -2268,9 +2276,15 @@ export function DiagramCanvas() {
         });
     if (plan.status !== "ok") {
       restoreTransformPreview();
-      if (plan.status !== "empty") {
-        setNotice({ tone: "warn", text: plan.reason || "无法应用变换" });
-      }
+      // F6-补强：过去 empty（全被锁 / 值未变）静默返回，用户拖半天以为柄坏了；
+      // 现在把 skipped 的具体理由显示出来，即使只是「已是该值」也给出反馈。
+      const skipped = plan.skipped[0];
+      setNotice({
+        tone: "warn",
+        text: skipped?.reason
+          ? `${skipped.id === "*" ? "" : `${skipped.id}：`}${skipped.reason}`
+          : plan.reason || "无法应用变换（图元可能已是该值）",
+      });
       return;
     }
     restoreTransformPreview();
@@ -2762,7 +2776,15 @@ export function DiagramCanvas() {
     previewMode !== "local"
       ? "精确预览只读 · 切回本地即时可绘制"
       : toolMode === "select"
-        ? `拖动命中圈实时预览 · 松手写回坐标 · 空白拖框选 / Shift 加选 · ${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · ${selectionHint}`
+        ? `${
+            handlesOn
+              ? "拖动控制点实时预览 · 松手写回坐标 · "
+              : "TikZ 控制点已隐藏（工具条可开启）· 选中后拖框 / 角柄编辑 · "
+          }空白拖框选 / Shift 加选 · ${
+            handlesOn
+              ? `${handleCount} 个控制点${compatLocked > 0 ? `（${compatLocked} 个已锁定）` : ""} · `
+              : ""
+          }${selectionHint}`
         : `${toolDef(toolMode).label}工具已启用 · 绘制时隐藏控制点 · ${selectionHint}`;
 
   return (
@@ -2810,9 +2832,9 @@ export function DiagramCanvas() {
             <button
               type="button"
               className={`dg-icon-btn${handlesOn ? " on" : ""}`}
-              aria-label={handlesOn ? "隐藏控制点" : "显示控制点"}
+              aria-label={handlesOn ? "隐藏 TikZ 控制点" : "显示 TikZ 控制点"}
               aria-pressed={handlesOn}
-              title="显示 / 隐藏可拖拽控制点"
+              title="显示 / 隐藏 TikZ 控制点小圆点（默认隐藏；不影响选中框的尺寸柄与旋转柄）"
               onClick={() => setHandlesOn(!handlesOn)}
             >
               <ToolbarIcon name="handles" />

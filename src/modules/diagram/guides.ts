@@ -200,6 +200,20 @@ export function cornerPoint(box: WorldBox, corner: number): PointLike {
   }
 }
 
+/**
+ * F6-补强：角点编号在 SVG 用户坐标（Y 向下）与 world 坐标（Y 向上）之间上下镜像。
+ * `cornerPoint` 的编号是 world 语义（0=左上），但柄画在 SVG 框上：用同一个编号
+ * 调 `cornerPoint(svgBox, i)` 会把 0 画到 SVG 左下，用户点「视觉左上」时 DOM 报 6，
+ * 再交给 `scaleFromDrag`（world 语义）就按左下算，sy 骤降、缩放乱跳。
+ * 画柄时用本映射取 SVG 位置，data-dg-corner 仍保留 world 编号供写回使用。
+ */
+const WORLD_TO_SVG_CORNER = [6, 5, 4, 3, 2, 1, 0, 7] as const;
+
+export function svgCornerForWorld(corner: number): number {
+  const i = ((corner % 8) + 8) % 8;
+  return WORLD_TO_SVG_CORNER[i];
+}
+
 export interface ScaleArgs {
   box: WorldBox;
   corner: number;

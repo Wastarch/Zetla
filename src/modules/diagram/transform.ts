@@ -437,7 +437,8 @@ export function planTransformPatches(args: {
       continue;
     }
     const compatReason = args.compat?.lockReasons?.[id] as string | undefined;
-    if (compatReason) {
+    // F6-补强：只锁坐标写回的构造（fit）允许追加变换选项；坐标拖拽仍由 handle 层拒绝。
+    if (compatReason && !args.compat?.coordinateOnlyLockIds?.[id]) {
       skipped.push({ id, reason: compatReason });
       continue;
     }

@@ -1486,19 +1486,29 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   pointer-events: none;
 }
 /* 缩放柄尺寸由 handleLayer.ts 的内联 width/height 控制（屏幕恒定），
-   CSS 只补颜色 / 命中 / 光标，绝不重设 stroke-width。 */
+   CSS 只补颜色 / 命中 / 光标，绝不重设 stroke-width。
+   F6-补强：视觉柄 8px 太小，命中交给同组的透明大圈 / 大圆（约 3×）；
+   data-dg-transform-handle 挂在 <g> 上，closest 从命中圈仍取到同一组 kind/corner。 */
+.dg-scale-hit,
+.dg-rotate-hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
 .dg-scale-handle {
   fill: var(--bg-3, #fff);
   stroke: var(--accent, #2d7ff9);
-  pointer-events: all;
+  pointer-events: none;
+}
+.dg-transform-layer g[data-dg-transform-kind="scale"] {
   cursor: nwse-resize;
 }
-.dg-scale-handle[data-dg-corner="1"],
-.dg-scale-handle[data-dg-corner="5"] {
+.dg-transform-layer g[data-dg-transform-kind="scale"][data-dg-corner="1"],
+.dg-transform-layer g[data-dg-transform-kind="scale"][data-dg-corner="5"] {
   cursor: ns-resize;
 }
-.dg-scale-handle[data-dg-corner="3"],
-.dg-scale-handle[data-dg-corner="7"] {
+.dg-transform-layer g[data-dg-transform-kind="scale"][data-dg-corner="3"],
+.dg-transform-layer g[data-dg-transform-kind="scale"][data-dg-corner="7"] {
   cursor: ew-resize;
 }
 .dg-scale-handle:hover {
@@ -1511,7 +1521,9 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-rotate-handle {
   fill: var(--bg-3, #fff);
   stroke: var(--accent, #2d7ff9);
-  pointer-events: all;
+  pointer-events: none;
+}
+.dg-transform-layer g[data-dg-transform-kind="rotate"] {
   cursor: grab;
 }
 .dg-rotate-handle:hover {

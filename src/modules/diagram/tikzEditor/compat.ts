@@ -83,6 +83,12 @@ export interface CompatReport {
   issues: CompatIssue[];
   /** statementId → 短理由（属性区据此锁定整条语句） */
   lockReasons: Record<string, string>;
+  /**
+   * F6-补强：statementId → 理由，表示这条锁只针对**坐标写回**；
+   * 往 options 里追加 scale / rotate / 尺寸键是安全的，写回函数据此放行。
+   * 未列入的锁（foreach / let / pic …）仍整条拒绝。
+   */
+  coordinateOnlyLockIds: Record<string, string>;
   /** handleId → 短理由（画布据此画锁图标、拒绝拖拽） */
   handleReasons: Record<string, string>;
   /** featureUsage 里 used-unsupported 的构造，即使源码正则没认出来也要提示 */
@@ -107,6 +113,14 @@ interface ConstructRule {
   reason: string;
   advice: string;
   severity: "lock" | "warn";
+  /**
+   * F6-补强：锁定只针对「写坐标」时放行**纯选项变换**（scale / rotate / 尺寸键）。
+   * fit 节点的坐标由被引用节点推导，拖坐标会破坏语义；但往 options 里追加
+   * `scale=` / `rotate=` / `text width=` 是安全的、源码可见且可撤销的（本地引擎与
+   * XeLaTeX 均验证可渲染）。仅对这类「坐标由别处推导」的构造开启，循环 / 计算坐标等
+   * 仍全锁。
+   */
+  optionTransformSafe?: boolean;
 }
 
 /**
@@ -192,9 +206,10 @@ const CONSTRUCT_RULES: readonly ConstructRule[] = [
     label: "fit 节点",
     featureIds: ["fit_node"],
     pattern: /\bfit\s*=/g,
-    reason: "节点尺寸由被引用的子节点推导，没有独立的位置 / 尺寸源码",
-    advice: "请在源码里调整被 fit 的节点或 fit 选项。",
+    reason: "节点坐标由被引用的子节点推导，拖拽坐标会破坏引用",
+    advice: "拖坐标请改被 fit 的节点；缩放 / 旋转 / 尺寸可用选中框的柄编辑。",
     severity: "lock",
+    optionTransformSafe: true,
   },
   {
     key: "calc",
@@ -384,6 +399,7 @@ export function emptyCompatReport(): CompatReport {
   return {
     issues: [],
     lockReasons: {},
+    coordinateOnlyLockIds: {},
     handleReasons: {},
     unsupportedFeatures: [],
     lockedHandleCount: 0,
@@ -405,6 +421,7 @@ export function buildCompatReport(input: CompatInput): CompatReport {
   const masked = maskComments(String(source ?? ""));
   const issues: CompatIssue[] = [];
   const lockReasons: Record<string, string> = {};
+  const coordinateOnlyLockIds: Record<string, string> = {};
 
   for (const rule of CONSTRUCT_RULES) {
     const support = readSupport(matrix, rule.featureIds);
@@ -439,6 +456,8 @@ export function buildCompatReport(input: CompatInput): CompatReport {
       issues.push(issue);
       if (severity === "lock" && owner && !lockReasons[owner.id]) {
         lockReasons[owner.id] = reason;
+        // 只锁坐标写回的构造（fit）：选项类变换仍安全，单独记一张放行表。
+        if (rule.optionTransformSafe) coordinateOnlyLockIds[owner.id] = reason;
       }
     }
   }
@@ -500,6 +519,7 @@ export function buildCompatReport(input: CompatInput): CompatReport {
   return {
     issues,
     lockReasons,
+    coordinateOnlyLockIds,
     handleReasons,
     unsupportedFeatures,
     lockedHandleCount,

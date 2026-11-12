@@ -27,7 +27,7 @@ import {
   type BoxLike,
   type HandleMetrics,
 } from "./handleVisual.ts";
-import { cornerPoint, guideToSvgSegment, type GuideLine, type SvgViewBoxLike, type WorldBox } from "./guides.ts";
+import { cornerPoint, guideToSvgSegment, svgCornerForWorld, type GuideLine, type SvgViewBoxLike, type WorldBox } from "./guides.ts";
 import { GRID_STEP_PT, gridLines, rulerTicks } from "./grid.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -299,32 +299,48 @@ export function drawTransformHandles(
   if (!svgBox || !Number.isFinite(svgBox.minX) || !Number.isFinite(svgBox.maxY)) return;
   const s = metrics.unitScale > 0 ? metrics.unitScale : 1;
   const half = 4 / s;
+  // F6-补强：视觉柄保持小而清晰，另画**透明命中圈**（约 3×）负责接收 pointerdown。
+  // 与 F3-2 控制点同构：8px 的方块 / 10px 的旋转圆在 100%–200% 缩放下都太难点，
+  // 命中圈放大不改变视觉、不改 data 属性语义（closest 仍从命中圈取到同一组 data）。
+  const hitHalf = 11 / s;
   const stroke = 1.2 / s;
   const cx = (svgBox.minX + svgBox.maxX) / 2;
   const topY = svgBox.minY; // SVG 空间里 minY 是「上边」
-  // 8 个缩放柄：0 左上 / 1 上中 / 2 右上 / 3 右中 / 4 右下 / 5 下中 / 6 左下 / 7 左中
+  // 8 个缩放柄：data-dg-corner 保持 world 语义（0 左上 … 7 左中），
+  // 但 SVG 框 Y 向下，绘制位置必须按 svgCornerForWorld 上下翻转，否则拖哪都反。
   for (let i = 0; i < 8; i += 1) {
-    const p = cornerPoint(svgBox, i);
-    const handle = el("rect", {
-      class: "dg-scale-handle",
+    const p = cornerPoint(svgBox, svgCornerForWorld(i));
+    const g = el("g", {
       "data-dg-transform-handle": "1",
       "data-dg-transform-kind": "scale",
       "data-dg-corner": String(i),
-      x: fmtNum(p.x - half),
-      y: fmtNum(p.y - half),
-      width: fmtNum(half * 2),
-      height: fmtNum(half * 2),
-      "stroke-width": fmtNum(stroke),
     });
-    layer.appendChild(handle);
+    g.appendChild(
+      el("rect", {
+        class: "dg-scale-hit",
+        x: fmtNum(p.x - hitHalf),
+        y: fmtNum(p.y - hitHalf),
+        width: fmtNum(hitHalf * 2),
+        height: fmtNum(hitHalf * 2),
+      }),
+    );
+    g.appendChild(
+      el("rect", {
+        class: "dg-scale-handle",
+        x: fmtNum(p.x - half),
+        y: fmtNum(p.y - half),
+        width: fmtNum(half * 2),
+        height: fmtNum(half * 2),
+        "stroke-width": fmtNum(stroke),
+      }),
+    );
+    layer.appendChild(g);
   }
-  // 旋转柄：顶边中点上方一段固定屏幕距离处画一个小圆 + 连线
+  // 旋转柄：顶边中点上方一段固定屏幕距离处画一个小圆 + 连线（线只做视觉，不命中）。
   const rotY = topY - 18 / s;
   layer.appendChild(
     el("line", {
       class: "dg-rotate-stick",
-      "data-dg-transform-handle": "1",
-      "data-dg-transform-kind": "rotate",
       x1: fmtNum(cx),
       y1: fmtNum(topY),
       x2: fmtNum(cx),
@@ -332,17 +348,28 @@ export function drawTransformHandles(
       "stroke-width": fmtNum(stroke),
     }),
   );
-  layer.appendChild(
+  const rotG = el("g", {
+    "data-dg-transform-handle": "1",
+    "data-dg-transform-kind": "rotate",
+  });
+  rotG.appendChild(
+    el("circle", {
+      class: "dg-rotate-hit",
+      cx: fmtNum(cx),
+      cy: fmtNum(rotY),
+      r: fmtNum(11 / s),
+    }),
+  );
+  rotG.appendChild(
     el("circle", {
       class: "dg-rotate-handle",
-      "data-dg-transform-handle": "1",
-      "data-dg-transform-kind": "rotate",
       cx: fmtNum(cx),
       cy: fmtNum(rotY),
       r: fmtNum(5 / s),
       "stroke-width": fmtNum(stroke),
     }),
   );
+  layer.appendChild(rotG);
 }
 
 /** 网格层（F3-5）：插到 SVG 最底层，几何图形覆盖其上；每次整层重写。 */

@@ -239,7 +239,10 @@ export function planSizePatches(args: {
       skipped.push({ id, reason: "已主动锁定，先解锁后再改尺寸" }); continue;
     }
     const compatReason = args.compat?.lockReasons?.[id] as string | undefined;
-    if (compatReason) { skipped.push({ id, reason: compatReason }); continue; }
+    // F6-补强：fit 只锁坐标写回，尺寸选项可安全追加，选中框的尺寸柄据此放行。
+    if (compatReason && !args.compat?.coordinateOnlyLockIds?.[id]) {
+      skipped.push({ id, reason: compatReason }); continue;
+    }
     const stmt = byId.get(id);
     if (!stmt) { skipped.push({ id, reason: "该图元没有可编辑的语句选项" }); continue; }
     const plan = planSizePatch(args.source, stmt, args.values);

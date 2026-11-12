@@ -83,7 +83,11 @@ export function SizePanel() {
   const manualLock = selected && isManuallyLocked(grouping, selected.id)
     ? "该图元已在图层面板主动锁定，先解锁后再改尺寸。"
     : null;
-  const compatLock = selected ? (compat?.lockReasons[selected.id] ?? null) : null;
+  // F6-补强：fit 的锁只针对坐标写回，尺寸选项可安全追加 —— 与画布尺寸柄 / planSizePatches
+  // 用同一张放行表，避免「画布柄能改、左侧属性面板却整条禁用」的口径分裂。
+  const compatLock = selected && !compat?.coordinateOnlyLockIds[selected.id]
+    ? (compat?.lockReasons[selected.id] ?? null)
+    : null;
   const blocked = readonly || !!manualLock || !!compatLock || ids.length === 0;
   const blockReason = readonly
     ? permission.reason
