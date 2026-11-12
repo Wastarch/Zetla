@@ -265,6 +265,7 @@ import {
   sanitizeMathTex,
   splitMathText,
   MATH_HEIGHT_FACTOR,
+  MATH_UNITS_PER_EM,
 } from "../src/modules/diagram/tikzEditor/mathText.ts";
 import {
   DEFAULT_SNAP_THRESHOLD_PT,
@@ -2958,7 +2959,22 @@ console.log("F4-2 · MathJax 节点公式增强（分段 / 消毒 / 混排 / 回
   // ④ 混排布局：宽度估算与 text-anchor 起点
   check(estimateTextWidth("中", 10) === 10 && estimateTextWidth("i", 10) === 3, "CJK ≈ 1em、窄拉丁 ≈ 0.3em");
   check(lineStartX(100, 40, "middle") === 80 && lineStartX(100, 40, "end") === 60 && lineStartX(100, 40, "start") === 100, "text-anchor 三种起点正确");
-  check(MATH_HEIGHT_FACTOR === 1, "公式高度系数默认 1× font-size（真机可微调）");
+  check(MATH_UNITS_PER_EM === 1000, "MathJax viewBox 以 1000 单位 = 1em");
+  check(MATH_HEIGHT_FACTOR === 1, "公式缩放系数默认 1（与正文同字号，真机可微调）");
+
+  // ④-b 回归：真实 \alpha 的 viewBox 是 0 -442 640 453（0.453em 高）。
+  // 旧实现把 vbH 直接当 1×font-size，字形被放大约 2.2 倍；这里锁死按 em 归一。
+  const ALPHA_RAW = String.raw`<svg style="vertical-align: -0.025ex;" xmlns="http://www.w3.org/2000/svg" width="1.448ex" height="1.025ex" viewBox="0 -442 640 453" xmlns:xlink="http://www.w3.org/1999/xlink"><defs><path id="MJX-1-TEX-I-1D6FC" d="M0 0Z"></path></defs><g stroke="currentColor" fill="currentColor" stroke-width="0" transform="scale(1,-1)"><use data-c="1D6FC" xlink:href="#MJX-1-TEX-I-1D6FC"></use></g></svg>`;
+  const alphaR = await renderTikz(String.raw`\begin{tikzpicture}\node at (0,0) {text$\alpha$};\end{tikzpicture}`);
+  const alphaBoost = await enhanceMathInSvg(alphaR.svg, async () => ALPHA_RAW);
+  const alphaTag = alphaBoost.svg.match(/<svg\b[^>]*viewBox="0 -442 640 453"[^>]*>/)?.[0] ?? "";
+  const alphaH = Number(alphaTag.match(/\bheight="([^"]+)"/)?.[1] ?? NaN);
+  const alphaW = Number(alphaTag.match(/\bwidth="([^"]+)"/)?.[1] ?? NaN);
+  const alphaFs = Number(alphaR.svg.match(/font-size="([^"]+)"/)?.[1] ?? NaN);
+  check(alphaBoost.enhanced === 1 && Number.isFinite(alphaH), "α 公式段成功增强且拿到内嵌 svg 高度");
+  check(Math.abs(alphaH - alphaFs * 0.453) < 0.01, "α 高度 = 0.453em，不再整段拉成 1em");
+  check(Math.abs(alphaW - alphaFs * 0.64) < 0.01, "α 宽度按原生 viewBox 比例换算");
+  check(alphaH < alphaFs * 0.6, "α 视觉高度明显小于旧实现的 1×font-size（≈2.2× 放大已修复）");
 
   // ⑤ 端到端：引擎真实 <text> → 增强 markup，再过 svg.ts 消毒仍保留字形
   const MATH_SRC = String.raw`\begin{tikzpicture}

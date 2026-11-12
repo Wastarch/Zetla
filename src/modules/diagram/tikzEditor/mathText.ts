@@ -137,7 +137,14 @@ export function estimateTextWidth(text: string, fontSize: number): number {
   return w;
 }
 
-/** 公式显示高度相对 font-size 的系数（含上下标余量，真机可微调）。 */
+/**
+ * MathJax SVG 的 viewBox 单位：1000 = 1em（`svg.scale=1` 时恒定）。
+ * 例：`\alpha` 的 viewBox 是 `0 -442 640 453`，即 0.453em 高、0.640em 宽；
+ * 若把 vbH 直接当成 font-size 用，字形会被放大 1000/453 ≈ 2.2 倍。
+ */
+export const MATH_UNITS_PER_EM = 1000;
+
+/** 公式相对正文的视觉缩放系数：1 = 与正文同字号，真机可在 0.9–1.1 间微调。 */
 export const MATH_HEIGHT_FACTOR = 1;
 
 /** 按 text-anchor 计算整行起点 x。 */
@@ -241,8 +248,11 @@ export async function enhanceMathInSvg(
       if (glyph) {
         enhanced++;
         localEnhanced++;
-        const h = fontSize * MATH_HEIGHT_FACTOR;
-        runs.push({ kind: "math", content: glyph.inner, w: h * (glyph.vbW / glyph.vbH), h, vb: glyph.viewBox });
+        // viewBox 单位 → SVG 用户单位：vbH=453 的 \alpha 只应占 0.453em，
+        // 而不是整个 font-size。宽高同乘一个 scale，保持 MathJax 原生比例。
+        const scale = (fontSize / MATH_UNITS_PER_EM) * MATH_HEIGHT_FACTOR;
+        const h = glyph.vbH * scale;
+        runs.push({ kind: "math", content: glyph.inner, w: glyph.vbW * scale, h, vb: glyph.viewBox });
       } else {
         failed++;
         // 回退：保留原 $...$ 字面量，信息不丢
