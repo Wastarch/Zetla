@@ -1,4 +1,6 @@
-// M2·F3-3：图层面板（侧栏视图，不设右坞）。
+// M2·F3-3：图层面板（侧栏视图）。2026-11-12 起是**唯一一份图元清单**：
+// 原右侧属性坞的语句选择列表已删除，本面板同时承担「点选图元」与图层元数据操作。
+// 行 hover 显示源码片段、F2-3 能力锁定理由，保证清单去重后信息不丢。
 //
 // 只呈现 / 操作**编辑器侧元数据**：虚拟分组、可见性、主动锁定、命名、折叠、嵌套。
 // 全部经 store.setGrouping 落到 localStorage，TikZ 源码一个字都不改 —— 绝不产生
@@ -19,6 +21,7 @@ import {
 import { planZOrderEdit, type ZOrderOp } from "./zOrder.ts";
 import { commitDiagramPatches } from "./diagramHistory";
 import { canEditDiagramSource } from "./editability.ts";
+import { statementLabel } from "./optionsEdit.ts";
 
 interface Notice {
   tone: "ok" | "warn";
@@ -49,6 +52,12 @@ export function LayersPanel() {
   const statements = fresh ? (renderMeta?.statements ?? []) : [];
   const rows = useMemo(() => buildLayerRows(statements, grouping), [statements, grouping]);
   const selected = useMemo(() => new Set(selectedIds), [selectedIds]);
+  // 合并后由图层行承载原右侧语句列表的信息：源码片段 + F2-3 能力锁定理由。
+  const compatLocks = fresh ? (renderMeta?.compat.lockReasons ?? {}) : {};
+  const snippets = useMemo(
+    () => new Map(statements.map((s) => [s.id, statementLabel(s, source)])),
+    [statements, source],
+  );
   const canGroup = selectedIds.length >= 2;
   // z-order 只对顶层语句生效；需要一份新鲜的渲染结果才能拿到语句 span；精确通道只读禁用。
   const canZ = fresh && selectedIds.length > 0 && permission.ok;
@@ -160,8 +169,9 @@ export function LayersPanel() {
       ) : (
         <>
           <p className="dg-side-card-sub">
+            这里是唯一一份图元清单：点一行即可选中，下方「属性 / 尺寸 / 对齐 · 变换」都作用于它。
             框选或 Shift 加选多个图元后点「编组」；分组只存编辑器侧，源码不出现 scope。
-            眼睛 = 画布可见性（源码仍在），锁 = 主动锁定（禁止拖拽 / 改属性）。
+            显 / 隐 = 画布可见性（源码仍在），开 / 锁 = 主动锁定（禁止拖拽 / 改属性），限 = 能力矩阵锁定。
           </p>
           <div className="dg-layer-actions">
             <button type="button" className="btn" disabled={!canGroup} onClick={doGroup}>
@@ -237,6 +247,13 @@ export function LayersPanel() {
                 const isOn = isGroup
                   ? row.id === activeGroupId
                   : selected.has(row.id);
+                const capLock = isGroup ? null : (compatLocks[row.id] ?? null);
+                const snippet = snippets.get(row.id) ?? row.label;
+                const nameTitle = isGroup
+                  ? "点击选中整组（Shift 并入当前选择）"
+                  : capLock
+                    ? `能力锁定：${capLock} · ${snippet}`
+                    : `点击定位选中（Shift 加选 / 减选）· ${snippet}`;
                 return (
                   <li
                     key={`${row.kind}:${row.id}:${row.depth}`}
@@ -271,14 +288,17 @@ export function LayersPanel() {
                     ) : (
                       <button
                         type="button"
-                        className="dg-layer-name"
-                        title={isGroup ? "点击选中整组（Shift 并入当前选择）" : "点击定位选中（Shift 加选 / 减选）"}
+                        className={`dg-layer-name${capLock ? " is-compat-locked" : ""}`}
+                        title={nameTitle}
                         onClick={(e) => selectRow(row, e)}
                       >
                         {row.label}
                       </button>
                     )}
                     {isGroup && <span className="dg-layer-count">{row.count}</span>}
+                    {capLock && (
+                      <span className="dg-layer-caplock" title={capLock}>限</span>
+                    )}
                     <span className="dg-layer-ops">
                       <button
                         type="button"

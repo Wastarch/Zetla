@@ -4,7 +4,9 @@
 // F3-3：多选时属性只作用于主选中项（selectedId = selectedIds[0]）；图层面板的主动锁定
 //        与 F2-3 能力锁定并列生效，避免用户绕过画布的「禁止拖拽」还能从侧栏改属性。
 //
-// 位置按计划放在**侧栏选项区**（不另设右坞）；画布与源码仍是主编辑区的独立 Tab。
+// 位置：左侧栏「图元与属性」合并面板（2026-11-12 撤销预览右侧属性坞后）。
+// 与 LayersPanel 共用**唯一一份**图元清单：本组件不再渲染语句选择列表，
+// 只按 selectedId 编辑属性；选中来自画布点选或上方图层行。
 // 数据流：DiagramCanvas 点选写 selectedId + 每次渲染写 renderMeta → 本组件按
 // renderMeta.source === store.source 判定清单新鲜 → optionsEdit 生成单个最小 span 补丁
 // → commitDiagramPatch() 经 sourceBridge dispatch 到 CM6（与键盘直编 / F2-1 拖拽共用撤销栈）。
@@ -183,40 +185,20 @@ export function DiagramProperties() {
       {statements.length === 0 ? (
         <p className="dg-side-card-sub">
           {source.trim()
-            ? "正在解析图元…（切到「本地即时」预览后即可点选）"
-            : "源码为空。打开绘图 Tab 编写 TikZ 后，这里会列出可选图元。"}
+            ? "正在解析图元…（切到「本地即时」预览后即可在上方清单点选）"
+            : "源码为空。打开绘图 Tab 编写 TikZ 后，上方清单会列出可选图元。"}
         </p>
       ) : (
         <>
           <p className="dg-side-card-sub">
-            在画布上点击图元，或从下面列表选一条语句；改动会以最小补丁写回源码并即时重绘。
+            在画布或上方「图层 · 分组」清单点选图元；改动以最小补丁写回源码并即时重绘。
           </p>
           {selectedIds.length > 1 && (
             <p className="dg-side-card-sub">
               已多选 {selectedIds.length} 项；属性只作用于主选中项 <code>{selectedId}</code>。
-              整体移动请在画布拖任一选中图元，或到「图层 · 分组」编组。
+              整体移动请在画布拖任一选中图元，或在上方清单编组。
             </p>
           )}
-          <div className="dg-prop-list">
-            {statements.slice(0, 40).map((stmt) => {
-              const state = statementEditability(stmt);
-              const lock = compat?.lockReasons[stmt.id] ?? null;
-              const off = !state.editable || !!lock;
-              return (
-                <button
-                  key={stmt.id}
-                  type="button"
-                  className={`dg-prop-item${selectedId === stmt.id ? " is-on" : ""}${off ? " is-off" : ""}${lock ? " is-compat-locked" : ""}`}
-                  title={lock ?? (off ? state.reason : statementLabel(stmt, source))}
-                  onClick={() => setSelectedId(stmt.id)}
-                >
-                  <span className="dg-prop-item-id">{stmt.id}</span>
-                  {lock && <span className="dg-prop-lock">已锁定</span>}
-                  <span className="dg-prop-item-code">{statementLabel(stmt, source)}</span>
-                </button>
-              );
-            })}
-          </div>
         </>
       )}
 

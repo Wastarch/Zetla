@@ -1,18 +1,22 @@
 // M2 · 绘图模块左侧「工具箱」侧栏视图。
-// 形态：活动栏「绘图」→ 侧栏显示基础元素 / 组件库 / 图层 / 插入选项；画布与源码放在
+// 形态：活动栏「绘图」→ 侧栏显示基础元素 / 组件库 / 图元与属性 / 插入选项；画布与源码放在
 // 主编辑区的独立 Tab（diagram://editor 伪 buffer），两者并存、互不遮挡。
 //
 // F3-9（参考 docs/dev/UI/tikz编辑器.html 的布局重排）：
 //   · 基础元素按钮从画布顶部工具条搬到侧栏（`ShapePalette`）；
-//   · 组件库 / 图层管理 / 导出与插入 / 画布与布局统一为原生 <details> 手风琴
+//   · 组件库 / 图层管理 / 导出与插入统一为原生 <details> 手风琴
 //     （零新增 state，键盘可用，折叠不丢面板内部状态）；
-//   · 选中元素的属性编辑（F2-2 / F3-4）移到**预览窗口右侧**的 DiagramInspector，
-//     不再堆在左侧栏；代码区（DiagramCodePane / LaTeXEditor）完全不碰。
-// F1-1 打开/聚焦绘图 Tab + 锁定 targetTex；F1-4 导出方式单选与「插入到文档」主操作。
-import type { ReactNode } from "react";
+//   · 代码区（DiagramCodePane / LaTeXEditor）完全不碰。
+// 2026-11-12 合并：原 F3-9「预览窗口右侧属性坞」撤销，图层清单（LayersPanel）与
+//   选中图元属性 / 尺寸 / 对齐变换合并为一个「图元与属性」手风琴，统一放左侧栏；
+//   两份可点选图元清单去重后只剩 LayersPanel 一份（见 DiagramInspector.tsx）。
+// 切到本侧栏即自动打开 / 聚焦绘图 Tab 并锁定 targetTex（F1-1），
+// 故侧栏不再放「画布与布局」说明与「切换到绘图 Tab」按钮；布局/通道开关本就在 Tab 顶部。
+// F1-4 导出方式单选与「插入到文档」主操作。
+import { useEffect, type ReactNode } from "react";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
-import { LayersPanel } from "./LayersPanel";
+import { DiagramInspector } from "./DiagramInspector";
 import { ShapePalette } from "./ShapeToolbar";
 import { isToolMode, toolDef } from "./shapeTools";
 import { insertDiagramCode } from "./insert";
@@ -20,11 +24,24 @@ import type { ExportMode } from "@/types/diagram";
 import "./diagram.css";
 
 const DIAGRAM_TAB_PATH = "diagram://editor";
-const LAYOUT_LABEL: Record<string, string> = {
-  canvas: "仅画布",
-  code: "仅源码",
-  split: "左右分屏",
-};
+
+/**
+ * 打开 / 聚焦绘图 Tab，并把当前活动的 .tex 锁定为插入目标。
+ * 伪 buffer Tab 激活时 getActiveView() 会失效，F1-4 插入必须靠
+ * targetTex 取 getEditorView(targetTex)（同 figureImport.ts:30）。
+ * openDiagram() 自身幂等；这里额外跳过「已打开且已激活」，避免重复 set 触发重渲染。
+ */
+function openDiagramTab(): void {
+  const buffers = useBuffersStore.getState();
+  const activePath = buffers.activePath;
+  if (activePath && /\.tex$/i.test(activePath)) {
+    useDiagramStore.getState().setTargetTex(activePath);
+  }
+  if (activePath === DIAGRAM_TAB_PATH && buffers.buffers.some((b) => b.kind === "diagram")) {
+    return;
+  }
+  buffers.openDiagram();
+}
 
 /** image / file 由 F5 的 tikz_export 落盘链路接入，v1 展示但禁用 */
 const EXPORT_MODES: { id: ExportMode; label: string; hint: string; ready: boolean }[] = [
@@ -76,8 +93,6 @@ export function DiagramSidebar() {
   const source = useDiagramStore((s) => s.source);
   const toolMode = useDiagramStore((s) => s.toolMode);
   const targetTex = useDiagramStore((s) => s.targetTex);
-  const layoutMode = useDiagramStore((s) => s.layoutMode);
-  const previewMode = useDiagramStore((s) => s.previewMode);
   const exportMode = useDiagramStore((s) => s.exportMode);
   const setExportMode = useDiagramStore((s) => s.setExportMode);
   const wrapFigure = useDiagramStore((s) => s.wrapFigure);
@@ -91,22 +106,13 @@ export function DiagramSidebar() {
   const label = useDiagramStore((s) => s.label);
   const setLabel = useDiagramStore((s) => s.setLabel);
 
-  const diagramOpen = useBuffersStore((s) => s.buffers.some((b) => b.kind === "diagram"));
-  const diagramActive = useBuffersStore((s) => s.activePath === DIAGRAM_TAB_PATH);
   const lineCount = source.split("\n").length;
 
-  /**
-   * 打开 / 聚焦绘图 Tab。打开时把当前活动 .tex 锁定为插入目标
-   * （同 figureImport.ts:30 的做法）：伪 buffer Tab 激活时 getActiveView() 会失效，
-   * F1-4 插入必须靠 targetTex 取 getEditorView(targetTex)。
-   */
-  const handleOpenDiagram = () => {
-    const activePath = useBuffersStore.getState().activePath;
-    if (activePath && /\.tex$/i.test(activePath)) {
-      useDiagramStore.getState().setTargetTex(activePath);
-    }
-    useBuffersStore.getState().openDiagram();
-  };
+  // 切到绘图侧栏时自动打开 / 聚焦绘图 Tab：Sidebar 按 view 条件渲染、折叠时整体卸载，
+  // 因此「本组件挂载」正好对应「用户点开绘图侧栏」；不再需要手动点按钮。
+  useEffect(() => {
+    openDiagramTab();
+  }, []);
 
   const canInsert = exportMode === "source" && !!targetTex && source.trim().length > 0;
 
@@ -134,9 +140,9 @@ export function DiagramSidebar() {
         <p className="dg-side-card-sub">高层可复用模板，接入后一次性生成标准 TikZ 语句。</p>
       </Accordion>
 
-      {/* F3-3：图层 / 虚拟分组面板留在侧栏；面板自带的折叠开关不重复包一层 */}
-      <Accordion title="图层管理" flush>
-        <LayersPanel />
+      {/* 2026-11-12：唯一一份图元清单（图层 / 分组）+ 选中项属性编辑，合并为一块 */}
+      <Accordion title="图元与属性" flush>
+        <DiagramInspector />
       </Accordion>
 
       <Accordion title="导出与插入" meta="主 .tex 文档">
@@ -210,35 +216,13 @@ export function DiagramSidebar() {
           目标文档：{targetTex ? basename(targetTex) : "未锁定（需先打开 .tex 文档）"}
         </p>
         {!targetTex && (
-          <p className="dg-side-warn">插入按钮已禁用：请先在 .tex 标签页活动时打开绘图 Tab。</p>
+          <p className="dg-side-warn">插入按钮已禁用：请先激活 .tex 文档，再切到绘图侧栏（会自动锁定插入目标）。</p>
         )}
         {exportMode !== "source" && (
           <p className="dg-side-warn">图片导出 / 仅保存文件将在后续版本支持，暂不可用。</p>
         )}
       </Accordion>
 
-      <Accordion title="画布与布局" open={false}>
-        <p className="dg-side-card-sub">
-          仅画布 / 仅源码 / 左右分屏三种布局在 Tab 顶部切换；预览可切「本地即时 / XeLaTeX 精确」两个通道。
-        </p>
-        <button type="button" className="btn" onClick={handleOpenDiagram}>
-          {diagramOpen ? "切换到绘图 Tab" : "打开绘图 Tab"}
-        </button>
-        <p className="dg-side-card-sub">
-          状态：
-          {!diagramOpen
-            ? "未打开"
-            : diagramActive
-              ? "绘图 Tab 已激活"
-              : "绘图 Tab 已打开（未激活）"}
-          {diagramOpen && ` · 当前布局：${LAYOUT_LABEL[layoutMode] ?? layoutMode}`}
-          {` · 预览：${previewMode === "precise" ? "XeLaTeX 精确" : "本地即时"}`}
-        </p>
-      </Accordion>
-
-      <p className="dg-side-note">
-        主文档已有 tikzpicture 的反向编辑（✎ 徽标）将在后续版本支持，当前仅支持「绘图 Tab → 插入主文档」。
-      </p>
     </div>
   );
 }

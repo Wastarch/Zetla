@@ -1,5 +1,5 @@
 /* M2 · 绘图模块样式
-   - 侧栏（DiagramSidebar）：组件库 / 布局选项 / 导出方式分区
+   - 侧栏（DiagramSidebar）：基础元素 / 组件库 / 图元与属性（图层清单 + 属性编辑合并） / 导出与插入
    - Tab（diagram://editor）：顶部布局开关 + 三布局容器（F1-2 起）
    - 画布（DiagramCanvas）：F1-3 起渲染 tikz-editor 的 SVG（白纸底 + 消毒注入）
    主题 token 统一用 zetla.css 的 --txt / --txt-2 / --bg / --line / --paper / --accent。 */
@@ -80,14 +80,6 @@
 }
 .dg-side-card .btn {
   align-self: flex-start;
-}
-
-.dg-side-note {
-  margin: 4px 0 0;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--txt-2, #6b6b6b);
-  opacity: 0.75;
 }
 
 /* ── M2·F1-2：绘图工作台 Tab（diagram://editor 伪 buffer） ──
@@ -947,65 +939,8 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-prop-card {
   gap: 8px;
 }
-.dg-prop-list {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  max-height: 132px;
-  overflow: auto;
-  padding-right: 2px;
-}
-.dg-prop-item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  width: 100%;
-  padding: 4px 6px;
-  text-align: left;
-  font-size: 11px;
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: 4px;
-  background: var(--bg-3, #fff);
-  color: var(--txt, #353333);
-  cursor: pointer;
-}
-.dg-prop-item:hover {
-  border-color: var(--accent, #2d7ff9);
-}
-.dg-prop-item.is-on {
-  border-color: var(--accent, #2d7ff9);
-  background: var(--accent-soft, rgba(43, 98, 207, 0.11));
-  color: var(--accent, #2d7ff9);
-}
-.dg-prop-item.is-off {
-  opacity: 0.55;
-}
-/* F2-3：能力矩阵锁定的语句在列表里也有可见标记，避免只在画布上锁、侧栏仍可改。 */
-.dg-prop-item.is-compat-locked {
-  border-color: color-mix(in srgb, var(--warn, #a86a12) 55%, var(--line));
-}
-.dg-prop-lock {
-  flex: none;
-  padding: 0 4px;
-  border-radius: 3px;
-  font-size: 10px;
-  background: color-mix(in srgb, var(--warn, #a86a12) 16%, transparent);
-  color: var(--warn, #a86a12);
-}
-.dg-prop-item-id {
-  flex: none;
-  font-family: var(--font-mono, monospace);
-  font-size: 10px;
-  opacity: 0.75;
-}
-.dg-prop-item-code {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: var(--font-mono, monospace);
-}
+/* 2026-11-12：语句选择列表已并入 LayersPanel（唯一清单），
+   原 .dg-prop-list / .dg-prop-item* 样式随组件一起删除。 */
 
 .dg-prop-detail {
   display: flex;
@@ -1191,7 +1126,8 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 
 /* ── F3-3 选择 · 分组 · 图层 ──────────────────────────────────────────────
    框选矩形是 position:fixed 的 HTML 层，直接吃 client 坐标；选中包围盒与
-   控制点仍在已消毒 SVG 的辅助层里。图层面板挂在左侧栏（不另设右坞）。
+   控制点仍在已消毒 SVG 的辅助层里。2026-11-12 起图层面板是左侧栏合并区里
+   唯一一份图元清单（原右侧语句列表已删）。
    隐藏只切 .dg-hidden class：源码一个字不改，随时可恢复。 */
 .dg-layer-head {
   display: flex;
@@ -1693,12 +1629,6 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   font-size: var(--dg-fs-xs);
   cursor: pointer;
 }
-.dg-side .dg-side-note {
-  font-size: var(--dg-fs-xs);
-  line-height: 1.6;
-  color: var(--txt-3, #9a9a9a);
-  opacity: 0.9;
-}
 /* 主操作「插入到文档」提升为整行填充按钮（原 .btn.primary 配色不变） */
 .dg-side .dg-side-primary.btn {
   align-self: stretch;
@@ -2096,107 +2026,65 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 /* ══════════════════════════════════════════════════════════════════════
    F3-9 · 工作台布局重排（参考 docs/dev/UI/tikz编辑器.html）
    --------------------------------------------------------------------------
-   左侧栏 = 工具箱（基础元素 / 组件库 / 图层 / 插入选项）
-   中间   = 预览区（画布 + 右侧属性坞）
+   左侧栏 = 工具箱（基础元素 / 组件库 / 图元与属性 / 插入选项）
+   中间   = 预览区（画布，2026-11-12 起恢复单孩子）
    最右   = 代码区 —— **本节不含任何 .dg-pane-code / .dg-pane-code-inner 规则**，
             不新增代码栏子元素、不改 CM6 容器，代码区保持纯净。
+   2026-11-12 合并：原「预览窗口右侧属性坞」撤销，.dg-canvas-workspace /
+   .dg-inspector* 坞样式整体删除；图层清单 + 属性 / 尺寸 / 变换统一进左侧栏
+   一个「图元与属性」手风琴，只保留一份图元清单。
    ══════════════════════════════════════════════════════════════════════ */
 
-/* ① 预览区：画布自适应 + 固定宽属性坞 ─────────────────────────────────── */
-.dg-canvas-workspace {
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-  height: 100%;
+/* ① 合并面板：选中态 + 四块卡片在窄侧栏里竖向排布 ───────────────────── */
+.dg-side .dg-inspector-merged {
   display: flex;
-}
-/* 复用 .dg-side 的 F3-8 卡片 / 控件规格，但覆盖它的 flex:1 与滚动行为。
-   选择器比 .dg-side 更具体，故 padding / gap / overflow 以这里为准。 */
-.dg-tab .dg-inspector {
-  flex: 0 0 280px;
-  width: 280px;
-  min-width: 0;
-  gap: 0;
-  padding: 0;
-  border-left: 1px solid var(--line, #e0e0e0);
-  background: var(--bg-2, #f7f7f7);
-  overflow: hidden;
-}
-.dg-inspector-head {
-  flex: none;
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: var(--dg-space-2);
-  min-height: 34px;
-  padding: var(--dg-space-1) var(--dg-space-3);
-  border-bottom: 1px solid var(--line, #e0e0e0);
-  background: var(--bg, #fff);
+  min-width: 0;
 }
-.dg-inspector-title {
-  font-size: var(--dg-fs-md);
-  font-weight: var(--dg-fw-title);
-  color: var(--txt, #353333);
-  white-space: nowrap;
+.dg-merged-target {
+  display: flex;
+  align-items: baseline;
+  gap: var(--dg-space-2);
+  min-width: 0;
+  padding: 4px var(--dg-space-2);
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  background: var(--bg-3, #fff);
+  font-size: var(--dg-fs-xs);
+  line-height: 1.5;
 }
-.dg-inspector-target {
+.dg-merged-target-label {
+  flex: none;
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-merged-target-value {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: right;
-  font-size: var(--dg-fs-xs);
   color: var(--accent, #2d7ff9);
   font-variant-numeric: tabular-nums;
 }
-.dg-inspector-toggle {
-  flex: none;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: var(--dg-radius-sm);
-  background: transparent;
-  color: var(--txt-2, #6b6b6b);
-  font-size: var(--dg-fs-md);
-  line-height: 1;
-  cursor: pointer;
-}
-.dg-inspector-toggle:hover {
-  border-color: var(--accent, #2d7ff9);
-  color: var(--accent, #2d7ff9);
-}
-.dg-inspector-body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--dg-space-2);
-  padding: var(--dg-space-3);
-  overflow: auto;
-}
-.dg-inspector-hint {
-  margin: 0;
+/* 侧栏比原 280px 属性坞窄：对齐 / 分布按钮收到 10px 字号，避免文字挤出格子 */
+.dg-side .dg-inspector-merged .dg-align-grid button,
+.dg-side .dg-inspector-merged .dg-dist-grid button {
+  padding: 5px 2px;
   font-size: var(--dg-fs-xs);
-  line-height: 1.6;
-  color: var(--txt-2, #6b6b6b);
 }
-/* 折叠态：只留一条 32px 竖条，画布拿回全部宽度 */
-.dg-tab .dg-inspector.is-collapsed {
-  flex-basis: 32px;
-  width: 32px;
+/* F2-3：能力矩阵锁定理由随唯一清单一起搬到图层行（原右侧列表的「已锁定」标记） */
+.dg-layer-name.is-compat-locked {
+  color: var(--warn, #a86a12);
 }
-.dg-inspector.is-collapsed .dg-inspector-head {
-  flex-direction: column;
-  justify-content: flex-start;
-  gap: var(--dg-space-3);
-  height: 100%;
-  padding: var(--dg-space-2) var(--dg-space-1);
-}
-.dg-inspector.is-collapsed .dg-inspector-title {
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  letter-spacing: 0.16em;
+.dg-layer-caplock {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--warn, #a86a12) 16%, transparent);
+  color: var(--warn, #a86a12);
+  font-size: var(--dg-fs-xs);
+  cursor: help;
 }
 
 /* ② 左侧栏手风琴：原生 <details>，零组件 state ───────────────────────── */
@@ -2383,28 +2271,10 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   white-space: normal;
 }
 
-/* ⑥ 窄视口 / 高缩放：属性坞收窄，纸面宽度优先 ───────────────────────── */
-@media (max-width: 1280px) {
-  .dg-tab .dg-inspector {
-    flex-basis: 240px;
-    width: 240px;
-  }
-}
-@media (max-width: 1024px) {
-  .dg-tab .dg-inspector {
-    flex-basis: 210px;
-    width: 210px;
-  }
-  .dg-inspector-hint {
-    display: none;
-  }
-}
-
-
 /* F3-9 二次优化（2026-11-11 19:03）：侧栏垂直密度
    截图里大半栏高是空白 —— 手风琴标题/内容 padding、分区 gap、
    组件库每行 6px 上下 padding 叠加。这里统一收一圈，
-   属性坞因 .dg-tab .dg-inspector 的 padding/gap 覆盖不受影响。 */
+   2026-11-12 起合并面板也一并适用。 */
 .dg-side {
   gap: 6px;
   padding: 8px 10px 12px;
@@ -2418,7 +2288,7 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   F4-1 · 节点尺寸面板（挂在预览右侧属性坞，沿用 F3-8 卡片 / 控件规格）
+   F4-1 · 节点尺寸面板（2026-11-12 起挂在左侧栏合并区，沿用 F3-8 卡片 / 控件规格）
    ══════════════════════════════════════════════════════════════════════ */
 .dg-size-card {
   gap: var(--dg-space-2);
@@ -2508,7 +2378,7 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   F4-1 · 节点尺寸面板（挂在预览右侧属性坞，沿用 F3-8 卡片 / 控件规格）
+   F4-1 · 节点尺寸面板（2026-11-12 起挂在左侧栏合并区，沿用 F3-8 卡片 / 控件规格）
    ══════════════════════════════════════════════════════════════════════ */
 .dg-size-card {
   gap: var(--dg-space-2);
