@@ -298,104 +298,151 @@ fn validate_source(source: &str) -> Result<(), String> {
 
 /// 收集源码里所有 \usetikzlibrary{...} 的库名，去重后合并进导言区。
 /// 源码原文一字不改（保留行号对应关系），重复加载库对 TikZ 无害。
-fn collect_libraries(source: &str) -> Vec<String> {
-    const MARK: &str = "\\usetikzlibrary{";
-    let mut out: Vec<String> = Vec::new();
-    let mut rest = source;
-    while let Some(i) = rest.find(MARK) {
-        let after = &rest[i + MARK.len()..];
-        let Some(end) = after.find('}') else { break };
-        for lib in after[..end].split(',') {
-            let l = lib.trim().to_string();
-            if !l.is_empty() && !out.contains(&l) {
-                out.push(l);
-            }
-        }
-        rest = &after[end + 1..];
-    }
-    out
-}
-
-/// 收集源码里所有 \usepackage{...} / \RequirePackage{...} 的包名，去重后合并进导言区。
-/// 支持可选 [..] 参数（如 \usepackage[dvipsnames]{xcolor}）；其正文行由
-/// strip_preamble_decl_lines 注释掉，以免留在 \begin{document} 之后触发
-/// "Can be used only in preamble"。
-fn collect_usepackage(source: &str) -> Vec<String> {
-    let mut out: Vec<String> = Vec::new();
-    for cmd in ["\\usepackage", "\\RequirePackage"] {
-        let mut rest = source;
-        while let Some(i) = rest.find(cmd) {
-            let after = &rest[i + cmd.len()..];
-            // 跳过可选 [..] 参数
-            let after = if let Some(b) = after.find('[') {
-                match after[b..].find(']') {
-                    Some(c) => &after[b + c + 1..],
-                    None => break,
-                }
-            } else {
-                after
-            };
-            // 提取 {..} 内的包名
-            let after = match after.find('{') {
-                Some(b) => &after[b + 1..],
-                None => break,
-            };
-            let Some(end) = after.find('}') else { break };
-            let arg = after[..end].trim().to_string();
-            if !arg.is_empty() && !out.contains(&arg) {
-                out.push(arg);
-            }
-            rest = &after[end + 1..];
-        }
-    }
-    out
-}
-
-/// 源码里的 \usetikzlibrary{...} / \usepackage{...} / \RequirePackage{...} 等「只能在导言区出现的命令」
-/// 已由 collect_libraries / collect_usepackage 合并进导言区；若原样留在 \begin{document} 之后，
-/// LaTeX 会报 "Can be used only in preamble"。这里把「独占整行」的声明改成注释，行数不变 ——
-/// 保证 log 行号减 preamble_lines 后仍精确对应绘图 Tab 的源码行。
-/// 允许行尾 % 注释（旧版因要求行尾必须是 `}` 而漏掉这类行，导致声明残留在正文报错）。
-fn is_pure_preamble_decl(line: &str) -> bool {
-    // 去掉尾随 % 注释后再判断
-    let core = match line.trim().find('%') {
-        Some(i) => line.trim()[..i].trim(),
-        None => line.trim(),
-    };
-    if core.is_empty() {
+/// 合法的 TeX 包名/库名：非空、非纯数字、只允许字母数字及 `_ + . -`。
+/// 用来过滤源码里被误写进 \usepackage / \usetikzlibrary 的非法 token（如纯数字 "30"），
+/// 避免生成 \usepackage{30} 触发 "File '30.sty' not found"。
+fn is_valid_tex_name(s: &str) -> bool {
+    if s.is_empty() {
         return false;
     }
-    // \usetikzlibrary{...} / \usepackage{...} / \RequirePackage{...}
-    for mark in ["\\usetikzlibrary{", "\\usepackage{", "\\RequirePackage{"] {
-        if let Some(pos) = core.find(mark) {
-            if pos == 0 && core.ends_with('}') {
-                return true;
-            }
-        }
+    if s.chars().all(|c| c.is_ascii_digit()) {
+        return false;
     }
-    // \usepackage[opt]{...} / \RequirePackage[opt]{...}
-    for mark in ["\\usepackage[", "\\RequirePackage["] {
-        if let Some(pos) = core.find(mark) {
-            if pos == 0 && core.contains(']') && core.ends_with('}') {
-                return true;
-            }
-        }
-    }
-    false
+    s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '.' | '-'))
 }
 
-fn strip_preamble_decl_lines(source: &str) -> String {
-    source
-        .lines()
-        .map(|line| {
-            if is_pure_preamble_decl(line) {
-                format!("% {}", line.trim())
-            } else {
-                line.to_string()
+#[derive(Clone, Copy, PartialEq)]
+enum DeclKind {
+    Library,
+    Package,
+}
+
+/// 正在解析中的一个「只能在导言区出现的命令」的状态。
+struct OpenDecl {
+    kind: DeclKind,
+    /// 参数 `{...}` 的嵌套深度；0 表示尚未遇到开头的 `{`。
+    depth: usize,
+    /// 参数体累积内容（剔除可选 `[..]` 部分）。
+    arg: String,
+    /// 是否已遇到闭合 `}`。
+    finished: bool,
+}
+
+/// 扫描一行字符，更新声明命令的括号深度并在参数体内累积内容。
+fn scan_braces(line: &str, open: &mut OpenDecl) {
+    for ch in line.chars() {
+        match ch {
+            '{' => open.depth += 1,
+            '}' => {
+                if open.depth > 0 {
+                    open.depth -= 1;
+                    if open.depth == 0 {
+                        open.finished = true;
+                    }
+                }
             }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+            _ => {
+                if open.depth > 0 {
+                    open.arg.push(ch);
+                }
+            }
+        }
+    }
+}
+
+/// 结算一个已结束（或文件结束仍未闭合）的声明命令：抽取逗号分隔的库名/包名，
+/// 过滤非法 token 后并入 libs/pkgs（去重）。非法 token 仅打印告警，不写入导言区。
+fn finalize_decl(open: &mut Option<OpenDecl>, libs: &mut Vec<String>, pkgs: &mut Vec<String>) {
+    let Some(d) = open.take() else {
+        return;
+    };
+    for t in d.arg.split(',') {
+        let t = t.trim();
+        if t.is_empty() {
+            continue;
+        }
+        if !is_valid_tex_name(t) {
+            eprintln!(
+                "[tikz_export] 跳过无效包名/库名 '{t}'（源码含非法声明，已忽略以免编译失败）"
+            );
+            continue;
+        }
+        match d.kind {
+            DeclKind::Library => {
+                if !libs.contains(&t.to_string()) {
+                    libs.push(t.to_string());
+                }
+            }
+            DeclKind::Package => {
+                if !pkgs.contains(&t.to_string()) {
+                    pkgs.push(t.to_string());
+                }
+            }
+        }
+    }
+}
+
+/// 扫描源码，识别「只能在导言区使用的命令」（`\usetikzlibrary` / `\usepackage` /
+/// `\RequirePackage`），无论单行还是跨行、是否带尾注释，都：
+///  - 抽取库名/包名（逗号分隔、去空白、去重），用于注入导言区；
+///  - 把命令所在的所有行整行注释掉（行数不变，保证 log 行号映射对应源码行）。
+/// 返回 `(库名列表, 包名列表, 注释后的正文)`。
+fn split_preamble_decls(source: &str) -> (Vec<String>, Vec<String>, String) {
+    let starters: &[(&str, DeclKind)] = &[
+        ("\\usetikzlibrary{", DeclKind::Library),
+        ("\\usepackage[", DeclKind::Package),
+        ("\\RequirePackage[", DeclKind::Package),
+        ("\\usepackage{", DeclKind::Package),
+        ("\\RequirePackage{", DeclKind::Package),
+    ];
+    let mut libs: Vec<String> = Vec::new();
+    let mut pkgs: Vec<String> = Vec::new();
+    let mut out_lines: Vec<String> = Vec::new();
+    let mut open: Option<OpenDecl> = None;
+
+    for line in source.lines() {
+        if open.is_none() {
+            let trimmed = line.trim_start();
+            let mut matched: Option<DeclKind> = None;
+            for (mark, kind) in starters {
+                if trimmed.starts_with(mark) {
+                    matched = Some(*kind);
+                    break;
+                }
+            }
+            if let Some(kind) = matched {
+                open = Some(OpenDecl {
+                    kind,
+                    depth: 0,
+                    arg: String::new(),
+                    finished: false,
+                });
+                out_lines.push(format!("% {}", line.trim()));
+                scan_braces(line, open.as_mut().unwrap());
+                if open.as_ref().unwrap().finished {
+                    finalize_decl(&mut open, &mut libs, &mut pkgs);
+                }
+                continue;
+            }
+        } else {
+            out_lines.push(format!("% {}", line.trim()));
+            scan_braces(line, open.as_mut().unwrap());
+            if open.as_ref().unwrap().finished {
+                finalize_decl(&mut open, &mut libs, &mut pkgs);
+            }
+            continue;
+        }
+        out_lines.push(line.to_string());
+    }
+    // 文件结束仍处未闭合声明：按已收集参数尽力结算（原文不合法，但避免崩溃）
+    finalize_decl(&mut open, &mut libs, &mut pkgs);
+    (libs, pkgs, out_lines.join("\n"))
+}
+
+/// 仅抽取库名列表（供测试与潜在复用）；正文注释逻辑见 `split_preamble_decls`。
+fn collect_libraries(source: &str) -> Vec<String> {
+    split_preamble_decls(source).0
 }
 
 /// F3-7：只在**派生的源码副本**里注入固定画布 bounding box，行数不变（不换行），
@@ -441,17 +488,15 @@ fn build_document_with_canvas(
     if unicode_engine && source.chars().any(|c| !c.is_ascii()) {
         doc.push_str("\\usepackage[UTF8]{ctex}\n");
     }
-    let libs = collect_libraries(source);
+    let (libs, pkgs, body) = split_preamble_decls(source.trim_end());
     if !libs.is_empty() {
         doc.push_str(&format!("\\usetikzlibrary{{{}}}\n", libs.join(",")));
     }
-    let pkgs = collect_usepackage(source);
     for p in &pkgs {
         doc.push_str(&format!("\\usepackage{{{}}}\n", p));
     }
     doc.push_str("\\begin{document}\n");
     let preamble_lines = doc.lines().count() as u32;
-    let body = strip_preamble_decl_lines(source.trim_end());
     match canvas {
         Some(size) => doc.push_str(&apply_canvas_bounding_box(&body, size)),
         None => doc.push_str(&body),
@@ -879,6 +924,37 @@ mod tests {
         assert_eq!(lines[n as usize], "% \\usetikzlibrary{arrows.meta}  % arrows");
         assert_eq!(lines[(n + 1) as usize], "% \\usepackage{tikz-3dplot}");
         assert_eq!(lines[(n + 2) as usize], "\\begin{tikzpicture}");
+    }
+
+    #[test]
+    fn invalid_numeric_preamble_arg_is_skipped_not_emitted() {
+        // 用户源码里 \usepackage 参数含纯数字 "30"（误写或编辑器产物）：
+        // 不应生成 \usepackage{30}（否则 xelatex 报 File '30.sty' not found）。
+        let src = "\\usetikzlibrary{arrows}  % 注释\n\\usepackage{tikz,\n  30}\n\\begin{tikzpicture}\n  \\draw (0,0)--(1,1);\n\\end{tikzpicture}";
+        let (doc, _) = build_document(src, false);
+        assert!(
+            !doc.contains("\\usepackage{30}"),
+            "不应误发 \\usepackage{{30}}；文档：\n{doc}"
+        );
+        assert!(
+            doc.contains("\\usepackage{tikz}"),
+            "有效包名应保留；文档：\n{doc}"
+        );
+        // 正文里声明整行被注释、行数不变
+        assert!(doc.contains("% \\usepackage{tikz,"));
+        assert!(doc.contains("% 30}"));
+    }
+
+    #[test]
+    fn multiline_usepackage_is_hoisted_and_commented() {
+        // 跨行 \usepackage 也应被正确抽到导言区、正文注释。
+        let src = "\\usepackage[\n  dvipsnames\n]{xcolor}\n\\begin{tikzpicture}\\end{tikzpicture}";
+        let (doc, n) = build_document(src, false);
+        assert!(doc.contains("\\usepackage{xcolor}\n"));
+        let lines: Vec<&str> = doc.lines().collect();
+        assert_eq!(lines[n as usize], "% \\usepackage[");
+        assert!(lines[n as usize + 1].contains("% dvipsnames"));
+        assert_eq!(lines[n as usize + 2], "% ]{xcolor}");
     }
 
     #[test]
