@@ -102,6 +102,12 @@ import {
   statementEditability,
 } from "../src/modules/diagram/optionsEdit.ts";
 import {
+  MAX_NODE_TEXT_LENGTH,
+  findEditableNodeText,
+  planNodeTextEdit,
+  validateNodeText,
+} from "../src/modules/diagram/nodeTextEdit.ts";
+import {
   allReasonsNonEmpty,
   buildCompatReport,
   compatHandleReason,
@@ -3058,6 +3064,82 @@ console.log("F4-2 · MathJax 节点公式增强（分段 / 消毒 / 混排 / 回
   check(!/\\\\node|\\\\draw/.test(boost.svg), "增强输出只有 SVG markup，不含任何 TikZ 源码");
 }
 
+
+console.log("\nF4-3 · 画布内节点文字就地编辑（内容 span / 白名单 / 最小补丁）");
+{
+  const f43src = [
+    "\\begin{tikzpicture}",
+    "\\node[draw] (a) at (1,2) {速度 $v$};",
+    "\\node (b) {A};",
+    "\\draw (a) -- node[midway,above] {edge} (b);",
+    "\\end{tikzpicture}",
+  ].join("\n");
+  const rr = await renderTikz(f43src);
+  check(rr.statements.length === 3, "F4-3 探针：三条语句均已解析");
+  const [topNode, plainNode, midNode] = rr.statements;
+  check(topNode.nodeTexts.length === 1 && topNode.nodeTexts[0].text === "速度 $v$", "顶层 \\node 的 textSpan 内容正确");
+  check(
+    f43src.slice(topNode.nodeTexts[0].span.from, topNode.nodeTexts[0].span.to) === "速度 $v$",
+    "内容 span 精确指向花括号内部（不含两侧括号）",
+  );
+  check(midNode.nodeTexts.length === 1 && midNode.nodeTexts[0].text === "edge", "路径中间 node 的文字 span 也被收集");
+
+  // SVG 两种 data-source-id 形态都要命中
+  const byStmt = findEditableNodeText(rr.statements, "path:0");
+  check(byStmt?.statement.id === "path:0" && byStmt.nodeText.text === "速度 $v$", "statement id 命中顶层节点文字");
+  const byNodeId = findEditableNodeText(rr.statements, "node:2:2");
+  check(byNodeId?.statement.id === "path:2" && byNodeId.nodeText.text === "edge", "node item id 命中路径中间文字");
+  check(findEditableNodeText(rr.statements, "path:404") === null, "无效 id 返回 null（不弹空输入框）");
+
+  // 最小 span 补丁：只换花括号内容，语句其余部分一字不动
+  const okPlan = planNodeTextEdit(f43src, plainNode, plainNode.nodeTexts[0].id, "新文字 $x^2$");
+  check(okPlan.status === "ok", "合法文字生成补丁");
+  if (okPlan.status === "ok") {
+    const next = f43src.slice(0, okPlan.patch.from) + okPlan.patch.insert + f43src.slice(okPlan.patch.to);
+    check(next.split("\n")[2] === "\\node (b) {新文字 $x^2$};", "补丁只替换花括号内容，其余源码零改动");
+    check(okPlan.patch.from > plainNode.span.from && okPlan.patch.to < plainNode.span.to, "内容补丁严格落在语句 span 内部");
+    check(next.split("\n")[3] === f43src.split("\n")[3], "相邻语句未被波及");
+  }
+  check(planNodeTextEdit(f43src, plainNode, plainNode.nodeTexts[0].id, "A").status === "noop", "内容未变返回 noop");
+  check(
+    planNodeTextEdit(f43src.replace("{A}", "{B}"), plainNode, plainNode.nodeTexts[0].id, "C").status === "error",
+    "源码在编辑期间变化 → 拒绝过期 span",
+  );
+  check(
+    planNodeTextEdit(f43src, plainNode, "node:not-found", "C").status === "error",
+    "找不到 nodeText id → 拒绝而非瞎打补丁",
+  );
+
+  // 内容区白名单：公式 / 中文 / 标点 / TikZ 换行 / 转义花括号都允许
+  check(validateNodeText("速度 $v$ 与 $\\theta$").ok, "中文 + 行内公式允许");
+  check(validateNodeText("$\\frac{a}{b}$ $1{\\times}1$").ok, "数学命令与成对花括号允许");
+  check(validateNodeText("第一行\\\\第二行").ok, "TikZ 换行 \\\\ 允许");
+  check(validateNodeText("\\{literal\\}").ok, "转义花括号允许（不参与配对计数）");
+  check(validateNodeText("A, B; C: 100%?").ok === false, "% 注释符被拒绝");
+  check(validateNodeText("A / B & C #1 _x").ok === false, "数学环境外的上下标被拒绝");
+
+  // 危险注入与结构破坏全部拒绝，且理由可直接展示
+  const rejected: [string, string][] = [
+    ["\\write18{touch}", "拒绝 \\write18 注入"],
+    ["\\input{main}", "拒绝 \\input 注入"],
+    ["未配对}", "拒绝未配对 }"],
+    ["未配对{", "拒绝未闭合 {"],
+    ["$x", "拒绝未成对 $"],
+    ["", "拒绝空文字"],
+    ["x".repeat(MAX_NODE_TEXT_LENGTH + 1), "超过长度上限被拒绝"],
+    ["\\foo bar", "拒绝未登记的命令"],
+  ];
+  for (const [raw, label] of rejected) {
+    check(planNodeTextEdit(f43src, plainNode, plainNode.nodeTexts[0].id, raw).status === "error", label);
+  }
+  const danger = planNodeTextEdit(f43src, plainNode, plainNode.nodeTexts[0].id, "\\write18{}");
+  check(danger.status === "error" && /write18/.test(danger.reason), "拒绝理由点名危险命令，不是笼统报错");
+
+  // 边界：选项区 DANGEROUS 没被内容区放宽
+  check("error" in normalizeCustomValue("stroke", "red\\write18{}"), "选项区仍拒绝反斜杠与花括号");
+  check("error" in normalizeCustomValue("lineWidth", "1.2pt,x"), "选项区仍拒绝逗号");
+  check(validateNodeText("blue!50").ok, "内容区允许颜色式文本（两套白名单互不串用）");
+}
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
 if (failed > 0) process.exit(1);

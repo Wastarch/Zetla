@@ -41,6 +41,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -160,6 +161,7 @@ import {
   type SizeValues,
 } from "./sizeEdit.ts";
 import { GRID_STEP_PT, snapToGrid } from "./grid";
+import { findEditableNodeText, planNodeTextEdit } from "./nodeTextEdit.ts";
 import {
   canEditDiagramSource,
   isDiagramEditKey,
@@ -339,6 +341,16 @@ interface Notice {
   text: string;
 }
 
+/** F4-3：双击节点就地编辑的会话态；只存 id + 草稿，提交时才按当时 source 重算 span。 */
+interface NodeTextEditState {
+  nodeTextId: string;
+  statementId: string;
+  text: string;
+  left: number;
+  top: number;
+  width: number;
+}
+
 /** window 级监听只注册一次，实时预览的闭包靠这个 ref 取最新值（同 shapeApiRef 范式）。 */
 interface PreviewApi {
   schedule: (d: DragState) => void;
@@ -392,6 +404,10 @@ export function DiagramCanvas() {
   const [handlesOn, setHandlesOn] = useState(true);
   const [dragLabel, setDragLabel] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice | null>(null);
+  // F4-3：双击节点就地编辑文字 / 公式（本地即时通道专属，精确通道只读）
+  const [nodeTextEdit, setNodeTextEdit] = useState<NodeTextEditState | null>(null);
+  // Esc 取消时先标记，避免卸载 input 触发的 blur 又把草稿提交回去
+  const nodeTextCancelRef = useRef(false);
   // F2-3 锁定清单：默认展开且常驻，不做「只有一个折叠按钮」的死 UI
   const [lockOpen, setLockOpen] = useState(true);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -2525,6 +2541,96 @@ export function DiagramCanvas() {
     if (dragRef.current || marqueeRef.current) e.preventDefault();
   }
 
+  /**
+   * F4-3：双击节点文字 → 就地浮出输入框。
+   * 命中 id 两种形态：顶层 \node 用 statement id，路径中间的 node 用 node item id，
+   * findEditableNodeText 同时兼容。精确通道 stage 隐藏、双击落在 <img> 上，
+   * 这里仍用统一只读判定拦截并提示，绝不弹可写输入框。
+   */
+  function onCanvasDoubleClick(e: ReactMouseEvent<HTMLDivElement>): void {
+    const permission = canEditDiagramSource({ previewMode });
+    if (!permission.ok) {
+      setNotice({ tone: "warn", text: permission.reason });
+      return;
+    }
+    if (nodeTextEdit) return; // 已在编辑：第二次双击不改草稿
+    // 形状工具 / 视角手势下双击属于绘制 / 平移语义，绝不弹文字框
+    if (toolMode !== "select" || panRef.current || transformRef.current || dragRef.current) return;
+    const el = e.target instanceof Element ? e.target.closest("[data-source-id]") : null;
+    if (!el) return; // 双击空白：静默交还，不改选中 / 不提示
+    const hit = findEditableNodeText(
+      resultRef.current?.statements ?? [],
+      el.getAttribute("data-source-id") ?? "",
+    );
+    if (!hit) {
+      setNotice({ tone: "warn", text: "该图元没有可就地编辑的文字，请在源码栏修改。" });
+      return;
+    }
+    const state = useDiagramStore.getState();
+    if (isManuallyLocked(state.grouping, hit.statement.id)) {
+      setNotice({ tone: "warn", text: "该图元已在图层面板主动锁定，先解锁后再编辑文字。" });
+      return;
+    }
+    const lockReason = resultRef.current?.compat?.lockReasons[hit.statement.id];
+    if (lockReason) {
+      setNotice({ tone: "warn", text: lockReason });
+      return;
+    }
+    const body = bodyRef.current?.getBoundingClientRect();
+    if (!body) return;
+    const box = el.getBoundingClientRect();
+    nodeTextCancelRef.current = false;
+    setSelectedId(hit.statement.id);
+    setNodeTextEdit({
+      nodeTextId: hit.nodeText.id,
+      statementId: hit.statement.id,
+      text: hit.nodeText.text,
+      left: Math.max(8, Math.min(box.left - body.left + box.width / 2 - 100, body.width - 220)),
+      top: Math.max(8, box.top - body.top - 6),
+      width: Math.max(160, Math.min(box.width + 24, body.width - 24)),
+    });
+  }
+
+  /** F4-3：提交就地编辑；失败保留输入框让用户改，成功一次 dispatch = 一条 Ctrl+Z。 */
+  function commitNodeTextEdit(): void {
+    const edit = nodeTextEdit;
+    if (!edit) return;
+    const src = sourceRef.current;
+    const stmt = (resultRef.current?.statements ?? []).find((s) => s.id === edit.statementId);
+    if (!stmt) {
+      setNodeTextEdit(null);
+      setNotice({ tone: "warn", text: "画布正在重渲染，请重新双击节点编辑。" });
+      return;
+    }
+    const plan = planNodeTextEdit(src, stmt, edit.nodeTextId, edit.text);
+    if (plan.status === "error") {
+      setNotice({ tone: "warn", text: plan.reason });
+      return; // 保留输入框与草稿，用户可直接改
+    }
+    setNodeTextEdit(null);
+    if (plan.status === "noop") {
+      setNotice({ tone: "warn", text: "文字未变化，源码未改动。" });
+      return;
+    }
+    const next = src.slice(0, plan.patch.from) + plan.patch.insert + src.slice(plan.patch.to);
+    const write = commitDiagramPatch({
+      key: `node-text:${edit.nodeTextId}`,
+      source: src,
+      nextSource: next,
+      fallback: setSource,
+    });
+    setNotice({
+      tone: write.written ? "ok" : "warn",
+      text: `${plan.label}${
+        write.written
+          ? write.merged
+            ? " · 连续修改已并组，Ctrl+Z 撤回整组"
+            : " · Ctrl+Z 可撤销"
+          : " · 源码栏未就绪，无撤销记录"
+      }`,
+    });
+  }
+
   function historyCommand(kind: "undo" | "redo"): void {
     if (!runDiagramHistoryCommand(kind)) {
       setNotice({ tone: "warn", text: "没有可撤销 / 重做的改动，或源码栏尚未就绪。" });
@@ -2894,7 +3000,12 @@ export function DiagramCanvas() {
         </div>
       )}
 
-      <div className="dg-canvas-body" ref={bodyRef} onPointerDown={onBodyPointerDown}>
+      <div
+        className="dg-canvas-body"
+        ref={bodyRef}
+        onPointerDown={onBodyPointerDown}
+        onDoubleClick={onCanvasDoubleClick}
+      >
         {/* F3-7：视角容器只做平移；zoom 仍走 SVG width/height 百分比与精确 img 的 scale，
             保证 getScreenCTM / svgUnitScale 的既有换算口径不变。 */}
         <div
@@ -2918,6 +3029,44 @@ export function DiagramCanvas() {
             />
           )}
         </div>
+        {/* F4-3：就地文字编辑浮层。定位相对 .dg-canvas-body（唯一裁剪层），
+            不进 viewport 的 transform，pan / zoom 时不会被拉伸或截断。 */}
+        {nodeTextEdit && (
+          <div
+            className="dg-text-edit"
+            style={{ left: nodeTextEdit.left, top: nodeTextEdit.top, width: nodeTextEdit.width }}
+          >
+            <input
+              autoFocus
+              className="dg-text-edit-input"
+              value={nodeTextEdit.text}
+              placeholder="节点文字 · 可用 $...$ 公式"
+              spellCheck={false}
+              onChange={(e) =>
+                setNodeTextEdit((cur) => (cur ? { ...cur, text: e.target.value } : null))
+              }
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  commitNodeTextEdit();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  nodeTextCancelRef.current = true;
+                  setNodeTextEdit(null);
+                }
+              }}
+              onBlur={() => {
+                if (nodeTextCancelRef.current) {
+                  nodeTextCancelRef.current = false;
+                  return;
+                }
+                commitNodeTextEdit();
+              }}
+            />
+            <span className="dg-text-edit-hint">Enter 应用 · Esc 取消</span>
+          </div>
+        )}
         {empty && (
           <div className="dg-canvas-overlay dg-state is-empty">
             源码为空。请切到「仅源码」或「左右分屏」编写 TikZ 代码。

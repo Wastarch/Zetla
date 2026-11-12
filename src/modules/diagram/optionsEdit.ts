@@ -20,6 +20,17 @@ export interface SourceSpan {
   to: number;
 }
 
+/** F4-3：`\node` 的 `{...}` 内容区（span 取自上游 Node.textSpan，不含两侧花括号）。 */
+export interface NodeTextSpan {
+  /** 与 SVG data-source-id 一致：顶层 node 是 path:x，路径中间 node 是 node:x:y */
+  id: string;
+  span: SourceSpan;
+  /** 上游解析出的原文内容，写回前校验 span 是否过期 */
+  text: string;
+  /** textSource：group = 普通 {...}；其余由宏 / 样式提供，不可就地编辑 */
+  source: string;
+}
+
 export interface TikzOptionEntry {
   /** 上游归一化后的 key（flag 时就是 `->` / `blue!20` / `thick`） */
   key: string;
@@ -47,6 +58,8 @@ export interface TikzStatement {
   insertOffset: number;
   /** F3-5：是否为 tikzpicture 的顶层语句（depth === 0）。嵌套在 scope/foreach 内为 false。 */
   topLevel: boolean;
+  /** F4-3：这条语句内所有 \node 的内容 span（按源码顺序），供双击就地编辑。 */
+  nodeTexts: NodeTextSpan[];
 }
 
 export type PropertyKey = "stroke" | "lineWidth" | "arrow" | "dash" | "fill";
@@ -205,6 +218,23 @@ export function collectStatements(figure: unknown, source: string): TikzStatemen
       const kind = typeof item.kind === "string" ? item.kind : "";
       const command = typeof item.command === "string" ? item.command : "";
       const block = pickOptions(item, source);
+      // F4-3：Node.textSpan 是上游给的内容区原文（不含花括号）。只收 group 形式，
+      // 由宏 / 样式提供文字的 node 没有可安全替换的 span，留给源码栏。
+      const nodeTexts: NodeTextSpan[] = [];
+      if (Array.isArray(item.items)) {
+        for (const sub of item.items) {
+          if (!isRecord(sub) || sub.kind !== "Node") continue;
+          const nid = typeof sub.id === "string" ? sub.id : "";
+          const nspan = readSpan(sub.textSpan, source.length);
+          if (!nid || !nspan || typeof sub.text !== "string") continue;
+          nodeTexts.push({
+            id: nid,
+            span: nspan,
+            text: sub.text,
+            source: typeof sub.textSource === "string" ? sub.textSource : "",
+          });
+        }
+      }
       out.push({
         id,
         kind,
@@ -215,6 +245,7 @@ export function collectStatements(figure: unknown, source: string): TikzStatemen
         entries: block?.entries ?? [],
         insertOffset: computeInsertOffset(source, span.from, kind),
         topLevel: depth === 0,
+        nodeTexts,
       });
       if (Array.isArray(item.body)) walk(item.body, depth + 1);
     }

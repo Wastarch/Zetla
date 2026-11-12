@@ -358,6 +358,37 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   background: var(--paper, #fbfaf7);
   color: var(--paper-ink, #22242a);
 }
+/* F4-3 · 节点文字就地编辑浮层：相对裁剪层定位，不进 viewport transform。
+   配色属 UI 控件，跟随主题 token（与恒定纸面色 --paper / --paper-ink 分开）。 */
+.dg-text-edit {
+  position: absolute;
+  z-index: 12;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 5px 6px;
+  border: 1px solid var(--accent, #2d7ff9);
+  border-radius: var(--dg-radius-sm, 4px);
+  background: var(--bg, #fff);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+.dg-text-edit-input {
+  width: 100%;
+  min-width: 0;
+  padding: 3px 4px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--txt, #353333);
+  font-family: var(--font-mono, monospace);
+  font-size: var(--dg-fs-md, 13px);
+  line-height: 1.5;
+}
+.dg-text-edit-hint {
+  font-size: var(--dg-fs-xs, 11px);
+  color: var(--txt-3, #9a9a9a);
+  white-space: nowrap;
+}
 /* F3-7：视角容器只做 translate(pan)，与 zoom 解耦；SVG 仍靠 width/height 百分比缩放，
    于是 getScreenCTM() 的线性部分只含 zoom、平移只进 e/f，既有坐标换算零改动。 */
 .dg-viewport {
