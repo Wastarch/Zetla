@@ -1182,37 +1182,18 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
    控制点仍在已消毒 SVG 的辅助层里。2026-11-12 起侧栏图层面板是唯一一份
    图元清单（原右侧语句列表已删），属性编辑在绘图 Tab 画布左侧。
    隐藏只切 .dg-hidden class：源码一个字不改，随时可恢复。 */
-.dg-layer-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-}
-.dg-layer-toggle {
-  flex: none;
-  padding: 1px 6px;
-  font-size: 10px;
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--txt-2, #888);
-  cursor: pointer;
-}
-.dg-layer-toggle:hover {
-  border-color: var(--accent, #2d7ff9);
-  color: var(--accent, #2d7ff9);
-}
 .dg-layer-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
 }
-.dg-layer-card .btn {
+.dg-layer-actions .btn {
   align-self: auto;
   padding: 2px 8px;
   font-size: 11px;
 }
-.dg-layer-card .btn:disabled,
+.dg-layer-actions .btn:disabled,
 .dg-edit-tools button:disabled {
   opacity: 0.42;
   cursor: not-allowed;
@@ -1675,24 +1656,6 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   line-height: 1.6;
   color: var(--txt-2, #6b6b6b);
   opacity: 0.9;
-}
-.dg-side .dg-layer-head {
-  align-items: center;
-  gap: var(--dg-space-2);
-}
-.dg-side .dg-layer-head .dg-side-card-title {
-  flex: 1;
-  min-width: 0;
-}
-.dg-side .dg-layer-toggle {
-  min-height: var(--dg-ctrl-h);
-  padding: 0 var(--dg-space-2);
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: var(--dg-radius-sm);
-  background: transparent;
-  color: var(--txt-2, #6b6b6b);
-  font-size: var(--dg-fs-xs);
-  cursor: pointer;
 }
 /* 主操作「插入到文档」提升为整行填充按钮（原 .btn.primary 配色不变） */
 .dg-side .dg-side-primary.btn {
@@ -2290,6 +2253,8 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  /* 把 meta 与三角一起顶到最右：三角恒右对齐，有无 meta 都不变 */
+  margin-right: auto;
 }
 .dg-accordion-title::before {
   content: "";
@@ -2300,13 +2265,13 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   opacity: 0.75;
 }
 .dg-accordion-meta {
-  margin-left: auto;
   font-size: var(--dg-fs-xs);
   font-weight: 400;
   color: var(--txt-3, #9a9a9a);
 }
 .dg-accordion-arrow {
   flex: none;
+  margin-left: 4px;
   font-size: 10px;
   color: var(--txt-3, #9a9a9a);
   transition: transform 140ms ease;

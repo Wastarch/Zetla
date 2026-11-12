@@ -116,6 +116,9 @@ export function DiagramSidebar() {
   const setCaption = useDiagramStore((s) => s.setCaption);
   const label = useDiagramStore((s) => s.label);
   const setLabel = useDiagramStore((s) => s.setLabel);
+  // 图层面板默认展开状态（设置里的「图层面板」开关）：只作为手风琴的初始 open，
+  // 之后的开合完全交给标题行三角，不再有第二个「收起 / 展开」按钮。
+  const layersVisible = useDiagramStore((s) => s.layersVisible);
 
   const lineCount = source.split("\n").length;
 
@@ -206,8 +209,11 @@ export function DiagramSidebar() {
       </Accordion>
 
       {/* 唯一一份图元清单：点选 / 编组 / 显隐 / 锁定 / 层级都在这里；
-          选中项的属性编辑在绘图 Tab 画布左侧，不堆进全局侧栏。 */}
-      <Accordion title="图层管理" flush>
+          选中项的属性编辑在绘图 Tab 画布左侧，不堆进全局侧栏。
+          flush：面板内容直接铺在 body 里，不再套一层卡片。
+          开合只靠标题行的三角（原生 details），不再额外挂「收起 / 展开」按钮；
+          设置里的「图层面板」开关只决定它的默认展开状态。 */}
+      <Accordion title="图层管理" flush open={layersVisible}>
         <LayersPanel />
       </Accordion>
 

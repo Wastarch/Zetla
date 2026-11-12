@@ -796,7 +796,7 @@ export function SettingsDialog() {
                 </Fld>
                 <Fld
                   label="图层面板"
-                  hint="侧栏「图层 · 分组」区默认展开；分组 / 隐藏 / 锁定数据不受此开关影响"
+                  hint="侧栏「图层管理」区默认展开；点标题行三角可随时开合，分组 / 隐藏 / 锁定数据不受影响"
                 >
                   <Switch
                     checked={diagramLayersVisible}
