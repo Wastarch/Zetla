@@ -67,19 +67,24 @@ export interface EditKeyLike {
 }
 
 /**
- * F3-5 引入的编辑快捷键：方向键 nudge（Shift 只是放大步长）与 Ctrl/Cmd+C/V/D。
+ * F3-5 引入的编辑快捷键：方向键 nudge（Shift 只是放大步长）、Delete / Backspace
+ * 删除选中图元，以及 Ctrl/Cmd+C/V/D。
  * 精确通道下这些键一律拦截并提示只读；Ctrl+Z / Shift+Z / Y 属 F2-4 撤销，不在此列，
- * 仍可撤销切通道前的改动。
+ * 仍可撤销切通道前的改动。Shift+方向键仍是 nudge 放大步长；Shift+Delete 等带修饰的
+ * 删除组合不拦，交还浏览器。
  */
 export function isDiagramEditKey(e: EditKeyLike): boolean {
   const mod = e.ctrlKey || e.metaKey;
   if (!mod && !e.altKey) {
-    return (
+    if (
       e.key === "ArrowLeft" ||
       e.key === "ArrowRight" ||
       e.key === "ArrowUp" ||
       e.key === "ArrowDown"
-    );
+    ) {
+      return true;
+    }
+    return !e.shiftKey && (e.key === "Delete" || e.key === "Backspace");
   }
   if (mod && !e.shiftKey && !e.altKey) {
     return ["c", "v", "d"].includes(e.key.toLowerCase());

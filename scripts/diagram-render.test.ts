@@ -29,6 +29,7 @@ import {
   hasClipboard,
   matchClones,
   minimalSourcePatch,
+  planDeleteEdit,
   planDuplicate,
   planDuplicateEdit,
   planPaste,
@@ -2494,6 +2495,10 @@ console.log("F3-6 · 统一只读判定 + 精确通道编辑键拦截（纯逻�
   check(isDiagramEditKey(ek("d", { ctrlKey: true })), "Ctrl+D 是编辑键");
   check(isDiagramEditKey(ek("V", { metaKey: true })), "Cmd+V 是编辑键（大小写无关）");
   check(isDiagramEditKey(ek("c", { ctrlKey: true })), "Ctrl+C 是编辑键");
+  check(isDiagramEditKey(ek("Delete")), "Delete 是删除编辑键");
+  check(isDiagramEditKey(ek("Backspace")), "Backspace 等同 Delete");
+  check(!isDiagramEditKey(ek("Delete", { shiftKey: true })), "Shift+Delete 不拦截，交还浏览器");
+  check(!isDiagramEditKey(ek("Delete", { ctrlKey: true })), "Ctrl+Delete 不拦截");
   check(!isDiagramEditKey(ek("z", { ctrlKey: true })), "Ctrl+Z 归 F2-4 撤销栈，不作为编辑键拦截");
   check(!isDiagramEditKey(ek("ArrowLeft", { altKey: true })), "Alt+方向键不拦截");
   check(!isDiagramEditKey(ek("d", { ctrlKey: true, shiftKey: true })), "Ctrl+Shift+D 不拦截");
@@ -2502,11 +2507,12 @@ console.log("F3-6 · 统一只读判定 + 精确通道编辑键拦截（纯逻�
   const f35Keys: EditKeyLike[] = [
     ek("ArrowLeft"), ek("ArrowRight"), ek("ArrowUp"), ek("ArrowDown"),
     ek("ArrowDown", { shiftKey: true }),
+    ek("Delete"), ek("Backspace"),
     ek("c", { ctrlKey: true }), ek("v", { ctrlKey: true }), ek("d", { ctrlKey: true }),
   ];
   check(
     isPreciseReadonly(precise) && f35Keys.every((k) => isDiagramEditKey(k)),
-    "精确通道只读覆盖 F3-5 全部编辑键（方向键 / Shift 方向键 / Ctrl+C/V/D）",
+    "精确通道只读覆盖 F3-5 全部编辑键（方向键 / Shift 方向键 / Delete / Backspace / Ctrl+C/V/D）",
   );
 }
 
@@ -3139,6 +3145,69 @@ console.log("\nF4-3 · 画布内节点文字就地编辑（内容 span / 白名�
   check("error" in normalizeCustomValue("stroke", "red\\write18{}"), "选项区仍拒绝反斜杠与花括号");
   check("error" in normalizeCustomValue("lineWidth", "1.2pt,x"), "选项区仍拒绝逗号");
   check(validateNodeText("blue!50").ok, "内容区允许颜色式文本（两套白名单互不串用）");
+}
+
+console.log("\nF3-5 补强 · Delete 删除选中图元（顶层块整段 / 一次撤销）");
+{
+  const delSrc = [
+    "\\begin{tikzpicture}",
+    "  \\draw (0,0) rectangle (1,1);",
+    "  \\node (a) at (2,0) {A};",
+    "  \\fill (4,0) circle (0.5);",
+    "\\end{tikzpicture}",
+  ].join("\n");
+  const dr = await renderTikz(delSrc);
+  const blocks = topLevelBlocks(delSrc, dr.statements);
+  check(blocks.length === 3, `删除探针：三条顶层语句（实得 ${blocks.length}）`);
+
+  // 单块（中间）：整段 span → 空插入补丁，相邻语句与注释零改动
+  const mid = planDeleteEdit(delSrc, dr.statements, [blocks[1].id]);
+  check(!!mid && mid.deletedIds.length === 1, "中间块可删除，返回被删 id");
+  if (mid) {
+    check(mid.patches.length === 1 && mid.patches[0].insert === "", "删除补丁是单段空插入 span");
+    check(
+      mid.patches[0].from === blocks[1].from && mid.patches[0].to === blocks[1].to,
+      "补丁覆盖整段 block（含尾随空白，不碰相邻缩进）",
+    );
+    check(!mid.nextSource.includes("{A}"), "被删语句从新源码消失");
+    check(mid.nextSource.includes("\\draw (0,0)") && mid.nextSource.includes("\\fill (4,0)"), "相邻语句原样保留");
+    check(!/\n\s*\n/.test(mid.nextSource), "删除中间块不留下空行");
+    const rr = await renderTikz(mid.nextSource);
+    check(rr.statements.length === 2, "删除后的源码仍能正常解析渲染");
+  }
+
+  // 末块：到 \end 之间的纯空白一并吃掉
+  const last = planDeleteEdit(delSrc, dr.statements, [blocks[2].id]);
+  check(!!last && last.deletedIds[0] === blocks[2].id, "末块可删除");
+  if (last) {
+    check(!last.nextSource.includes("\\fill (4,0)"), "末块语句已消失");
+    check(last.nextSource.trimEnd().endsWith("\\end{tikzpicture}"), "末块尾随换行不残留");
+    check(!/\n\s*\n/.test(last.nextSource), "末块删除后无空行");
+  }
+
+  // 多选不连续：两段互不重叠，可合并成一次 dispatch = 一条 Ctrl+Z
+  const many = planDeleteEdit(delSrc, dr.statements, [blocks[0].id, blocks[2].id]);
+  check(!!many && many.deletedIds.length === 2, "多选删除返回两条被删 id");
+  if (many) {
+    check(many.patches.length === 2 && many.patches[0].to <= many.patches[1].from, "多块补丁互不重叠");
+    const merged = mergeSourcePatches(delSrc, many.patches);
+    check(!!merged && merged.nextSource === many.nextSource, "多块补丁合并结果与 nextSource 一致（一次撤回整组）");
+    check(many.nextSource.includes("{A}") && !many.nextSource.includes("\\fill"), "只留下未选中的中间块");
+  }
+
+  // 全选 / 空选 / 嵌套 id：环境骨架保留，落空不产补丁
+  const all = planDeleteEdit(delSrc, dr.statements, blocks.map((b) => b.id));
+  check(
+    !!all && all.nextSource.includes("\\begin{tikzpicture}") && all.nextSource.includes("\\end{tikzpicture}"),
+    "全删只清图元，tikzpicture 环境仍在",
+  );
+  check(planDeleteEdit(delSrc, dr.statements, []) === null, "无选中返回 null，不提交空补丁");
+  check(planDeleteEdit(delSrc, dr.statements, ["node:404"]) === null, "嵌套 / 无效 id 不误删顶层块");
+  const commentSrc = delSrc.replace("  \\node", "  % keep\n  \\node");
+  const commentRender = await renderTikz(commentSrc);
+  const commentBlocks = topLevelBlocks(commentSrc, commentRender.statements);
+  const keepComment = planDeleteEdit(commentSrc, commentRender.statements, [commentBlocks[2].id]);
+  check(!!keepComment && keepComment.nextSource.includes("% keep"), "删除别的块时注释原样保留");
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);

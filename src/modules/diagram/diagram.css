@@ -1819,6 +1819,11 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   width: 14px;
   height: 14px;
 }
+/* 删除是破坏性动作：只在悬停 / 键盘聚焦时染警示色，禁用态保持常规 token。 */
+.dg-tab .dg-delete-btn:not(:disabled):hover,
+.dg-tab .dg-delete-btn:not(:disabled):focus-visible {
+  color: var(--warn, #c0392b);
+}
 .dg-handle-size > svg {
   flex: none;
   width: 13px;

@@ -7,6 +7,7 @@ export type ToolbarIconName =
   | "ungroup"
   | "undo"
   | "redo"
+  | "delete"
   | "hand"
   | "fitCanvas"
   | "fitContent"
@@ -56,6 +57,12 @@ export function ToolbarIcon({ name }: { name: ToolbarIconName }) {
           <path d="M6 7.5h6" />
           <path d="M9.5 5 12 7.5 9.5 10" />
           <path d="M5.5 11.5H8" />
+        </>
+      )}
+      {name === "delete" && (
+        <>
+          <path d="M2.5 4.5h11M6 4.5V3h4v1.5M4 4.5l.7 9h6.6l.7-9" />
+          <path d="M6.5 7v4M9.5 7v4" />
         </>
       )}
       {name === "hand" && (

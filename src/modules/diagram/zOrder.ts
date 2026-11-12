@@ -119,6 +119,41 @@ export function planDuplicate(
 }
 
 /**
+ * F3-5 补强：删除选中图元 = 整段删掉对应顶层 block（含段间空白）。
+ * 与复制 / 粘贴同一套 block 粒度：嵌套在 scope / foreach 内的语句不单独抠出，
+ * 随所属顶层块一起删除；选中的嵌套 id 在这里落空，由调用方提示去源码栏删。
+ *
+ * 每组补丁互不重叠，可直接交给 commitDiagramPatches 一次 dispatch = 一条 Ctrl+Z；
+ * 末块到 `\end{tikzpicture}` 之间若只有空白，也一并吃掉，避免删完留下空行。
+ * 无任何顶层块命中时返回 null（调用方据此提示「没有可删除的顶层图元」）。
+ */
+export function planDeleteEdit(
+  source: string,
+  statements: readonly TikzStatement[],
+  ids: readonly string[],
+): { patches: SourceSpanPatch[]; nextSource: string; deletedIds: string[] } | null {
+  const blocks = topLevelBlocks(source, statements);
+  const want = new Set(ids);
+  const hit = blocks.filter((b) => want.has(b.id));
+  if (hit.length === 0) return null;
+  const lastBlock = blocks[blocks.length - 1];
+  const patches = hit.map((b) => {
+    let to = b.to;
+    if (b.id === lastBlock.id) {
+      const tail = source.slice(b.to);
+      const end = tail.indexOf("\\end{tikzpicture}");
+      if (end >= 0 && /^\s*$/.test(tail.slice(0, end))) to = b.to + end;
+    }
+    return { from: b.from, to, insert: "" };
+  });
+  let nextSource = source;
+  for (const p of [...patches].sort((a, b) => b.from - a.from)) {
+    nextSource = nextSource.slice(0, p.from) + nextSource.slice(p.to);
+  }
+  return { patches, nextSource, deletedIds: hit.map((b) => b.id) };
+}
+
+/**
  * 复制后把「原块 id」映射到「克隆块 id」：克隆文本与原块相同，且偏移更大；
  * 取每个原块之后、文本相等的首个块作为它的克隆。用于粘贴后立即选中新副本。
  */

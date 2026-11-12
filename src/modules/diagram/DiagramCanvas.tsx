@@ -174,6 +174,7 @@ import {
   getLastMoveDelta,
   hasClipboard,
   minimalSourcePatch,
+  planDeleteEdit,
   planDuplicateEdit,
   planPaste,
   setClipboard,
@@ -1760,10 +1761,18 @@ export function DiagramCanvas() {
         inTextEntry,
         inGesture,
       });
-      // F3-5：方向键 nudge / Ctrl+C/V/D（绘图 Tab + 焦点不在文本框 + 非手势 + 可写源码）。
+      // F3-5：方向键 nudge / Delete 删除 / Ctrl+C/V/D（绘图 Tab + 焦点不在文本框 + 非手势 + 可写源码）。
       if (tabVisibleRef.current && !inTextEntry && permission.ok) {
         const mod = e.ctrlKey || e.metaKey;
         if (!mod && !e.altKey && useDiagramStore.getState().selectedIds.length > 0) {
+          if (
+            !e.shiftKey &&
+            (e.key === "Delete" || e.key === "Backspace")
+          ) {
+            e.preventDefault();
+            deleteSelection();
+            return;
+          }
           const step = e.shiftKey ? 10 : 1;
           const dir =
             e.key === "ArrowLeft"
@@ -2370,6 +2379,50 @@ export function DiagramCanvas() {
     setNotice({ tone: "ok", text: `已复制 ${texts.length} 个图元语句。` });
   }
 
+  /**
+   * Delete / Backspace：整段删除选中的顶层语句（含段间空白）。
+   * 多块合并成一组不重叠补丁一次 dispatch = 一条 Ctrl+Z；图层面板主动锁定项不删。
+   * renderMeta 带 source：debounce 期间源码已变就拒绝用过期 span 删除。
+   */
+  function deleteSelection(): void {
+    const state = useDiagramStore.getState();
+    const ids = state.selectedIds;
+    if (ids.length === 0) return;
+    const src = sourceRef.current;
+    const meta = state.renderMeta;
+    if (!meta || meta.source !== src) {
+      setNotice({ tone: "warn", text: "源码刚更新，画布正在重渲染，请稍候再删除。" });
+      return;
+    }
+    const locked = ids.filter((id) => isManuallyLocked(state.grouping, id));
+    if (locked.length > 0) {
+      setNotice({ tone: "warn", text: "选中的图元含主动锁定项，请先在图层面板解锁后再删除。" });
+      return;
+    }
+    const plan = planDeleteEdit(src, meta.statements, ids);
+    if (!plan) {
+      setNotice({
+        tone: "warn",
+        text: "没有可删除的顶层图元（嵌套在 scope / foreach 里的图元请在源码栏删除）。",
+      });
+      return;
+    }
+    const write = commitDiagramPatches({
+      patches: plan.patches,
+      source: src,
+      nextSource: plan.nextSource,
+      fallback: setSource,
+    });
+    useDiagramStore.getState().setSelectedIds([]);
+    const nested = ids.length - plan.deletedIds.length;
+    setNotice({
+      tone: write.written ? "ok" : "warn",
+      text: `已删除 ${plan.deletedIds.length} 个图元${
+        nested > 0 ? ` · ${nested} 个嵌套图元请在源码栏删除` : ""
+      }${write.written ? " · Ctrl+Z 一次退回" : " · 源码栏未就绪，无撤销记录"}`,
+    });
+  }
+
   /** 粘贴：把剪贴板块文本插到锚点块之后，并选中新副本。 */
   async function pasteClipboard(): Promise<void> {
     if (!hasClipboard()) {
@@ -2701,8 +2754,10 @@ export function DiagramCanvas() {
   const showCompatBar = !!compat && !compat.empty;
   const selectionHint =
     selectedIds.length > 1
-      ? `已选 ${selectedIds.length} 项（拖任一选中图元整体移动 · 可编组）`
-      : `选中 ${selectedId ?? "无"}（画布左侧属性面板改属性）`;
+      ? `已选 ${selectedIds.length} 项（拖任一选中图元整体移动 · 可编组 · Delete 删除）`
+      : selectedId
+        ? `选中 ${selectedId}（画布左侧属性面板改属性 · Delete 删除）`
+        : "未选中图元（点选后可改属性 / Delete 删除）";
   const footHint =
     previewMode !== "local"
       ? "精确预览只读 · 切回本地即时可绘制"
@@ -2806,6 +2861,16 @@ export function DiagramCanvas() {
                 onClick={ungroupSelection}
               >
                 <ToolbarIcon name="ungroup" />
+              </button>
+              <button
+                type="button"
+                className="dg-icon-btn dg-delete-btn"
+                aria-label="删除选中图元"
+                disabled={selectedIds.length === 0}
+                title="删除选中的顶层图元（Delete / Backspace · Ctrl+Z 可撤销）"
+                onClick={deleteSelection}
+              >
+                <ToolbarIcon name="delete" />
               </button>
             </>
           )}
