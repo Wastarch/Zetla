@@ -2976,6 +2976,46 @@ console.log("F4-2 · MathJax 节点公式增强（分段 / 消毒 / 混排 / 回
   check(Math.abs(alphaW - alphaFs * 0.64) < 0.01, "α 宽度按原生 viewBox 比例换算");
   check(alphaH < alphaFs * 0.6, "α 视觉高度明显小于旧实现的 1×font-size（≈2.2× 放大已修复）");
 
+  // ④-c 回归：混排间距。旧布局把 "text" 按 4×0.55em=2.2em 估算，
+  // 而 Latin Modern/Times 实测只有 ≈1.62em → 公式段起点右移 ≈0.58em，
+  // 肉眼就是 "text" 与 α 之间凭空多出一个字宽的空白。
+  // 浏览器侧注入 canvas measureText 后，公式段必须紧贴文本段真实宽度。
+  const gapFs = alphaFs;
+  const gapAnchorX = Number(alphaR.svg.match(/<text\b[^>]*\bx="([^"]+)"/)?.[1] ?? NaN);
+  const measuredTextW = gapFs * 1.62;
+  const gapBoost = await enhanceMathInSvg(alphaR.svg, async () => ALPHA_RAW, {
+    measureText: (t) => (t === "text" ? measuredTextW : null),
+  });
+  const gapTextTag = gapBoost.svg.match(/<text\b[^>]*>text<\/text>/)?.[0] ?? "";
+  const gapSvgTag = gapBoost.svg.match(/<svg\b[^>]*viewBox="0 -442 640 453"[^>]*>/)?.[0] ?? "";
+  const gapStartX = Number(gapTextTag.match(/\bx="([^"]+)"/)?.[1] ?? NaN);
+  const gapMathX = Number(gapSvgTag.match(/\bx="([^"]+)"/)?.[1] ?? NaN);
+  const gapMathW = Number(gapSvgTag.match(/\bwidth="([^"]+)"/)?.[1] ?? NaN);
+  check(Number.isFinite(gapStartX) && Number.isFinite(gapMathX), "注入测量后仍产出文本段与公式段");
+  check(Math.abs(gapMathX - (gapStartX + measuredTextW)) < 0.001, "公式段起点 = 文本段实测宽度，不再按 0.55em/字符粗估留空");
+  check(measuredTextW < estimateTextWidth("text", gapFs) - gapFs * 0.3, "实测宽度明显小于旧估算（锁死间距回归根因）");
+  check(Math.abs(gapStartX - (gapAnchorX - (measuredTextW + gapMathW) / 2)) < 0.001, "middle 锚点按实测总宽居中");
+  const gapNoMeasure = await enhanceMathInSvg(alphaR.svg, async () => ALPHA_RAW, { measureText: () => null });
+  const gapNoMeasureX = Number(
+    (gapNoMeasure.svg.match(/<svg\b[^>]*viewBox="0 -442 640 453"[^>]*>/)?.[0] ?? "").match(/\bx="([^"]+)"/)?.[1] ?? NaN,
+  );
+  check(gapNoMeasureX > gapMathX, "测量不可用时安全回退粗估（Node / 禁用 canvas 不白屏）");
+
+  // ④-d 字体属性：测量回调拿到与引擎 <text> 一致的参数，重排后字重 / 斜体不丢
+  const styledSvg = String.raw`<svg viewBox="0 0 100 40"><text x="10" y="20" font-size="12" fill="#111111" fill-opacity="0.6" font-family="Times New Roman, serif" font-weight="700" font-style="italic" text-anchor="start" dominant-baseline="middle" xml:space="preserve">b$x$</text></svg>`;
+  const seen: Array<{ text: string; fs: number; family: string; weight: string; style: string }> = [];
+  const styledBoost = await enhanceMathInSvg(styledSvg, async () => ALPHA_RAW, {
+    measureText: (text, fs, family, weight, style) => {
+      seen.push({ text, fs, family, weight, style });
+      return 18;
+    },
+  });
+  check(seen.length === 1 && seen[0].text === "b" && seen[0].fs === 12 && seen[0].family === "Times New Roman, serif" && seen[0].weight === "700" && seen[0].style === "italic", "测量回调拿到引擎 <text> 的字号 / 字体族 / 字重 / 斜体");
+  check(styledBoost.svg.includes('font-weight="700"') && styledBoost.svg.includes('font-style="italic"') && styledBoost.svg.includes('fill-opacity="0.6"'), "重排后加粗 / 斜体 / 透明度属性保留");
+  check((styledBoost.svg.match(/<text\b[^>]*>b<\/text>/)?.[0] ?? "").includes('x="10"'), "start 锚点文本段从原 x 起排");
+  const styledMathX = Number((styledBoost.svg.match(/<svg\b[^>]*viewBox="0 -442 640 453"[^>]*>/)?.[0] ?? "").match(/\bx="([^"]+)"/)?.[1] ?? NaN);
+  check(Math.abs(styledMathX - 28) < 0.001, "公式段紧跟实测 18 单位文本宽度");
+
   // ⑤ 端到端：引擎真实 <text> → 增强 markup，再过 svg.ts 消毒仍保留字形
   const MATH_SRC = String.raw`\begin{tikzpicture}
   \node (a) at (0,0) {$\theta$};

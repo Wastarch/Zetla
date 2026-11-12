@@ -37,6 +37,24 @@ export interface MathEnhanceResult {
   failed: number;
 }
 
+/**
+ * 可选的浏览器侧布局输入。纯逻辑层不碰 DOM，测量能力由调用方注入，
+ * 因此 Node 回归可用假测量函数，无 DOM 时自动回退 estimateTextWidth。
+ */
+export interface MathLayoutOptions {
+  /**
+   * 按真实字体测量文本段宽度（SVG 用户单位）；返回 null 表示测量不可用。
+   * 参数与引擎 <text> 的字号 / 字体族 / 字重 / 字形一致。
+   */
+  measureText?: (
+    text: string,
+    fontSize: number,
+    fontFamily: string,
+    fontWeight: string,
+    fontStyle: string,
+  ) => number | null;
+}
+
 const MATH_RE = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
 
 /**
@@ -126,7 +144,7 @@ export function normalizeMathSvg(
  * 混排布局（纯数值，便于单测）
  * ------------------------------------------------------------------ */
 
-/** 文本段宽度估算：CJK ≈ 1em，窄拉丁 ≈ 0.3em，其余 ≈ 0.55em。 */
+/** 文本段宽度粗估（仅测量不可用时兜底）：CJK ≈ 1em，窄拉丁 ≈ 0.3em，其余 ≈ 0.55em。 */
 export function estimateTextWidth(text: string, fontSize: number): number {
   let w = 0;
   for (const ch of String(text ?? "")) {
@@ -198,10 +216,12 @@ const TEXT_RE = /<text\b([^>]*)>([\s\S]*?)<\/text>/g;
  * transform / data-source-id 原样提到包裹 <g> 上，保证旋转节点与选中命中不丢。
  *
  * @param resolve (tex, display) => MathJax <svg> 字符串；返回 null 表示失败回退原文
+ * @param options 可选的浏览器侧真实字形宽度测量；缺省时退回粗估（Node 回归用）
  */
 export async function enhanceMathInSvg(
   svg: string,
   resolve: (tex: string, display: boolean) => Promise<string | null>,
+  options: MathLayoutOptions = {},
 ): Promise<MathEnhanceResult> {
   let enhanced = 0;
   let failed = 0;
@@ -218,7 +238,21 @@ export async function enhanceMathInSvg(
     const fill = attr(attrs, "fill") ?? "#000000";
     const transform = attr(attrs, "transform");
     const dataId = attr(attrs, "data-source-id");
-    const fontFamily = attr(attrs, "font-family");
+    const fontFamilyAttr = attr(attrs, "font-family");
+    const fontFamily = fontFamilyAttr ?? "serif";
+    const fontWeight = attr(attrs, "font-weight") ?? "";
+    const fontStyle = attr(attrs, "font-style") ?? "";
+    const fillOpacity = attr(attrs, "fill-opacity");
+
+    // 文本段宽度优先用真实字体测量。粗估把每个拉丁字母按 0.55em 算，
+    // 而 Latin Modern/Times 的 "text" 只有 ≈1.5em（4×0.55=2.2em），
+    // 多出的 ≈0.7em 会整体变成公式段左侧的空白，看起来像凭空插了个空格。
+    const textWidth = (text: string): number => {
+      const measured = options.measureText?.(text, fontSize, fontFamily, fontWeight, fontStyle);
+      return measured !== null && measured !== undefined && Number.isFinite(measured) && measured >= 0
+        ? measured
+        : estimateTextWidth(text, fontSize);
+    };
 
     interface Run {
       kind: "text" | "math";
@@ -232,7 +266,7 @@ export async function enhanceMathInSvg(
     let localEnhanced = 0;
     for (const seg of segs) {
       if (seg.type === "text") {
-        if (seg.text) runs.push({ kind: "text", content: seg.text, w: estimateTextWidth(seg.text, fontSize), h: fontSize });
+        if (seg.text) runs.push({ kind: "text", content: seg.text, w: textWidth(seg.text), h: fontSize });
         continue;
       }
       const tex = sanitizeMathTex(seg.text);
@@ -255,13 +289,9 @@ export async function enhanceMathInSvg(
         runs.push({ kind: "math", content: glyph.inner, w: glyph.vbW * scale, h, vb: glyph.viewBox });
       } else {
         failed++;
-        // 回退：保留原 $...$ 字面量，信息不丢
-        runs.push({
-          kind: "text",
-          content: seg.display ? `$$${seg.text}$$` : `$${seg.text}$`,
-          w: estimateTextWidth(seg.text, fontSize),
-          h: fontSize,
-        });
+        // 回退：保留原 $...$ 字面量，信息不丢；宽度按完整字面量（含 $ 定界符）测量
+        const literal = seg.display ? `$$${seg.text}$$` : `$${seg.text}$`;
+        runs.push({ kind: "text", content: literal, w: textWidth(literal), h: fontSize });
       }
       seq++;
     }
@@ -274,9 +304,21 @@ export async function enhanceMathInSvg(
     const pieces: string[] = [];
     for (const run of runs) {
       if (run.kind === "text") {
-        pieces.push(
-          `<text x="${fmt(cursor)}" y="${fmt(y)}" font-size="${fmt(fontSize)}" fill="${fill}" text-anchor="start" dominant-baseline="middle" xml:space="preserve">${run.content}</text>`,
-        );
+        const textAttrs = [
+          `x="${fmt(cursor)}"`,
+          `y="${fmt(y)}"`,
+          `font-size="${fmt(fontSize)}"`,
+          `fill="${fill}"`,
+          fillOpacity ? `fill-opacity="${fillOpacity}"` : "",
+          fontWeight ? `font-weight="${fontWeight}"` : "",
+          fontStyle ? `font-style="${fontStyle}"` : "",
+          'text-anchor="start"',
+          'dominant-baseline="middle"',
+          'xml:space="preserve"',
+        ]
+          .filter(Boolean)
+          .join(" ");
+        pieces.push(`<text ${textAttrs}>${run.content}</text>`);
       } else {
         pieces.push(
           `<svg x="${fmt(cursor)}" y="${fmt(y - run.h / 2)}" width="${fmt(run.w)}" height="${fmt(run.h)}" viewBox="${run.vb}" preserveAspectRatio="xMidYMid meet">${run.content}</svg>`,
@@ -289,7 +331,7 @@ export async function enhanceMathInSvg(
       'data-dg-math-run="1"',
       dataId ? `data-source-id="${dataId}"` : "",
       transform ? `transform="${transform}"` : "",
-      fontFamily ? `font-family="${fontFamily}"` : "",
+      fontFamilyAttr ? `font-family="${fontFamilyAttr}"` : "",
     ]
       .filter(Boolean)
       .join(" ");
