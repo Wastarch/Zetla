@@ -106,6 +106,7 @@ import {
   type ElementBox,
 } from "./transform";
 import type { GroupMovePlan } from "./grouping";
+import { resolveFitMoveTargets } from "./fitMove";
 import {
   applyPreviewGeometry,
   isPreviewActive,
@@ -289,7 +290,8 @@ interface DragState {
   startWorld: PointLike;
   startSvg: PointLike;
   matrix: MatrixLike;
-  marker: SVGCircleElement;
+  /** 控制点圆：隐藏控制点或拖选中框时没有 marker，纯辅助动画，缺了不影响写回。 */
+  marker: SVGCircleElement | null;
   /** F3-2：透明命中圈与视觉圆同步移动，避免拖拽时两者错位 */
   hitMarker: SVGCircleElement | null;
   guide: SVGLineElement | null;
@@ -792,11 +794,12 @@ export function DiagramCanvas() {
     const picked = new Set(selectedIds.length > 0 ? selectedIds : selectedId ? [selectedId] : []);
     const state = useDiagramStore.getState().grouping as GroupingState;
     const hidden = new Set<string>();
-    for (const el of Array.from(stage.querySelectorAll("[data-source-id]"))) {
+    const shapeQuery = "[data-source-id]:not([data-dg-ui-hit])";
+    for (const el of Array.from(stage.querySelectorAll(shapeQuery))) {
       const id = el.getAttribute("data-source-id") ?? "";
       if (id && !hidden.has(id) && isManuallyHidden(state, id)) hidden.add(id);
     }
-    for (const el of Array.from(stage.querySelectorAll("[data-source-id]"))) {
+    for (const el of Array.from(stage.querySelectorAll(shapeQuery))) {
       el.classList.toggle("dg-selected", picked.has(el.getAttribute("data-source-id") ?? ""));
     }
     for (const node of Array.from(stage.querySelectorAll("g.dg-handle-node"))) {
@@ -827,7 +830,7 @@ export function DiagramCanvas() {
       e: ctm.e,
       f: ctm.f,
     };
-    const boxes = Array.from(stage.querySelectorAll("[data-source-id]"))
+    const boxes = Array.from(stage.querySelectorAll(shapeQuery))
       .filter((el) => picked.has(el.getAttribute("data-source-id") ?? ""))
       .filter((el) => !hidden.has(el.getAttribute("data-source-id") ?? ""))
       .map((el) => el.getBoundingClientRect())
@@ -847,7 +850,7 @@ export function DiagramCanvas() {
           vb,
         )
       : null;
-    drawSelectionBox(layer, selBox, metrics);
+    drawSelectionBox(layer, selBox, metrics, selectedIds[0] ?? selectedId ?? null);
     // F3-4：参考线层从 store 读取（拖拽吸附 / 对齐 / 分布后短暂显示）。
     const guideLayer = svg.querySelector("[data-dg-guide-layer]") as SVGGElement | null;
     drawGuides(guideLayer, useDiagramStore.getState().guides, resultRef.current?.viewBox ?? null);
@@ -901,9 +904,9 @@ export function DiagramCanvas() {
     if (!ok) return;
     const layer = svg.querySelector("[data-dg-handle-layer]") as SVGGElement | null;
     if (layer) updateHandleLayerPositions(layer, base.resultAtStart.handles, vb, metrics);
-    base.marker.classList.remove("is-active");
-    base.marker.setAttribute("cx", fmtNum(base.startSvg.x));
-    base.marker.setAttribute("cy", fmtNum(base.startSvg.y));
+    base.marker?.classList.remove("is-active");
+    base.marker?.setAttribute("cx", fmtNum(base.startSvg.x));
+    base.marker?.setAttribute("cy", fmtNum(base.startSvg.y));
     base.hitMarker?.setAttribute("cx", fmtNum(base.startSvg.x));
     base.hitMarker?.setAttribute("cy", fmtNum(base.startSvg.y));
     if (base.guide) base.guide.setAttribute("visibility", "hidden");
@@ -1559,9 +1562,9 @@ export function DiagramCanvas() {
   // window 级拖拽监听：即使指针移出 SVG / 画布仍能持续跟随，松手统一提交。
   useEffect(() => {
     const resetMarker = (d: DragState) => {
-      d.marker.classList.remove("is-active");
-      d.marker.setAttribute("cx", fmtNum(d.startSvg.x));
-      d.marker.setAttribute("cy", fmtNum(d.startSvg.y));
+      d.marker?.classList.remove("is-active");
+      d.marker?.setAttribute("cx", fmtNum(d.startSvg.x));
+      d.marker?.setAttribute("cy", fmtNum(d.startSvg.y));
       d.hitMarker?.setAttribute("cx", fmtNum(d.startSvg.x));
       d.hitMarker?.setAttribute("cy", fmtNum(d.startSvg.y));
       if (d.guide) d.guide.setAttribute("visibility", "hidden");
@@ -1643,8 +1646,8 @@ export function DiagramCanvas() {
       }
       d.newWorld = { x: d.startWorld.x + effWorld.x, y: d.startWorld.y + effWorld.y };
       const curSvg = worldToSvgPoint(d.newWorld, d.resultAtStart.viewBox);
-      d.marker.setAttribute("cx", fmtNum(curSvg.x));
-      d.marker.setAttribute("cy", fmtNum(curSvg.y));
+      d.marker?.setAttribute("cx", fmtNum(curSvg.x));
+      d.marker?.setAttribute("cy", fmtNum(curSvg.y));
       d.hitMarker?.setAttribute("cx", fmtNum(curSvg.x));
       d.hitMarker?.setAttribute("cy", fmtNum(curSvg.y));
       if (d.guide) {
@@ -1665,7 +1668,7 @@ export function DiagramCanvas() {
       if (!stage) return;
       const box = marqueeBox(mq.startClient.x, mq.startClient.y, client.x, client.y);
       const state = useDiagramStore.getState();
-      const items = Array.from(stage.querySelectorAll("[data-source-id]"))
+      const items = Array.from(stage.querySelectorAll("[data-source-id]:not([data-dg-ui-hit])"))
         .map((el) => ({
           id: el.getAttribute("data-source-id") ?? "",
           rect: el.getBoundingClientRect() as RectLike,
@@ -1697,7 +1700,7 @@ export function DiagramCanvas() {
       const d = dragRef.current;
       if (!d) return;
       dragRef.current = null;
-      d.marker.classList.remove("is-active");
+      d.marker?.classList.remove("is-active");
       if (d.guide) d.guide.setAttribute("visibility", "hidden");
       setDragLabel(null);
       setDragGuides([]);
@@ -1864,9 +1867,10 @@ export function DiagramCanvas() {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
-  /** 命中控制点，或直接拖图元本体（自动取它的 node-position 句柄）。 */
+  /** 命中控制点，或直接拖图元本体 / 选中框边（自动取它的 node-position 句柄）。 */
   function startDragFromEvent(target: EventTarget | null, client?: PointLike): void {
-    if (previewMode !== "local" || !result || !handlesOn) return;
+    // 小圆点开关只管「点控制点」这一条路；图元本体 / 选中框边始终可以拖动平移。
+    if (previewMode !== "local" || !result) return;
     // 实时预览让「连续快速拖拽」变常见：源码已提交但画布还在 160ms debounce 时，
     // result 仍是旧一批句柄，直接拖会因 sourceFingerprint 不符而写回失败。
     // 这里对齐 renderMeta.source 与当前源码，不匹配就等这一帧重渲染完成。
@@ -1880,6 +1884,10 @@ export function DiagramCanvas() {
     if (!svg) return;
     let hit: TikzEditHandle | undefined;
     const markerEl = target.closest("[data-dg-handle-id]");
+    // 开关关闭时控制点层本来就不存在；即使残留 DOM 也不接管，避免绕过开关。
+    if (markerEl && !handlesOn) return;
+    let bodySid: string | null = null;
+    let fitTargetIds: string[] = [];
     if (markerEl) {
       let id = markerEl.getAttribute("data-dg-handle-id");
       // F3-6：相邻控制点命中圈重叠时，浏览器按绘制顺序分发会选错。只有确实重叠
@@ -1911,14 +1919,39 @@ export function DiagramCanvas() {
       hit = result.handles.find((h) => h.id === id);
     } else {
       const shape = target.closest("[data-source-id]");
-      const sid = shape?.getAttribute("data-source-id");
-      if (sid) {
-        const own = result.handles.filter(
-          (h) =>
-            h.sourceRef?.sourceId === sid &&
-            resolveHandleLock(result.compat, h.id, isDraggableHandle(h), lockedHandleReason(h)) === null,
-        );
-        hit = own.find((h) => h.kind === "node-position") ?? own[0];
+      bodySid = shape?.getAttribute("data-source-id") ?? null;
+      if (bodySid) {
+        const writable = (id: string) =>
+          result.handles.find(
+            (h) =>
+              h.sourceRef?.sourceId === id &&
+              resolveHandleLock(result.compat, h.id, isDraggableHandle(h), lockedHandleReason(h)) === null,
+          );
+        const own = result.handles.filter((h) => h.sourceRef?.sourceId === bodySid);
+        hit = own.find((h) => h.kind === "node-position" && writable(bodySid!) === h) ?? writable(bodySid!);
+        // fit 节点坐标由被引用节点推导（F2-3 锁），不硬写它的 node-position；
+        // 改为把被引用节点作为移动目标，fit 框会随之整体平移，语义不破。
+        if (!hit && result.compat.coordinateOnlyLockIds[bodySid]) {
+          fitTargetIds = resolveFitMoveTargets({
+            source: sourceRef.current,
+            statements: result.statements,
+            fitId: bodySid,
+          });
+          for (const tid of fitTargetIds) {
+            const candidate = writable(tid);
+            if (candidate) {
+              hit = candidate;
+              break;
+            }
+          }
+          if (!hit) {
+            setNotice({
+              tone: "warn",
+              text: "fit 节点未找到可移动的被引用节点，请在源码栏调整 fit={(a)(b)} 中的节点名。",
+            });
+            return;
+          }
+        }
       }
     }
     if (!hit) return;
@@ -1928,17 +1961,19 @@ export function DiagramCanvas() {
     // 原先「点控制点时 sid 为 null、主动锁定检查被跳过」的 F3-3 绕过漏洞。
     const sid = hit.sourceRef?.sourceId ?? shapeEl?.getAttribute("data-source-id") ?? null;
     // F3-3：主动锁定优先于一切拖拽（与 F2-3 的能力矩阵锁定是两套语义）。
-    if (sid && isManuallyLocked(state.grouping, sid)) {
+    // fit 场景要同时查「被点的 fit 节点」和「实际要移动的被引用节点」。
+    const touchedIds = [sid, bodySid, ...fitTargetIds].filter(
+      (id): id is string => typeof id === "string" && id.length > 0,
+    );
+    if (touchedIds.some((id) => isManuallyLocked(state.grouping, id))) {
       setNotice({ tone: "warn", text: "该图元已在图层面板主动锁定，先解锁后再拖动。" });
       return;
     }
-    // F3-3：命中图元本体（不是控制点）且当前多选 > 1 → 整体平移整组。
+    // fit 平移目标优先；否则命中图元本体（不是控制点）且多选 > 1 → 整体平移整组。
     // 命中控制点仍走 F2-1 的单点几何编辑，保证拖拽语义不被多选抢走。
-    const groupIds =
-      !markerEl &&
-      sid &&
-      state.selectedIds.length > 1 &&
-      state.selectedIds.includes(sid)
+    const groupIds = fitTargetIds.length > 0
+      ? fitTargetIds
+      : !markerEl && bodySid && state.selectedIds.length > 1 && state.selectedIds.includes(bodySid)
         ? state.selectedIds.filter((id) => !isManuallyHidden(state.grouping, id))
         : null;
     // F2-3：能力矩阵归因的锁定优先，理由更具体；F2-1 的 rewriteMode 兜底在后。
@@ -1960,7 +1995,7 @@ export function DiagramCanvas() {
         break;
       }
     }
-    if (!marker) {
+    if (!marker && markerEl) {
       setNotice({ tone: "warn", text: "控制点过多已折叠，请缩小图形或用源码编辑。" });
       return;
     }
@@ -1980,7 +2015,7 @@ export function DiagramCanvas() {
       startSvg,
       matrix,
       marker,
-      hitMarker: (marker.parentElement?.querySelector(".dg-handle-hit") as
+      hitMarker: (marker?.parentElement?.querySelector(".dg-handle-hit") as
         | SVGCircleElement
         | null) ?? null,
       guide,
@@ -2031,7 +2066,7 @@ export function DiagramCanvas() {
     // 候选源码都从它重算，绝不把上一帧的候选当基准（否则误差会累积、语义也会漂）。
     previewActiveRef.current = true;
     previewBaseRef.current = dragRef.current;
-    marker.classList.add("is-active");
+    marker?.classList.add("is-active");
     if (guide) {
       guide.setAttribute("x1", fmtNum(startSvg.x));
       guide.setAttribute("y1", fmtNum(startSvg.y));

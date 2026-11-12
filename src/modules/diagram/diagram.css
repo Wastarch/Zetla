@@ -864,6 +864,11 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   opacity: 0.75;
   pointer-events: none;
 }
+/* 虚线框的透明拖拽代理：只在框边约 6px 内接管 pointerdown，框内仍交还图元本体。 */
+.dg-sel-hit {
+  pointer-events: stroke;
+  cursor: move;
+}
 .dg-sel-corner {
   fill: var(--bg-3, #fff);
   stroke: var(--accent, #2d7ff9);

@@ -209,6 +209,10 @@ import {
   drawTransformHandles,
 } from "../src/modules/diagram/handleLayer.ts";
 import {
+  fitReferenceNames,
+  resolveFitMoveTargets,
+} from "../src/modules/diagram/fitMove.ts";
+import {
   applyPreviewGeometry,
   isPreviewActive,
   previewGeometryOffset,
@@ -3286,6 +3290,68 @@ console.log("\nF6 补强 · 选中框 / 8 点柄 / 旋转柄可用性（fit 放�
   check(nb.boxes.length === 1, "单个 node 只产出一个锚点盒（1 个 node-position 句柄）");
   const degenerate = nb.boxes[0].box;
   check(boxWidth(degenerate) < 1e-6 && boxHeight(degenerate) < 1e-6, "该锚点盒退化成零面积（旧口径下缩放恒为 1）");
+}
+
+console.log("\nF6 补强 · 隐藏控制点后仍可移动（本体 / 选中框 / fit 引用）");
+{
+  check(
+    fitReferenceNames("(a)(b.north)(current bounding box)").join(",") === "a,b",
+    "fit 引用解析取节点名、忽略锚点与 current bounding box",
+  );
+  const nestedSrc = [
+    "\\begin{tikzpicture}",
+    "  \\node[draw] (a) at (0,0) {A};",
+    "  \\node[draw] (b) at (2,0) {B};",
+    "  \\node[draw,fit=(a)(b)] (inner) {};",
+    "  \\node[draw,fit=(inner)] (outer) {};",
+    "\\end{tikzpicture}",
+  ].join("\n");
+  const nr = await renderTikz(nestedSrc);
+  const aId = "path:0";
+  const bId = "path:1";
+  const innerId = "path:2";
+  const outerId = "path:3";
+  check(
+    resolveFitMoveTargets({ source: nestedSrc, statements: nr.statements, fitId: innerId }).join(",") === `${aId},${bId}`,
+    "fit 节点移动目标 = 被引用节点，不碰 fit 自身坐标",
+  );
+  check(
+    resolveFitMoveTargets({ source: nestedSrc, statements: nr.statements, fitId: outerId }).join(",") === `${aId},${bId}`,
+    "嵌套 fit 递归展开到最底层普通节点",
+  );
+  check(
+    resolveFitMoveTargets({ source: nestedSrc, statements: nr.statements, fitId: "missing" }).length === 0,
+    "未知 fit id 不误判移动目标",
+  );
+  const mv = await applyGroupEdit({
+    source: nestedSrc,
+    handles: nr.handles,
+    elementIds: [aId, bId],
+    delta: { x: 10, y: 10 },
+    compat: nr.compat,
+    grouping: EMPTY_GROUPING,
+  });
+  check(mv.status === "ok" && mv.nextSource !== nestedSrc, "fit 引用节点可一次整组平移写回");
+  check(
+    mv.nextSource.includes("\\node[draw,fit=(a)(b)] (inner) {};") &&
+      mv.nextSource.includes("\\node[draw,fit=(inner)] (outer) {};"),
+    "fit 定义原样保留，移动不破坏引用语义",
+  );
+
+  // 选中框：透明 stroke 命中代理挂在 data-source-id 上，复用本体拖拽链路；
+  // fill:none 保证框内点击仍交还图元本体（F4-3 双击文字不受影响）。
+  const selSvg = g.document.createElementNS(H_NS, "svg");
+  const selLayer = createSelectionLayer(selSvg);
+  drawSelectionBox(selLayer, { x: 0, y: 0, width: 40, height: 20 }, H_M1, "path:9");
+  const selHit = selLayer.querySelector(".dg-sel-hit");
+  check(!!selHit && selHit.getAttribute("data-source-id") === "path:9", "选中框透明代理带 sourceId，可直接拖框移动");
+  check(
+    !!selHit && selHit.getAttribute("fill") === "none" && selHit.getAttribute("stroke") === "transparent",
+    "选中框代理只命中边框描边，不遮框内图元 / 文字",
+  );
+  check(!!selHit && Number(selHit.getAttribute("stroke-width")) > 0, "选中框代理有可命中的描边宽度");
+  drawSelectionBox(selLayer, null, H_M1, "path:9");
+  check(!selLayer.querySelector(".dg-sel-hit"), "清空选中框时透明代理一并移除");
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);

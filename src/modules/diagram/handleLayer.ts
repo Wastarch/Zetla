@@ -213,6 +213,8 @@ export function drawSelectionBox(
   layer: SVGGElement,
   box: BoxLike | null,
   metrics: HandleMetrics,
+  /** 选中框边的拖拽代理 id：只挂透明 stroke 上，不遮框内图元本体 / 文字双击。 */
+  hitId?: string | null,
 ): void {
   layer.replaceChildren();
   if (!box || !Number.isFinite(box.width) || !Number.isFinite(box.height)) return;
@@ -228,6 +230,25 @@ export function drawSelectionBox(
     "stroke-dasharray": fmtNum(metrics.boxStroke * 3),
   });
   layer.appendChild(frame);
+  // 虚线框本身以前是 pointer-events:none，用户「拖框移动」完全落空。
+  // 这里加一条只在边框附近生效的透明 stroke 命中区：data-source-id 让它直接复用
+  // F2-1 的本体拖拽链路；fill:none 保证框内点击仍命中图元本体（F4-3 双击文字不受影响）。
+  if (hitId) {
+    layer.appendChild(
+      el("rect", {
+        class: "dg-sel-hit",
+        "data-dg-ui-hit": "1",
+        "data-source-id": hitId,
+        x: fmtNum(padded.x),
+        y: fmtNum(padded.y),
+        width: fmtNum(padded.width),
+        height: fmtNum(padded.height),
+        fill: "none",
+        stroke: "transparent",
+        "stroke-width": fmtNum(metrics.boxPad * 2),
+      }),
+    );
+  }
   for (const c of selectionCorners(padded, metrics.boxCorner)) {
     layer.appendChild(
       el("rect", {
