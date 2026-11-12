@@ -3461,23 +3461,16 @@ console.log("F6 · 矩形 8 点柄：角锚对角 / 边锚对边的端点 resize
 
   const rightGeo = rectangleTargetsFromDrag({
     box, endpoints: [ep("c", 6, pt(0, 0)), ep("a", 2, pt(2, 2))],
-    corner: 3, startWorld: pt(2, 1), pointer: pt(5, 1), center: false,
+    corner: 3, startWorld: pt(2, 1), pointer: pt(5, 1),
   })!;
   check(!!rightGeo && eps(rightGeo.nextBox.maxX, 5) && eps(rightGeo.nextBox.minX, 0) &&
         rightGeo.targets.every((t) => eps(t.to.y, t.from.y)),
     "拖右中柄：只改右边，左右端点的 y 分量不变");
 
-  const centerGeo = rectangleTargetsFromDrag({
-    box, endpoints: [ep("c", 6, pt(0, 0)), ep("a", 2, pt(2, 2))],
-    corner: 2, startWorld: pt(2, 2), pointer: pt(4, 4), center: true,
-  })!;
-  check(!!centerGeo && eps(centerGeo.nextBox.minX, -2) && eps(centerGeo.nextBox.minY, -2) &&
-        eps(centerGeo.nextBox.maxX, 4) && eps(centerGeo.nextBox.maxY, 4),
-    "Alt 拖角：以矩形中心为锚，对侧角镜像移动");
   check(
     rectangleTargetsFromDrag({
       box, endpoints: [ep("c", 6, pt(0, 0)), ep("a", 2, pt(2, 2))],
-      corner: 1, startWorld: pt(1, 2), pointer: pt(1, -5), center: false,
+      corner: 1, startWorld: pt(1, 2), pointer: pt(1, -5),
     }) === null,
     "把上边拖过下边导致翻面 → 拒绝（端点语义不对调）",
   );
@@ -3503,7 +3496,7 @@ console.log("F6 · 矩形 8 点柄：角锚对角 / 边锚对边的端点 resize
     ? rectangleTargetsFromDrag({
         box: diagonalElig.box, endpoints: diagonalElig.endpoints, corner: 2,
         startWorld: { x: diagonalElig.box.maxX, y: diagonalElig.box.maxY },
-        pointer: { x: diagonalElig.box.maxX + 10, y: diagonalElig.box.maxY + 10 }, center: false,
+        pointer: { x: diagonalElig.box.maxX + 10, y: diagonalElig.box.maxY + 10 },
       })
     : null;
   check(diagonalElig.ok && diagonalElig.endpoints.map((e) => e.corner).join("|") === "0|4",
@@ -3524,7 +3517,7 @@ console.log("F6 · 矩形 8 点柄：角锚对角 / 边锚对边的端点 resize
   const cornerPlan = await applyRectangleResize({
     source: rectSrc, eligibility: rectElig, corner: 2,
     startWorld: { x: rectElig.box!.maxX, y: rectElig.box!.maxY },
-    pointer: { x: rectElig.box!.maxX + halfCm, y: rectElig.box!.maxY + halfCm }, center: false,
+    pointer: { x: rectElig.box!.maxX + halfCm, y: rectElig.box!.maxY + halfCm },
   });
   check(cornerPlan.status === "ok" && cornerPlan.patches.length === 1 &&
         cornerPlan.nextSource.includes("\\draw (1,1) rectangle (4,3);"),
@@ -3535,7 +3528,7 @@ console.log("F6 · 矩形 8 点柄：角锚对角 / 边锚对边的端点 resize
 
   const topPlan = await applyRectangleResize({
     source: rectSrc, eligibility: rectElig, corner: 1,
-    startWorld: { x: 1, y: 2 }, pointer: { x: 1, y: 2 + halfCm }, center: false,
+    startWorld: { x: 1, y: 2 }, pointer: { x: 1, y: 2 + halfCm },
   });
   check(topPlan.status === "ok" && topPlan.nextSource.includes("\\draw (1,1) rectangle (3,3);"),
     "真实引擎拖上边中点：下边保持 y=1，两端 x 不变，只抬高上边");
@@ -3543,7 +3536,7 @@ console.log("F6 · 矩形 8 点柄：角锚对角 / 边锚对边的端点 resize
   const reversePlan = await applyRectangleResize({
     source: reverseSrc, eligibility: reverseElig, corner: 2,
     startWorld: { x: reverseElig.box!.maxX, y: reverseElig.box!.maxY },
-    pointer: { x: reverseElig.box!.maxX + halfCm, y: reverseElig.box!.maxY + halfCm }, center: false,
+    pointer: { x: reverseElig.box!.maxX + halfCm, y: reverseElig.box!.maxY + halfCm },
   });
   check(reversePlan.status === "ok" && reversePlan.nextSource.includes("\\draw (5,6) rectangle (1,2);"),
     "反向书写矩形拖右上 A：改写 (4,5)→(5,6)，左下 (1,2) 不动");
@@ -3558,7 +3551,7 @@ console.log("F6 · 矩形 8 点柄：角锚对角 / 边锚对边的端点 resize
   check(!rotElig.ok && rotElig.reason.includes("变换选项"), "带 rotate 的矩形被预检拒绝并给出理由");
   const rotPlan = planRectangleResize({
     source: rotSrc, eligibility: rotElig, corner: 2,
-    startWorld: pt(0, 0), pointer: pt(1, 1), center: false, intent: (() => ({ ok: false as const, reason: "不应被调用" })),
+    startWorld: pt(0, 0), pointer: pt(1, 1), intent: (() => ({ ok: false as const, reason: "不应被调用" })),
   });
   check(rotPlan.status === "rejected" && rotPlan.nextSource === rotSrc, "拒绝时源码原样返回，绝不部分写");
 
@@ -3576,14 +3569,9 @@ console.log("F6 · 矩形 8 点柄：角锚对角 / 边锚对边的端点 resize
     compat: rectRender.compat, grouping: EMPTY_GROUPING,
   });
   check(!multiElig.ok && multiElig.reason.includes("1 个矩形"), "多选时拒绝端点 resize");
-  check(
-    planTransformPatches({
-      source: rectSrc, statements: rectRender.statements,
-      elementIds: [rectRender.statements[0].id], key: "scale", value: "1.2",
-      compat: rectRender.compat, grouping: EMPTY_GROUPING,
-    }).status === "ok",
-    "Shift 逃生舱仍走 scale= 选项路径，未被端点 resize 取代",
-  );
+  // F6：Shift / Alt 逃生舱已移除 —— 单选中矩形恒走端点 resize，不写 scale= 选项。
+  check(!cornerPlan.nextSource.includes("scale="),
+    "矩形默认走端点 resize、不写 scale= 选项（Shift/Alt 逃生舱已移除）");
   check(cornerPlan.status === "ok" && cornerPlan.label.includes("对角固定"),
     "角柄提示文案说明锚定关系；边柄提示说明对边固定");
 }

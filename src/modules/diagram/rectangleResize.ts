@@ -16,7 +16,6 @@ import type { TikzEditHandle } from "./tikzEditor/engine.ts";
 import type { TikzStatement } from "./optionsEdit.ts";
 import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat.ts";
 import {
-  boxCenter,
   boxHeight,
   boxWidth,
   cornerPoint,
@@ -178,7 +177,7 @@ export function checkRectangleResizeEligibility(args: {
 
 /**
  * 纯几何核心：由被拖柄编号 + 指针位移推出新的矩形盒，再映射到两个端点目标坐标。
- * 角柄锚定对角（Alt 时锚定中心）；边中柄锚定对边（Alt 时对边反向等量移动）。
+ * 角柄锚定对角；边中柄锚定对边。Shift / Alt 逃生舱已移除，矩形恒走端点 resize。
  */
 export function rectangleTargetsFromDrag(args: {
   box: WorldBox;
@@ -186,44 +185,27 @@ export function rectangleTargetsFromDrag(args: {
   corner: number;
   startWorld: PointLike;
   pointer: PointLike;
-  center: boolean;
 }): RectangleGeometry | null {
-  const { box, endpoints, startWorld, pointer, center } = args;
+  const { box, endpoints, startWorld, pointer } = args;
   const corner = ((args.corner % 8) + 8) % 8;
   const dx = pointer.x - startWorld.x;
   const dy = pointer.y - startWorld.y;
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
-  const cc = boxCenter(box);
   let nextBox: WorldBox | null;
 
   if (corner % 2 === 0) {
     const start = cornerPoint(box, corner);
     const moved = { x: start.x + dx, y: start.y + dy };
-    if (center) {
-      // Alt：中心固定；拖过中心会让矩形翻面，这里直接拒绝，避免端点语义对调。
-      if ((moved.x - cc.x) * (start.x - cc.x) < 0 || (moved.y - cc.y) * (start.y - cc.y) < 0) {
-        return null;
-      }
-      nextBox = makeWorldBox(
-        moved.x,
-        moved.y,
-        2 * cc.x - moved.x,
-        2 * cc.y - moved.y,
-      );
-    } else {
-      const anchor = cornerPoint(box, (corner + 4) % 8);
-      nextBox = makeWorldBox(anchor.x, anchor.y, moved.x, moved.y);
-    }
+    const anchor = cornerPoint(box, (corner + 4) % 8);
+    nextBox = makeWorldBox(anchor.x, anchor.y, moved.x, moved.y);
   } else {
     const nb = { ...box };
     if (corner === 1 || corner === 5) {
       nb[corner === 1 ? "maxY" : "minY"] = box[corner === 1 ? "maxY" : "minY"] + dy;
-      if (center) nb[corner === 1 ? "minY" : "maxY"] = box[corner === 1 ? "minY" : "maxY"] - dy;
     } else {
       nb[corner === 3 ? "maxX" : "minX"] = box[corner === 3 ? "maxX" : "minX"] + dx;
-      if (center) nb[corner === 3 ? "minX" : "maxX"] = box[corner === 3 ? "minX" : "maxX"] - dx;
     }
-    // 拖过对边会让矩形翻面、端点语义对调，直接拒绝（Alt 中心锚定同理）。
+    // 拖过对边会让矩形翻面、端点语义对调，直接拒绝。
     if (nb.minX >= nb.maxX || nb.minY >= nb.maxY) return null;
     nextBox = makeWorldBox(nb.minX, nb.minY, nb.maxX, nb.maxY);
   }
@@ -250,10 +232,9 @@ export function planRectangleResize(args: {
   corner: number;
   startWorld: PointLike;
   pointer: PointLike;
-  center: boolean;
   intent: MoveIntent;
 }): RectangleResizePlan {
-  const { source, eligibility, corner, startWorld, pointer, center, intent } = args;
+  const { source, eligibility, corner, startWorld, pointer, intent } = args;
   if (!eligibility.ok || !eligibility.box) {
     return {
       status: "rejected",
@@ -268,7 +249,6 @@ export function planRectangleResize(args: {
     corner,
     startWorld,
     pointer,
-    center,
   });
   if (!geo) {
     return {

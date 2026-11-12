@@ -356,7 +356,6 @@ export async function applyRectangleResize(args: {
   corner: number;
   startWorld: PointLike;
   pointer: PointLike;
-  center: boolean;
 }): Promise<RectangleResizePlan> {
   const mod = await loadVendor();
   return planRectangleResize({ ...args, intent: vendorMoveIntent(mod) });

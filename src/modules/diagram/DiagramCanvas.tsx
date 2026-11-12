@@ -348,8 +348,6 @@ interface TransformDrag {
   resizePlan: RectangleResizePlan | null;
   /** 松手时用最后一帧指针重算，保证预览与提交同一份源码 */
   lastPointer: PointLike | null;
-  lastShift: boolean;
-  lastAlt: boolean;
   /** 异步 resize 预览的乱序保护 */
   frame: number;
 }
@@ -2244,8 +2242,6 @@ export function DiagramCanvas() {
       resizeEligibility,
       resizePlan: null,
       lastPointer: null,
-      lastShift: e.shiftKey,
-      lastAlt: e.altKey,
       frame: 0,
     };
     previewActiveRef.current = true;
@@ -2281,8 +2277,6 @@ export function DiagramCanvas() {
     t.frame += 1;
     const frame = t.frame;
     t.lastPointer = cur;
-    t.lastShift = e.shiftKey;
-    t.lastAlt = e.altKey;
     let value: number;
     let candidate: string | null = null;
     if (t.kind === "rotate") {
@@ -2304,17 +2298,17 @@ export function DiagramCanvas() {
         box: t.startBox,
         corner: t.corner,
         pointer: cur,
-        uniform: e.shiftKey,
-        center: e.altKey,
+        uniform: false,
+        center: false,
       });
       if (!res) return;
       value = res.scale;
       const hasNode = t.resultAtStart.statements.some(
         (st) => t.elementIds.includes(st.id) && st.command === "node",
       );
-      // F6：Shift 是等比 scale= 逃生舱；否则单选中标准矩形 → 端点 resize。
+      // F6：单选中标准矩形 → 端点 resize（角锚对角、边锚对边）。
       // 其余情况维持 F3-4（无 node）/ F4-1（node）原分流，零回归。
-      const useResize = !e.shiftKey && !!t.resizeEligibility?.ok;
+      const useResize = !!t.resizeEligibility?.ok;
       if (useResize && t.resizeEligibility) {
         t.sizeValues = null;
         t.resizePlan = null;
@@ -2324,7 +2318,6 @@ export function DiagramCanvas() {
           corner: t.corner,
           startWorld: t.startWorld,
           pointer: cur,
-          center: e.altKey,
         }).then((plan) => {
           if (transformRef.current !== t || frame !== t.frame) return;
           if (plan.status === "ok") {
@@ -2339,7 +2332,7 @@ export function DiagramCanvas() {
         t.value = value;
         return;
       }
-      if (e.shiftKey || !hasNode) {
+      if (!hasNode) {
         t.sizeValues = null;
         t.resizePlan = null;
         const plan = planTransformPatches({
@@ -2394,7 +2387,7 @@ export function DiagramCanvas() {
     previewActiveRef.current = false;
     // F6：矩形端点 resize —— 松手按最后一帧指针重算，保证看到的几何=写回的源码；
     // 多端点补丁一次 commitDiagramPatches = 一条 Ctrl+Z。
-    if (!t.lastShift && t.resizeEligibility?.ok) {
+    if (t.resizeEligibility?.ok) {
       if (!t.lastPointer) {
         restoreTransformPreview();
         return;
@@ -2405,7 +2398,6 @@ export function DiagramCanvas() {
         corner: t.corner,
         startWorld: t.startWorld,
         pointer: t.lastPointer,
-        center: t.lastAlt,
       }).then((plan) => {
         if (plan.status !== "ok") {
           restoreTransformPreview();
