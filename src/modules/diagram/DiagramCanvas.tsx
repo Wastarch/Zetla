@@ -51,6 +51,7 @@ import {
   applyDeltaEdit,
   applyDragEdit,
   applyGroupEdit,
+  applyRectangleResize,
   preloadTikzEngine,
   renderTikz,
   type DragEditOutcome,
@@ -106,6 +107,11 @@ import {
   type ElementBox,
 } from "./transform";
 import type { GroupMovePlan } from "./grouping";
+import {
+  checkRectangleResizeEligibility,
+  type RectangleEligibility,
+  type RectangleResizePlan,
+} from "./rectangleResize";
 import { resolveFitMoveTargets } from "./fitMove";
 import {
   applyPreviewGeometry,
@@ -337,6 +343,15 @@ interface TransformDrag {
   baseHeightPt: number;
   /** F4-1：非 Shift 尺寸路径最后一帧的值；null = 仍走 F3-4 的 scale= */
   sizeValues: SizeValues | null;
+  /** F6：矩形端点 resize 的只读预检结果；null = 走原有选项变换 */
+  resizeEligibility: RectangleEligibility | null;
+  resizePlan: RectangleResizePlan | null;
+  /** 松手时用最后一帧指针重算，保证预览与提交同一份源码 */
+  lastPointer: PointLike | null;
+  lastShift: boolean;
+  lastAlt: boolean;
+  /** 异步 resize 预览的乱序保护 */
+  frame: number;
 }
 
 interface Notice {
@@ -2183,6 +2198,30 @@ export function DiagramCanvas() {
       baseWidthPt = readSize("text width") ?? baseWidthPt;
       baseHeightPt = readSize("minimum height") ?? baseHeightPt;
     }
+    // F6：矩形端点 resize 的只读预检，与选项变换严格二选一。
+    // 视觉框只负责画柄 / 命中；resize 数学基准用端点 world 归一盒（eligibility.box），
+    // 二者口径不同（padding / 线宽），位移一律取相对起手值以免起手瞬间跳变。
+    const resizeEligibility =
+      kind === "scale"
+        ? checkRectangleResizeEligibility({
+            source: sourceRef.current,
+            statement: primary ?? null,
+            handles: result.handles,
+            elementIds: selIds,
+            compat: result.compat,
+            grouping: state.grouping,
+          })
+        : null;
+    // 只有「确实是 rectangle 语句但不够安全」才提示；其它图元走原选项路径，不打扰用户。
+    if (resizeEligibility && !resizeEligibility.ok && primary) {
+      const body = sourceRef.current.slice(primary.span.from, primary.span.to);
+      if (/\brectangle\b/.test(body)) {
+        setNotice({
+          tone: "warn",
+          text: `矩形端点缩放不可用：${resizeEligibility.reason}；已按等比 scale= 缩放。`,
+        });
+      }
+    }
     const center = boxCenter(startBox);
     const startWorld = pointerWorld(e.clientX, e.clientY) ?? center;
     transformRef.current = {
@@ -2202,18 +2241,48 @@ export function DiagramCanvas() {
       baseWidthPt,
       baseHeightPt,
       sizeValues: null,
+      resizeEligibility,
+      resizePlan: null,
+      lastPointer: null,
+      lastShift: e.shiftKey,
+      lastAlt: e.altKey,
+      frame: 0,
     };
     previewActiveRef.current = true;
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
   }
 
-  /** F3-4：旋转 / 缩放柄移动 → 算新值 → 实时换几何预览（不写源码、不进撤销栈）。 */
+  /** 变换 / resize 共用的候选源码预览（不写源码、不进撤销栈）。 */
+  function previewTransformCandidate(t: TransformDrag, candidate: string | null): void {
+    if (!candidate || candidate === t.sourceAtStart) return;
+    if (!shouldRenderPreview(t.previewSource, candidate, t.sourceAtStart)) return;
+    void renderTikz(candidate).then((r) => {
+      const svg = stageSvg();
+      if (!svg || transformRef.current !== t) return;
+      const ok = applyPreviewGeometry(svg, {
+        markup: r.svg,
+        baseViewBox: t.resultAtStart.viewBox,
+        candidateViewBox: r.viewBox,
+        zoom: renderPctRef.current,
+        live: true,
+      });
+      if (ok) t.previewSource = candidate;
+    });
+  }
+
+  /** F3-4 / F6：旋转 / 缩放柄移动 → 算新值 → 实时换几何预览（不写源码、不进撤销栈）。 */
   function handleTransformMove(e: PointerEvent): void {
     const t = transformRef.current;
     if (!t) return;
     const cur = pointerWorld(e.clientX, e.clientY);
     if (!cur) return;
+    // F6：resize 规划是异步的（vendor 动态加载），frame 用于丢弃过期帧的结果。
+    t.frame += 1;
+    const frame = t.frame;
+    t.lastPointer = cur;
+    t.lastShift = e.shiftKey;
+    t.lastAlt = e.altKey;
     let value: number;
     let candidate: string | null = null;
     if (t.kind === "rotate") {
@@ -2243,9 +2312,36 @@ export function DiagramCanvas() {
       const hasNode = t.resultAtStart.statements.some(
         (st) => t.elementIds.includes(st.id) && st.command === "node",
       );
-      // F4-1：Shift 等比、或选中集合里没有 \node → 仍走 F3-4 的 scale=，零回归。
+      // F6：Shift 是等比 scale= 逃生舱；否则单选中标准矩形 → 端点 resize。
+      // 其余情况维持 F3-4（无 node）/ F4-1（node）原分流，零回归。
+      const useResize = !e.shiftKey && !!t.resizeEligibility?.ok;
+      if (useResize && t.resizeEligibility) {
+        t.sizeValues = null;
+        t.resizePlan = null;
+        void applyRectangleResize({
+          source: t.sourceAtStart,
+          eligibility: t.resizeEligibility,
+          corner: t.corner,
+          startWorld: t.startWorld,
+          pointer: cur,
+          center: e.altKey,
+        }).then((plan) => {
+          if (transformRef.current !== t || frame !== t.frame) return;
+          if (plan.status === "ok") {
+            t.resizePlan = plan;
+            setDragLabel(plan.label);
+            previewTransformCandidate(t, plan.nextSource);
+          } else if (plan.status === "rejected" || plan.status === "conflict") {
+            t.resizePlan = null;
+            setDragLabel(`端点缩放：${plan.reason}`);
+          }
+        });
+        t.value = value;
+        return;
+      }
       if (e.shiftKey || !hasNode) {
         t.sizeValues = null;
+        t.resizePlan = null;
         const plan = planTransformPatches({
           source: t.sourceAtStart,
           statements: t.resultAtStart.statements,
@@ -2285,20 +2381,7 @@ export function DiagramCanvas() {
       }
     }
     t.value = value;
-    if (!candidate || candidate === t.sourceAtStart) return;
-    if (!shouldRenderPreview(t.previewSource, candidate, t.sourceAtStart)) return;
-    void renderTikz(candidate).then((r) => {
-      const svg = stageSvg();
-      if (!svg || transformRef.current !== t) return;
-      const ok = applyPreviewGeometry(svg, {
-        markup: r.svg,
-        baseViewBox: t.resultAtStart.viewBox,
-        candidateViewBox: r.viewBox,
-        zoom: renderPctRef.current,
-        live: true,
-      });
-      if (ok) t.previewSource = candidate;
-    });
+    previewTransformCandidate(t, candidate);
   }
 
   /** F3-4：旋转 / 缩放柄松手 → 提交一次变换补丁（一条 Ctrl+Z 退整组）。 */
@@ -2309,6 +2392,42 @@ export function DiagramCanvas() {
     setDragLabel(null);
     setDragGuides([]);
     previewActiveRef.current = false;
+    // F6：矩形端点 resize —— 松手按最后一帧指针重算，保证看到的几何=写回的源码；
+    // 多端点补丁一次 commitDiagramPatches = 一条 Ctrl+Z。
+    if (!t.lastShift && t.resizeEligibility?.ok) {
+      if (!t.lastPointer) {
+        restoreTransformPreview();
+        return;
+      }
+      void applyRectangleResize({
+        source: t.sourceAtStart,
+        eligibility: t.resizeEligibility,
+        corner: t.corner,
+        startWorld: t.startWorld,
+        pointer: t.lastPointer,
+        center: t.lastAlt,
+      }).then((plan) => {
+        if (plan.status !== "ok") {
+          restoreTransformPreview();
+          setNotice({ tone: "warn", text: plan.reason || "无法调整矩形端点" });
+          return;
+        }
+        restoreTransformPreview();
+        const write = commitDiagramPatches({
+          patches: plan.patches,
+          source: t.sourceAtStart,
+          nextSource: plan.nextSource,
+          fallback: setSource,
+        });
+        setNotice({
+          tone: write.written ? "ok" : "warn",
+          text: `${plan.label} · 已调整 ${plan.targets.length} 个端点${
+            write.written ? " · Ctrl+Z 一次退回" : " · 源码栏未就绪，无撤销记录"
+          }`,
+        });
+      });
+      return;
+    }
     const sizeValues = t.sizeValues;
     const plan = sizeValues
       ? planSizePatches({

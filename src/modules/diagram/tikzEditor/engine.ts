@@ -13,6 +13,12 @@ import type {
   VendorViewBox,
 } from "./vendor/engine.bundle.js";
 import { collectStatements, type TikzStatement } from "../optionsEdit.ts";
+import type { PointLike } from "../dragEdit.ts";
+import {
+  planRectangleResize,
+  type RectangleEligibility,
+  type RectangleResizePlan,
+} from "../rectangleResize.ts";
 import { buildCompatReport, type CompatReport } from "./compat.ts";
 import {
   planGroupMove,
@@ -338,6 +344,22 @@ export async function applyDeltaEdit(args: {
     grouping: args.grouping,
     intent: vendorMoveIntent(mod),
   });
+}
+
+/**
+ * F6：矩形端点 resize 的引擎适配。纯几何 / 补丁规划在 rectangleResize.ts，
+ * 这里只负责加载 vendor 并复用与组拖相同的 MoveIntent 适配，避免两份写回口径。
+ */
+export async function applyRectangleResize(args: {
+  source: string;
+  eligibility: RectangleEligibility;
+  corner: number;
+  startWorld: PointLike;
+  pointer: PointLike;
+  center: boolean;
+}): Promise<RectangleResizePlan> {
+  const mod = await loadVendor();
+  return planRectangleResize({ ...args, intent: vendorMoveIntent(mod) });
 }
 
 /** 把 vendor 同步 API 适配成可注入的 MoveIntent（纯逻辑在 Node 侧可用 fake 回归）。 */

@@ -8,7 +8,13 @@ import {
   applyDragEdit,
   applyGroupEdit,
   applyDeltaEdit,
+  applyRectangleResize,
 } from "../src/modules/diagram/tikzEditor/engine.ts";
+import {
+  checkRectangleResizeEligibility,
+  planRectangleResize,
+  rectangleTargetsFromDrag,
+} from "../src/modules/diagram/rectangleResize.ts";
 import {
   MAX_VISIBLE_HANDLES,
   clientDeltaToSvgDelta,
@@ -3424,6 +3430,162 @@ console.log("F3-3 · 单图元本体平移：全部可写 path-point 同步位�
       `${["线", "矩形", "多边形"][i]}平移不牵连其它语句`,
     );
   }
+}
+
+console.log("F6 · 矩形 8 点柄：角锚对角 / 边锚对边的端点 resize");
+{
+  const pt = (x: number, y: number) => ({ x, y });
+  const box = { minX: 0, minY: 0, maxX: 2, maxY: 2 };
+  const eps = (a: number, b: number) => Math.abs(a - b) < 1e-6;
+  const ep = (id: string, corner: 0 | 2 | 4 | 6, p: { x: number; y: number }) => ({ handleId: id, corner, world: p });
+
+  const cornerGeo = rectangleTargetsFromDrag({
+    box, endpoints: [ep("c", 6, pt(0, 0)), ep("a", 2, pt(2, 2))],
+    corner: 2, startWorld: pt(2, 2), pointer: pt(4, 5), center: false,
+  })!;
+  check(!!cornerGeo && eps(cornerGeo.nextBox.maxX, 4) && eps(cornerGeo.nextBox.maxY, 5) &&
+        eps(cornerGeo.nextBox.minX, 0) && eps(cornerGeo.nextBox.minY, 0),
+    "拖角 A：对角 C(0,0) 固定，A 跟到指针位移后的 (4,5)");
+  check(!!cornerGeo && cornerGeo.targets.some((t) => t.handleId === "c" && eps(t.to.x, 0) && eps(t.to.y, 0)),
+    "拖角 A：锚点端点 C 的 target 与 from 完全相同（不写它的源码）");
+
+  const edgeGeo = rectangleTargetsFromDrag({
+    box, endpoints: [ep("c", 6, pt(0, 0)), ep("a", 2, pt(2, 2))],
+    corner: 1, startWorld: pt(1, 2), pointer: pt(1, 5), center: false,
+  })!;
+  check(!!edgeGeo && eps(edgeGeo.nextBox.maxY, 5) && eps(edgeGeo.nextBox.minY, 0) &&
+        eps(edgeGeo.nextBox.minX, 0) && eps(edgeGeo.nextBox.maxX, 2),
+    "拖上边中点：只改上边高度，下边与左右边都不动");
+  check(!!edgeGeo && edgeGeo.targets.every((t) => eps(t.to.x, t.from.x)),
+    "拖上边中点：两个端点的 x 分量均不变（相邻竖边长度同步变化）");
+
+  const rightGeo = rectangleTargetsFromDrag({
+    box, endpoints: [ep("c", 6, pt(0, 0)), ep("a", 2, pt(2, 2))],
+    corner: 3, startWorld: pt(2, 1), pointer: pt(5, 1), center: false,
+  })!;
+  check(!!rightGeo && eps(rightGeo.nextBox.maxX, 5) && eps(rightGeo.nextBox.minX, 0) &&
+        rightGeo.targets.every((t) => eps(t.to.y, t.from.y)),
+    "拖右中柄：只改右边，左右端点的 y 分量不变");
+
+  const centerGeo = rectangleTargetsFromDrag({
+    box, endpoints: [ep("c", 6, pt(0, 0)), ep("a", 2, pt(2, 2))],
+    corner: 2, startWorld: pt(2, 2), pointer: pt(4, 4), center: true,
+  })!;
+  check(!!centerGeo && eps(centerGeo.nextBox.minX, -2) && eps(centerGeo.nextBox.minY, -2) &&
+        eps(centerGeo.nextBox.maxX, 4) && eps(centerGeo.nextBox.maxY, 4),
+    "Alt 拖角：以矩形中心为锚，对侧角镜像移动");
+  check(
+    rectangleTargetsFromDrag({
+      box, endpoints: [ep("c", 6, pt(0, 0)), ep("a", 2, pt(2, 2))],
+      corner: 1, startWorld: pt(1, 2), pointer: pt(1, -5), center: false,
+    }) === null,
+    "把上边拖过下边导致翻面 → 拒绝（端点语义不对调）",
+  );
+
+  const reverseSrc = "\\begin{tikzpicture}\n  \\draw (4,5) rectangle (1,2);\n\\end{tikzpicture}";
+  const reverseRender = await renderTikz(reverseSrc);
+  const reverseElig = checkRectangleResizeEligibility({
+    source: reverseSrc, statement: reverseRender.statements[0] ?? null,
+    handles: reverseRender.handles, elementIds: [reverseRender.statements[0]?.id ?? ""],
+    compat: reverseRender.compat, grouping: EMPTY_GROUPING,
+  });
+  check(reverseElig.ok && reverseElig.endpoints[0].corner === 2 && reverseElig.endpoints[1].corner === 6,
+    "反向书写矩形按 world 坐标分类角：(4,5)=右上 A、(1,2)=左下 C");
+
+  const diagonalSrc = "\\begin{tikzpicture}\n  \\draw (1,5) rectangle (4,2);\n\\end{tikzpicture}";
+  const diagonalRender = await renderTikz(diagonalSrc);
+  const diagonalElig = checkRectangleResizeEligibility({
+    source: diagonalSrc, statement: diagonalRender.statements[0] ?? null,
+    handles: diagonalRender.handles, elementIds: [diagonalRender.statements[0]?.id ?? ""],
+    compat: diagonalRender.compat, grouping: EMPTY_GROUPING,
+  });
+  const diagonalGeo = diagonalElig.ok && diagonalElig.box
+    ? rectangleTargetsFromDrag({
+        box: diagonalElig.box, endpoints: diagonalElig.endpoints, corner: 2,
+        startWorld: { x: diagonalElig.box.maxX, y: diagonalElig.box.maxY },
+        pointer: { x: diagonalElig.box.maxX + 10, y: diagonalElig.box.maxY + 10 }, center: false,
+      })
+    : null;
+  check(diagonalElig.ok && diagonalElig.endpoints.map((e) => e.corner).join("|") === "0|4",
+    "B–D 对角书写矩形：端点分类为左上 / 右下");
+  check(!!diagonalGeo && diagonalGeo.targets.length === 2,
+    "拖 A（不是现有端点）时两个端点都改，各改一个分量");
+
+  // 真实引擎端到端：锚端点源码一字不改，另一端点跟随位移。
+  const rectSrc = "\\begin{tikzpicture}\n  \\draw (1,1) rectangle (3,2);\n\\end{tikzpicture}";
+  const rectRender = await renderTikz(rectSrc);
+  const rectElig = checkRectangleResizeEligibility({
+    source: rectSrc, statement: rectRender.statements[0] ?? null,
+    handles: rectRender.handles, elementIds: [rectRender.statements[0]?.id ?? ""],
+    compat: rectRender.compat, grouping: EMPTY_GROUPING,
+  });
+  check(rectElig.ok, "标准 \\draw rectangle 通过端点 resize 预检");
+  const halfCm = 28.45275590551181;
+  const cornerPlan = await applyRectangleResize({
+    source: rectSrc, eligibility: rectElig, corner: 2,
+    startWorld: { x: rectElig.box!.maxX, y: rectElig.box!.maxY },
+    pointer: { x: rectElig.box!.maxX + halfCm, y: rectElig.box!.maxY + halfCm }, center: false,
+  });
+  check(cornerPlan.status === "ok" && cornerPlan.patches.length === 1 &&
+        cornerPlan.nextSource.includes("\\draw (1,1) rectangle (4,3);"),
+    "真实引擎拖角 A：只产出 1 段补丁，矩形变为 (1,1)–(4,3)");
+  const cornerRe = await renderTikz(cornerPlan.nextSource);
+  check(cornerRe.diagnostics.length === 0 && cornerPlan.nextSource.includes("(1,1)"),
+    "拖角后源码仍可渲染且锚端点 (1,1) 未被改写");
+
+  const topPlan = await applyRectangleResize({
+    source: rectSrc, eligibility: rectElig, corner: 1,
+    startWorld: { x: 1, y: 2 }, pointer: { x: 1, y: 2 + halfCm }, center: false,
+  });
+  check(topPlan.status === "ok" && topPlan.nextSource.includes("\\draw (1,1) rectangle (3,3);"),
+    "真实引擎拖上边中点：下边保持 y=1，两端 x 不变，只抬高上边");
+
+  const reversePlan = await applyRectangleResize({
+    source: reverseSrc, eligibility: reverseElig, corner: 2,
+    startWorld: { x: reverseElig.box!.maxX, y: reverseElig.box!.maxY },
+    pointer: { x: reverseElig.box!.maxX + halfCm, y: reverseElig.box!.maxY + halfCm }, center: false,
+  });
+  check(reversePlan.status === "ok" && reversePlan.nextSource.includes("\\draw (5,6) rectangle (1,2);"),
+    "反向书写矩形拖右上 A：改写 (4,5)→(5,6)，左下 (1,2) 不动");
+
+  const rotSrc = "\\begin{tikzpicture}\n  \\draw[rotate=30] (1,1) rectangle (3,2);\n\\end{tikzpicture}";
+  const rotRender = await renderTikz(rotSrc);
+  const rotElig = checkRectangleResizeEligibility({
+    source: rotSrc, statement: rotRender.statements[0] ?? null,
+    handles: rotRender.handles, elementIds: [rotRender.statements[0]?.id ?? ""],
+    compat: rotRender.compat, grouping: EMPTY_GROUPING,
+  });
+  check(!rotElig.ok && rotElig.reason.includes("变换选项"), "带 rotate 的矩形被预检拒绝并给出理由");
+  const rotPlan = planRectangleResize({
+    source: rotSrc, eligibility: rotElig, corner: 2,
+    startWorld: pt(0, 0), pointer: pt(1, 1), center: false, intent: (() => ({ ok: false as const, reason: "不应被调用" })),
+  });
+  check(rotPlan.status === "rejected" && rotPlan.nextSource === rotSrc, "拒绝时源码原样返回，绝不部分写");
+
+  const lineSrc = "\\begin{tikzpicture}\n  \\draw (0,0) -- (2,0);\n\\end{tikzpicture}";
+  const lineRender = await renderTikz(lineSrc);
+  const lineElig = checkRectangleResizeEligibility({
+    source: lineSrc, statement: lineRender.statements[0] ?? null,
+    handles: lineRender.handles, elementIds: [lineRender.statements[0]?.id ?? ""],
+    compat: lineRender.compat, grouping: EMPTY_GROUPING,
+  });
+  check(!lineElig.ok, "线 / 非 rectangle 图元不进入端点 resize（保持 F3-4 scale=）");
+  const multiElig = checkRectangleResizeEligibility({
+    source: rectSrc, statement: rectRender.statements[0] ?? null,
+    handles: rectRender.handles, elementIds: ["a", "b"],
+    compat: rectRender.compat, grouping: EMPTY_GROUPING,
+  });
+  check(!multiElig.ok && multiElig.reason.includes("1 个矩形"), "多选时拒绝端点 resize");
+  check(
+    planTransformPatches({
+      source: rectSrc, statements: rectRender.statements,
+      elementIds: [rectRender.statements[0].id], key: "scale", value: "1.2",
+      compat: rectRender.compat, grouping: EMPTY_GROUPING,
+    }).status === "ok",
+    "Shift 逃生舱仍走 scale= 选项路径，未被端点 resize 取代",
+  );
+  check(cornerPlan.status === "ok" && cornerPlan.label.includes("对角固定"),
+    "角柄提示文案说明锚定关系；边柄提示说明对边固定");
 }
 
 console.log(`\n结果：${passed} 通过，${failed} 失败`);
