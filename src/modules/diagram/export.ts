@@ -112,6 +112,11 @@ export async function exportDiagram(opts: ExportDiagramOptions): Promise<ExportD
       notify(res.message ?? "导出失败", "err");
       return { status: "error", result: res, message: res.message };
     }
+    if (opts.mode === "image") {
+      // 图片由 Rust 直接写盘，项目树不会自动感知；静默刷新让新文件出现在文件列表里
+      // （F5-2 插入前需要有这个文件，用户也会想立刻在侧栏看到它）。
+      void useProjectStore.getState().refresh(true);
+    }
     return { status: "ok", result: res, outPath: res.outPath ?? outPath };
   } catch (e) {
     const msg = `导出调用失败：${String(e)}`;

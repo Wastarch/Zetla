@@ -7,7 +7,8 @@
 import type { EditorView } from "@codemirror/view";
 import { getEditorView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
-import { notify } from "@/project/useProject";
+import { notify, parentOf } from "@/project/useProject";
+import { buildDiagramFigureSnippet } from "./figureInsert";
 import { useDiagramStore } from "./store";
 import {
   buildDiagramInsertCode,
@@ -68,5 +69,55 @@ export function insertDiagramCode(): boolean {
       : "已插入 TikZ 源码（导言区依赖已齐备）",
     "ok",
   );
+  return true;
+}
+
+/**
+ * F5-2：把刚导出落盘的图片以 figure 环境插入主文档（导出闭环的最后一公里）。
+ *
+ * 与 `insertDiagramCode` 同受「坑一」约束：绘图 Tab 是伪 buffer，活动视图不是目标
+ * .tex，`getActiveView()` 取不到正确编辑器 —— 必须用打开 Tab 时锁定的 `targetTex`
+ * 调 `getEditorView(targetTex)`，插完再 `setActive` 切回去。
+ *
+ * 相对路径按 `targetTex` 所在目录折算（`\includegraphics` 认相对路径），label 由
+ * 文件名 slug 生成，caption 留空并把光标落在 `\caption{ }` 内 —— 与 R5 拖拽导入
+ * (`importImage.finalize`) 的落点保持一致，便于用户直接敲图题。
+ *
+ * 失败时只提示、不改动主文档（图片此时已落盘，提示文案会说明这一点）。
+ */
+export function insertFigureForImage(absImagePath: string): boolean {
+  const { targetTex } = useDiagramStore.getState();
+  if (!targetTex) {
+    notify("未锁定目标 .tex 文档：图片已保存，但未插入源码", "err");
+    return false;
+  }
+  const view = getEditorView(targetTex);
+  if (!view) {
+    notify("目标文档编辑器未打开：图片已保存，未插入源码；请切回该 .tex 后重试", "err");
+    return false;
+  }
+
+  // 「按画布尺寸导出」时画布本身已决定物理尺寸，插图直接用该宽度，避免再被
+  // \linewidth 缩放（否则固定画布的图会被放大到版心、与预览所见不一致）。
+  const { exportUseCanvas, canvasSize } = useDiagramStore.getState();
+  const width =
+    exportUseCanvas && canvasSize.preset !== "auto"
+      ? `${canvasSize.widthCm}cm`
+      : undefined;
+  const { snippet, captionOffset } = buildDiagramFigureSnippet({
+    texDir: parentOf(targetTex),
+    imageAbsPath: absImagePath,
+    width,
+  });
+
+  const pos = view.state.selection.main.head;
+  const needLeading = pos > 0 && !view.state.doc.sliceString(pos - 1, pos).includes("\n");
+  const lead = needLeading ? "\n" : "";
+  view.dispatch({
+    changes: { from: pos, insert: `${lead}${snippet}\n` },
+    selection: { anchor: pos + lead.length + captionOffset },
+  });
+  view.focus();
+  useBuffersStore.getState().setActive(targetTex);
   return true;
 }
