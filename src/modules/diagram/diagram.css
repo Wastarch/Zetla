@@ -199,10 +199,27 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-canvas-head {
   flex: none;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line, #e0e0e0);
+}
+/* 第一行放通道 / 编辑 / 视图 / 缩放；第二行由基础元素图标独占。 */
+.dg-canvas-head-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.dg-canvas-head-palette {
+  padding-top: 6px;
+  border-top: 1px dashed var(--line, #e0e0e0);
+}
+.dg-canvas-head-palette .dg-element-palette {
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
 }
 .dg-canvas-badge {
   padding: 2px 8px;
@@ -1768,9 +1785,11 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 
 /* ③ 画布 head：分组标签 + 允许换行，窄窗口 / 高缩放不挤爆 ─────────────── */
 .dg-tab .dg-canvas-head {
-  flex-wrap: wrap;
-  gap: var(--dg-space-2) var(--dg-space-3);
+  gap: var(--dg-space-1);
   padding: var(--dg-space-2) var(--dg-space-3);
+}
+.dg-tab .dg-canvas-head-row {
+  gap: var(--dg-space-2) var(--dg-space-3);
 }
 .dg-tab .dg-head-group {
   display: inline-flex;
@@ -2090,8 +2109,10 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   .dg-tab .dg-tool-hint {
     display: none;
   }
-  .dg-tab .dg-canvas-head {
+  .dg-tab .dg-canvas-head-row {
     gap: var(--dg-space-1) var(--dg-space-2);
+  }
+  .dg-tab .dg-canvas-head {
     padding: var(--dg-space-1) var(--dg-space-2);
   }
   .dg-tab .dg-zoom {
@@ -2303,7 +2324,7 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   padding: 2px 0 6px;
 }
 
-/* ③ 基础元素网格（2026-11-12 从左侧栏搬回画布顶部工具条第一行） ─────── */
+/* ③ 基础元素网格（2026-11-12 从工具条上移到画布 head 第二行） ─────── */
 /* 11 个工具 + 3 条组间竖线连续横排，不换行；组名进 tooltip。
    默认规则仍保留为纵向弹性盒，具体横排由 .dg-tab 覆盖层接管。 */
 .dg-element-palette {
@@ -2393,28 +2414,24 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   opacity: 0.8;
 }
 
-/* ⑤ 画布顶部紧凑工具条：第一行基础元素图标 + 第二行当前工具 / 会话 ──── */
+/* ⑤ 当前工具 / 会话行：基础元素图标已上移到 dg-canvas-head 第二行 ──── */
 .dg-tab .dg-tool-bar-compact {
-  flex-wrap: wrap;
   min-height: 26px;
   gap: 6px var(--dg-space-2);
   padding: var(--dg-space-1) var(--dg-space-3);
 }
-/* 图标行独占第一行：所有 11 个按钮 + 3 条分隔横排，窄视口只缩间距不换行 */
-.dg-tab .dg-tool-bar-compact .dg-element-palette {
-  flex: 0 0 100%;
+/* head 第二行：所有 11 个按钮 + 3 条分隔横排，窄视口只缩间距不换行 */
+.dg-tab .dg-canvas-head-palette .dg-element-palette {
   width: 100%;
   flex-direction: row;
   align-items: center;
-  padding-bottom: var(--dg-space-1);
-  border-bottom: 1px dashed var(--line, #e0e0e0);
 }
-.dg-tab .dg-tool-bar-compact .dg-element-grid {
+.dg-tab .dg-canvas-head-palette .dg-element-grid {
   display: flex;
   flex-wrap: nowrap;
   gap: 2px;
 }
-.dg-tab .dg-tool-bar-compact .dg-element-btn {
+.dg-tab .dg-canvas-head-palette .dg-element-btn {
   flex: 0 0 24px;
   width: 24px;
   height: 22px;

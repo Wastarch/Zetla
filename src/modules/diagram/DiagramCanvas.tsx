@@ -182,7 +182,7 @@ import {
   setLastMoveDelta,
   topLevelBlocks,
 } from "./zOrder";
-import { ShapeToolbar } from "./ShapeToolbar";
+import { ShapePalette, ShapeToolbar } from "./ShapeToolbar";
 import { ToolbarIcon } from "./ToolbarIcon";
 import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat";
 import {
@@ -2825,6 +2825,8 @@ export function DiagramCanvas() {
   return (
     <div className="dg-canvas">
       <div className="dg-canvas-head">
+        {/* 第一行：通道 / 编辑 / 诊断 / 视图 / 缩放；第二行由 ShapePalette 独占。 */}
+        <div className="dg-canvas-head-row">
         <span className="dg-canvas-badge">画布预览</span>
         <div className="dg-mode-switch dg-head-group" data-label="预览" role="group" aria-label="预览通道">
           <button
@@ -3036,9 +3038,15 @@ export function DiagramCanvas() {
           </button>
           <span className="dg-zoom-val">{Math.round(zoom * 100)}%</span>
         </div>
+        </div>
+        {/* F3-1：基础元素独占画布 head 第二行（2026-11-12 从工具条内部上移）。
+            精确通道整排禁用；按钮状态 / 只读理由仍由 ShapeToolbar 的第一行给出。 */}
+        <div className="dg-canvas-head-row dg-canvas-head-palette">
+          <ShapePalette />
+        </div>
       </div>
 
-      {/* F3-1：基础图元工具调色板（2026-11-12 从侧栏搬回，画布顶部第一行）。精确通道整排禁用。 */}
+      {/* 当前工具 / 绘制会话 / 只读说明：独立于 head 第二行常驻一行。 */}
       <ShapeToolbar sessionHint={sessionHint} onNewBlank={newBlankDiagram} />
 
       {/* 覆盖缺口会被引擎静默丢弃（如 \pic{angle} / angles 库），画布看起来"正常"但少元素。

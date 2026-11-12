@@ -2,8 +2,8 @@
 // 只负责「展示 + 切换工具」：坐标反算、绘制预览与源码写回都在 DiagramCanvas 内，
 // 工具定义与状态机在 shapeTools.ts。精确通道是 XeLaTeX 只读结果，整排按钮禁用。
 //
-// F3-9 原把基础元素放进左侧栏；2026-11-12 用户要求搬回画布顶部 2 号槽位：
-// `ShapePalette` 作为紧凑工具条的**第一行图标**，当前工具 / 会话提示同行下移一行。
+// F3-9 原把基础元素放进左侧栏；2026-11-12 两次重排后 `ShapePalette` 挂在
+// `dg-canvas-head` 第二行，本组件只保留当前工具 / 会话 / 只读说明那一行。
 // 两者共用 TOOL_DEFS、TOOL_GROUPS 与全模块唯一只读判定，不新增任何状态机。
 import { Fragment } from "react";
 import { useDiagramStore } from "./store";
@@ -85,9 +85,10 @@ function ToolGlyph({ id }: { id: ToolMode }) {
 }
 
 /**
- * 画布顶部工具条第一行的「基础元素」图标网格。按 F3-8 四组分区连续横排；
+ * 画布 head 第二行的「基础元素」图标网格。按 F3-8 四组分区连续横排；
  * 点击只写 toolMode，绘制坐标反算 / 源码写回仍全在 DiagramCanvas。
- * 2026-11-12 从左侧栏搬回：不再单独渲染只读说明，统一由 ShapeToolbar 下方常驻一行给出。
+ * 2026-11-12 从工具条内部上移到 `dg-canvas-head`：本组件只管图标，
+ * 当前工具 / 会话 / 只读说明仍由 ShapeToolbar 常驻一行给出。
  */
 export function ShapePalette() {
   const toolMode = useDiagramStore((s) => s.toolMode);
@@ -128,7 +129,7 @@ export function ShapePalette() {
   );
 }
 
-/** 画布顶部紧凑工具条：第一行基础元素图标 + 第二行当前工具 / 会话 / 只读说明。 */
+/** 当前工具 / 绘制会话 / 只读说明行；基础元素图标由 DiagramCanvas 挂在 head 第二行。 */
 export function ShapeToolbar({ sessionHint, onNewBlank }: ShapeToolbarProps) {
   const toolMode = useDiagramStore((s) => s.toolMode);
   const previewMode = useDiagramStore((s) => s.previewMode);
@@ -140,8 +141,6 @@ export function ShapeToolbar({ sessionHint, onNewBlank }: ShapeToolbarProps) {
 
   return (
     <div className="dg-tool-bar dg-tool-bar-compact">
-      {/* 2026-11-12：基础元素从左侧栏搬回画布，独占第一行；“当前工具”自动落到第二行。 */}
-      <ShapePalette />
       <span className="dg-tool-bar-label">当前工具</span>
       <span className="dg-tool-current">{current.label}</span>
       {readonly ? (
@@ -154,7 +153,7 @@ export function ShapeToolbar({ sessionHint, onNewBlank }: ShapeToolbarProps) {
       <span className="dg-tool-hint" role="status">
         {sessionHint ??
           (current.id === "select"
-            ? "在上方工具条选基础元素 · 拖动控制点 / 点选图元后到画布左侧属性面板编辑 · Esc 回选择"
+            ? "在画布头部第二行选基础元素 · 拖动图元 / 点选后到画布左侧属性面板编辑 · Esc 回选择"
             : `${current.title} · 绘制后自动选中，在画布左侧属性面板改属性 · Esc 取消 / 回选择`)}
       </span>
     </div>
