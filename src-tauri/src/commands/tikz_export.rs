@@ -316,17 +316,80 @@ fn collect_libraries(source: &str) -> Vec<String> {
     out
 }
 
-/// 源码里的 \usetikzlibrary{...} 已由 collect_libraries 合并进导言区；若原样留在
-/// \begin{document} 之后，TikZ 会在正文里重复加载 .code.tex 而报错。
-/// 这里只把「独占整行」的加载语句改成注释，行数不变 —— 保证 log 行号减
-/// preamble_lines 后仍精确对应绘图 Tab 的源码行。
-fn strip_library_lines(source: &str) -> String {
+/// 收集源码里所有 \usepackage{...} / \RequirePackage{...} 的包名，去重后合并进导言区。
+/// 支持可选 [..] 参数（如 \usepackage[dvipsnames]{xcolor}）；其正文行由
+/// strip_preamble_decl_lines 注释掉，以免留在 \begin{document} 之后触发
+/// "Can be used only in preamble"。
+fn collect_usepackage(source: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for cmd in ["\\usepackage", "\\RequirePackage"] {
+        let mut rest = source;
+        while let Some(i) = rest.find(cmd) {
+            let after = &rest[i + cmd.len()..];
+            // 跳过可选 [..] 参数
+            let after = if let Some(b) = after.find('[') {
+                match after[b..].find(']') {
+                    Some(c) => &after[b + c + 1..],
+                    None => break,
+                }
+            } else {
+                after
+            };
+            // 提取 {..} 内的包名
+            let after = match after.find('{') {
+                Some(b) => &after[b + 1..],
+                None => break,
+            };
+            let Some(end) = after.find('}') else { break };
+            let arg = after[..end].trim().to_string();
+            if !arg.is_empty() && !out.contains(&arg) {
+                out.push(arg);
+            }
+            rest = &after[end + 1..];
+        }
+    }
+    out
+}
+
+/// 源码里的 \usetikzlibrary{...} / \usepackage{...} / \RequirePackage{...} 等「只能在导言区出现的命令」
+/// 已由 collect_libraries / collect_usepackage 合并进导言区；若原样留在 \begin{document} 之后，
+/// LaTeX 会报 "Can be used only in preamble"。这里把「独占整行」的声明改成注释，行数不变 ——
+/// 保证 log 行号减 preamble_lines 后仍精确对应绘图 Tab 的源码行。
+/// 允许行尾 % 注释（旧版因要求行尾必须是 `}` 而漏掉这类行，导致声明残留在正文报错）。
+fn is_pure_preamble_decl(line: &str) -> bool {
+    // 去掉尾随 % 注释后再判断
+    let core = match line.trim().find('%') {
+        Some(i) => line.trim()[..i].trim(),
+        None => line.trim(),
+    };
+    if core.is_empty() {
+        return false;
+    }
+    // \usetikzlibrary{...} / \usepackage{...} / \RequirePackage{...}
+    for mark in ["\\usetikzlibrary{", "\\usepackage{", "\\RequirePackage{"] {
+        if let Some(pos) = core.find(mark) {
+            if pos == 0 && core.ends_with('}') {
+                return true;
+            }
+        }
+    }
+    // \usepackage[opt]{...} / \RequirePackage[opt]{...}
+    for mark in ["\\usepackage[", "\\RequirePackage["] {
+        if let Some(pos) = core.find(mark) {
+            if pos == 0 && core.contains(']') && core.ends_with('}') {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn strip_preamble_decl_lines(source: &str) -> String {
     source
         .lines()
         .map(|line| {
-            let t = line.trim();
-            if t.starts_with("\\usetikzlibrary{") && t.ends_with('}') {
-                format!("% {t}")
+            if is_pure_preamble_decl(line) {
+                format!("% {}", line.trim())
             } else {
                 line.to_string()
             }
@@ -382,9 +445,13 @@ fn build_document_with_canvas(
     if !libs.is_empty() {
         doc.push_str(&format!("\\usetikzlibrary{{{}}}\n", libs.join(",")));
     }
+    let pkgs = collect_usepackage(source);
+    for p in &pkgs {
+        doc.push_str(&format!("\\usepackage{{{}}}\n", p));
+    }
     doc.push_str("\\begin{document}\n");
     let preamble_lines = doc.lines().count() as u32;
-    let body = strip_library_lines(source.trim_end());
+    let body = strip_preamble_decl_lines(source.trim_end());
     match canvas {
         Some(size) => doc.push_str(&apply_canvas_bounding_box(&body, size)),
         None => doc.push_str(&body),
@@ -797,6 +864,21 @@ mod tests {
         assert_eq!(lines[n as usize], "% \\usetikzlibrary{angles,quotes}");
         assert_eq!(lines[(n + 1) as usize], "\\begin{tikzpicture}");
         assert_eq!(lines[(n + 2) as usize], "  \\draw (0,0)--(1,1);");
+    }
+
+    #[test]
+    fn preamble_only_decls_hoisted_without_line_shift() {
+        // \usetikzlibrary 带尾注释 + \usepackage 都应被抽到导言区；正文整行注释、行数不变，
+        // 否则会触发 "Can be used only in preamble"。这正是导出报错的根因之一。
+        let src = "\\usetikzlibrary{arrows.meta}  % arrows\n\\usepackage{tikz-3dplot}\n\\begin{tikzpicture}\n  \\draw (0,0)--(1,1);\n\\end{tikzpicture}";
+        let (doc, n) = build_document(src, false);
+        assert!(doc.contains("\\usetikzlibrary{arrows.meta}\n"));
+        assert!(doc.contains("\\usepackage{tikz-3dplot}\n"));
+        let lines: Vec<&str> = doc.lines().collect();
+        // 正文里两行声明被注释，且 \begin{tikzpicture} 仍精确落在 n 行之后
+        assert_eq!(lines[n as usize], "% \\usetikzlibrary{arrows.meta}  % arrows");
+        assert_eq!(lines[(n + 1) as usize], "% \\usepackage{tikz-3dplot}");
+        assert_eq!(lines[(n + 2) as usize], "\\begin{tikzpicture}");
     }
 
     #[test]
