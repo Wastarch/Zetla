@@ -1,5 +1,5 @@
 // M2 · 绘图模块左侧「工具箱」侧栏视图。
-// 形态：活动栏「绘图」→ 侧栏显示基础元素 / 组件库 / 图元与属性 / 插入选项；画布与源码放在
+// 形态：活动栏「绘图」→ 侧栏显示基础元素 / 组件库 / 图层管理 / 插入选项；画布与源码放在
 // 主编辑区的独立 Tab（diagram://editor 伪 buffer），两者并存、互不遮挡。
 //
 // F3-9（参考 docs/dev/UI/tikz编辑器.html 的布局重排）：
@@ -7,16 +7,16 @@
 //   · 组件库 / 图层管理 / 导出与插入统一为原生 <details> 手风琴
 //     （零新增 state，键盘可用，折叠不丢面板内部状态）；
 //   · 代码区（DiagramCodePane / LaTeXEditor）完全不碰。
-// 2026-11-12 合并：原 F3-9「预览窗口右侧属性坞」撤销，图层清单（LayersPanel）与
-//   选中图元属性 / 尺寸 / 对齐变换合并为一个「图元与属性」手风琴，统一放左侧栏；
-//   两份可点选图元清单去重后只剩 LayersPanel 一份（见 DiagramInspector.tsx）。
+// 2026-11-12：侧栏不再放「图元与属性」—— 单个图元的属性 / 尺寸 / 对齐变换
+//   移到绘图 Tab 的画布左侧（DiagramInspector.tsx），侧栏只保留唯一一份图元清单
+//   （LayersPanel）用于点选 / 编组，避免侧栏被属性控件占满。
 // 切到本侧栏即自动打开 / 聚焦绘图 Tab 并锁定 targetTex（F1-1），
 // 故侧栏不再放「画布与布局」说明与「切换到绘图 Tab」按钮；布局/通道开关本就在 Tab 顶部。
 // F1-4 导出方式单选与「插入到文档」主操作。
 import { useEffect, type ReactNode } from "react";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
-import { DiagramInspector } from "./DiagramInspector";
+import { LayersPanel } from "./LayersPanel";
 import { ShapePalette } from "./ShapeToolbar";
 import { isToolMode, toolDef } from "./shapeTools";
 import { insertDiagramCode } from "./insert";
@@ -140,9 +140,10 @@ export function DiagramSidebar() {
         <p className="dg-side-card-sub">高层可复用模板，接入后一次性生成标准 TikZ 语句。</p>
       </Accordion>
 
-      {/* 2026-11-12：唯一一份图元清单（图层 / 分组）+ 选中项属性编辑，合并为一块 */}
-      <Accordion title="图元与属性" flush>
-        <DiagramInspector />
+      {/* 唯一一份图元清单：点选 / 编组 / 显隐 / 锁定 / 层级都在这里；
+          选中项的属性编辑在绘图 Tab 画布左侧，不堆进全局侧栏。 */}
+      <Accordion title="图层管理" flush>
+        <LayersPanel />
       </Accordion>
 
       <Accordion title="导出与插入" meta="主 .tex 文档">

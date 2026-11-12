@@ -1,4 +1,4 @@
-// M2·F3-4：侧栏「对齐 · 变换」面板。复用纯逻辑（transform.ts / guides.ts）+ 写回桥，
+// M2·F3-4：画布左侧「对齐 · 变换」面板。复用纯逻辑（transform.ts / guides.ts）+ 写回桥，
 // 与画布拖拽 / 属性区共用同一条 CM6 history；绝不引入第二套图元模型。
 //
 // 口径：所有几何计算都基于「可写控制点的 world 包围盒」（collectElementBoxes），

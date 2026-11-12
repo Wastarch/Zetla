@@ -179,6 +179,7 @@ import {
   topLevelBlocks,
 } from "./zOrder";
 import { ShapeToolbar } from "./ShapeToolbar";
+import { ToolbarIcon } from "./ToolbarIcon";
 import { resolveHandleLock, type CompatReport } from "./tikzEditor/compat";
 import {
   commitDiagramPatch,
@@ -2647,18 +2648,19 @@ export function DiagramCanvas() {
           {previewMode === "local" && (
             <button
               type="button"
-              className={handlesOn ? "on" : ""}
+              className={`dg-icon-btn${handlesOn ? " on" : ""}`}
+              aria-label={handlesOn ? "隐藏控制点" : "显示控制点"}
               aria-pressed={handlesOn}
               title="显示 / 隐藏可拖拽控制点"
               onClick={() => setHandlesOn(!handlesOn)}
             >
-              控制点
+              <ToolbarIcon name="handles" />
             </button>
           )}
           {/* F3-2：三档视觉半径；命中范围始终独立且更大。设置页「绘图」分区可改默认值。 */}
           {previewMode === "local" && (
             <label className="dg-handle-size" title={handleSizeSummary(handleSize)}>
-              <span>控制点</span>
+              <ToolbarIcon name="handles" />
               <select
                 value={handleSize}
                 aria-label="控制点大小"
@@ -2681,35 +2683,43 @@ export function DiagramCanvas() {
             <>
               <button
                 type="button"
+                className="dg-icon-btn"
+                aria-label="编组"
                 disabled={selectedIds.length < 2}
                 title="把当前多选编成虚拟分组（不写进 TikZ、不包 scope）"
                 onClick={groupSelection}
               >
-                编组
+                <ToolbarIcon name="group" />
               </button>
               <button
                 type="button"
+                className="dg-icon-btn"
+                aria-label="解组"
                 disabled={!selectionGroupId}
                 title="解散当前选中的虚拟分组（源码不变）"
                 onClick={ungroupSelection}
               >
-                解组
+                <ToolbarIcon name="ungroup" />
               </button>
             </>
           )}
           <button
             type="button"
+            className="dg-icon-btn"
+            aria-label="撤销"
             title="撤销上一次源码 / 拖拽 / 属性改动 (Ctrl+Z)"
             onClick={() => historyCommand("undo")}
           >
-            撤销
+            <ToolbarIcon name="undo" />
           </button>
           <button
             type="button"
+            className="dg-icon-btn"
+            aria-label="重做"
             title="重做 (Ctrl+Shift+Z / Ctrl+Y)"
             onClick={() => historyCommand("redo")}
           >
-            重做
+            <ToolbarIcon name="redo" />
           </button>
         </div>
         {previewMode === "local" && localDiags.length > 0 && (
@@ -2726,29 +2736,33 @@ export function DiagramCanvas() {
         <div className="dg-view-tools dg-head-group" data-label="视图" role="group" aria-label="视图">
           <button
             type="button"
-            className={`dg-view-btn${handTool ? " is-active" : ""}`}
+            className={`dg-view-btn dg-icon-btn${handTool ? " is-active" : ""}`}
+            aria-label={handTool ? "关闭抓手" : "开启抓手"}
+            aria-pressed={handTool}
             title="抓手：按住拖拽平移（空格可临时切换）"
             onClick={() => {
               handRef.current = !handTool;
               setHandTool(!handTool);
             }}
           >
-            抓手
+            <ToolbarIcon name="hand" />
           </button>
           <button
             type="button"
-            className="dg-view-btn"
+            className="dg-view-btn dg-icon-btn"
+            aria-label="适应画布"
             title="适应画布（100%：整张纸完整可见并居中）"
             onClick={() => {
               const rect = bodyRef.current?.getBoundingClientRect();
               setViewport(fitCanvasViewport(rect, currentViewBox, currentPaper));
             }}
           >
-            适应画布
+            <ToolbarIcon name="fitCanvas" />
           </button>
           <button
             type="button"
-            className="dg-view-btn"
+            className="dg-view-btn dg-icon-btn"
+            aria-label="适应内容"
             title="适应内容：把图形包围盒铺满窗口（纸张会超出视口）"
             onClick={() => {
               const rect = bodyRef.current?.getBoundingClientRect();
@@ -2756,38 +2770,41 @@ export function DiagramCanvas() {
               setViewport({ zoom: zoomNext, panX: 0, panY: 0 });
             }}
           >
-            适应内容
+            <ToolbarIcon name="fitContent" />
           </button>
         </div>
         <div className="dg-zoom dg-head-group" data-label="缩放" role="group" aria-label="缩放">
           <button
             type="button"
-            className="dg-zoom-btn"
+            className="dg-zoom-btn dg-icon-btn"
+            aria-label="缩小"
             disabled={!canZoomOut}
             title="缩小"
             onClick={() => setViewport((v) => ({ ...v, zoom: clampZoom(v.zoom / 1.25) }))}
           >
-            −
+            <ToolbarIcon name="zoomOut" />
           </button>
           <button
             type="button"
-            className="dg-zoom-btn"
+            className="dg-zoom-btn dg-icon-btn"
+            aria-label="整页"
             title="整页（画布完整可见并居中）"
             onClick={() => {
               const rect = bodyRef.current?.getBoundingClientRect();
               setViewport(fitCanvasViewport(rect, currentViewBox, currentPaper));
             }}
           >
-            整页
+            <ToolbarIcon name="fitPage" />
           </button>
           <button
             type="button"
-            className="dg-zoom-btn"
+            className="dg-zoom-btn dg-icon-btn"
+            aria-label="放大"
             disabled={!canZoomIn}
             title="放大"
             onClick={() => setViewport((v) => ({ ...v, zoom: clampZoom(v.zoom * 1.25) }))}
           >
-            ＋
+            <ToolbarIcon name="zoomIn" />
           </button>
           <span className="dg-zoom-val">{Math.round(zoom * 100)}%</span>
         </div>

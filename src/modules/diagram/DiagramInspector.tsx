@@ -1,29 +1,30 @@
-// M2 · 2026-11-12：左侧栏「图元与属性」合并面板。
+// M2 · 2026-11-12：绘图页面画布左侧的「单个图元属性」面板。
 //
-// 原 F3-9 的「预览窗口右侧属性坞」已撤销：选中图元的属性 / 尺寸 / 对齐变换
-// 与图层清单统一进左侧栏，画布 pane 恢复单孩子。用户反馈左右两侧各有一份
-// 可点选的图元清单（右侧 path:0… 语句列表 / 左侧 node 3… 图层行）属重复，
-// 现在**只保留 LayersPanel 一份清单**：`DiagramProperties` 不再列语句，
-// 只按 selectedId 渲染选中项的属性编辑器。
+// 用户口径：全局侧栏只放工具箱 / 组件库 / 图层清单 / 导出插入，属性编辑不污染侧栏；
+// 属性 / 尺寸 / 对齐变换三块常驻在 diagram://editor Tab 的画布左侧，可折叠让出画布宽度。
+//
+// 清单去重：点选与编组仍只由侧栏 LayersPanel 承担；本组件不再渲染任何图元清单，
+// 只按 selectedId / selectedIds 渲染选中态与属性编辑器。
 //
 // 边界不变：
 //   · 本组件不渲染编辑器、不注册 sourceBridge、不碰 DiagramCodePane 与 CM6 容器；
 //   · 写回仍走各面板既有的 commitDiagramPatch / commitDiagramPatches / applyDeltaEdit；
-//   · 折叠由侧栏原生 <details> 承担，本组件不新增 state / localStorage 偏好。
+//   · 折叠只切 CSS class，不卸载面板，Draft / 提示消息不丢。
+import { useState } from "react";
 import { useDiagramStore } from "./store";
-import { LayersPanel } from "./LayersPanel";
 import { DiagramProperties } from "./DiagramProperties";
 import { SizePanel } from "./SizePanel";
 import { TransformPanel } from "./TransformPanel";
 import "./diagram.css";
 
 export function DiagramInspector() {
+  const [collapsed, setCollapsed] = useState(false);
   const selectedId = useDiagramStore((s) => s.selectedId);
   const selectedIds = useDiagramStore((s) => s.selectedIds);
   const renderMeta = useDiagramStore((s) => s.renderMeta);
   const source = useDiagramStore((s) => s.source);
 
-  // 与四个面板同口径：源码改了但本地渲染还在 debounce 中时不拿旧 statements。
+  // 与三个面板同口径：源码改了但本地渲染还在 debounce 中时不拿旧 statements。
   const fresh = renderMeta?.source === source;
   const statement = fresh
     ? (renderMeta?.statements ?? []).find((s) => s.id === selectedId) ?? null
@@ -36,18 +37,33 @@ export function DiagramInspector() {
         : (selectedId ?? "未选中图元");
 
   return (
-    <div className="dg-inspector-merged">
-      <div className="dg-merged-target" title={target}>
-        <span className="dg-merged-target-label">当前选中</span>
-        <span className="dg-merged-target-value">{target}</span>
+    // 复用 F3-8 的 .dg-side 控件规格作用域（只是 UI token 容器，不代表应用侧栏）；
+    // 布局由 .dg-canvas-inspector 覆盖，避免复制一整套卡片 / 控件样式。
+    <aside
+      className={`dg-side dg-canvas-inspector${collapsed ? " is-collapsed" : ""}`}
+      aria-label="图元属性"
+    >
+      <div className="dg-canvas-inspector-head">
+        <span className="dg-canvas-inspector-title">图元属性</span>
+        <span className="dg-canvas-inspector-target" title={target}>
+          {target}
+        </span>
+        <button
+          type="button"
+          className="dg-canvas-inspector-toggle"
+          aria-label={collapsed ? "展开属性面板" : "折叠属性面板"}
+          title={collapsed ? "展开属性面板" : "折叠属性面板"}
+          onClick={() => setCollapsed((v) => !v)}
+        >
+          {collapsed ? "›" : "‹"}
+        </button>
       </div>
-      {/* 唯一一份图元清单：选中 / 编组 / 显隐 / 锁定 / 层级都在这里 */}
-      <LayersPanel />
-      {/* 以下三块只作用于上面清单（或画布）选中的图元，不再重复列语句 */}
-      <DiagramProperties />
-      <SizePanel />
-      <TransformPanel />
-    </div>
+      <div className="dg-canvas-inspector-body">
+        <DiagramProperties />
+        <SizePanel />
+        <TransformPanel />
+      </div>
+    </aside>
   );
 }
 

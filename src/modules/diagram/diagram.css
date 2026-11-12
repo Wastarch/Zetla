@@ -1,6 +1,6 @@
 /* M2 · 绘图模块样式
-   - 侧栏（DiagramSidebar）：基础元素 / 组件库 / 图元与属性（图层清单 + 属性编辑合并） / 导出与插入
-   - Tab（diagram://editor）：顶部布局开关 + 三布局容器（F1-2 起）
+   - 侧栏（DiagramSidebar）：基础元素 / 组件库 / 图层清单 / 导出与插入
+   - Tab（diagram://editor）：顶部布局开关 + 三布局容器 + 画布左侧属性面板（F1-2 起）
    - 画布（DiagramCanvas）：F1-3 起渲染 tikz-editor 的 SVG（白纸底 + 消毒注入）
    主题 token 统一用 zetla.css 的 --txt / --txt-2 / --bg / --line / --paper / --accent。 */
 
@@ -1126,8 +1126,8 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 
 /* ── F3-3 选择 · 分组 · 图层 ──────────────────────────────────────────────
    框选矩形是 position:fixed 的 HTML 层，直接吃 client 坐标；选中包围盒与
-   控制点仍在已消毒 SVG 的辅助层里。2026-11-12 起图层面板是左侧栏合并区里
-   唯一一份图元清单（原右侧语句列表已删）。
+   控制点仍在已消毒 SVG 的辅助层里。2026-11-12 起侧栏图层面板是唯一一份
+   图元清单（原右侧语句列表已删），属性编辑在绘图 Tab 画布左侧。
    隐藏只切 .dg-hidden class：源码一个字不改，随时可恢复。 */
 .dg-layer-head {
   display: flex;
@@ -1770,6 +1770,30 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   padding-left: var(--dg-space-3);
   border-left: 0;
 }
+/* 工具条动作按钮：文字换成 16×16 内联 SVG，文案退到 title / aria-label。
+   纯表现层覆盖，点击 / 禁用 / aria-pressed 由按钮自身负责。 */
+.dg-tab .dg-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  min-width: 26px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0;
+  line-height: 0;
+}
+.dg-tab .dg-icon-btn svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.dg-handle-size > svg {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  color: inherit;
+}
 .dg-tab .dg-zoom-val {
   font-size: var(--dg-fs-sm);
   font-weight: var(--dg-fw-title);
@@ -2026,54 +2050,130 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 /* ══════════════════════════════════════════════════════════════════════
    F3-9 · 工作台布局重排（参考 docs/dev/UI/tikz编辑器.html）
    --------------------------------------------------------------------------
-   左侧栏 = 工具箱（基础元素 / 组件库 / 图元与属性 / 插入选项）
-   中间   = 预览区（画布，2026-11-12 起恢复单孩子）
-   最右   = 代码区 —— **本节不含任何 .dg-pane-code / .dg-pane-code-inner 规则**，
-            不新增代码栏子元素、不改 CM6 容器，代码区保持纯净。
-   2026-11-12 合并：原「预览窗口右侧属性坞」撤销，.dg-canvas-workspace /
-   .dg-inspector* 坞样式整体删除；图层清单 + 属性 / 尺寸 / 变换统一进左侧栏
-   一个「图元与属性」手风琴，只保留一份图元清单。
+   应用左侧栏 = 工具箱（基础元素 / 组件库 / 图层清单 / 插入选项）
+   绘图 Tab   = 画布左侧属性面板 + 画布（.dg-canvas-workspace）
+   最右       = 代码区 —— **本节不含任何 .dg-pane-code / .dg-pane-code-inner 规则**，
+                不新增代码栏子元素、不改 CM6 容器，代码区保持纯净。
+   2026-11-12：属性 / 尺寸 / 对齐变换从侧栏移到绘图 Tab 画布左侧，侧栏只留
+   LayersPanel 一份图元清单（点选 / 编组），不污染全局侧栏。
    ══════════════════════════════════════════════════════════════════════ */
 
-/* ① 合并面板：选中态 + 四块卡片在窄侧栏里竖向排布 ───────────────────── */
-.dg-side .dg-inspector-merged {
-  display: flex;
-  flex-direction: column;
-  gap: var(--dg-space-2);
+/* ① 画布工作区：左侧属性面板（常驻可折叠）+ 右侧 SVG 画布 ─────────────── */
+.dg-canvas-workspace {
+  flex: 1;
   min-width: 0;
-}
-.dg-merged-target {
+  min-height: 0;
+  height: 100%;
   display: flex;
-  align-items: baseline;
-  gap: var(--dg-space-2);
-  min-width: 0;
-  padding: 4px var(--dg-space-2);
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: var(--dg-radius-sm);
-  background: var(--bg-3, #fff);
-  font-size: var(--dg-fs-xs);
-  line-height: 1.5;
 }
-.dg-merged-target-label {
+/* 复用 .dg-side 的 F3-8 卡片 / 控件规格，但覆盖它的 flex:1 与滚动行为。
+   选择器比 .dg-side 更具体，故 padding / gap / overflow 以这里为准。 */
+.dg-tab .dg-canvas-inspector {
+  flex: 0 0 280px;
+  width: 280px;
+  min-width: 0;
+  gap: 0;
+  padding: 0;
+  border-right: 1px solid var(--line, #e0e0e0);
+  background: var(--bg-2, #f7f7f7);
+  overflow: hidden;
+}
+.dg-canvas-inspector-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
   flex: none;
-  color: var(--txt-2, #6b6b6b);
+  display: flex;
+  align-items: center;
+  gap: var(--dg-space-2);
+  min-height: 34px;
+  padding: var(--dg-space-1) var(--dg-space-3);
+  border-bottom: 1px solid var(--line, #e0e0e0);
+  background: var(--bg, #fff);
 }
-.dg-merged-target-value {
+.dg-canvas-inspector-title {
+  flex: none;
+  font-size: var(--dg-fs-md);
+  font-weight: var(--dg-fw-title);
+  color: var(--txt, #353333);
+  white-space: nowrap;
+}
+.dg-canvas-inspector-target {
   flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: right;
+  font-size: var(--dg-fs-xs);
   color: var(--accent, #2d7ff9);
   font-variant-numeric: tabular-nums;
 }
-/* 侧栏比原 280px 属性坞窄：对齐 / 分布按钮收到 10px 字号，避免文字挤出格子 */
-.dg-side .dg-inspector-merged .dg-align-grid button,
-.dg-side .dg-inspector-merged .dg-dist-grid button {
-  padding: 5px 2px;
-  font-size: var(--dg-fs-xs);
+.dg-canvas-inspector-toggle {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: var(--dg-radius-sm);
+  background: transparent;
+  color: var(--txt-2, #6b6b6b);
+  font-size: var(--dg-fs-md);
+  line-height: 1;
+  cursor: pointer;
 }
-/* F2-3：能力矩阵锁定理由随唯一清单一起搬到图层行（原右侧列表的「已锁定」标记） */
+.dg-canvas-inspector-toggle:hover {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-canvas-inspector-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dg-space-2);
+  padding: var(--dg-space-3);
+  overflow: auto;
+}
+/* 折叠态：只留一条 32px 竖条，画布拿回全部宽度；不卸载面板，草稿状态不丢。 */
+.dg-tab .dg-canvas-inspector.is-collapsed {
+  flex-basis: 32px;
+  width: 32px;
+}
+.dg-canvas-inspector.is-collapsed .dg-canvas-inspector-head {
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--dg-space-3);
+  height: 100%;
+  padding: var(--dg-space-2) var(--dg-space-1);
+}
+.dg-canvas-inspector.is-collapsed .dg-canvas-inspector-title {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.16em;
+}
+.dg-canvas-inspector.is-collapsed .dg-canvas-inspector-target,
+.dg-canvas-inspector.is-collapsed .dg-canvas-inspector-body {
+  display: none;
+}
+/* 窄视口：属性面板让出画布宽度；折叠态由上面的 .is-collapsed 规则接管 */
+@media (max-width: 1280px) {
+  .dg-tab .dg-canvas-inspector {
+    flex-basis: 248px;
+    width: 248px;
+  }
+}
+@media (max-width: 1024px) {
+  .dg-tab .dg-canvas-inspector {
+    flex-basis: 216px;
+    width: 216px;
+  }
+  .dg-canvas-inspector-target {
+    display: none;
+  }
+}
+
+/* F2-3：能力矩阵锁定理由随唯一清单一起留在侧栏图层行（原右侧列表的「已锁定」标记） */
 .dg-layer-name.is-compat-locked {
   color: var(--warn, #a86a12);
 }
@@ -2288,97 +2388,7 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 }
 
 /* ══════════════════════════════════════════════════════════════════════
-   F4-1 · 节点尺寸面板（2026-11-12 起挂在左侧栏合并区，沿用 F3-8 卡片 / 控件规格）
-   ══════════════════════════════════════════════════════════════════════ */
-.dg-size-card {
-  gap: var(--dg-space-2);
-}
-.dg-size-hint {
-  padding: var(--dg-space-1) var(--dg-space-2);
-  border: 1px solid color-mix(in srgb, var(--accent, #2d7ff9) 30%, var(--line, #e0e0e0));
-  border-left: 3px solid var(--accent, #2d7ff9);
-  border-radius: var(--dg-radius-sm);
-  background: var(--accent-soft, rgba(43, 98, 207, 0.08));
-  color: var(--txt-2, #6b6b6b);
-  font-size: var(--dg-fs-xs);
-  line-height: 1.5;
-}
-.dg-size-row {
-  display: grid;
-  grid-template-columns: 14px 1fr auto var(--dg-ctrl-h);
-  align-items: center;
-  gap: var(--dg-space-1);
-}
-.dg-size-row label {
-  font-size: var(--dg-fs-sm);
-  font-weight: var(--dg-fw-title);
-  color: var(--txt-2, #6b6b6b);
-  text-align: center;
-}
-.dg-size-row input {
-  width: 100%;
-  box-sizing: border-box;
-  min-height: var(--dg-ctrl-h);
-  padding: 0 var(--dg-space-2);
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: var(--dg-radius-sm);
-  background: var(--bg, #fff);
-  color: var(--txt, #353333);
-  font-size: var(--dg-fs-sm);
-}
-.dg-size-unit {
-  min-width: 20px;
-  font-size: var(--dg-fs-xs);
-  color: var(--txt-3, #9a9a9a);
-  text-align: right;
-}
-.dg-size-row button {
-  min-height: var(--dg-ctrl-h);
-  border: 1px solid var(--line, #e0e0e0);
-  border-radius: var(--dg-radius-sm);
-  background: transparent;
-  color: var(--txt-2, #6b6b6b);
-  font-size: var(--dg-fs-xs);
-  cursor: pointer;
-}
-.dg-size-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--dg-space-2);
-}
-.dg-size-actions select {
-  width: 64px;
-  flex: none;
-}
-.dg-size-actions .dg-mini-btn {
-  flex: 1;
-  min-height: var(--dg-ctrl-h);
-  border: 1px solid var(--accent, #2d7ff9);
-  border-radius: var(--dg-radius-sm);
-  background: var(--accent, #2d7ff9);
-  color: var(--bg, #fff);
-  font-size: var(--dg-fs-sm);
-  font-weight: var(--dg-fw-title);
-  cursor: pointer;
-}
-.dg-size-check {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: var(--dg-ctrl-h);
-  font-size: var(--dg-fs-sm);
-  color: var(--txt-2, #6b6b6b);
-  line-height: 1.4;
-}
-.dg-size-readout {
-  font-size: var(--dg-fs-xs);
-  color: var(--txt-3, #9a9a9a);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.5;
-}
-
-/* ══════════════════════════════════════════════════════════════════════
-   F4-1 · 节点尺寸面板（2026-11-12 起挂在左侧栏合并区，沿用 F3-8 卡片 / 控件规格）
+   F4-1 · 节点尺寸面板（2026-11-12 起挂在绘图 Tab 画布左侧属性面板，沿用 F3-8 卡片 / 控件规格）
    ══════════════════════════════════════════════════════════════════════ */
 .dg-size-card {
   gap: var(--dg-space-2);
