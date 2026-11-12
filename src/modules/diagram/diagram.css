@@ -2281,11 +2281,9 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   padding: 2px 0 6px;
 }
 
-/* ③ 基础元素网格（从画布工具条搬到侧栏） ─────────────────────────────── */
-/* 连续密网格（二次优化）：11 个工具 + 3 条组间竖线 = 14 格，
-   auto-fill 约 9 列 → 只占 2 行。分组不再各起一行、不再用「细线夹小字」
-   标题（那 4 条分节线比图标本身还高），组名进 tooltip。
-   当前工具名提到手风琴标题右侧，这里不再单独占一行。 */
+/* ③ 基础元素网格（2026-11-12 从左侧栏搬回画布顶部工具条第一行） ─────── */
+/* 11 个工具 + 3 条组间竖线连续横排，不换行；组名进 tooltip。
+   默认规则仍保留为纵向弹性盒，具体横排由 .dg-tab 覆盖层接管。 */
 .dg-element-palette {
   display: flex;
   flex-direction: column;
@@ -2297,7 +2295,7 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   align-items: center;
   gap: 2px;
 }
-/* 组间分隔：只占一个格子、1px 宽竖线，不强制换行 */
+/* 组间分隔：1px 宽竖线，不占按钮尺寸 */
 .dg-element-sep {
   justify-self: center;
   align-self: center;
@@ -2373,11 +2371,31 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   opacity: 0.8;
 }
 
-/* ⑤ 画布顶部紧凑提示条（按钮已在侧栏） ───────────────────────────────── */
+/* ⑤ 画布顶部紧凑工具条：第一行基础元素图标 + 第二行当前工具 / 会话 ──── */
 .dg-tab .dg-tool-bar-compact {
+  flex-wrap: wrap;
   min-height: 26px;
   gap: 6px var(--dg-space-2);
   padding: var(--dg-space-1) var(--dg-space-3);
+}
+/* 图标行独占第一行：所有 11 个按钮 + 3 条分隔横排，窄视口只缩间距不换行 */
+.dg-tab .dg-tool-bar-compact .dg-element-palette {
+  flex: 0 0 100%;
+  width: 100%;
+  flex-direction: row;
+  align-items: center;
+  padding-bottom: var(--dg-space-1);
+  border-bottom: 1px dashed var(--line, #e0e0e0);
+}
+.dg-tab .dg-tool-bar-compact .dg-element-grid {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+}
+.dg-tab .dg-tool-bar-compact .dg-element-btn {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 22px;
 }
 .dg-tool-current {
   flex: none;
@@ -2388,20 +2406,6 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   font-weight: var(--dg-fw-title);
   color: var(--accent, #2d7ff9);
 }
-/* 侧栏里的只读说明也套用 F3-8 的 warn 提示条（画布那条的祖先是 .dg-tab，
-   侧栏不在 .dg-tab 内，故这里补一条等价规则，避免变成裸文字 + 横向溢出）。 */
-.dg-side .dg-tool-readonly {
-  padding: var(--dg-space-1) var(--dg-space-2);
-  border: 1px solid color-mix(in srgb, var(--warn, #a86a12) 35%, var(--line, #e0e0e0));
-  border-left: 3px solid var(--warn, #a86a12);
-  border-radius: var(--dg-radius-sm);
-  background: color-mix(in srgb, var(--warn, #a86a12) 7%, var(--bg-2, #f7f7f7));
-  color: var(--txt-2, #6b6b6b);
-  font-size: var(--dg-fs-xs);
-  line-height: 1.5;
-  white-space: normal;
-}
-
 /* F3-9 二次优化（2026-11-11 19:03）：侧栏垂直密度
    截图里大半栏高是空白 —— 手风琴标题/内容 padding、分区 gap、
    组件库每行 6px 上下 padding 叠加。这里统一收一圈，

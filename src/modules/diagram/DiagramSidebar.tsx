@@ -3,13 +3,12 @@
 // 主编辑区的独立 Tab（diagram://editor 伪 buffer），两者并存、互不遮挡。
 //
 // F3-9（参考 docs/dev/UI/tikz编辑器.html 的布局重排）：
-//   · 基础元素按钮从画布顶部工具条搬到侧栏（`ShapePalette`）；
 //   · 组件库 / 图层管理 / 导出与插入统一为原生 <details> 手风琴
 //     （零新增 state，键盘可用，折叠不丢面板内部状态）；
 //   · 代码区（DiagramCodePane / LaTeXEditor）完全不碰。
-// 2026-11-12：侧栏不再放「图元与属性」—— 单个图元的属性 / 尺寸 / 对齐变换
-//   移到绘图 Tab 的画布左侧（DiagramInspector.tsx），侧栏只保留唯一一份图元清单
-//   （LayersPanel）用于点选 / 编组，避免侧栏被属性控件占满。
+// 2026-11-12：基础元素按钮从侧栏搬回画布顶部工具条；侧栏不再放「图元与属性」——
+//   单个图元的属性 / 尺寸 / 对齐变换在绘图 Tab 的画布左侧（DiagramInspector.tsx），
+//   侧栏只保留唯一一份图元清单（LayersPanel）用于点选 / 编组。
 // 切到本侧栏即自动打开 / 聚焦绘图 Tab 并锁定 targetTex（F1-1），
 // 故侧栏不再放「画布与布局」说明与「切换到绘图 Tab」按钮；布局/通道开关本就在 Tab 顶部。
 // F1-4 导出方式单选与「插入到文档」主操作。
@@ -17,8 +16,6 @@ import { useEffect, type ReactNode } from "react";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
 import { LayersPanel } from "./LayersPanel";
-import { ShapePalette } from "./ShapeToolbar";
-import { isToolMode, toolDef } from "./shapeTools";
 import { insertDiagramCode } from "./insert";
 import type { ExportMode } from "@/types/diagram";
 import "./diagram.css";
@@ -91,7 +88,6 @@ function Accordion({
 
 export function DiagramSidebar() {
   const source = useDiagramStore((s) => s.source);
-  const toolMode = useDiagramStore((s) => s.toolMode);
   const targetTex = useDiagramStore((s) => s.targetTex);
   const exportMode = useDiagramStore((s) => s.exportMode);
   const setExportMode = useDiagramStore((s) => s.setExportMode);
@@ -122,11 +118,6 @@ export function DiagramSidebar() {
         <span className="dg-side-title">绘图 · 工具箱</span>
         <span className="dg-side-meta">{lineCount} 行源码</span>
       </div>
-
-      {/* 当前工具名放在折叠标题右侧（跟随 store），不再单独占一行 */}
-      <Accordion title="基础元素" meta={`当前：${toolDef(isToolMode(toolMode) ? toolMode : "select").label}`}>
-        <ShapePalette />
-      </Accordion>
 
       <Accordion title="组件库" meta="5 类模板">
         <ul className="dg-library-list">

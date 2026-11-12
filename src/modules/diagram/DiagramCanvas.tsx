@@ -2702,7 +2702,7 @@ export function DiagramCanvas() {
   const selectionHint =
     selectedIds.length > 1
       ? `已选 ${selectedIds.length} 项（拖任一选中图元整体移动 · 可编组）`
-      : `选中 ${selectedId ?? "无"}（侧栏改属性）`;
+      : `选中 ${selectedId ?? "无"}（画布左侧属性面板改属性）`;
   const footHint =
     previewMode !== "local"
       ? "精确预览只读 · 切回本地即时可绘制"
@@ -2916,7 +2916,7 @@ export function DiagramCanvas() {
         </div>
       </div>
 
-      {/* F3-1：基础图元工具调色板。精确通道只读，组件内部整条禁用并给出常驻说明。 */}
+      {/* F3-1：基础图元工具调色板（2026-11-12 从侧栏搬回，画布顶部第一行）。精确通道整排禁用。 */}
       <ShapeToolbar sessionHint={sessionHint} onNewBlank={newBlankDiagram} />
 
       {/* 覆盖缺口会被引擎静默丢弃（如 \pic{angle} / angles 库），画布看起来"正常"但少元素。
