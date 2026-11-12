@@ -203,7 +203,6 @@ export function DiagramSidebar() {
             </li>
           ))}
         </ul>
-        <p className="dg-side-card-sub">高层可复用模板，接入后一次性生成标准 TikZ 语句。</p>
       </Accordion>
 
       {/* 唯一一份图元清单：点选 / 编组 / 显隐 / 锁定 / 层级都在这里；
@@ -213,7 +212,6 @@ export function DiagramSidebar() {
       </Accordion>
 
       <Accordion title="导出与插入" meta="主 .tex 文档">
-        <p className="dg-side-card-sub">编辑完成后选择导出方式，再插入主 .tex 文档。</p>
         <div className="dg-side-radios">
           {EXPORT_MODES.map((m) => (
             <label
@@ -318,15 +316,13 @@ export function DiagramSidebar() {
                 : "仅保存文件"}
         </button>
         <p className="dg-side-card-sub">
-          目标文档：{targetTex ? basename(targetTex) : "未锁定（需先打开 .tex 文档）"}
+          目标文档：{targetTex ? basename(targetTex) : "未锁定"}
         </p>
         {!targetTex && (
-          <p className="dg-side-warn">插入按钮已禁用：请先激活 .tex 文档，再切到绘图侧栏（会自动锁定插入目标）。</p>
+          <p className="dg-side-warn">先激活 .tex 文档以锁定插入目标</p>
         )}
         {exportMode === "image" && (
-          <p className="dg-side-card-sub">
-            落盘到项目图片目录后在光标处插入 figure 环境；只支持 PNG / PDF（SVG 需 shell-escape，请用「仅保存文件」）。
-          </p>
+          <p className="dg-side-card-sub">仅 PNG / PDF 可插入</p>
         )}
       </Accordion>
 

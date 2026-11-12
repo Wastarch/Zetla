@@ -165,14 +165,9 @@ export function LayersPanel() {
         </button>
       </div>
       {!layersVisible ? (
-        <p className="dg-side-card-sub">图层面板已收起；分组 / 隐藏 / 锁定设置仍保留。</p>
+        <p className="dg-side-card-sub">已收起（分组 / 隐藏 / 锁定仍保留）</p>
       ) : (
         <>
-          <p className="dg-side-card-sub">
-            这里是唯一一份图元清单：点一行即可选中，下方「属性 / 尺寸 / 对齐 · 变换」都作用于它。
-            框选或 Shift 加选多个图元后点「编组」；分组只存编辑器侧，源码不出现 scope。
-            显 / 隐 = 画布可见性（源码仍在），开 / 锁 = 主动锁定（禁止拖拽 / 改属性），限 = 能力矩阵锁定。
-          </p>
           <div className="dg-layer-actions">
             <button type="button" className="btn" disabled={!canGroup} onClick={doGroup}>
               编组{canGroup ? `（${selectedIds.length}）` : ""}
@@ -237,9 +232,9 @@ export function LayersPanel() {
           </div>
 
           {!fresh ? (
-            <p className="dg-side-card-sub">正在解析图元…</p>
+            <p className="dg-side-card-sub">解析中…</p>
           ) : rows.length === 0 ? (
-            <p className="dg-side-card-sub">当前源码没有可列出的图元。</p>
+            <p className="dg-side-card-sub">无可列出的图元</p>
           ) : (
             <ul className="dg-layer-list">
               {rows.map((row) => {

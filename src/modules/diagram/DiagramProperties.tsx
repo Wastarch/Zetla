@@ -188,33 +188,33 @@ export function DiagramProperties() {
       {readonly && <div className="dg-panel-readonly">{permission.reason}</div>}
       {statements.length === 0 ? (
         <p className="dg-side-card-sub">
-          {source.trim()
-            ? "正在解析图元…（切到「本地即时」预览后即可在上方清单点选）"
-            : "源码为空。打开绘图 Tab 编写 TikZ 后，上方清单会列出可选图元。"}
+          {source.trim() ? "解析中…" : "源码为空"}
         </p>
       ) : (
         <>
-          <p className="dg-side-card-sub">
-            在画布或上方「图层 · 分组」清单点选图元；改动以最小补丁写回源码并即时重绘。
-          </p>
+          <p className="dg-side-card-sub">在画布或图层清单点选图元</p>
           {selectedIds.length > 1 && (
-            <p className="dg-side-card-sub">
-              已多选 {selectedIds.length} 项；属性只作用于主选中项 <code>{selectedId}</code>。
-              整体移动请在画布拖任一选中图元，或在上方清单编组。
+            <p
+              className="dg-side-card-sub"
+              title="整体移动请在画布拖任一选中图元，或在上方清单编组"
+            >
+              已多选 {selectedIds.length} 项，属性作用于 <code>{selectedId}</code>
             </p>
           )}
         </>
       )}
 
       {selectedId && !selected && (
-        <p className="dg-side-warn">选中的图元已不在当前源码里，请重新选择。</p>
+        <p className="dg-side-warn">该图元已不在源码中</p>
       )}
 
       {selected && (
         <div className="dg-prop-detail">
           <p className="dg-prop-snippet">{statementLabel(selected, source)}</p>
           {editable && !editable.editable ? (
-            <p className="dg-side-warn">{editable.reason} 请在「仅源码」布局里直接编辑。</p>
+            <p className="dg-side-warn">
+              {editable.reason}（用「仅源码」布局编辑）
+            </p>
           ) : (
             <>
               {editable?.keys.map((key) => (
