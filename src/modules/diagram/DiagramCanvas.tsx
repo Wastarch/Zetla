@@ -2981,9 +2981,9 @@ export function DiagramCanvas() {
             XeLaTeX 精确
           </button>
         </div>
-        <span className="dg-canvas-hint">
+        {/* <span className="dg-canvas-hint">
           {previewMode === "local" ? "tikz-editor · 可拖拽" : "standalone · 100% 还原"}
-        </span>
+        </span> */}
         {/* F2-4：撤销 / 重做操作的是源码 history，与预览通道无关，两个通道常驻；
             控制点只在本地即时通道有意义。 */}
         <div className="dg-edit-tools dg-head-group" data-label="编辑" role="group" aria-label="编辑操作">

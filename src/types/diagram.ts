@@ -18,3 +18,28 @@ export interface TikzPreviewResult {
   errors: TexError[];
   message?: string;
 }
+
+/** F5-1：tikz_export 的请求体（Rust TikzExportPayload，camelCase） */
+export interface TikzExportPayload {
+  source: string;
+  engine: string;
+  /** 固定画布尺寸（world pt）；不传 / null 则跟随内容自适应 */
+  canvas?: { widthPt: number; heightPt: number } | null;
+  /** "png" | "svg" | "pdf" */
+  format: "png" | "svg" | "pdf";
+  /** 完整绝对目标路径（含扩展名） */
+  outPath: string;
+  /** 目标已存在时是否覆盖（覆盖前由前端 confirm 后再传 true） */
+  force?: boolean;
+}
+
+/** F5-1：tikz_export 的返回结构（Rust TikzExportResult，camelCase） */
+export interface TikzExportResult {
+  /** "ok" | "exists" | "error" */
+  status: "ok" | "exists" | "error";
+  outPath?: string;
+  elapsedMs: number;
+  preambleLines: number;
+  errors: TexError[];
+  message?: string;
+}

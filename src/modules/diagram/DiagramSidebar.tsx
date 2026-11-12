@@ -12,11 +12,13 @@
 // 切到本侧栏即自动打开 / 聚焦绘图 Tab 并锁定 targetTex（F1-1），
 // 故侧栏不再放「画布与布局」说明与「切换到绘图 Tab」按钮；布局/通道开关本就在 Tab 顶部。
 // F1-4 导出方式单选与「插入到文档」主操作。
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
 import { LayersPanel } from "./LayersPanel";
 import { insertDiagramCode } from "./insert";
+import { exportDiagram, type ExportFormat } from "./export";
+import { notify } from "@/project/useProject";
 import type { ExportMode } from "@/types/diagram";
 import "./diagram.css";
 
@@ -40,11 +42,11 @@ function openDiagramTab(): void {
   buffers.openDiagram();
 }
 
-/** image / file 由 F5 的 tikz_export 落盘链路接入，v1 展示但禁用 */
+/** image / file 由 F5-1 的 tikz_export 落盘链路接入；导出后插入主文档见 F5-2。 */
 const EXPORT_MODES: { id: ExportMode; label: string; hint: string; ready: boolean }[] = [
   { id: "source", label: "TikZ 源码", hint: "插入完整 tikzpicture 环境", ready: true },
-  { id: "image", label: "导出图片后插入", hint: "PDF / PNG / SVG → figure", ready: false },
-  { id: "file", label: "仅保存文件", hint: "导出到指定路径，不改主文档", ready: false },
+  { id: "image", label: "导出图片", hint: "PDF / PNG / SVG → 项目图片目录", ready: true },
+  { id: "file", label: "仅保存文件", hint: "导出到指定路径，不改主文档", ready: true },
 ];
 
 /** F6 组件库的 5 类模板：占位列表，不用按钮避免「死点击」（F3-8 口径）。 */
@@ -104,6 +106,10 @@ export function DiagramSidebar() {
 
   const lineCount = source.split("\n").length;
 
+  // F5-1：导出格式（PNG / SVG / PDF），仅在 image / file 模式出现
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
+  const [exporting, setExporting] = useState(false);
+
   // 切到绘图侧栏时自动打开 / 聚焦绘图 Tab：Sidebar 按 view 条件渲染、折叠时整体卸载，
   // 因此「本组件挂载」正好对应「用户点开绘图侧栏」；不再需要手动点按钮。
   useEffect(() => {
@@ -111,6 +117,29 @@ export function DiagramSidebar() {
   }, []);
 
   const canInsert = exportMode === "source" && !!targetTex && source.trim().length > 0;
+  const canExport = exportMode !== "source" && source.trim().length > 0;
+  const canAct = exportMode === "source" ? canInsert : canExport;
+
+  async function handlePrimary(): Promise<void> {
+    if (exportMode === "source") {
+      insertDiagramCode();
+      return;
+    }
+    setExporting(true);
+    try {
+      const out = await exportDiagram({ mode: exportMode, format: exportFormat });
+      if (out.status === "ok" && out.outPath) {
+        notify(`已导出到 ${out.outPath}`, "ok");
+      } else if (out.status === "error" && out.message) {
+        notify(out.message, "err");
+      }
+      // cancel：用户主动放弃，无需提示
+    } catch (e) {
+      notify(`导出出错：${String(e)}`, "err");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="dg-side">
@@ -196,13 +225,39 @@ export function DiagramSidebar() {
           </div>
         )}
 
+        {exportMode !== "source" && (
+          <div className="dg-side-radios">
+            {(["png", "svg", "pdf"] as ExportFormat[]).map((f) => (
+              <label
+                key={f}
+                className={`dg-side-radio${exportFormat === f ? " is-on" : ""}`}
+                title={f.toUpperCase()}
+              >
+                <input
+                  type="radio"
+                  name="dg-export-format"
+                  checked={exportFormat === f}
+                  onChange={() => setExportFormat(f)}
+                />
+                <span>{f.toUpperCase()}</span>
+              </label>
+            ))}
+          </div>
+        )}
+
         <button
           type="button"
           className="btn primary dg-side-primary"
-          disabled={!canInsert}
-          onClick={() => insertDiagramCode()}
+          disabled={!canAct || exporting}
+          onClick={() => void handlePrimary()}
         >
-          插入到文档
+          {exporting
+            ? "导出中…"
+            : exportMode === "source"
+              ? "插入到文档"
+              : exportMode === "image"
+                ? "导出图片"
+                : "仅保存文件"}
         </button>
         <p className="dg-side-card-sub">
           目标文档：{targetTex ? basename(targetTex) : "未锁定（需先打开 .tex 文档）"}
@@ -210,8 +265,8 @@ export function DiagramSidebar() {
         {!targetTex && (
           <p className="dg-side-warn">插入按钮已禁用：请先激活 .tex 文档，再切到绘图侧栏（会自动锁定插入目标）。</p>
         )}
-        {exportMode !== "source" && (
-          <p className="dg-side-warn">图片导出 / 仅保存文件将在后续版本支持，暂不可用。</p>
+        {exportMode === "image" && (
+          <p className="dg-side-card-sub">导出到项目图片目录（figure/ 或项目设置的图片目录），插入主文档将在下一步支持。</p>
         )}
       </Accordion>
 

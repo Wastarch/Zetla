@@ -71,7 +71,196 @@ pub struct TikzPreviewResult {
     pub message: Option<String>,
 }
 
-fn failure(
+/// 编译内核产物：存活的临时工作区 + 编译出的 PDF 路径。
+/// 调用方负责在产品取出后删除 `work`（无论成功失败）。
+pub struct CompiledSnippet {
+    pub work: PathBuf,
+    pub pdf: PathBuf,
+    pub preamble_lines: u32,
+}
+
+/// 编译失败的结构化信息（供 tikz_preview / tikz_export 各自转成返回体）。
+pub struct CompileFailure {
+    pub message: String,
+    pub preamble_lines: u32,
+    pub errors: Vec<TexError>,
+}
+
+/// 抽出 F1-6 的「片段 → standalone PDF」内核，tikz_preview 与 tikz_export 共用。
+/// 成功返回存活的工作区（调用方清理）；失败返回 CompileFailure（内部已清工作区）。
+pub async fn compile_snippet_to_pdf(
+    app: &AppHandle,
+    source: &str,
+    engine: &str,
+    canvas: Option<TikzCanvasSize>,
+) -> Result<CompiledSnippet, CompileFailure> {
+    if let Err(e) = validate_source(source) {
+        return Err(CompileFailure {
+            message: e,
+            preamble_lines: 0,
+            errors: Vec::new(),
+        });
+    }
+    let dirs = engine_search_dirs(Some(app));
+    let (engine_name, exe) = match pick_engine(engine, &dirs) {
+        Some(v) => v,
+        None => {
+            return Err(CompileFailure {
+                message: "未找到 XeLaTeX / LuaLaTeX / pdfLaTeX，请先在「环境引导」配置 TeX 发行版"
+                    .to_string(),
+                preamble_lines: 0,
+                errors: Vec::new(),
+            })
+        }
+    };
+    let work = temp_workdir();
+    if let Err(e) = std::fs::create_dir_all(&work) {
+        return Err(CompileFailure {
+            message: format!("创建临时编译目录失败：{e}"),
+            preamble_lines: 0,
+            errors: Vec::new(),
+        });
+    }
+    let (doc, preamble_lines) = build_document_with_canvas(source, engine_name != "pdflatex", canvas);
+    if let Err(e) = std::fs::write(work.join("snippet.tex"), &doc) {
+        let _ = std::fs::remove_dir_all(&work);
+        return Err(CompileFailure {
+            message: format!("写入临时 .tex 失败：{e}"),
+            preamble_lines,
+            errors: Vec::new(),
+        });
+    }
+
+    // 编译：-no-shell-escape 是硬约束；nonstopmode 保证不会等交互输入。
+    let args = vec![
+        "-no-shell-escape".to_string(),
+        "-interaction=nonstopmode".to_string(),
+        "-file-line-error".to_string(),
+        "-halt-on-error".to_string(),
+        format!("-output-directory={}", work.display()),
+        "snippet.tex".to_string(),
+    ];
+    let out = match run_tool(&exe, &args, &work, &dirs, COMPILE_TIMEOUT_SECS).await {
+        Ok(o) => o,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&work);
+            return Err(CompileFailure {
+                message: e,
+                preamble_lines,
+                errors: Vec::new(),
+            });
+        }
+    };
+    let pdf = work.join("snippet.pdf");
+    if !out.status.success() || !pdf.is_file() {
+        let log = std::fs::read_to_string(work.join("snippet.log"))
+            .unwrap_or_else(|_| String::from_utf8_lossy(&out.stdout).into_owned());
+        let errors = parse_errors(&log, &work, preamble_lines);
+        // -file-line-error 把真实错误写成 `./snippet.tex:22: Package pgf Error: ...`，
+        // 没有 `!` 前缀；brief_failure 只认 `!`，会误把 XeTeX 启动横幅当错误贴出来。
+        // 结构化解析已经拿到了这条错误，优先用它，兜底才读原始日志/stdout。
+        let brief = errors
+            .first()
+            .map(|e| e.raw.clone())
+            .unwrap_or_else(|| brief_failure(&log, &out));
+        let _ = std::fs::remove_dir_all(&work);
+        return Err(CompileFailure {
+            message: format!("{} 编译失败：{}", engine_name, brief),
+            preamble_lines,
+            errors,
+        });
+    }
+    Ok(CompiledSnippet {
+        work,
+        pdf,
+        preamble_lines,
+    })
+}
+
+/// PDF → SVG（矢量；来自真 TeX 引擎）。产品落在 work 内，调用方取出后负责删除 work。
+async fn convert_pdf_to_svg(pdf: &Path, work: &Path, dirs: &[PathBuf]) -> Result<PathBuf, String> {
+    let converter = match find_engine("pdftocairo", dirs) {
+        Some(p) => p,
+        None => {
+            return Err(
+                "未找到 pdftocairo（Poppler / TeX Live 自带），无法把 PDF 转成矢量预览".to_string(),
+            )
+        }
+    };
+    let product = work.join("preview.svg");
+    let args = vec![
+        "-svg".to_string(),
+        "-f".to_string(),
+        "1".to_string(),
+        "-l".to_string(),
+        "1".to_string(),
+        pdf.to_string_lossy().to_string(),
+        product.to_string_lossy().to_string(),
+    ];
+    let out = match run_tool(&converter, &args, work, dirs, CONVERT_TIMEOUT_SECS).await {
+        Ok(o) => o,
+        Err(e) => return Err(e),
+    };
+    if product.is_file() {
+        Ok(product)
+    } else if let Some(p) = find_svg(work) {
+        Ok(p)
+    } else {
+        let brief = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(format!(
+            "pdftocairo 未生成 SVG{}",
+            if brief.is_empty() {
+                String::new()
+            } else {
+                format!("：{}", brief.chars().take(160).collect::<String>())
+            }
+        ))
+    }
+}
+
+/// PDF → PNG（pdftocairo -r 300）。产品落在 work 内，调用方取出后负责删除 work。
+async fn convert_pdf_to_png(pdf: &Path, work: &Path, dirs: &[PathBuf]) -> Result<PathBuf, String> {
+    let converter = match find_engine("pdftocairo", dirs) {
+        Some(p) => p,
+        None => {
+            return Err(
+                "未找到 pdftocairo（Poppler / TeX Live 自带），无法把 PDF 转成 PNG".to_string(),
+            )
+        }
+    };
+    let product = work.join("preview.png");
+    let args = vec![
+        "-png".to_string(),
+        "-r".to_string(),
+        "300".to_string(),
+        "-f".to_string(),
+        "1".to_string(),
+        "-l".to_string(),
+        "1".to_string(),
+        pdf.to_string_lossy().to_string(),
+        product.to_string_lossy().to_string(),
+    ];
+    let out = match run_tool(&converter, &args, work, dirs, CONVERT_TIMEOUT_SECS).await {
+        Ok(o) => o,
+        Err(e) => return Err(e),
+    };
+    if product.is_file() {
+        Ok(product)
+    } else {
+        let brief = String::from_utf8_lossy(&out.stderr).trim().to_string();
+        Err(format!(
+            "pdftocairo 未生成 PNG{}",
+            if brief.is_empty() {
+                String::new()
+            } else {
+                format!("：{}", brief.chars().take(160).collect::<String>())
+            }
+        ))
+    }
+}
+
+/// tikz_preview 的 error 返回体构造。
+fn preview_failure(
     message: impl Into<String>,
     started: Instant,
     preamble_lines: u32,
@@ -329,7 +518,7 @@ fn find_svg(work: &Path) -> Option<PathBuf> {
 
 /// XeLaTeX 精确预览：把 tikzpicture 片段单独编译成矢量 SVG。
 /// 所有可预期的失败都以 status:"error" 返回（前端统一渲染错误态），只有临时目录 IO
-/// 异常才走 Err(String)。
+/// 异常才走 Err(String)。复用 compile_snippet_to_pdf 内核。
 #[tauri::command]
 pub async fn tikz_preview(
     app: AppHandle,
@@ -338,142 +527,43 @@ pub async fn tikz_preview(
     canvas: Option<TikzCanvasSize>,
 ) -> Result<TikzPreviewResult, String> {
     let started = Instant::now();
-    if let Err(e) = validate_source(&source) {
-        return Ok(failure(e, started, 0, Vec::new()));
-    }
+    let compiled = match compile_snippet_to_pdf(&app, &source, &engine, canvas).await {
+        Ok(c) => c,
+        Err(f) => {
+            return Ok(preview_failure(
+                f.message,
+                started,
+                f.preamble_lines,
+                f.errors,
+            ))
+        }
+    };
     let dirs = engine_search_dirs(Some(&app));
-    let (engine_name, exe) = match pick_engine(&engine, &dirs) {
-        Some(v) => v,
-        None => {
-            return Ok(failure(
-                "未找到 XeLaTeX / LuaLaTeX / pdfLaTeX，请先在「环境引导」配置 TeX 发行版",
-                started,
-                0,
-                Vec::new(),
-            ))
-        }
-    };
-    let converter = match find_engine("pdftocairo", &dirs) {
-        Some(p) => p,
-        None => {
-            return Ok(failure(
-                "未找到 pdftocairo（Poppler / TeX Live 自带），无法把 PDF 转成矢量预览",
-                started,
-                0,
-                Vec::new(),
-            ))
-        }
-    };
-
-    let work = temp_workdir();
-    if let Err(e) = std::fs::create_dir_all(&work) {
-        return Err(format!("创建临时编译目录失败：{e}"));
-    }
-    let (doc, preamble_lines) = build_document_with_canvas(
-        &source,
-        engine_name != "pdflatex",
-        canvas,
-    );
-    if let Err(e) = std::fs::write(work.join("snippet.tex"), &doc) {
-        let _ = std::fs::remove_dir_all(&work);
-        return Err(format!("写入临时 .tex 失败：{e}"));
-    }
-
-    // 1) 编译：-no-shell-escape 是硬约束；nonstopmode 保证不会等交互输入。
-    let args = vec![
-        "-no-shell-escape".to_string(),
-        "-interaction=nonstopmode".to_string(),
-        "-file-line-error".to_string(),
-        "-halt-on-error".to_string(),
-        format!("-output-directory={}", work.display()),
-        "snippet.tex".to_string(),
-    ];
-    let out = match run_tool(&exe, &args, &work, &dirs, COMPILE_TIMEOUT_SECS).await {
-        Ok(o) => o,
+    let svg_path = match convert_pdf_to_svg(&compiled.pdf, &compiled.work, &dirs).await {
+        Ok(p) => p,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&work);
-            return Ok(failure(e, started, preamble_lines, Vec::new()));
+            let _ = std::fs::remove_dir_all(&compiled.work);
+            return Ok(preview_failure(e, started, compiled.preamble_lines, Vec::new()));
         }
     };
-    let pdf = work.join("snippet.pdf");
-    if !out.status.success() || !pdf.is_file() {
-        let log = std::fs::read_to_string(work.join("snippet.log"))
-            .unwrap_or_else(|_| String::from_utf8_lossy(&out.stdout).into_owned());
-        let errors = parse_errors(&log, &work, preamble_lines);
-        // -file-line-error 把真实错误写成 `./snippet.tex:22: Package pgf Error: ...`，
-        // 没有 `!` 前缀；brief_failure 只认 `!`，会误把 XeTeX 启动横幅当错误贴出来。
-        // 结构化解析已经拿到了这条错误，优先用它，兜底才读原始日志/stdout。
-        let brief = errors
-            .first()
-            .map(|e| e.raw.clone())
-            .unwrap_or_else(|| brief_failure(&log, &out));
-        let _ = std::fs::remove_dir_all(&work);
-        return Ok(failure(
-            format!("{} 编译失败：{}", engine_name, brief),
-            started,
-            preamble_lines,
-            errors,
-        ));
-    }
-
-    // 2) PDF → SVG（矢量；来自真 TeX 引擎，包含 \pic{angle} / ctex / 数学公式）
-    let cargs = vec![
-        "-svg".to_string(),
-        "-f".to_string(),
-        "1".to_string(),
-        "-l".to_string(),
-        "1".to_string(),
-        "snippet.pdf".to_string(),
-        "preview.svg".to_string(),
-    ];
-    let cout = match run_tool(&converter, &cargs, &work, &dirs, CONVERT_TIMEOUT_SECS).await {
-        Ok(o) => o,
-        Err(e) => {
-            let _ = std::fs::remove_dir_all(&work);
-            return Ok(failure(e, started, preamble_lines, Vec::new()));
-        }
-    };
-    let named = work.join("preview.svg");
-    let svg_path = if named.is_file() {
-        Some(named)
-    } else {
-        find_svg(&work)
-    };
-    let Some(path) = svg_path else {
-        let brief = String::from_utf8_lossy(&cout.stderr).trim().to_string();
-        let _ = std::fs::remove_dir_all(&work);
-        return Ok(failure(
-            format!(
-                "pdftocairo 未生成 SVG{}",
-                if brief.is_empty() {
-                    String::new()
-                } else {
-                    format!("：{}", brief.chars().take(160).collect::<String>())
-                }
-            ),
-            started,
-            preamble_lines,
-            Vec::new(),
-        ));
-    };
-    let svg = match std::fs::read_to_string(&path) {
+    let svg = match std::fs::read_to_string(&svg_path) {
         Ok(s) => s,
         Err(e) => {
-            let _ = std::fs::remove_dir_all(&work);
-            return Ok(failure(
+            let _ = std::fs::remove_dir_all(&compiled.work);
+            return Ok(preview_failure(
                 format!("读取 SVG 产物失败：{e}"),
                 started,
-                preamble_lines,
+                compiled.preamble_lines,
                 Vec::new(),
             ));
         }
     };
-    let _ = std::fs::remove_dir_all(&work);
+    let _ = std::fs::remove_dir_all(&compiled.work);
     if svg.len() > MAX_SVG_BYTES {
-        return Ok(failure(
+        return Ok(preview_failure(
             "SVG 产物过大（>8MB），已丢弃以免拖慢界面；请精简图形后重试",
             started,
-            preamble_lines,
+            compiled.preamble_lines,
             Vec::new(),
         ));
     }
@@ -481,7 +571,144 @@ pub async fn tikz_preview(
         status: "ok".to_string(),
         svg: Some(svg),
         elapsed_ms: started.elapsed().as_millis() as u64,
+        preamble_lines: compiled.preamble_lines,
+        errors: Vec::new(),
+        message: None,
+    })
+}
+
+// ── F5-1：导出产物落盘（复用上面的编译内核）──────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TikzExportPayload {
+    pub source: String,
+    pub engine: String,
+    pub canvas: Option<TikzCanvasSize>,
+    /// "png" | "svg" | "pdf"
+    pub format: String,
+    /// 完整绝对目标路径（含扩展名）；Rust 只负责把这个路径写成文件
+    pub out_path: String,
+    /// 目标已存在时是否覆盖（覆盖前由前端 confirm 后再传 true）
+    #[serde(default)]
+    pub force: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TikzExportResult {
+    /// "ok" | "exists" | "error"
+    pub status: String,
+    pub out_path: Option<String>,
+    pub elapsed_ms: u64,
+    pub preamble_lines: u32,
+    pub errors: Vec<TexError>,
+    pub message: Option<String>,
+}
+
+fn export_failure(
+    message: impl Into<String>,
+    started: Instant,
+    preamble_lines: u32,
+    errors: Vec<TexError>,
+) -> TikzExportResult {
+    TikzExportResult {
+        status: "error".to_string(),
+        out_path: None,
+        elapsed_ms: started.elapsed().as_millis() as u64,
         preamble_lines,
+        errors,
+        message: Some(message.into()),
+    }
+}
+
+/// F5-1：把 tikzpicture 片段编译后转成 PNG / SVG / PDF 并落盘到 out_path。
+/// 复用 compile_snippet_to_pdf 内核与全部安全校验；成功 / 失败都不写主文档、不污染源码。
+/// 返回 "exists" 时由前端确认是否覆盖后再以 force:true 重试。
+#[tauri::command]
+pub async fn tikz_export(app: AppHandle, payload: TikzExportPayload) -> Result<TikzExportResult, String> {
+    let started = Instant::now();
+    let format = payload.format.to_ascii_lowercase();
+    if !matches!(format.as_str(), "png" | "svg" | "pdf") {
+        return Ok(export_failure(
+            format!("不支持的导出格式：{format}"),
+            started,
+            0,
+            Vec::new(),
+        ));
+    }
+    let out = PathBuf::from(&payload.out_path);
+    if out.exists() && !payload.force {
+        return Ok(TikzExportResult {
+            status: "exists".to_string(),
+            out_path: Some(payload.out_path),
+            elapsed_ms: started.elapsed().as_millis() as u64,
+            preamble_lines: 0,
+            errors: Vec::new(),
+            message: Some("目标文件已存在，是否覆盖？".to_string()),
+        });
+    }
+    let compiled = match compile_snippet_to_pdf(&app, &payload.source, &payload.engine, payload.canvas).await
+    {
+        Ok(c) => c,
+        Err(f) => return Ok(export_failure(f.message, started, f.preamble_lines, f.errors)),
+    };
+    let dirs = engine_search_dirs(Some(&app));
+    let product = match format.as_str() {
+        "pdf" => compiled.pdf.clone(),
+        "svg" => match convert_pdf_to_svg(&compiled.pdf, &compiled.work, &dirs).await {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&compiled.work);
+                return Ok(export_failure(e, started, compiled.preamble_lines, Vec::new()));
+            }
+        },
+        "png" => match convert_pdf_to_png(&compiled.pdf, &compiled.work, &dirs).await {
+            Ok(p) => p,
+            Err(e) => {
+                let _ = std::fs::remove_dir_all(&compiled.work);
+                return Ok(export_failure(e, started, compiled.preamble_lines, Vec::new()));
+            }
+        },
+        _ => unreachable!(),
+    };
+    if let Some(parent) = out.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            let _ = std::fs::remove_dir_all(&compiled.work);
+            return Ok(export_failure(
+                format!("创建目标目录失败：{e}"),
+                started,
+                compiled.preamble_lines,
+                Vec::new(),
+            ));
+        }
+    }
+    if let Err(e) = std::fs::copy(&product, &out) {
+        let _ = std::fs::remove_dir_all(&compiled.work);
+        return Ok(export_failure(
+            format!("写入文件失败：{e}"),
+            started,
+            compiled.preamble_lines,
+            Vec::new(),
+        ));
+    }
+    // 写后校验：极少数情况下 copy 返回 Ok 但目标仍不存在（权限 / 防病毒拦截 / 路径重定向），
+    // 不能再以「成功」误导前端。这里给出明确失败，而不是静默返回 ok。
+    if !out.is_file() {
+        let _ = std::fs::remove_dir_all(&compiled.work);
+        return Ok(export_failure(
+            format!("写入后未找到输出文件：{out_path}", out_path = payload.out_path),
+            started,
+            compiled.preamble_lines,
+            Vec::new(),
+        ));
+    }
+    let _ = std::fs::remove_dir_all(&compiled.work);
+    Ok(TikzExportResult {
+        status: "ok".to_string(),
+        out_path: Some(payload.out_path),
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        preamble_lines: compiled.preamble_lines,
         errors: Vec::new(),
         message: None,
     })

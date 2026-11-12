@@ -48,6 +48,8 @@ pub fn run() {
             commands::compile::cancel_compile,
             // M2 · 绘图模块 F1-6：XeLaTeX 只编译 TikZ 片段（精确预览内核）
             commands::tikz_export::tikz_preview,
+            // M2 · 绘图模块 F5-1：把片段编译后导出 PNG / SVG / PDF 并落盘（复用同一内核）
+            commands::tikz_export::tikz_export,
             // M2：编译流程（Recipe）枚举（设置页展示 / 选择）
             commands::compile::list_recipes,
             // 日志解析（M0-11）

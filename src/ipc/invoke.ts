@@ -20,7 +20,7 @@ import type {
   TexInstallResult,
   WriteOptions,
 } from "@/types";
-import type { TikzPreviewResult } from "@/types/diagram";
+import type { TikzPreviewResult, TikzExportPayload, TikzExportResult } from "@/types/diagram";
 
 /** 底层透传（未封装的命令临时入口） */
 export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -172,6 +172,9 @@ export const diagramApi = {
   /** 只编译 tikzpicture 片段 → standalone PDF → SVG 文本；失败以 status:"error" 返回 */
   tikzPreview: (source: string, engine: string, canvas?: TikzCanvasSizeArg) =>
     call<TikzPreviewResult>("tikz_preview", { source, engine, canvas: canvas ?? null }),
+  /** F5-1：编译片段 → 转 PNG/SVG/PDF → 落盘到 outPath；覆盖前先以 force:true 重试 */
+  tikzExport: (payload: TikzExportPayload) =>
+    call<TikzExportResult>("tikz_export", payload as unknown as Record<string, unknown>),
 };
 
 // ── 用户自定义快捷输入片段（M2-5a，独立 snippets.json）──────
