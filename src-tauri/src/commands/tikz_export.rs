@@ -579,20 +579,8 @@ pub async fn tikz_preview(
 
 // ── F5-1：导出产物落盘（复用上面的编译内核）──────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TikzExportPayload {
-    pub source: String,
-    pub engine: String,
-    pub canvas: Option<TikzCanvasSize>,
-    /// "png" | "svg" | "pdf"
-    pub format: String,
-    /// 完整绝对目标路径（含扩展名）；Rust 只负责把这个路径写成文件
-    pub out_path: String,
-    /// 目标已存在时是否覆盖（覆盖前由前端 confirm 后再传 true）
-    #[serde(default)]
-    pub force: bool,
-}
+// 注：tikz_export 现以扁平参数接收（见下方命令签名，rename_all = "camelCase"
+// 让 out_path ↔ outPath），此包装结构已弃用，避免与前端扁平调用约定不一致。
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -625,10 +613,18 @@ fn export_failure(
 /// F5-1：把 tikzpicture 片段编译后转成 PNG / SVG / PDF 并落盘到 out_path。
 /// 复用 compile_snippet_to_pdf 内核与全部安全校验；成功 / 失败都不写主文档、不污染源码。
 /// 返回 "exists" 时由前端确认是否覆盖后再以 force:true 重试。
-#[tauri::command]
-pub async fn tikz_export(app: AppHandle, payload: TikzExportPayload) -> Result<TikzExportResult, String> {
+#[tauri::command(rename_all = "camelCase")]
+pub async fn tikz_export(
+    app: AppHandle,
+    source: String,
+    engine: String,
+    canvas: Option<TikzCanvasSize>,
+    format: String,
+    out_path: String,
+    force: bool,
+) -> Result<TikzExportResult, String> {
     let started = Instant::now();
-    let format = payload.format.to_ascii_lowercase();
+    let format = format.to_ascii_lowercase();
     if !matches!(format.as_str(), "png" | "svg" | "pdf") {
         return Ok(export_failure(
             format!("不支持的导出格式：{format}"),
@@ -637,18 +633,18 @@ pub async fn tikz_export(app: AppHandle, payload: TikzExportPayload) -> Result<T
             Vec::new(),
         ));
     }
-    let out = PathBuf::from(&payload.out_path);
-    if out.exists() && !payload.force {
+    let out = PathBuf::from(&out_path);
+    if out.exists() && !force {
         return Ok(TikzExportResult {
             status: "exists".to_string(),
-            out_path: Some(payload.out_path),
+            out_path: Some(out_path.clone()),
             elapsed_ms: started.elapsed().as_millis() as u64,
             preamble_lines: 0,
             errors: Vec::new(),
             message: Some("目标文件已存在，是否覆盖？".to_string()),
         });
     }
-    let compiled = match compile_snippet_to_pdf(&app, &payload.source, &payload.engine, payload.canvas).await
+    let compiled = match compile_snippet_to_pdf(&app, &source, &engine, canvas).await
     {
         Ok(c) => c,
         Err(f) => return Ok(export_failure(f.message, started, f.preamble_lines, f.errors)),
@@ -697,7 +693,7 @@ pub async fn tikz_export(app: AppHandle, payload: TikzExportPayload) -> Result<T
     if !out.is_file() {
         let _ = std::fs::remove_dir_all(&compiled.work);
         return Ok(export_failure(
-            format!("写入后未找到输出文件：{out_path}", out_path = payload.out_path),
+            format!("写入后未找到输出文件：{out_path}", out_path = out_path),
             started,
             compiled.preamble_lines,
             Vec::new(),
@@ -706,7 +702,7 @@ pub async fn tikz_export(app: AppHandle, payload: TikzExportPayload) -> Result<T
     let _ = std::fs::remove_dir_all(&compiled.work);
     Ok(TikzExportResult {
         status: "ok".to_string(),
-        out_path: Some(payload.out_path),
+        out_path: Some(out_path.clone()),
         elapsed_ms: started.elapsed().as_millis() as u64,
         preamble_lines: compiled.preamble_lines,
         errors: Vec::new(),
