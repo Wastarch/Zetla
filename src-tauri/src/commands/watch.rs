@@ -1,6 +1,6 @@
 // 项目目录监听（M0-9a）—— 资源管理器自动刷新
-// 只关心「文件增减」：Create / Remove。保存内容（Modify/Data）与应用自身的
-// 原子写临时文件（*.tmp → rename）一律忽略，避免每次 Ctrl+S 都重扫全树。
+// 资源树只关心「文件增减」：Create / Remove。文件内容提醒同时接收 Modify 与 Create，
+// 以覆盖外部编辑器用临时文件原子替换原文件的保存方式；*.tmp 仍会被路径过滤忽略。
 use notify::{Event, EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -44,6 +44,11 @@ pub struct WatchState {
 /// 只有「增减」才值得刷新资源树
 fn is_tree_event(kind: &EventKind) -> bool {
     matches!(kind, EventKind::Create(_) | EventKind::Remove(_))
+}
+
+/// 直接写通常是 Modify；原子替换在部分平台/编辑器下最终只表现为 Create。
+fn is_file_change_event(kind: &EventKind) -> bool {
+    matches!(kind, EventKind::Modify(_) | EventKind::Create(_))
 }
 
 /// 忽略：`.ltex/` 配置、隐藏项（如 `.git`）、原子写临时文件
@@ -98,14 +103,12 @@ pub fn watch_project(
     let handler = move |res: notify::Result<Event>| {
         let Ok(ev) = res else { return };
         if is_tree_event(&ev.kind) {
-            if ev.paths.iter().all(|p| is_ignored_path(&filter_root, p)) {
-                return;
+            if !ev.paths.iter().all(|p| is_ignored_path(&filter_root, p)) {
+                let _ = tx.send(());
             }
-            let _ = tx.send(());
-            return;
         }
-        // M1-9：文件被外部修改（非自身保存回显）→ 推送 file_changed 提示重载
-        if matches!(ev.kind, EventKind::Modify(_)) {
+        // M1-9：直接修改或原子替换落盘 → 推送 file_changed；前端读盘比对后再决定是否提示。
+        if is_file_change_event(&ev.kind) {
             for p in &ev.paths {
                 if is_ignored_path(&filter_root, p) {
                     continue;
@@ -167,6 +170,16 @@ mod tests {
             DataChange::Any
         ))));
         assert!(!is_tree_event(&EventKind::Access(AccessKind::Any)));
+    }
+
+    #[test]
+    fn file_change_events_cover_direct_and_atomic_saves() {
+        assert!(is_file_change_event(&EventKind::Modify(ModifyKind::Data(
+            DataChange::Any
+        ))));
+        assert!(is_file_change_event(&EventKind::Create(CreateKind::File)));
+        assert!(!is_file_change_event(&EventKind::Remove(RemoveKind::File)));
+        assert!(!is_file_change_event(&EventKind::Access(AccessKind::Any)));
     }
 
     #[test]

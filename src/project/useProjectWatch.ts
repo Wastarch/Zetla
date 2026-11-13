@@ -9,11 +9,7 @@ import { useProjectStore } from "./useProject";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { projectApi } from "@/ipc/invoke";
 import type { FileChanged, ProjectChanged } from "@/types";
-
-/** 比较磁盘与编辑器文本时忽略平台换行符差异，避免自身保存 CRLF 文件后误报。 */
-function normalizeEol(text: string): string {
-  return text.replace(/\r\n?/g, "\n");
-}
+import { hasMeaningfulExternalChange, savedBaselineKey } from "./externalChange";
 
 export function useProjectWatch(): void {
   useEffect(() => {
@@ -64,6 +60,7 @@ export function useProjectWatch(): void {
         .getState()
         .buffers.find((b) => b.path === e.path && b.kind === "text");
       if (!cur) return;
+      const baselineAtEvent = savedBaselineKey(cur);
 
       const seq = (fileChangeSeq.get(e.path) ?? 0) + 1;
       fileChangeSeq.set(e.path, seq);
@@ -80,10 +77,10 @@ export function useProjectWatch(): void {
               .getState()
               .buffers.find((b) => b.path === e.path && b.kind === "text");
             if (!now) return;
-            const changed =
-              normalizeEol(d.content) !== normalizeEol(now.content) ||
-              d.eol !== now.eol ||
-              d.encoding.toLowerCase() !== now.encoding.toLowerCase();
+            // 事件进入队列后若发生了保存/重载，当前磁盘基线已经更新；禁止用旧读盘结果
+            // 覆盖新状态。这也是自动保存与 watcher 并发时误报的主要竞态保护。
+            if (savedBaselineKey(now) !== baselineAtEvent) return;
+            const changed = hasMeaningfulExternalChange(d, now);
             useBuffersStore.getState().setExternalChanged(e.path, changed);
           })
           .catch(() => {
