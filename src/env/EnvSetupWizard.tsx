@@ -30,6 +30,9 @@ const STAGE_LABELS: Record<string, string> = {
   done: "安装完成",
 };
 
+/** 后端默认目录查询失败时的中性占位，避免写死 Windows 路径 */
+const FALLBACK_INSTALL_DIR = "系统本地数据目录/Zetla/tex/texlive";
+
 /** 下载速度：优先 MB/s，低于 0.1 MB/s 显示 KB/s；0 交给调用方显示占位文案 */
 function fmtSpeed(bps: number): string {
   if (!bps) return "";
@@ -46,6 +49,7 @@ export function EnvSetupWizard() {
 
   const [step, setStep] = useState<Step>(1);
   const [installDir, setInstallDir] = useState("");
+  const [defaultInstallDir, setDefaultInstallDir] = useState(FALLBACK_INSTALL_DIR);
   const [scheme, setScheme] = useState<"basic" | "full">("basic");
   const [checking, setChecking] = useState(false);
   const [adopting, setAdopting] = useState(false);
@@ -74,6 +78,16 @@ export function EnvSetupWizard() {
     setError(null);
 
     let alive = true;
+    // 默认目录由后端按平台给出（Windows / macOS / Linux 各不相同），UI 不再写死路径
+    void compileApi
+      .getDefaultTexInstallDir()
+      .then((path) => {
+        if (alive && path) setDefaultInstallDir(path);
+      })
+      .catch(() => {
+        /* 查询失败保留平台中性占位；实际安装仍由后端解析默认目录 */
+      });
+
     const unlisteners: UnlistenFn[] = [];
     void (async () => {
       const uProgress = await onKernelEvent<TexInstallProgress>(
@@ -328,7 +342,7 @@ export function EnvSetupWizard() {
                     <>
                       <b>未检测到 TeX 发行版</b>
                       <span>
-                        下一步将下载并安装 TeX Live。Windows 自带 Perl；macOS/Linux 需系统已安装 Perl。
+                        下一步将下载适用于当前平台的 TeX Live 安装器。Windows 使用安装包内 Perl；macOS/Linux 需系统已安装 Perl。
                       </span>
                     </>
                   )}
@@ -388,7 +402,7 @@ export function EnvSetupWizard() {
                   className="entry-input"
                   value={installDir}
                   spellCheck={false}
-                  placeholder="%LOCALAPPDATA%\Zetla\tex\texlive（留空使用默认）"
+                  placeholder={`${defaultInstallDir}（留空使用默认）`}
                   onChange={(e) => setInstallDir(e.target.value)}
                 />
                 <button type="button" className="btn" onClick={() => void pickInstallDir()}>
@@ -397,9 +411,9 @@ export function EnvSetupWizard() {
                 </button>
               </div>
               <div className="setup-help">
-                留空安装到 <code>%LOCALAPPDATA%\Zetla\tex\texlive</code>；
-                也可选择其他盘符。目录需可写，且不能已包含 TeX。
-                Windows 自带 Perl；macOS/Linux 需系统已安装 Perl。
+                留空安装到 <code>{defaultInstallDir}</code>；
+                也可选择其他目录。目录需可写，且不能已包含 TeX。
+                Windows 使用安装包内 Perl；macOS/Linux 需系统已安装 Perl。
               </div>
 
               {error && (
@@ -504,7 +518,7 @@ export function EnvSetupWizard() {
 
         <div className="modal-foot">
           <div className="setup-foot-hint">
-            {step === 2 && "Windows 自带 Perl · macOS/Linux 需系统 Perl · 不改系统 PATH"}
+            {step === 2 && "按平台选择安装器 · 不改系统 PATH"}
             {step === 3 && "可随时取消，取消后会清理本次新建的目录"}
             {step === 4 && result?.ok && "完成后可直接编译当前项目"}
             {step === 1 && "检测结果仅用于选择安装方式"}

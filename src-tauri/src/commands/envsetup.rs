@@ -1,5 +1,6 @@
 // M0-15b/c · TeX Live 自动安装（Profile 静默安装）
-// 下载 install-tl.zip → 解压 → Windows 用自带 tlperl 跑 install-tl，macOS/Linux 改用系统 perl
+// Windows   : 下载 install-tl.zip（内含专用 tlperl）→ 用自带 perl 跑 install-tl
+// Unix/macOS: 下载官方 install-tl-unx.tar.gz（保留可执行位与软链）→ 直接执行 install-tl
 // 事件：tex_install_progress（阶段/百分比/速度）/ tex_install_finished（最终结果）
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -19,16 +20,42 @@ use crate::commands::compile::kill_tree;
 pub const EV_INSTALL_PROGRESS: &str = "tex_install_progress";
 pub const EV_INSTALL_FINISHED: &str = "tex_install_finished";
 
-/// TeX Live 镜像（install-tl.zip 完整 URL；zip 内自带 tlpkg/tlperl，无需系统 Perl）
+/// TeX Live 镜像（完整 URL）。
+/// Windows 用 install-tl.zip（内含 tlpkg/tlperl 专用 Perl）；Unix/macOS 用官方
+/// install-tl-unx.tar.gz —— 归档里的 install-tl 是带 shebang 的 Perl 脚本，
+/// tar 解压天然保留可执行位与软链，不需要 zip 解压后手工补 +x。
 /// 注意：install-tl-windows.exe 是 GUI 包装器，不转发命令行参数，不能用于静默安装
+#[cfg(windows)]
 const TEXLIVE_INSTALLER_URLS: [&str; 3] = [
     "https://mirrors.tuna.tsinghua.edu.cn/CTAN/systems/texlive/tlnet/install-tl.zip",
     "https://mirrors.aliyun.com/CTAN/systems/texlive/tlnet/install-tl.zip",
     "https://mirror.ctan.org/systems/texlive/tlnet/install-tl.zip",
 ];
+#[cfg(not(windows))]
+const TEXLIVE_INSTALLER_URLS: [&str; 3] = [
+    "https://mirrors.tuna.tsinghua.edu.cn/CTAN/systems/texlive/tlnet/install-tl-unx.tar.gz",
+    "https://mirrors.aliyun.com/CTAN/systems/texlive/tlnet/install-tl-unx.tar.gz",
+    "https://mirror.ctan.org/systems/texlive/tlnet/install-tl-unx.tar.gz",
+];
 
 /// installer 文件名 + 从完整 URL 反推 tlnet 仓库地址用
+#[cfg(windows)]
 const INSTALLER_NAME: &str = "install-tl.zip";
+#[cfg(not(windows))]
+const INSTALLER_NAME: &str = "install-tl-unx.tar.gz";
+
+/// 下载前 UI 显示的近似体积（MB）
+#[cfg(windows)]
+const INSTALLER_APPROX_MB: u32 = 25;
+#[cfg(not(windows))]
+const INSTALLER_APPROX_MB: u32 = 5;
+
+/// 完整性下限：实测 zip ≈25 MB、tar.gz ≈5.03 MB（5,279,426 B）。
+/// 截断成半包时不该过校验，否则要等解压才炸。
+#[cfg(windows)]
+const MIN_INSTALLER_BYTES: u64 = 15 * 1024 * 1024;
+#[cfg(not(windows))]
+const MIN_INSTALLER_BYTES: u64 = 4 * 1024 * 1024 + 512 * 1024; // 4.5 MB
 
 /// 安装阶段总超时（安装器自身）
 const INSTALL_TIMEOUT: Duration = Duration::from_secs(60 * 60); // 1 小时
@@ -269,6 +296,15 @@ pub fn switch_tex_mirror(state: State<'_, Arc<TexInstallState>>) -> Result<(), S
     Ok(())
 }
 
+/// 返回当前平台「安装目录留空」时实际使用的默认路径。
+/// 供向导显示，避免在 UI 里写死 `%LOCALAPPDATA%`（macOS/Linux 上是错的）。
+#[tauri::command]
+pub fn get_default_tex_install_dir(app: AppHandle) -> Result<String, String> {
+    Ok(default_tex_install_dir(&app)?
+        .to_string_lossy()
+        .into_owned())
+}
+
 /// 接管已有 TeX Live：校验引擎 → 写 config / 卸载台账 / `.zetla-tex`。
 ///
 /// 用于两种情况：
@@ -347,20 +383,29 @@ struct InstallTarget {
     was_empty: bool,
 }
 
-/// 解析并校验安装目录：空=默认 %LOCALAPPDATA%\Zetla\tex\texlive
+/// 默认安装目录 = 平台本地数据目录 / Zetla / tex / texlive。
+/// Windows：`%LOCALAPPDATA%\Zetla\tex\texlive`；
+/// macOS：`~/Library/Application Support/Zetla/tex/texlive`；
+/// Linux：`~/.local/share/Zetla/tex/texlive`。
+/// 抽成单一真源，供 resolve_install_dir 与 UI 查询命令共用。
+fn default_tex_install_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .local_data_dir()
+        .map_err(|e| format!("解析本地数据目录失败：{e}"))?
+        .join("Zetla")
+        .join("tex")
+        .join("texlive"))
+}
+
+/// 解析并校验安装目录：留空时使用当前平台的本地数据目录。
 fn resolve_install_dir(app: &AppHandle, input: Option<String>) -> Result<InstallTarget, String> {
     let path = match input
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
     {
         Some(s) => PathBuf::from(s),
-        None => app
-            .path()
-            .local_data_dir()
-            .map_err(|e| format!("解析本地数据目录失败：{e}"))?
-            .join("Zetla")
-            .join("tex")
-            .join("texlive"),
+        None => default_tex_install_dir(app)?,
     };
     if !path.is_absolute() {
         return Err("安装目录必须是绝对路径".to_string());
@@ -566,13 +611,13 @@ async fn install_inner(
         best_speed.map(|_| host_of(urls[best])),
     );
 
-    // 2) 下载 install-tl.zip：按测速顺序尝试；stall 可在同镜像续传，慢/断则换源
+    // 2) 下载当前平台的安装器：按测速顺序尝试；stall 可在同镜像续传，慢/断则换源
     let temp_dir = std::env::temp_dir().join("zetla-texlive-download");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
-    let zip_path = temp_dir.join(INSTALLER_NAME);
+    let archive_path = temp_dir.join(INSTALLER_NAME);
     let extract_dir = temp_dir.join("installer");
     // 清掉上一次的残留
-    let _ = std::fs::remove_file(&zip_path);
+    let _ = std::fs::remove_file(&archive_path);
     let _ = std::fs::remove_dir_all(&extract_dir);
 
     let mut last_err = String::new();
@@ -588,7 +633,7 @@ async fn install_inner(
     while mirror_pos < order.len() && attempts < max_attempts {
         attempts += 1;
         if st.cancelled.load(Ordering::SeqCst) {
-            let _ = std::fs::remove_file(&zip_path);
+            let _ = std::fs::remove_file(&archive_path);
             return Err(InstallFailure::cancelled());
         }
         let idx = order[mirror_pos];
@@ -599,9 +644,10 @@ async fn install_inner(
             8,
             0,
             format!(
-                "正在从 {} 下载 {}（约 25 MB）…",
+                "正在从 {} 下载 {}（约 {} MB）…",
                 host_of(url),
-                INSTALLER_NAME
+                INSTALLER_NAME,
+                INSTALLER_APPROX_MB
             ),
             Some(host_of(url)),
         );
@@ -612,7 +658,7 @@ async fn install_inner(
             app,
             st,
             url,
-            &zip_path,
+            &archive_path,
             resume_offset,
             resume_validator.as_deref(),
             allow_slow_switch,
@@ -621,11 +667,7 @@ async fn install_inner(
         {
             Ok(DownloadOutcome::Complete) => {
                 // 仓库地址 = URL 去掉 installer 文件名（同一镜像的 tlnet 目录）
-                repo_base = Some(
-                    url.trim_end_matches(INSTALLER_NAME)
-                        .trim_end_matches('/')
-                        .to_string(),
-                );
+                repo_base = Some(repo_base_from(url));
                 break;
             }
             Ok(DownloadOutcome::Retry {
@@ -658,11 +700,11 @@ async fn install_inner(
                     same_mirror_retries = 0;
                     resume_offset = 0;
                     resume_validator = None;
-                    let _ = std::fs::remove_file(&zip_path);
+                    let _ = std::fs::remove_file(&archive_path);
                 }
             }
             Err(e) if e == CANCELLED => {
-                let _ = std::fs::remove_file(&zip_path);
+                let _ = std::fs::remove_file(&archive_path);
                 return Err(InstallFailure::cancelled());
             }
             Err(e) => {
@@ -671,7 +713,7 @@ async fn install_inner(
                 same_mirror_retries = 0;
                 resume_offset = 0;
                 resume_validator = None;
-                let _ = std::fs::remove_file(&zip_path);
+                let _ = std::fs::remove_file(&archive_path);
             }
         }
     }
@@ -685,14 +727,14 @@ async fn install_inner(
     };
 
     if st.cancelled.load(Ordering::SeqCst) {
-        let _ = std::fs::remove_file(&zip_path);
+        let _ = std::fs::remove_file(&archive_path);
         return Err(InstallFailure::cancelled());
     }
 
-    // 3) 解压（install-tl.zip；Windows 内含专用 perl，Unix 依赖系统 perl）
+    // 3) 解压：Windows 走 zip（内含专用 tlperl），Unix 走官方 tar.gz（保留可执行位）
     emit(app, "download", 15, 0, "正在解压安装器…");
-    extract_install_tl_zip(&zip_path, &extract_dir)?;
-    let _ = std::fs::remove_file(&zip_path);
+    extract_installer_archive(&archive_path, &extract_dir)?;
+    let _ = std::fs::remove_file(&archive_path);
 
     if st.cancelled.load(Ordering::SeqCst) {
         remove_dir_all_retry(&extract_dir);
@@ -715,7 +757,7 @@ async fn install_inner(
         return Err(e.into());
     }
 
-    // 5) 静默安装：Windows 用自带 perl、Unix/macOS 用系统 perl 跑 install-tl
+    // 5) 静默安装：Windows 用自带 perl 解释脚本；Unix 直接执行 install-tl（shebang → 系统 perl）
     //    -no-gui 控制台模式 / -no-interaction 不等待输入 / -repository 用国内镜像拉宏包
     emit(
         app,
@@ -1086,8 +1128,7 @@ async fn download_installer(
         .await
         .map_err(|e| format!("保存安装包失败：{e}"))?;
 
-    let min_size = 15 * 1024 * 1024; // install-tl.zip 约 25MB，明显偏小视为失败
-    if downloaded < min_size {
+    if downloaded < MIN_INSTALLER_BYTES {
         let _ = tokio::fs::remove_file(dest).await;
         return Ok(DownloadOutcome::Retry {
             downloaded: 0,
@@ -1107,26 +1148,47 @@ async fn download_installer(
     Ok(DownloadOutcome::Complete)
 }
 
-/// 解压 install-tl.zip
-fn extract_install_tl_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
-    let file = std::fs::File::open(zip_path).map_err(|e| format!("打开安装包失败：{e}"))?;
+/// 解压 install-tl.zip（Windows：内含 tlpkg/tlperl 专用 Perl）
+fn extract_install_tl_zip(archive_path: &Path, dest: &Path) -> Result<(), String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| format!("打开安装包失败：{e}"))?;
     let mut archive = ZipArchive::new(file).map_err(|e| format!("读取安装包失败：{e}"))?;
     archive
         .extract(dest)
         .map_err(|e| format!("解压安装包失败：{e}"))
 }
 
-/// 安装器入口：运行 install-tl 所需的 perl + install-tl 脚本
+/// 解压官方 install-tl-unx.tar.gz（Unix/macOS）。
+/// tar 归档保留文件 mode 与软链，install-tl 的 shebang 因此可直接执行；
+/// tar-rs 的 unpack 默认拒绝 `..` / 绝对路径与软链逃逸，无需额外防越界。
+fn extract_install_tl_tar_gz(archive_path: &Path, dest: &Path) -> Result<(), String> {
+    let file = std::fs::File::open(archive_path).map_err(|e| format!("打开安装包失败：{e}"))?;
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
+    archive
+        .unpack(dest)
+        .map_err(|e| format!("解压安装包失败：{e}"))
+}
+
+/// 按平台选择归档格式。两侧都参与编译，便于在 Windows 上单测 Unix 解压路径。
+fn extract_installer_archive(archive_path: &Path, dest: &Path) -> Result<(), String> {
+    if cfg!(windows) {
+        extract_install_tl_zip(archive_path, dest)
+    } else {
+        extract_install_tl_tar_gz(archive_path, dest)
+    }
+}
+
+/// 安装器入口
 struct Installer {
-    /// Windows：<root>/tlpkg/tlperl/bin/perl.exe；Unix/macOS：系统 perl（如 /usr/bin/perl）
+    /// Windows：自带 tlperl，作为解释器启动脚本；
+    /// Unix/macOS：系统 perl（用于前置校验与 PATH 注入），脚本靠 shebang 直接执行。
     perl: PathBuf,
-    /// <root>/install-tl
+    /// <root>/install-tl（Unix 归档保留可执行位）
     script: PathBuf,
     /// <root>
     root: PathBuf,
 }
 
-/// 在解压目录中定位 install-tl（zip 顶层带版本号目录，需递归找）
+/// 在解压目录中定位 install-tl（两种归档顶层都带版本号目录，需递归找）
 fn locate_installer(extract_dir: &Path) -> Result<Installer, String> {
     let mut root: Option<PathBuf> = None;
     for entry in walkdir::WalkDir::new(extract_dir)
@@ -1154,14 +1216,15 @@ fn locate_installer(extract_dir: &Path) -> Result<Installer, String> {
         )
     })?;
 
-    // Unix 下 zip 解压可能不还原可执行位：install-tl 会调用 tlmgr/fmtutil 等脚本，
-    // 缺执行权限会在安装后期失败，这里显式补 +x。
+    // tar 归档已保留可执行位；这里再做一次兜底（临时目录若落在 DrvFS 等不保留
+    // Unix 权限的文件系统上，install-tl 后期调用 tlmgr/fmtutil 仍会失败）。
     #[cfg(not(windows))]
     {
         ensure_unix_exec(&root)?;
     }
 
-    // 定位 perl：Windows 用自带 tlperl；Unix/macOS 用系统 perl（官方要求）
+    // 定位 perl：Windows 用自带 tlperl；Unix/macOS 用系统 perl（官方要求，
+    // 用于前置校验与 GUI 进程 PATH 注入）
     let perl = resolve_installer_perl(&root)?;
 
     let script = root.join("install-tl");
@@ -1173,10 +1236,11 @@ fn locate_installer(extract_dir: &Path) -> Result<Installer, String> {
 
 /// 解析运行 install-tl 所需的 perl。
 ///
-/// - Windows：用 TeX Live 自带的 tlperl（tlpkg/tlperl/bin/perl.exe）。
-/// - Linux/macOS：TeX Live 官方安装器在这些平台**不自带 Perl**，必须使用系统 perl
-///   （TUG 文档："Except on Windows, your system must provide a standard Perl
-///   installation"）。缺失时给出可操作的安装提示，而不是误报「安装包不完整」。
+/// - Windows：用 TeX Live 自带的 tlperl（tlpkg/tlperl/bin/perl.exe），并作为脚本解释器。
+/// - Linux/macOS：官方 Unix 归档里的 install-tl 是带 shebang 的 Perl 脚本，直接执行；
+///   这些平台**不自带 Perl**（TUG 文档："Except on Windows, your system must provide
+///   a standard Perl installation"），这里解析系统 perl 用于前置校验与 PATH 注入。
+///   缺失时给出可操作的安装提示，而不是误报「安装包不完整」。
 fn resolve_installer_perl(root: &Path) -> Result<PathBuf, String> {
     if cfg!(windows) {
         let perl = root
@@ -1205,7 +1269,8 @@ fn resolve_installer_perl(root: &Path) -> Result<PathBuf, String> {
     }
 }
 
-/// Unix 下给 install-tl 与 tlpkg/bin 下的脚本补可执行位（zip 解压可能不还原）。
+/// Unix 可执行位兜底：tar 解压通常已保留 0755，只在权限丢失时补齐执行位。
+/// 不覆盖原有 mode，避免把 0750 之类改成 0755。
 #[cfg(not(windows))]
 fn ensure_unix_exec(root: &Path) -> Result<(), String> {
     set_exec(&root.join("install-tl"));
@@ -1225,13 +1290,16 @@ fn set_exec(path: &Path) {
     if let Ok(meta) = std::fs::metadata(path) {
         let mut perms = meta.permissions();
         use std::os::unix::fs::PermissionsExt;
-        perms.set_mode(0o755);
-        let _ = std::fs::set_permissions(path, perms);
+        let mode = perms.mode();
+        if mode & 0o111 == 0 {
+            perms.set_mode(mode | 0o111);
+            let _ = std::fs::set_permissions(path, perms);
+        }
     }
 }
 
-/// 安装前置检查：macOS/Linux 需要系统 perl（Windows 自带，跳过）。
-/// 在下载安装器之前执行，避免无 perl 时白下 25MB。
+/// 安装前置检查：macOS/Linux 需要系统 perl（install-tl 的 shebang 依赖；Windows 自带，跳过）。
+/// 在下载安装器之前执行，避免无 perl 时白下整个归档。
 fn check_install_prerequisites() -> Result<(), String> {
     if cfg!(not(windows)) && which::which("perl").is_err() {
         return Err(
@@ -1301,10 +1369,16 @@ async fn run_installer_tracked(
     cwd: &Path,
 ) -> Result<InstallerOutcome, String> {
     let profile_arg = profile.to_string_lossy().to_string();
-    let script_arg = installer.script.to_string_lossy().to_string();
-    let mut cmd = Command::new(&installer.perl);
-    cmd.arg(&script_arg)
-        .arg("-no-gui")
+    // Windows：zip 解出的 install-tl 没有 shebang，用自带 tlperl 显式解释；
+    // Unix：tar 归档保留可执行位与 shebang，直接执行脚本，由 env 从 PATH 找系统 perl。
+    let mut cmd = if cfg!(windows) {
+        let mut c = Command::new(&installer.perl);
+        c.arg(&installer.script);
+        c
+    } else {
+        Command::new(&installer.script)
+    };
+    cmd.arg("-no-gui")
         .arg("-no-interaction")
         .arg("-profile")
         .arg(&profile_arg)
@@ -1315,20 +1389,38 @@ async fn run_installer_tracked(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // Windows：自带 Perl 依赖 PERL5LIB 定位模块；子进程（mktexlsr/fmtutil 等）也可能调用 perl
+    // Windows：自带 Perl 依赖 PERL5LIB 定位模块；Unix：把系统 perl 目录置于 PATH 首位，
+    // 并补齐 GUI 启动（Finder / WSLg）时缺失的常见工具目录 —— install-tl 后续要调
+    // curl / tlmgr / fmtutil / texhash，GUI 进程默认 PATH 常只有 /usr/bin:/bin。
     #[cfg(windows)]
     let perl_lib = installer.root.join("tlpkg").join("tlperl").join("lib");
-    #[cfg(windows)]
-    let perl_bin = installer.root.join("tlpkg").join("tlperl").join("bin");
-    #[cfg(not(windows))]
-    let perl_bin: PathBuf = installer
-        .perl
-        .parent()
-        .unwrap_or(&installer.root)
-        .to_path_buf();
+    let perl_bin: PathBuf = if cfg!(windows) {
+        installer.root.join("tlpkg").join("tlperl").join("bin")
+    } else {
+        installer
+            .perl
+            .parent()
+            .unwrap_or(&installer.root)
+            .to_path_buf()
+    };
     let mut path_dirs = vec![perl_bin.clone()];
     if let Some(old) = std::env::var_os("PATH") {
         path_dirs.extend(std::env::split_paths(&old));
+    }
+    if !cfg!(windows) {
+        for extra in [
+            "/opt/homebrew/bin",
+            "/usr/local/bin",
+            "/usr/bin",
+            "/bin",
+            "/usr/sbin",
+            "/sbin",
+        ] {
+            let p = PathBuf::from(extra);
+            if p.is_dir() && !path_dirs.contains(&p) {
+                path_dirs.push(p);
+            }
+        }
     }
     match std::env::join_paths(&path_dirs) {
         Ok(path) => {
@@ -1341,6 +1433,9 @@ async fn run_installer_tracked(
     }
     #[cfg(windows)]
     cmd.env("PERL5LIB", &perl_lib);
+    // Unix 不设 PERL5LIB：让系统 perl 用自己的模块路径，避免全局值串进安装器
+    #[cfg(not(windows))]
+    cmd.env_remove("PERL5LIB");
     cmd.env_remove("PERL5OPT")
         .env_remove("PERLLIB")
         .env_remove("PERLIO");
@@ -1826,6 +1921,14 @@ fn host_of(url: &str) -> &str {
         .unwrap_or(url)
 }
 
+/// 从安装器 URL 反推同一镜像的 tlnet 仓库地址（作为 install-tl 的 -repository）。
+/// 平台归档文件名不同，统一走这里避免漏改。
+fn repo_base_from(url: &str) -> String {
+    url.trim_end_matches(INSTALLER_NAME)
+        .trim_end_matches('/')
+        .to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2082,6 +2185,65 @@ mod tests {
             "mirrors.tuna.tsinghua.edu.cn"
         );
         assert_eq!(host_of(TEXLIVE_INSTALLER_URLS[2]), "mirror.ctan.org");
+    }
+
+    #[test]
+    fn platform_installer_urls_match_archive_and_repo_base() {
+        for url in TEXLIVE_INSTALLER_URLS {
+            assert!(url.ends_with(INSTALLER_NAME), "URL 与归档名不一致：{url}");
+            let repo = repo_base_from(url);
+            assert!(repo.ends_with("/tlnet"), "仓库地址反推错误：{repo}");
+            assert!(!repo.contains(INSTALLER_NAME));
+        }
+        // 完整性下限必须小于实测包体：zip ≈25 MB、tar.gz ≈5.03 MB（5,279,426 B）
+        if cfg!(windows) {
+            assert_eq!(INSTALLER_NAME, "install-tl.zip");
+            assert!(MIN_INSTALLER_BYTES < 25 * 1024 * 1024);
+        } else {
+            assert_eq!(INSTALLER_NAME, "install-tl-unx.tar.gz");
+            assert!(MIN_INSTALLER_BYTES < 5_279_426);
+        }
+    }
+
+    /// 构造最小 install-tl-unx.tar.gz：顶层带版本号目录，内含 0755 的 install-tl 脚本
+    fn write_test_tar_gz(path: &Path) {
+        use flate2::write::GzEncoder;
+        use flate2::Compression;
+        let file = std::fs::File::create(path).unwrap();
+        let mut builder = tar::Builder::new(GzEncoder::new(file, Compression::default()));
+        let body = b"#!/usr/bin/env perl\nprint \"install-tl\\n\";\n";
+        let mut header = tar::Header::new_gnu();
+        header.set_size(body.len() as u64);
+        header.set_mode(0o755);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "install-tl-2026/install-tl", &body[..])
+            .unwrap();
+        builder.into_inner().unwrap().finish().unwrap();
+    }
+
+    #[test]
+    fn extracts_unix_tar_gz_and_preserves_exec_bit() {
+        let base = std::env::temp_dir().join("zetla-env-tests").join(format!(
+            "targz-{}-{}",
+            std::process::id(),
+            unique()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+        let archive = base.join("install-tl-unx.tar.gz");
+        let dest = base.join("installer");
+        write_test_tar_gz(&archive);
+
+        extract_install_tl_tar_gz(&archive, &dest).unwrap();
+        let script = dest.join("install-tl-2026").join("install-tl");
+        assert!(script.is_file(), "tar.gz 解压后未找到 install-tl");
+        #[cfg(not(windows))]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&script).unwrap().permissions().mode();
+            assert!(mode & 0o111 != 0, "可执行位丢失：{mode:o}");
+        }
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     fn unique() -> u128 {
