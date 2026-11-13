@@ -72,6 +72,12 @@ const RULES: &[Rule] = &[
         hint: "文件截断",
     },
     Rule {
+        needles: &["missing character"],
+        readable: "缺字形：当前字体里没有这些字符（最常见于中文/CJK 字体未安装）。编译仍会显示成功，但 PDF 里对应文字是空白。",
+        fix: "Linux/macOS：装 TeX Live 中文集合（tlmgr install collection-langchinese，或 apt install texlive-lang-chinese）与系统中文字体（fonts-noto-cjk），然后重新编译；Windows 一般自带中文字体。",
+        hint: "中文/字体缺失",
+    },
+    Rule {
         needles: &["font", "not found"],
         readable: "字体缺失：文档使用的字体在本机找不到。",
         fix: "安装对应字体；使用 fontspec/ctex 时检查字体名拼写。",
@@ -320,6 +326,31 @@ pub fn parse_log_text(text: &str, base_dir: &Path, default_file: &Path) -> Vec<T
         });
     }
 
+    // XeTeX 缺字形只输出 `Missing character: There is no 引 in font ...`：
+    // 既不是 `!` 错误、也不是 `LaTeX Warning:`，上面的分支全都收不到。
+    // 后果是 latexmk 判「编译成功」但 PDF 里中文整片空白（Linux 上 ctex
+    // 未装 fandol 字体集时的典型症状）。聚合成一条 warning，避免每个汉字刷一行。
+    let missing_glyphs = lines
+        .iter()
+        .filter(|l| {
+            l.trim_start()
+                .to_ascii_lowercase()
+                .starts_with("missing character:")
+        })
+        .count();
+    if missing_glyphs > 0 {
+        push_error(
+            &mut errors,
+            &mut seen,
+            fallback_file.clone(),
+            0,
+            format!(
+                "Missing character: {missing_glyphs} 个字符在当前字体中找不到字形（PDF 里会显示为空白）"
+            ),
+            "warning",
+        );
+    }
+
     errors
 }
 
@@ -512,6 +543,36 @@ mod tests {
         assert_eq!(errs[0].severity, "warning");
         assert_eq!(errs[0].line, 5);
         assert!(errs[0].file.ends_with("warn.tex"));
+    }
+
+    #[test]
+    fn aggregates_missing_cjk_glyphs_into_one_warning() {
+        // XeTeX 缺字形不是 `!` 错误也不是 LaTeX Warning：编译判成功、PDF 却空白。
+        let text = concat!(
+            "This is XeTeX, Version 3.14159265\n",
+            "Missing character: There is no 引 in font [lmroman10-regular]:mapping=tex-text!\n",
+            "Missing character: There is no 言 in font [lmroman10-regular]:mapping=tex-text!\n",
+            "Output written on main.xdv (1 page).\n",
+        );
+        let base = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let errs = parse_log_text(text, base, &base.join("main.tex"));
+        let glyph = errs
+            .iter()
+            .find(|e| e.raw.to_lowercase().contains("missing character"))
+            .expect("缺字形应聚合成一条可见警告");
+        assert_eq!(glyph.severity, "warning");
+        assert_eq!(glyph.line, 0);
+        assert!(glyph.raw.contains('2'), "raw={}", glyph.raw);
+        assert!(glyph.readable.contains("空白"), "readable={}", glyph.readable);
+        assert!(
+            glyph
+                .fix
+                .as_deref()
+                .unwrap_or("")
+                .contains("collection-langchinese"),
+            "修复提示应指明中文集合"
+        );
+        assert_eq!(errs.len(), 1, "不应每个汉字刷一条：{errs:?}");
     }
 
     #[test]

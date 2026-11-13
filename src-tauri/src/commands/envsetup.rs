@@ -1249,12 +1249,17 @@ fn check_install_prerequisites() -> Result<(), String> {
 /// 不写 binary_* 键，让 install-tl 按当前机器自动选择平台（Windows 平台名现为 `windows`）。
 ///
 /// basic 用 scheme-custom + 显式集合：scheme-basic 只有 collection-basic +
-/// collection-latex，不含 xetex/ctex。补 collection-xetex 后会带出
-/// xetex / ctex / xecjk / fontspec / fandol / zhnumber，xelatex 和中文模板才可用。
+/// collection-latex，连 xetex 都没有。collection-xetex 提供 xetex / xeCJK /
+/// fontspec，但 **ctex 与 fandol 中文字体属于 collection-langchinese**
+/// （Debian 的 texlive-lang-chinese），不会随 collection-xetex 带出。
+///
+/// 缺了中文集合时，Linux/macOS 上 ctexart 会退化成「没有 CJK 字体」：
+/// XeTeX 只打 `Missing character` warning，latexmk 仍判编译成功，但 PDF 里
+/// 中文全部空白、英文和数字照常显示——Windows 因系统自带中文字体而不暴露。
 fn generate_profile(path: &Path, target: &Path, scheme: TexLiveScheme) -> Result<(), String> {
     let texdir = target.to_string_lossy().replace('\\', "/");
     let collections = match scheme {
-        TexLiveScheme::Basic => "collection-basic 1\ncollection-latex 1\ncollection-xetex 1\n",
+        TexLiveScheme::Basic => "collection-basic 1\ncollection-latex 1\ncollection-xetex 1\ncollection-langchinese 1\n",
         TexLiveScheme::Full => "",
     };
     let content = format!(
@@ -1841,11 +1846,13 @@ mod tests {
         let target = PathBuf::from(r"C:\Zetla\tex\texlive");
         generate_profile(&path, &target, TexLiveScheme::Basic).unwrap();
         let content = std::fs::read_to_string(&path).unwrap();
-        // basic 用 scheme-custom 显式集合：scheme-basic 不含 xetex/ctex
+        // basic 用 scheme-custom 显式集合：scheme-basic 不含 xetex，
+        // 中文 ctex/fandol 在 collection-langchinese（不会随 collection-xetex 带出）
         assert!(content.contains("selected_scheme scheme-custom"));
         assert!(content.contains("collection-basic 1"));
         assert!(content.contains("collection-latex 1"));
         assert!(content.contains("collection-xetex 1"));
+        assert!(content.contains("collection-langchinese 1"));
         // 路径统一为正斜杠，避免 TeX Live 把反斜杠当转义
         assert!(content.contains("TEXDIR C:/Zetla/tex/texlive"));
         // 不指定 binary_*，交给 install-tl 按当前机器选平台
