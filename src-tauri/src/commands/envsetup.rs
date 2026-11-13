@@ -1,5 +1,5 @@
 // M0-15b/c · TeX Live 自动安装（Profile 静默安装）
-// 下载 install-tl.zip（自带 tlpkg/tlperl）→ 解压 → 用自带 perl 跑 install-tl -no-gui -no-interaction -profile
+// 下载 install-tl.zip → 解压 → Windows 用自带 tlperl 跑 install-tl，macOS/Linux 改用系统 perl
 // 事件：tex_install_progress（阶段/百分比/速度）/ tex_install_finished（最终结果）
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -473,6 +473,11 @@ async fn install_inner(
 ) -> Result<Installed, InstallFailure> {
     emit(app, "prepare", 1, 0, "准备安装 TeX Live…");
 
+    // 前置检查：macOS/Linux 需系统 Perl（Windows 自带，跳过）
+    if let Err(e) = check_install_prerequisites() {
+        return Err(InstallFailure::from(e));
+    }
+
     let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(20))
         .timeout(DOWNLOAD_TIMEOUT)
@@ -539,7 +544,7 @@ async fn install_inner(
         return Err(InstallFailure::cancelled());
     }
 
-    // 2) 解压（zip 内含 TeX Live 专用 perl：tlpkg/tlperl）
+    // 2) 解压（install-tl.zip；Windows 内含专用 perl，Unix 依赖系统 perl）
     emit(app, "download", 15, 0, "正在解压安装器…");
     extract_install_tl_zip(&zip_path, &extract_dir)?;
     let _ = std::fs::remove_file(&zip_path);
@@ -565,7 +570,7 @@ async fn install_inner(
         return Err(e.into());
     }
 
-    // 4) 静默安装：直接调用自带 perl 跑 install-tl
+    // 4) 静默安装：Windows 用自带 perl、Unix/macOS 用系统 perl 跑 install-tl
     //    -no-gui 控制台模式 / -no-interaction 不等待输入 / -repository 用国内镜像拉宏包
     emit(
         app,
@@ -754,9 +759,9 @@ fn extract_install_tl_zip(zip_path: &Path, dest: &Path) -> Result<(), String> {
         .map_err(|e| format!("解压安装包失败：{e}"))
 }
 
-/// 安装器入口：自带 Perl + install-tl 脚本
+/// 安装器入口：运行 install-tl 所需的 perl + install-tl 脚本
 struct Installer {
-    /// <root>/tlpkg/tlperl/bin/perl.exe
+    /// Windows：<root>/tlpkg/tlperl/bin/perl.exe；Unix/macOS：系统 perl（如 /usr/bin/perl）
     perl: PathBuf,
     /// <root>/install-tl
     script: PathBuf,
@@ -791,22 +796,95 @@ fn locate_installer(extract_dir: &Path) -> Result<Installer, String> {
             extract_dir.display()
         )
     })?;
-    let perl = root
-        .join("tlpkg")
-        .join("tlperl")
-        .join("bin")
-        .join(exe_name("perl"));
-    if !perl.is_file() {
-        return Err(format!(
-            "安装包不完整：未找到 TeX Live 自带 Perl（{}）",
-            perl.display()
-        ));
+
+    // Unix 下 zip 解压可能不还原可执行位：install-tl 会调用 tlmgr/fmtutil 等脚本，
+    // 缺执行权限会在安装后期失败，这里显式补 +x。
+    #[cfg(not(windows))]
+    {
+        ensure_unix_exec(&root)?;
     }
+
+    // 定位 perl：Windows 用自带 tlperl；Unix/macOS 用系统 perl（官方要求）
+    let perl = resolve_installer_perl(&root)?;
+
     let script = root.join("install-tl");
     if !script.is_file() {
         return Err(format!("安装包不完整：未找到 {}", script.display()));
     }
     Ok(Installer { perl, script, root })
+}
+
+/// 解析运行 install-tl 所需的 perl。
+///
+/// - Windows：用 TeX Live 自带的 tlperl（tlpkg/tlperl/bin/perl.exe）。
+/// - Linux/macOS：TeX Live 官方安装器在这些平台**不自带 Perl**，必须使用系统 perl
+///   （TUG 文档："Except on Windows, your system must provide a standard Perl
+///   installation"）。缺失时给出可操作的安装提示，而不是误报「安装包不完整」。
+fn resolve_installer_perl(root: &Path) -> Result<PathBuf, String> {
+    if cfg!(windows) {
+        let perl = root
+            .join("tlpkg")
+            .join("tlperl")
+            .join("bin")
+            .join("perl.exe");
+        if !perl.is_file() {
+            return Err(format!(
+                "安装包不完整：未找到 TeX Live 自带 Perl（{}）",
+                perl.display()
+            ));
+        }
+        return Ok(perl);
+    }
+    match which::which("perl") {
+        Ok(perl) => Ok(perl),
+        Err(_) => Err(
+            "系统未检测到 Perl。macOS/Linux 版的 TeX Live 安装器需要系统自带 Perl（及 LWP 模块），\
+             请先安装后再试：\n\
+             • Debian/Ubuntu：sudo apt install perl liblwp-protocol-https-perl\n\
+             • macOS（Homebrew）：brew install perl\n\
+             • 或安装 MacTeX 后由系统 Perl 接管"
+                .to_string(),
+        ),
+    }
+}
+
+/// Unix 下给 install-tl 与 tlpkg/bin 下的脚本补可执行位（zip 解压可能不还原）。
+#[cfg(not(windows))]
+fn ensure_unix_exec(root: &Path) -> Result<(), String> {
+    set_exec(&root.join("install-tl"));
+    if let Ok(entries) = std::fs::read_dir(root.join("tlpkg").join("bin")) {
+        for e in entries.flatten() {
+            set_exec(&e.path());
+        }
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn set_exec(path: &Path) {
+    if !path.is_file() {
+        return;
+    }
+    if let Ok(meta) = std::fs::metadata(path) {
+        let mut perms = meta.permissions();
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o755);
+        let _ = std::fs::set_permissions(path, perms);
+    }
+}
+
+/// 安装前置检查：macOS/Linux 需要系统 perl（Windows 自带，跳过）。
+/// 在下载安装器之前执行，避免无 perl 时白下 25MB。
+fn check_install_prerequisites() -> Result<(), String> {
+    if cfg!(not(windows)) && which::which("perl").is_err() {
+        return Err(
+            "系统未检测到 Perl，无法自动安装 TeX Live。\n\
+             Linux：sudo apt install perl liblwp-protocol-https-perl\n\
+             macOS：brew install perl（或安装 MacTeX）"
+                .to_string(),
+        );
+    }
+    Ok(())
 }
 
 /// 生成 TeX Live profile 文件
@@ -875,9 +953,17 @@ async fn run_installer_tracked(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    // 自带 Perl 依赖 PERL5LIB 定位模块；子进程（mktexlsr/fmtutil 等）也可能调用 perl
+    // Windows：自带 Perl 依赖 PERL5LIB 定位模块；子进程（mktexlsr/fmtutil 等）也可能调用 perl
+    #[cfg(windows)]
     let perl_lib = installer.root.join("tlpkg").join("tlperl").join("lib");
+    #[cfg(windows)]
     let perl_bin = installer.root.join("tlpkg").join("tlperl").join("bin");
+    #[cfg(not(windows))]
+    let perl_bin: PathBuf = installer
+        .perl
+        .parent()
+        .unwrap_or(&installer.root)
+        .to_path_buf();
     let mut path_dirs = vec![perl_bin.clone()];
     if let Some(old) = std::env::var_os("PATH") {
         path_dirs.extend(std::env::split_paths(&old));
@@ -891,8 +977,9 @@ async fn run_installer_tracked(
             cmd.env("PATH", &perl_bin);
         }
     }
-    cmd.env("PERL5LIB", &perl_lib)
-        .env_remove("PERL5OPT")
+    #[cfg(windows)]
+    cmd.env("PERL5LIB", &perl_lib);
+    cmd.env_remove("PERL5OPT")
         .env_remove("PERLLIB")
         .env_remove("PERLIO");
     hide_console(&mut cmd);
@@ -1054,15 +1141,25 @@ fn infer_texlive_root(input: &Path, bin_dir: &Path) -> PathBuf {
     input.to_path_buf()
 }
 
-/// 找安装目录里的引擎：TeX Live 标准布局为 <TEXDIR>/bin/windows。
+/// 找安装目录里的引擎：TeX Live 标准布局为 <TEXDIR>/bin/<arch>
+///（Windows: bin/windows；Linux: bin/x86_64-linux；macOS: bin/universal-darwin / arm64-darwin）。
 /// 优先 xelatex；缺失时退 pdflatex/lualatex，避免把「安装成功但没 xelatex」误判成失败。
 fn find_install_engine(root: &Path) -> Option<InstallEngine> {
-    let dirs = [
+    let mut dirs: Vec<PathBuf> = vec![
         root.join("bin").join("windows"),
         root.join("bin").join("x64"),
         root.join("bin"),
-        root.to_path_buf(),
     ];
+    // 把 <root>/bin/<arch> 架构子目录一并加入首选，覆盖 Linux/macOS
+    if let Ok(entries) = std::fs::read_dir(root.join("bin")) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                dirs.push(p);
+            }
+        }
+    }
+    dirs.push(root.to_path_buf());
     for dir in &dirs {
         for name in INSTALL_ENGINES {
             let exe = dir.join(exe_name(name));
@@ -1354,8 +1451,9 @@ mod tests {
         let _ = std::fs::remove_file(&path);
     }
 
+    #[cfg(windows)]
     #[test]
-    fn locates_bundled_perl() {
+    fn locates_windows_bundled_perl() {
         let base = std::env::temp_dir().join("zetla-env-tests").join(format!(
             "installer-{}-{}",
             std::process::id(),
@@ -1374,6 +1472,33 @@ mod tests {
         let _ = std::fs::remove_dir_all(&base);
     }
 
+    #[cfg(not(windows))]
+    #[test]
+    fn uses_system_perl_on_unix() {
+        // Unix 不依赖 tlperl：install-tl 存在、tlperl 缺失时，应能回退到系统 perl
+        let base = std::env::temp_dir().join("zetla-env-tests").join(format!(
+            "installer-{}-{}",
+            std::process::id(),
+            unique()
+        ));
+        let root = base.join("install-tl-2026");
+        std::fs::create_dir_all(&root).unwrap();
+        std::fs::write(root.join("install-tl"), b"").unwrap();
+
+        match locate_installer(&base) {
+            Ok(got) => {
+                // 系统 perl 存在：perl 路径指向系统 perl，而非 tlperl
+                assert!(got.perl.is_file());
+                assert!(!got.perl.to_string_lossy().contains("tlperl"));
+            }
+            Err(e) => {
+                // 系统 perl 缺失：给出明确含 "Perl" 的提示
+                assert!(e.contains("Perl"), "unexpected error: {e}");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn finds_texlive_bin_layout() {
         let root = std::env::temp_dir().join("zetla-env-tests").join(format!(
@@ -1382,6 +1507,22 @@ mod tests {
             unique()
         ));
         let bin = root.join("bin").join("windows");
+        std::fs::create_dir_all(&bin).unwrap();
+        std::fs::write(bin.join(exe_name("xelatex")), b"").unwrap();
+        let engine = find_install_engine(&root).unwrap();
+        assert_eq!(engine.name, "xelatex");
+        assert_eq!(engine.bin_dir, bin);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn finds_unix_arch_engine() {
+        let root = std::env::temp_dir().join("zetla-env-tests").join(format!(
+            "arch-{}-{}",
+            std::process::id(),
+            unique()
+        ));
+        let bin = root.join("bin").join("x86_64-linux");
         std::fs::create_dir_all(&bin).unwrap();
         std::fs::write(bin.join(exe_name("xelatex")), b"").unwrap();
         let engine = find_install_engine(&root).unwrap();

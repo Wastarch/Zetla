@@ -304,7 +304,7 @@ export function EnvSetupWizard() {
                     <>
                       <b>未检测到 TeX 发行版</b>
                       <span>
-                        下一步将下载并安装 TeX Live（自带 Perl，无需额外安装）。
+                        下一步将下载并安装 TeX Live。Windows 自带 Perl；macOS/Linux 需系统已安装 Perl。
                       </span>
                     </>
                   )}
@@ -375,7 +375,7 @@ export function EnvSetupWizard() {
               <div className="setup-help">
                 留空安装到 <code>%LOCALAPPDATA%\Zetla\tex\texlive</code>；
                 也可选择其他盘符。目录需可写，且不能已包含 TeX。
-                TeX Live 自带 Perl，无需单独安装。
+                Windows 自带 Perl；macOS/Linux 需系统已安装 Perl。
               </div>
 
               {error && (
@@ -466,7 +466,7 @@ export function EnvSetupWizard() {
 
         <div className="modal-foot">
           <div className="setup-foot-hint">
-            {step === 2 && "TeX Live 自带 Perl · 不改系统 PATH"}
+            {step === 2 && "Windows 自带 Perl · macOS/Linux 需系统 Perl · 不改系统 PATH"}
             {step === 3 && "可随时取消，取消后会清理本次新建的目录"}
             {step === 4 && result?.ok && "完成后可直接编译当前项目"}
             {step === 1 && "检测结果仅用于选择安装方式"}
