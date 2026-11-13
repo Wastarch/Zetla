@@ -30,12 +30,13 @@ const STAGE_LABELS: Record<string, string> = {
   done: "安装完成",
 };
 
-/** 下载速度：优先 MB/s，低于 0.1 MB/s 显示 KB/s */
+/** 下载速度：优先 MB/s，低于 0.1 MB/s 显示 KB/s；0 交给调用方显示占位文案 */
 function fmtSpeed(bps: number): string {
   if (!bps) return "";
   const mb = bps / 1_048_576;
   if (mb >= 0.1) return `${mb.toFixed(1)} MB/s`;
-  return `${Math.max(1, Math.round(bps / 1024))} KB/s`;
+  const kb = Math.round(bps / 1024);
+  return kb > 0 ? `${kb} KB/s` : "<1 KB/s";
 }
 
 export function EnvSetupWizard() {
@@ -50,6 +51,8 @@ export function EnvSetupWizard() {
   const [adopting, setAdopting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [progress, setProgress] = useState<TexInstallProgress | null>(null);
+  // 进度事件每 300ms 覆盖一次，mirror 只在有值时更新，保证当前源常驻显示
+  const [mirror, setMirror] = useState<string | null>(null);
   const [result, setResult] = useState<TexInstallResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,6 +69,7 @@ export function EnvSetupWizard() {
     setAdopting(false);
     setCancelling(false);
     setProgress(null);
+    setMirror(null);
     setResult(null);
     setError(null);
 
@@ -77,6 +81,7 @@ export function EnvSetupWizard() {
         (p) => {
           if (!alive) return;
           setProgress(p);
+          if (p.mirror) setMirror(p.mirror);
         },
       );
       if (!alive) {
@@ -154,6 +159,7 @@ export function EnvSetupWizard() {
       percent: 0,
       speedBps: 0,
       message: "准备安装 TeX Live…",
+      mirror: null,
     });
     setStep(3);
     try {
@@ -196,6 +202,14 @@ export function EnvSetupWizard() {
       await compileApi.cancelTexInstall();
     } catch (e) {
       setCancelling(false);
+      notify(String(e), "err");
+    }
+  };
+
+  const switchMirror = async () => {
+    try {
+      await compileApi.switchTexMirror();
+    } catch (e) {
       notify(String(e), "err");
     }
   };
@@ -422,10 +436,24 @@ export function EnvSetupWizard() {
                 <span>{speed || "正在准备…"}</span>
                 <span>安装期间请保持网络连接</span>
               </div>
+              <div className="setup-progress-src">
+                <span className="setup-progress-src-label">当前源</span>
+                <code title={mirror ?? undefined}>{mirror ?? "正在测速…"}</code>
+                {progress?.stage === "download" && (
+                  <button
+                    type="button"
+                    className="btn setup-src-switch"
+                    onClick={() => void switchMirror()}
+                  >
+                    <Icon name="sync" size={12} />
+                    换一个源
+                  </button>
+                )}
+              </div>
               <div className="setup-note">
                 <Icon name="alert" size={13} />
                 <span>
-                  TeX Live 安装需要 10–60 分钟（取决于方案和网络）。请勿关闭 Zetla；安装期间点击背景或右上角 × 不会中断安装，如需中止请点击下方「取消安装」。
+                  TeX Live 安装需要 10–60 分钟（取决于方案和网络）。下载会先测速择优，卡住或持续过慢会自动换源，你也可以手动切换。请勿关闭 Zetla；安装期间点击背景或右上角 × 不会中断安装，如需中止请点击下方「取消安装」。
                 </span>
               </div>
             </div>

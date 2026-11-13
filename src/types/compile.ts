@@ -107,9 +107,11 @@ export interface TexInstallProgress {
   stage: TexInstallStage;
   /** 0–100；0 表示当前阶段无法估算（进度条走不确定动画） */
   percent: number;
-  /** 下载速度（字节/秒；安装阶段为 0） */
+  /** 下载速度（字节/秒；安装阶段为 0）。已做滑窗平滑，不再是单秒瞬时值 */
   speedBps: number;
   message: string;
+  /** 当前下载镜像 host；仅下载阶段有值，供 UI 常驻显示（不会被进度消息覆盖） */
+  mirror: string | null;
 }
 
 /**

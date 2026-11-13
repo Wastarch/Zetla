@@ -37,16 +37,35 @@ const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 /// 安装器输出（stdout+stderr）保留条数：仅用于退出码非零/失败排查
 const INSTALLER_OUTPUT_TAIL: usize = 4000;
 
+/// 单个 chunk 无数据超时：TCP 还活着但服务端不吐字节时，不能干等总超时
+const CHUNK_STALL_TIMEOUT: Duration = Duration::from_secs(15);
+/// 镜像测速：只取前 1 MB，避免为了排序把整个安装包下三遍
+const PROBE_BYTES: u64 = 1024 * 1024;
+/// 单个镜像测速超时（含连接 + 读取）
+const PROBE_TIMEOUT: Duration = Duration::from_secs(8);
+/// 低速判定阈值（字节/秒）；低于它并持续一段时间才换源，避免慢启动误判
+const SLOW_SPEED_BPS: u64 = 20 * 1024;
+/// 连续低速多久触发换源
+const SLOW_SPEED_SUSTAIN: Duration = Duration::from_secs(6);
+/// 下载开始后的宽限期：TCP 慢启动阶段不参与低速判定
+const SLOW_SPEED_GRACE: Duration = Duration::from_secs(5);
+/// 速度平滑窗口：最近 N 个 1 秒采样的算术平均
+const SPEED_WINDOW: usize = 5;
+
 const CANCELLED: &str = "cancelled:用户取消";
+/// 手动换源的 reason 文案（主循环据此允许绕回第一个镜像，避免文案改动导致逻辑失效）
+const MANUAL_SWITCH_REASON: &str = "手动切换镜像";
 
 /// 全局安装状态（P0 单并发，同一时刻只允许一个安装任务）
 #[derive(Default)]
 pub struct TexInstallState {
     busy: AtomicBool,
     cancelled: AtomicBool,
+    /// 用户在下载阶段请求「换一个源」
+    switch_requested: AtomicBool,
     /// 当前安装器 / 配置子进程（取消时取走并杀进程树）
     child: Mutex<Option<Child>>,
-    /// 取消时唤醒正在等待网络的下载任务
+    /// 取消 / 换源时唤醒正在等待网络的下载任务
     cancel: Notify,
 }
 
@@ -59,6 +78,8 @@ pub struct TexInstallProgress {
     pub percent: u32,
     pub speed_bps: u64,
     pub message: String,
+    /// 当前下载镜像 host；仅下载阶段有值，供 UI 常驻显示（不会被进度消息覆盖）
+    pub mirror: Option<String>,
 }
 
 /// 安装结果（与 src/types/compile.ts TexInstallResult 对齐）
@@ -202,6 +223,7 @@ pub async fn install_tex(
         return Err("已有安装任务在进行中".to_string());
     }
     st.cancelled.store(false, Ordering::SeqCst);
+    st.switch_requested.store(false, Ordering::SeqCst);
 
     tauri::async_runtime::spawn(async move {
         let result = run_install(&app, &st, &target, scheme).await;
@@ -231,6 +253,19 @@ pub fn cancel_tex_install(state: State<'_, Arc<TexInstallState>>) -> Result<(), 
             kill_tree(&mut child);
         }
     }
+    Ok(())
+}
+
+/// 手动切换下载镜像（仅下载阶段有效）：置标志并唤醒等待 chunk 的下载任务，
+/// 让它按「换源」分支重进主循环；安装器已启动后不再响应。
+#[tauri::command]
+pub fn switch_tex_mirror(state: State<'_, Arc<TexInstallState>>) -> Result<(), String> {
+    let st = state.inner();
+    if !st.busy.load(Ordering::SeqCst) {
+        return Err("当前没有安装任务".to_string());
+    }
+    st.switch_requested.store(true, Ordering::SeqCst);
+    st.cancel.notify_waiters();
     Ok(())
 }
 
@@ -484,7 +519,54 @@ async fn install_inner(
         .build()
         .map_err(|e| format!("初始化下载客户端失败：{e}"))?;
 
-    // 1) 下载 install-tl.zip（逐个镜像尝试；不做 HEAD 预检，部分镜像站对 HEAD 返回 403）
+    // 1) 镜像测速：并发各取前 1 MB，按速度排序；不做 HEAD 预检（部分镜像站对 HEAD 返回 403）
+    emit(app, "prepare", 2, 0, "正在测速下载镜像…");
+    let urls = TEXLIVE_INSTALLER_URLS;
+    let probes = async {
+        tokio::join!(
+            probe_mirror(&client, urls[0]),
+            probe_mirror(&client, urls[1]),
+            probe_mirror(&client, urls[2]),
+        )
+    };
+    tokio::pin!(probes);
+    let speeds = loop {
+        tokio::select! {
+            r = &mut probes => break Some(r),
+            _ = st.cancel.notified() => {
+                // 只有真正取消才中断；换源唤醒在测速阶段忽略，等测速出结果
+                if st.cancelled.load(Ordering::SeqCst) {
+                    break None;
+                }
+            }
+        }
+    };
+    let Some((s0, s1, s2)) = speeds else {
+        return Err(InstallFailure::cancelled());
+    };
+    if st.cancelled.load(Ordering::SeqCst) {
+        return Err(InstallFailure::cancelled());
+    }
+    let order = rank_mirrors(&[s0, s1, s2]);
+    let best = order[0];
+    let best_speed = [s0, s1, s2][best];
+    emit_mirror(
+        app,
+        "prepare",
+        3,
+        0,
+        match best_speed {
+            Some(bps) => format!(
+                "已选用 {}（测速 {}）",
+                host_of(urls[best]),
+                fmt_bps(bps)
+            ),
+            None => "镜像测速不可用，按默认顺序尝试…".to_string(),
+        },
+        best_speed.map(|_| host_of(urls[best])),
+    );
+
+    // 2) 下载 install-tl.zip：按测速顺序尝试；stall 可在同镜像续传，慢/断则换源
     let temp_dir = std::env::temp_dir().join("zetla-texlive-download");
     std::fs::create_dir_all(&temp_dir).map_err(|e| format!("创建下载目录失败：{e}"))?;
     let zip_path = temp_dir.join(INSTALLER_NAME);
@@ -495,11 +577,23 @@ async fn install_inner(
 
     let mut last_err = String::new();
     let mut repo_base: Option<String> = None;
-    for url in TEXLIVE_INSTALLER_URLS {
+    let mut mirror_pos = 0usize;
+    let mut resume_offset: u64 = 0;
+    let mut resume_validator: Option<String> = None;
+    let mut same_mirror_retries = 0u32;
+    let mut attempts = 0u32;
+    // 3 个镜像各一次 + 手动换源/stall 续传的余量，防止无限循环
+    let max_attempts = (order.len() * 3) as u32;
+
+    while mirror_pos < order.len() && attempts < max_attempts {
+        attempts += 1;
         if st.cancelled.load(Ordering::SeqCst) {
+            let _ = std::fs::remove_file(&zip_path);
             return Err(InstallFailure::cancelled());
         }
-        emit(
+        let idx = order[mirror_pos];
+        let url = urls[idx];
+        emit_mirror(
             app,
             "download",
             8,
@@ -509,9 +603,23 @@ async fn install_inner(
                 host_of(url),
                 INSTALLER_NAME
             ),
+            Some(host_of(url)),
         );
-        match download_installer(&client, app, st, url, &zip_path).await {
-            Ok(()) => {
+        // 已是最后一个镜像时不再因低速放弃（没有更优的源可换）
+        let allow_slow_switch = mirror_pos + 1 < order.len();
+        match download_installer(
+            &client,
+            app,
+            st,
+            url,
+            &zip_path,
+            resume_offset,
+            resume_validator.as_deref(),
+            allow_slow_switch,
+        )
+        .await
+        {
+            Ok(DownloadOutcome::Complete) => {
                 // 仓库地址 = URL 去掉 installer 文件名（同一镜像的 tlnet 目录）
                 repo_base = Some(
                     url.trim_end_matches(INSTALLER_NAME)
@@ -520,12 +628,49 @@ async fn install_inner(
                 );
                 break;
             }
+            Ok(DownloadOutcome::Retry {
+                downloaded,
+                validator,
+                reason,
+                same_mirror,
+            }) => {
+                last_err = reason.clone();
+                emit_mirror(
+                    app,
+                    "download",
+                    8,
+                    0,
+                    format!("{reason}，正在调整下载源…"),
+                    Some(host_of(url)),
+                );
+                // 同镜像最多续传一次，避免 stall 死循环
+                if same_mirror && downloaded > 0 && same_mirror_retries < 1 {
+                    same_mirror_retries += 1;
+                    resume_offset = downloaded;
+                    resume_validator = validator;
+                } else {
+                    // 手动换源时绕回第一个镜像，让用户可以重新挑一个源
+                    if reason == MANUAL_SWITCH_REASON && mirror_pos + 1 >= order.len() {
+                        mirror_pos = 0;
+                    } else {
+                        mirror_pos += 1;
+                    }
+                    same_mirror_retries = 0;
+                    resume_offset = 0;
+                    resume_validator = None;
+                    let _ = std::fs::remove_file(&zip_path);
+                }
+            }
             Err(e) if e == CANCELLED => {
                 let _ = std::fs::remove_file(&zip_path);
                 return Err(InstallFailure::cancelled());
             }
             Err(e) => {
                 last_err = e;
+                mirror_pos += 1;
+                same_mirror_retries = 0;
+                resume_offset = 0;
+                resume_validator = None;
                 let _ = std::fs::remove_file(&zip_path);
             }
         }
@@ -544,7 +689,7 @@ async fn install_inner(
         return Err(InstallFailure::cancelled());
     }
 
-    // 2) 解压（install-tl.zip；Windows 内含专用 perl，Unix 依赖系统 perl）
+    // 3) 解压（install-tl.zip；Windows 内含专用 perl，Unix 依赖系统 perl）
     emit(app, "download", 15, 0, "正在解压安装器…");
     extract_install_tl_zip(&zip_path, &extract_dir)?;
     let _ = std::fs::remove_file(&zip_path);
@@ -562,7 +707,7 @@ async fn install_inner(
         }
     };
 
-    // 3) 生成 profile 文件
+    // 4) 生成 profile 文件
     emit(app, "install", 20, 0, "正在生成安装配置…");
     let profile_path = temp_dir.join("texlive.profile");
     if let Err(e) = generate_profile(&profile_path, target, scheme) {
@@ -570,7 +715,7 @@ async fn install_inner(
         return Err(e.into());
     }
 
-    // 4) 静默安装：Windows 用自带 perl、Unix/macOS 用系统 perl 跑 install-tl
+    // 5) 静默安装：Windows 用自带 perl、Unix/macOS 用系统 perl 跑 install-tl
     //    -no-gui 控制台模式 / -no-interaction 不等待输入 / -repository 用国内镜像拉宏包
     emit(
         app,
@@ -606,7 +751,7 @@ async fn install_inner(
         return Err(InstallFailure::cancelled());
     }
 
-    // 5) 校验安装：优先 xelatex，缺失时退 pdflatex/lualatex，不再硬绑 xelatex
+    // 6) 校验安装：优先 xelatex，缺失时退 pdflatex/lualatex，不再硬绑 xelatex
     emit(app, "verify", 90, 0, "正在校验 TeX 引擎…");
     let engine = find_install_engine(target).ok_or_else(|| {
         InstallFailure::post_install(format!(
@@ -622,7 +767,7 @@ async fn install_inner(
         return Err(InstallFailure::cancelled());
     }
 
-    // 6) 写配置 / 台账 / 标记
+    // 7) 写配置 / 台账 / 标记
     emit(app, "verify", 98, 0, "正在写入环境配置…");
     write_install_records(app, target, &engine.bin_dir, scheme.label())
         .map_err(InstallFailure::post_install)?;
@@ -656,33 +801,185 @@ async fn install_inner(
     })
 }
 
-/// 下载 install-tl.zip（直接 GET；部分镜像站对 HEAD 返回 403，故不做预检）
+/// 单次下载结果
+enum DownloadOutcome {
+    Complete,
+    Retry {
+        downloaded: u64,
+        validator: Option<String>,
+        reason: String,
+        /// true = 同一镜像用 Range 续传重试（stall / 中途断流）；
+        /// false = 换下一个镜像并从头下载（跨镜像快照可能不同版，不能拼接字节）
+        same_mirror: bool,
+    },
+}
+
+/// 镜像测速：只取前 PROBE_BYTES 字节并计时，不为排序把整个安装包下三遍。
+/// 超时 / 连接失败 / HTTP 错误一律返回 None，由 rank_mirrors 排到末尾。
+async fn probe_mirror(client: &reqwest::Client, url: &str) -> Option<u64> {
+    let started = Instant::now();
+    let fut = async {
+        let mut resp = client
+            .get(url)
+            .header(
+                reqwest::header::RANGE,
+                format!("bytes=0-{}", PROBE_BYTES - 1),
+            )
+            .send()
+            .await
+            .ok()?;
+        if !resp.status().is_success() {
+            return None;
+        }
+        let mut got = 0u64;
+        while got < PROBE_BYTES {
+            let chunk = resp.chunk().await.ok()??;
+            if chunk.is_empty() {
+                break;
+            }
+            got += chunk.len() as u64;
+        }
+        Some(got)
+    };
+    let bytes = tokio::time::timeout(PROBE_TIMEOUT, fut).await.ok()??;
+    if bytes == 0 {
+        return None;
+    }
+    let secs = started.elapsed().as_secs_f64();
+    if secs <= 0.0 {
+        return None;
+    }
+    Some((bytes as f64 / secs) as u64)
+}
+
+/// 强校验器（非 weak 的 ETag，或 Last-Modified），用于 If-Range：
+/// 只有新镜像的资源与已下载部分一致时，服务器才会返回 206 允许续传。
+fn response_validator(resp: &reqwest::Response) -> Option<String> {
+    let etag = resp
+        .headers()
+        .get(reqwest::header::ETAG)
+        .and_then(|v| v.to_str().ok())
+        .filter(|s| !s.starts_with("W/"));
+    if etag.is_some() {
+        return etag.map(str::to_string);
+    }
+    resp.headers()
+        .get(reqwest::header::LAST_MODIFIED)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_string)
+}
+
+/// `Content-Range: bytes 123-456/789` → 起始偏移 123
+fn content_range_start(resp: &reqwest::Response) -> Option<u64> {
+    let raw = resp
+        .headers()
+        .get(reqwest::header::CONTENT_RANGE)?
+        .to_str()
+        .ok()?;
+    raw.split_whitespace()
+        .nth(1)?
+        .split('/')
+        .next()?
+        .split('-')
+        .next()?
+        .parse()
+        .ok()
+}
+
+/// 下载 install-tl.zip。
+/// - 平滑速度：最近 SPEED_WINDOW 个 1 秒采样的均值，不再被单秒抖动带偏；
+/// - stall 超时：单个 chunk 超过 CHUNK_STALL_TIMEOUT 未到达即换源；
+/// - 低速换源：宽限期后持续低于 SLOW_SPEED_BPS 达 SLOW_SPEED_SUSTAIN 即换源；
+/// - 换源续传：带 Range + If-Range，仅 206 且 Content-Range 起点吻合才追加，
+///   否则截断重下，避免把不同镜像/版本的内容拼成损坏的 zip。
 async fn download_installer(
     client: &reqwest::Client,
     app: &AppHandle,
     st: &Arc<TexInstallState>,
     url: &str,
     dest: &Path,
-) -> Result<(), String> {
+    resume_offset: u64,
+    resume_validator: Option<&str>,
+    allow_slow_switch: bool,
+) -> Result<DownloadOutcome, String> {
     if st.cancelled.load(Ordering::SeqCst) {
         return Err(CANCELLED.to_string());
     }
-    let mut resp = tokio::select! {
-        r = client.get(url).send() => r.map_err(|e| format!("连接镜像失败：{e}"))?,
-        _ = st.cancel.notified() => return Err(CANCELLED.to_string()),
-    };
-    if !resp.status().is_success() {
-        return Err(format!("镜像返回 HTTP {}", resp.status()));
-    }
-    let total = resp.content_length();
-    let mut file = tokio::fs::File::create(dest)
-        .await
-        .map_err(|e| format!("创建安装包文件失败：{e}"))?;
+    let mirror = host_of(url);
 
-    let mut downloaded: u64 = 0;
+    let mut req = client.get(url);
+    if resume_offset > 0 {
+        req = req.header(reqwest::header::RANGE, format!("bytes={resume_offset}-"));
+        if let Some(v) = resume_validator {
+            req = req.header(reqwest::header::IF_RANGE, v);
+        }
+    }
+    let mut resp = tokio::select! {
+        r = req.send() => match r {
+            Ok(x) => x,
+            Err(e) => return Ok(DownloadOutcome::Retry {
+                downloaded: resume_offset,
+                validator: resume_validator.map(str::to_string),
+                reason: format!("连接失败：{e}"),
+                same_mirror: false,
+            }),
+        },
+        _ = st.cancel.notified() => {
+            let _ = tokio::fs::remove_file(dest).await;
+            return Err(CANCELLED.to_string());
+        }
+    };
+
+    let validator = response_validator(&resp);
+    let status = resp.status();
+    if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        let _ = tokio::fs::remove_file(dest).await;
+        return Ok(DownloadOutcome::Retry {
+            downloaded: 0,
+            validator: None,
+            reason: "服务器拒绝续传，改为重新下载".to_string(),
+            same_mirror: false,
+        });
+    }
+    if !status.is_success() {
+        return Ok(DownloadOutcome::Retry {
+            downloaded: resume_offset,
+            validator,
+            reason: format!("镜像返回 HTTP {status}"),
+            same_mirror: false,
+        });
+    }
+
+    // 206 但起点无法确认时不能继续：响应体只是「剩余段」，
+    // 当成完整文件写入会产出缺头的损坏 zip。放弃本次响应、换源重下。
+    let partial = status == reqwest::StatusCode::PARTIAL_CONTENT;
+    if resume_offset > 0 && partial && content_range_start(&resp) != Some(resume_offset) {
+        return Ok(DownloadOutcome::Retry {
+            downloaded: 0,
+            validator: None,
+            reason: "续传响应缺少有效 Content-Range，改为重新下载".to_string(),
+            same_mirror: false,
+        });
+    }
+    // 只有明确的 206 + 起点吻合才追加；200（服务器忽略 Range）一律截断从头写
+    let append = resume_offset > 0 && partial;
+    let base = if append { resume_offset } else { 0 };
+    let total = resp.content_length().map(|n| base + n);
+
+    let mut file = if append {
+        tokio::fs::OpenOptions::new().append(true).open(dest).await
+    } else {
+        tokio::fs::File::create(dest).await
+    }
+    .map_err(|e| format!("创建安装包文件失败：{e}"))?;
+
+    let mut downloaded = base;
     let mut window_bytes: u64 = 0;
     let mut window_start = Instant::now();
+    let mut samples: VecDeque<u64> = VecDeque::new();
     let mut speed: u64 = 0;
+    let mut slow_for = Duration::ZERO;
+    let started = Instant::now();
     let mut last_emit = Instant::now() - Duration::from_secs(1);
 
     loop {
@@ -690,11 +987,45 @@ async fn download_installer(
             let _ = tokio::fs::remove_file(dest).await;
             return Err(CANCELLED.to_string());
         }
+        if st.switch_requested.swap(false, Ordering::SeqCst) {
+            let _ = file.flush().await;
+            return Ok(DownloadOutcome::Retry {
+                downloaded: 0,
+                validator: None,
+                reason: MANUAL_SWITCH_REASON.to_string(),
+                same_mirror: false,
+            });
+        }
         let chunk = tokio::select! {
-            c = resp.chunk() => c.map_err(|e| format!("下载中断：{e}"))?,
+            r = tokio::time::timeout(CHUNK_STALL_TIMEOUT, resp.chunk()) => match r {
+                Ok(Ok(c)) => c,
+                Ok(Err(e)) => {
+                    // 续传/重下前必须 flush，否则已写入字节可能还在缓冲区
+                    let _ = file.flush().await;
+                    return Ok(DownloadOutcome::Retry {
+                        downloaded,
+                        validator: validator.clone(),
+                        reason: format!("下载中断：{e}"),
+                        same_mirror: downloaded > 0 && validator.is_some(),
+                    });
+                }
+                Err(_) => {
+                    let _ = file.flush().await;
+                    return Ok(DownloadOutcome::Retry {
+                        downloaded,
+                        validator: validator.clone(),
+                        reason: format!("{mirror} 超过 {} 秒无数据", CHUNK_STALL_TIMEOUT.as_secs()),
+                        same_mirror: downloaded > 0 && validator.is_some(),
+                    });
+                }
+            },
             _ = st.cancel.notified() => {
-                let _ = tokio::fs::remove_file(dest).await;
-                return Err(CANCELLED.to_string());
+                if st.cancelled.load(Ordering::SeqCst) {
+                    let _ = tokio::fs::remove_file(dest).await;
+                    return Err(CANCELLED.to_string());
+                }
+                // 手动换源：notify_waiters 只唤醒已注册的等待者，标志位由循环顶部兜底
+                continue;
             }
         };
         let Some(bytes) = chunk else { break };
@@ -706,9 +1037,28 @@ async fn download_installer(
 
         let now = Instant::now();
         if window_start.elapsed() >= Duration::from_secs(1) {
-            speed = (window_bytes as f64 / window_start.elapsed().as_secs_f64()) as u64;
+            let secs = window_start.elapsed().as_secs_f64();
+            let instant = (window_bytes as f64 / secs) as u64;
+            speed = smooth_speed(&mut samples, instant);
+            let slow = advance_slow(
+                &mut slow_for,
+                Duration::from_secs(1),
+                started.elapsed(),
+                speed,
+                true,
+            );
             window_bytes = 0;
             window_start = now;
+            let near_complete = total.map_or(false, |t| t > 0 && downloaded * 10 >= t * 9);
+            if slow && allow_slow_switch && !near_complete {
+                let _ = file.flush().await;
+                return Ok(DownloadOutcome::Retry {
+                    downloaded: 0,
+                    validator: validator.clone(),
+                    reason: format!("{mirror} 持续低速（{}）", fmt_bps(speed)),
+                    same_mirror: false,
+                });
+            }
         }
         if last_emit.elapsed() >= Duration::from_millis(300) {
             last_emit = now;
@@ -716,7 +1066,7 @@ async fn download_installer(
                 .filter(|t| *t > 0)
                 .map(|t| 8 + ((downloaded.min(t) * 6) / t) as u32)
                 .unwrap_or(0);
-            emit(
+            emit_mirror(
                 app,
                 "download",
                 pct.min(14),
@@ -728,6 +1078,7 @@ async fn download_installer(
                         .map(|t| format!(" / {:.1} MB", t as f64 / 1_048_576.0))
                         .unwrap_or_default()
                 ),
+                Some(mirror),
             );
         }
     }
@@ -738,16 +1089,22 @@ async fn download_installer(
     let min_size = 15 * 1024 * 1024; // install-tl.zip 约 25MB，明显偏小视为失败
     if downloaded < min_size {
         let _ = tokio::fs::remove_file(dest).await;
-        return Err(format!("安装包不完整（仅 {downloaded} 字节），请重试"));
+        return Ok(DownloadOutcome::Retry {
+            downloaded: 0,
+            validator: None,
+            reason: format!("安装包不完整（仅 {downloaded} 字节）"),
+            same_mirror: false,
+        });
     }
-    emit(
+    emit_mirror(
         app,
         "download",
         15,
         speed,
         format!("下载完成 · {:.1} MB", downloaded as f64 / 1_048_576.0),
+        Some(mirror),
     );
-    Ok(())
+    Ok(DownloadOutcome::Complete)
 }
 
 /// 解压 install-tl.zip
@@ -1359,6 +1716,17 @@ fn write_install_records(
 }
 
 fn emit(app: &AppHandle, stage: &str, percent: u32, speed_bps: u64, message: impl Into<String>) {
+    emit_mirror(app, stage, percent, speed_bps, message, None);
+}
+
+fn emit_mirror(
+    app: &AppHandle,
+    stage: &str,
+    percent: u32,
+    speed_bps: u64,
+    message: impl Into<String>,
+    mirror: Option<&str>,
+) {
     let _ = app.emit(
         EV_INSTALL_PROGRESS,
         TexInstallProgress {
@@ -1366,8 +1734,52 @@ fn emit(app: &AppHandle, stage: &str, percent: u32, speed_bps: u64, message: imp
             percent,
             speed_bps,
             message: message.into(),
+            mirror: mirror.map(str::to_string),
         },
     );
+}
+
+/// 最近 SPEED_WINDOW 个 1 秒采样的算术平均，避免单秒抖动把读数砸到个位数
+fn smooth_speed(samples: &mut VecDeque<u64>, instant: u64) -> u64 {
+    samples.push_back(instant);
+    while samples.len() > SPEED_WINDOW {
+        samples.pop_front();
+    }
+    let sum: u64 = samples.iter().sum();
+    sum / samples.len().max(1) as u64
+}
+
+/// 推进「连续低速」计时，返回是否已达到换源阈值。
+/// 宽限期内（TCP 慢启动）不累计；速度恢复即清零。
+fn advance_slow(
+    slow_for: &mut Duration,
+    tick: Duration,
+    elapsed: Duration,
+    speed: u64,
+    sampled: bool,
+) -> bool {
+    if sampled && elapsed >= SLOW_SPEED_GRACE && speed < SLOW_SPEED_BPS {
+        *slow_for += tick;
+    } else {
+        *slow_for = Duration::ZERO;
+    }
+    *slow_for >= SLOW_SPEED_SUSTAIN
+}
+
+/// 按测速结果给镜像排序：有速度的按降序，测速失败的保持原始顺序排在后面
+fn rank_mirrors(speeds: &[Option<u64>]) -> Vec<usize> {
+    let mut order: Vec<usize> = (0..speeds.len()).collect();
+    // 避免与 std::sync::atomic::Ordering 冲突，用 sort_by_key 表达「降序」
+    order.sort_by_key(|&i| (speeds[i].is_none(), u64::MAX - speeds[i].unwrap_or(0), i));
+    order
+}
+
+fn fmt_bps(bps: u64) -> String {
+    if bps >= 1024 * 1024 {
+        format!("{:.1} MB/s", bps as f64 / 1_048_576.0)
+    } else {
+        format!("{} KB/s", bps / 1024)
+    }
 }
 
 fn exe_name(name: &str) -> String {
@@ -1577,6 +1989,92 @@ mod tests {
             &InstallFailure::post_install("post")
         ));
         assert!(should_cleanup(true, &InstallFailure::post_install("post")));
+    }
+
+    #[test]
+    fn smooth_speed_averages_recent_samples() {
+        let mut samples = VecDeque::new();
+        assert_eq!(smooth_speed(&mut samples, 400_000), 400_000);
+        // 单秒掉到 4 KB/s 不会把读数砸到个位数
+        assert_eq!(smooth_speed(&mut samples, 4_096), 202_048);
+        assert_eq!(smooth_speed(&mut samples, 400_000), 268_032);
+        // 窗口只保留最近 SPEED_WINDOW 个采样
+        for _ in 0..SPEED_WINDOW + 3 {
+            smooth_speed(&mut samples, 100_000);
+        }
+        assert_eq!(samples.len(), SPEED_WINDOW);
+        assert_eq!(smooth_speed(&mut samples, 100_000), 100_000);
+    }
+
+    #[test]
+    fn slow_switch_needs_grace_and_sustained_low_speed() {
+        let mut slow_for = Duration::ZERO;
+        let tick = Duration::from_secs(1);
+        // 宽限期内不累计（TCP 慢启动；第 GRACE 秒起才参与判定）
+        for sec in 1..SLOW_SPEED_GRACE.as_secs() {
+            assert!(!advance_slow(
+                &mut slow_for,
+                tick,
+                Duration::from_secs(sec),
+                4_096,
+                true,
+            ));
+        }
+        assert_eq!(slow_for, Duration::ZERO);
+        // 宽限期后连续低速，累计到阈值才触发
+        let mut triggered = false;
+        for sec in SLOW_SPEED_GRACE.as_secs()..SLOW_SPEED_GRACE.as_secs() + 12 {
+            triggered = advance_slow(
+                &mut slow_for,
+                tick,
+                Duration::from_secs(sec),
+                4_096,
+                true,
+            );
+            if triggered {
+                break;
+            }
+        }
+        assert!(triggered);
+        assert!(slow_for >= SLOW_SPEED_SUSTAIN);
+        // 速度恢复即清零
+        let mut recovered = Duration::from_secs(30);
+        assert!(!advance_slow(
+            &mut recovered,
+            tick,
+            Duration::from_secs(30),
+            700_000,
+            true,
+        ));
+        assert_eq!(recovered, Duration::ZERO);
+    }
+
+    #[test]
+    fn rank_mirrors_puts_fastest_first_and_keeps_failed_last() {
+        let order = rank_mirrors(&[Some(200_000), Some(700_000), Some(400_000)]);
+        assert_eq!(order, vec![1, 2, 0]);
+        // 测速失败的排末尾，且保持原始相对顺序
+        let order = rank_mirrors(&[None, Some(100_000), None]);
+        assert_eq!(order, vec![1, 0, 2]);
+        // 全部失败时退回默认顺序
+        assert_eq!(rank_mirrors(&[None, None, None]), vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn formats_download_speed() {
+        assert_eq!(fmt_bps(0), "0 KB/s");
+        assert_eq!(fmt_bps(4_096), "4 KB/s");
+        assert_eq!(fmt_bps(726_953), "709 KB/s");
+        assert_eq!(fmt_bps(1_572_864), "1.5 MB/s");
+    }
+
+    #[test]
+    fn host_of_extracts_mirror_host() {
+        assert_eq!(
+            host_of(TEXLIVE_INSTALLER_URLS[0]),
+            "mirrors.tuna.tsinghua.edu.cn"
+        );
+        assert_eq!(host_of(TEXLIVE_INSTALLER_URLS[2]), "mirror.ctan.org");
     }
 
     fn unique() -> u128 {

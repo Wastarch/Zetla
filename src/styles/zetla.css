@@ -5136,6 +5136,41 @@ body.row-resizing {
   font-size: 10px;
 }
 
+/* 当前下载源：常驻显示，不随进度消息被覆盖 */
+.setup-progress-src {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--bg-3);
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.setup-progress-src-label {
+  flex: none;
+  color: var(--txt-3);
+}
+
+.setup-progress-src code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--txt-2);
+  font-family: var(--font-mono);
+}
+
+.setup-src-switch.btn {
+  flex: none;
+  padding: 3px 8px;
+  font-size: 10px;
+}
+
 /* 完成 / 失败 / 取消 */
 .setup-result {
   display: flex;

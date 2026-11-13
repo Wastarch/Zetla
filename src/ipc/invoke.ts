@@ -59,6 +59,8 @@ export const compileApi = {
     call<void>("install_tex", { distro, installDir, scheme }),
   /** M0-15b/c：取消自动安装（杀安装器进程树 / 中断下载） */
   cancelTexInstall: () => call<void>("cancel_tex_install"),
+  /** 下载阶段手动切换镜像（stall / 低速会自动换源，此入口供用户主动干预） */
+  switchTexMirror: () => call<void>("switch_tex_mirror"),
   /** M0-15b/c：接管已有 TeX Live（校验引擎并写 config/台账/标记） */
   adoptTexInstall: (root: string) => call<TexInstallResult>("adopt_tex_install", { root }),
 };
