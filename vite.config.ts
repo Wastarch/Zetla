@@ -9,6 +9,11 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig(() => ({
   plugins: [react()],
 
+  // Tauri 在 dev/build 钩子中注入目标平台；直接运行 Vite 时回退到宿主平台。
+  define: {
+    __TAURI_PLATFORM__: JSON.stringify(process.env.TAURI_ENV_PLATFORM ?? process.platform),
+  },
+
   // 与 tsconfig paths 对齐："@/*" -> "src/*"
   resolve: {
     alias: {

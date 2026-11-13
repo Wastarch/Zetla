@@ -112,9 +112,9 @@ export function EditorWorkspace() {
   }, [openDialog, saveBuffer]);
 
   // M1-9：活动文本缓冲被外部修改时的提示条
-  const activeExternal = buffers.find(
-    (b) => b.path === activePath && b.externallyChanged,
-  )?.externallyChanged;
+  const activeBuffer = buffers.find((b) => b.path === activePath);
+  const activeExternal = !!activeBuffer?.externallyChanged;
+  const activeDirty = !!activeBuffer && activeBuffer.content !== activeBuffer.savedContent;
 
   // 查找面板状态 + 当前缓冲类型（非文本不显示面板）
   const findOpen = useFindStore((s) => s.open);
@@ -186,7 +186,9 @@ export function EditorWorkspace() {
       {activeExternal && (
         <div className="ext-changed-bar">
           <span>
-            此文件已在编辑器外部被修改，是否重新加载？（未保存的本地修改将丢失）
+            {activeDirty
+              ? "此文件已在编辑器外部被修改，是否重新加载？（未保存的本地修改将丢失）"
+              : "此文件已在编辑器外部被修改，是否重新加载以显示最新内容？"}
           </span>
           <button type="button" className="btn primary" onClick={reloadExternal}>
             重新加载
