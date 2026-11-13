@@ -129,7 +129,7 @@ export function EnvGuideDialog() {
                     <b>Zetla 自动安装 TeX Live</b>
                     <span>
                       下载并安装到 Zetla 独立目录，不污染系统 PATH；装完自动校验 xelatex。
-                      TeX Live 自带 Perl，无需额外安装。
+                      Zetla 会自动使用当前平台对应的 TeX Live 安装器。
                     </span>
                   </div>
                   <button type="button" className="btn primary env-auto-btn" onClick={openSetup}>

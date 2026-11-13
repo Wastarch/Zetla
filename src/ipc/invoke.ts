@@ -57,6 +57,8 @@ export const compileApi = {
   /** M0-15b/c：开始自动安装 TeX Live（立即返回；进度/结果走 tex_install_* 事件） */
   installTex: (distro: string, installDir: string | null, scheme: string | null) =>
     call<void>("install_tex", { distro, installDir, scheme }),
+  /** 当前平台留空安装时实际使用的默认 TeX Live 目录。 */
+  getDefaultTexInstallDir: () => call<string>("get_default_tex_install_dir"),
   /** M0-15b/c：取消自动安装（杀安装器进程树 / 中断下载） */
   cancelTexInstall: () => call<void>("cancel_tex_install"),
   /** M0-15b/c：接管已有 TeX Live（校验引擎并写 config/台账/标记） */

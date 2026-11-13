@@ -48,6 +48,7 @@ pub fn run() {
             commands::envsetup::install_tex,
             commands::envsetup::cancel_tex_install,
             commands::envsetup::adopt_tex_install,
+            commands::envsetup::get_default_tex_install_dir,
             // 多遍编译（M0-9）
             commands::compile::compile_project,
             commands::compile::cancel_compile,

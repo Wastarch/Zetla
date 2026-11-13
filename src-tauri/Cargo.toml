@@ -35,10 +35,11 @@ tokio = { version = "1", features = ["process", "io-util", "sync", "time", "macr
 notify = "8.2.0"
 # M0-15b：下载 TeX Live 安装器（流式写盘 + 进度）；Windows 走系统 TLS / 系统代理
 reqwest = { version = "0.13", default-features = false, features = ["native-tls", "system-proxy"] }
-# M0-15b：解压 install-tl.zip（内含 TeX Live 专用 Perl）
+# M0-15b：Windows 解压 install-tl.zip（内含 TeX Live 专用 Perl）
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
-# M1-4：解压 .synctex.gz（纯 Rust 后端 miniz_oxide，无 C 依赖）
+# macOS/Linux 解压 install-tl-unx.tar.gz；flate2 也用于 .synctex.gz
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+tar = "0.4"
 # M1-13：更新检测 —— 安装包 sha256 校验（无代码签名下的完整性保障）
 sha2 = "0.10"
 hex = "0.4"

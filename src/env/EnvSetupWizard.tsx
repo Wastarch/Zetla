@@ -45,6 +45,7 @@ export function EnvSetupWizard() {
 
   const [step, setStep] = useState<Step>(1);
   const [installDir, setInstallDir] = useState("");
+  const [defaultInstallDir, setDefaultInstallDir] = useState("系统本地数据目录/Zetla/tex/texlive");
   const [scheme, setScheme] = useState<"basic" | "full">("basic");
   const [checking, setChecking] = useState(false);
   const [adopting, setAdopting] = useState(false);
@@ -70,6 +71,15 @@ export function EnvSetupWizard() {
     setError(null);
 
     let alive = true;
+    void compileApi
+      .getDefaultTexInstallDir()
+      .then((path) => {
+        if (alive) setDefaultInstallDir(path);
+      })
+      .catch(() => {
+        /* 保留平台中性的占位文案；实际安装仍由后端解析默认目录。 */
+      });
+
     const unlisteners: UnlistenFn[] = [];
     void (async () => {
       const uProgress = await onKernelEvent<TexInstallProgress>(
@@ -304,7 +314,7 @@ export function EnvSetupWizard() {
                     <>
                       <b>未检测到 TeX 发行版</b>
                       <span>
-                        下一步将下载并安装 TeX Live（自带 Perl，无需额外安装）。
+                        下一步将下载并安装适用于当前平台的 TeX Live 安装器。
                       </span>
                     </>
                   )}
@@ -364,7 +374,7 @@ export function EnvSetupWizard() {
                   className="entry-input"
                   value={installDir}
                   spellCheck={false}
-                  placeholder="%LOCALAPPDATA%\Zetla\tex\texlive（留空使用默认）"
+                  placeholder={`${defaultInstallDir}（留空使用默认）`}
                   onChange={(e) => setInstallDir(e.target.value)}
                 />
                 <button type="button" className="btn" onClick={() => void pickInstallDir()}>
@@ -373,9 +383,9 @@ export function EnvSetupWizard() {
                 </button>
               </div>
               <div className="setup-help">
-                留空安装到 <code>%LOCALAPPDATA%\Zetla\tex\texlive</code>；
-                也可选择其他盘符。目录需可写，且不能已包含 TeX。
-                TeX Live 自带 Perl，无需单独安装。
+                留空安装到 <code>{defaultInstallDir}</code>；
+                也可选择其他目录。目录需可写，且不能已包含 TeX。
+                Windows 使用安装包内 Perl；macOS 使用系统 Perl，无需单独配置。
               </div>
 
               {error && (
@@ -466,7 +476,7 @@ export function EnvSetupWizard() {
 
         <div className="modal-foot">
           <div className="setup-foot-hint">
-            {step === 2 && "TeX Live 自带 Perl · 不改系统 PATH"}
+            {step === 2 && "使用当前平台安装器 · 不改系统 PATH"}
             {step === 3 && "可随时取消，取消后会清理本次新建的目录"}
             {step === 4 && result?.ok && "完成后可直接编译当前项目"}
             {step === 1 && "检测结果仅用于选择安装方式"}
