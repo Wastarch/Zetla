@@ -122,13 +122,11 @@ export function EnvSetupWizard() {
 
   if (!open) return null;
 
+  // 安装/取消进行中时，后台任务有副作用（下载、写盘、子进程）：
+  // 点背景或 × 一律不得关闭向导、更不得直接终止安装。
+  // 唯一的中止入口是底部显式的「取消安装」按钮。
   const requestClose = () => {
-    if (installing) {
-      if (window.confirm("安装正在进行，确定取消安装吗？")) {
-        void cancelInstall();
-      }
-      return;
-    }
+    if (installing || cancelling) return;
     useAppStore.getState().setEnvSetupOpen(false);
   };
 
@@ -233,21 +231,33 @@ export function EnvSetupWizard() {
         ? "已有环境已接管"
         : "TeX Live 安装完成";
 
+  const closeDisabled = installing || cancelling;
+
   return (
     <div
       className="modal-layer"
       role="dialog"
       aria-label="安装 TeX 环境"
-      onMouseDown={requestClose}
+      onClick={(e) => {
+        // 只响应直接落在遮罩上的完整点击：onMouseDown 会在「按下」瞬间触发，
+        // 从弹窗内按下、拖到背景释放也会误触，故改为 onClick 且校验 target。
+        if (e.target === e.currentTarget) requestClose();
+      }}
     >
-      <div className="modal env-setup" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="modal env-setup">
         <div className="modal-head">
           <Icon name="tex" size={18} style={{ color: "var(--accent)" }} />
           <div>
             <h2>安装 TeX 环境</h2>
             <div className="sub">TeX Setup</div>
           </div>
-          <button type="button" className="ibtn x" title="关闭" onClick={requestClose}>
+          <button
+            type="button"
+            className="ibtn x"
+            title={closeDisabled ? "安装进行中，如需中止请点击下方「取消安装」" : "关闭"}
+            disabled={closeDisabled}
+            onClick={requestClose}
+          >
             <Icon name="x" />
           </button>
         </div>
@@ -415,7 +425,7 @@ export function EnvSetupWizard() {
               <div className="setup-note">
                 <Icon name="alert" size={13} />
                 <span>
-                  TeX Live 安装需要 10–60 分钟（取决于方案和网络）。请勿关闭 Zetla；如需中止可点击下方「取消安装」。
+                  TeX Live 安装需要 10–60 分钟（取决于方案和网络）。请勿关闭 Zetla；安装期间点击背景或右上角 × 不会中断安装，如需中止请点击下方「取消安装」。
                 </span>
               </div>
             </div>
