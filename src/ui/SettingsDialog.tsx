@@ -5,7 +5,14 @@
 // 暗色主题 M1-2 已接：外观页「主题」下拉 + 菜单「切换明暗主题」；
 // 多编译引擎 M1-3 已接：编译页「默认编译引擎」；M2 起编译流程统一由 Tool / Recipe 面板编排；
 // 界面密度经用户确认取消，不占位）
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { getVersion } from "@tauri-apps/api/app";
 import { APP_VERSION } from "@/version";
 import { useAppStore, type SettingsPane } from "@/core/store";
@@ -14,6 +21,7 @@ import { notify } from "@/project/useProject";
 import { useModuleList } from "@/modules/useModuleList";
 import { openEnvGuide } from "@/env/useEnvCheck";
 import { useUpdateStore } from "@/modules/updater/updateStore";
+import { countNoteLines, parseNotes } from "@/modules/updater/notes";
 import type { UpdateProgress } from "@/modules/updater/types";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Icon } from "@/ui/Icon";
@@ -1153,23 +1161,28 @@ export function SettingsDialog() {
 
             {pane === "about" && (
               <div className="set-pane about-pane" role="tabpanel">
-                <div className="about-hero">
+                <section className="about-hero">
                   <img
                     className="about-mark"
                     src="/logo.svg"
                     alt="Zetla"
                     draggable={false}
                   />
-                  <div>
+                  <div className="about-id">
                     <h3>Zetla</h3>
-                    <p className="about-ver">版本 {version}</p>
+                    <p className="about-tagline">桌面 LaTeX 工作台</p>
                   </div>
-                </div>
+                  <span className="about-ver">版本 {version}</span>
+                </section>
                 <p className="about-desc">
-                  桌面 LaTeX 工作台：项目树管理 · 多标签编辑 · 一键 XeLaTeX 编译 ·
-                  PDF 预览。所有文件读写与编译均在本机完成，不上传云端。
+                  项目树管理 · 多标签编辑 · 一键 XeLaTeX 编译 · PDF 预览 · 内置终端与绘图。
+                  所有文件读写与编译均在本机完成，不上传云端。
                 </p>
-                <UpdateRegion />
+                <div className="about-meta">
+                  <span className="about-chip">AGPLv3</span>
+                  <span className="about-chip">{platformLabel()}</span>
+                </div>
+                <UpdateRegion version={version} />
               </div>
             )}
           </div>
@@ -1228,8 +1241,108 @@ function pct(p?: UpdateProgress | null): number {
   return Math.min(100, Math.round((p.downloaded / p.total) * 100));
 }
 
-/** 关于页更新区：检测中 / 已是最新 / 发现新版本 / 下载进度 / 已下载 / 失败 五态 */
-function UpdateRegion() {
+/** 更新说明折叠阈值（估算行数）：超过则出现「展开全部」 */
+const NOTE_LINE_LIMIT = 6;
+
+/** 平台显示名（关于页副信息 chip） */
+function platformLabel(): string {
+  const raw = (
+    document.documentElement.dataset.platform ||
+    __TAURI_PLATFORM__ ||
+    ""
+  ).toLowerCase();
+  if (raw.includes("darwin") || raw.includes("mac")) return "macOS";
+  if (raw.includes("win")) return "Windows";
+  if (raw.includes("linux")) return "Linux";
+  return "桌面端";
+}
+
+/** 行内格式：**粗体** 与 `代码`（不做完整 Markdown，只认这两种最常见写法） */
+function renderInline(text: string): ReactNode[] {
+  const re = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  const out: ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const tok = m[0];
+    out.push(
+      tok.startsWith("**") ? (
+        <b key={m.index}>{tok.slice(2, -2)}</b>
+      ) : (
+        <code key={m.index}>{tok.slice(1, -1)}</code>
+      ),
+    );
+    last = m.index + tok.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
+/**
+ * 更新说明面板：把 latest.json 的 notes 渲染成「标题 / 列表 / 段落」结构化内容。
+ * 超过 NOTE_LINE_LIMIT 行时折叠，底部渐隐 + 「展开全部」。
+ */
+function ReleaseNotes({ notes }: { notes?: string | string[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const blocks = useMemo(() => parseNotes(notes), [notes]);
+  const lines = useMemo(() => countNoteLines(blocks), [blocks]);
+
+  if (blocks.length === 0) {
+    return <p className="update-notes-empty">本次更新未提供详细说明。</p>;
+  }
+
+  const clipped = lines > NOTE_LINE_LIMIT && !expanded;
+
+  return (
+    <div className="update-notes">
+      <div className={`update-notes-body${clipped ? " clipped" : ""}`}>
+        {blocks.map((b, i) => {
+          if (b.type === "heading") {
+            return (
+              <p key={i} className="note-h">
+                {renderInline(b.text)}
+              </p>
+            );
+          }
+          if (b.type === "list") {
+            const items = b.items.map((it, j) => <li key={j}>{renderInline(it)}</li>);
+            return b.ordered ? (
+              <ol key={i} className="note-list is-ordered">
+                {items}
+              </ol>
+            ) : (
+              <ul key={i} className="note-list">
+                {items}
+              </ul>
+            );
+          }
+          return (
+            <p key={i} className="note-p">
+              {renderInline(b.text)}
+            </p>
+          );
+        })}
+      </div>
+      {lines > NOTE_LINE_LIMIT && (
+        <button
+          type="button"
+          className="update-notes-toggle"
+          onClick={() => setExpanded((v) => !v)}
+        >
+          {expanded ? "收起" : `展开全部（约 ${lines} 行）`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 关于页「软件更新」卡片。
+ * 状态：checking / uptodate / update / downloading / downloaded / error；
+ * 有新版本时展示「当前版本 → 新版本 + 发布日期 + 更新说明」，检查更新常驻卡片右上角。
+ */
+function UpdateRegion({ version }: { version: string }) {
   const status = useUpdateStore((s) => s.status);
   const latest = useUpdateStore((s) => s.latest);
   const mandatory = useUpdateStore((s) => s.mandatory);
@@ -1241,102 +1354,125 @@ function UpdateRegion() {
   const openRelease = useUpdateStore((s) => s.openRelease);
   const retry = useUpdateStore((s) => s.retry);
 
+  const busy = status === "checking" || status === "downloading";
+  const hasNew = status === "update" || status === "downloading" || status === "downloaded";
+
   const onInstallClick = async () => {
     const ok = await confirm(
-      "将关闭 Zetla 并启动安装程序，是否继续？\n若 Windows 弹出安全拦截提示，点击「仍要运行」即可（安装包未做代码签名）。",
+      "将关闭 Zetla 并启动安装程序，是否继续？\n若系统弹出安全拦截提示，点击「仍要运行 / 仍要打开」即可（安装包未做代码签名）。",
       { title: "安装更新", kind: "warning" },
     );
     if (ok) void confirmInstall();
   };
 
   return (
-    <div className="update-region">
-      <div className="update-head">
+    <section className={`update-card${hasNew ? " has-new" : ""}`}>
+      <header className="update-head">
         <span className="update-title">软件更新</span>
         {status === "update" && (
           <span className={`update-badge${mandatory ? " req" : ""}`}>
             {mandatory ? "必须更新" : "有新版本"}
           </span>
         )}
-      </div>
-
-      {status === "checking" && <p className="update-line">正在检查更新…</p>}
-      {status === "uptodate" && <p className="update-line ok">已是最新版本。</p>}
-
-      {status === "update" && latest && (
-        <div className="update-found">
-          <p className="update-line">
-            发现新版本 <b>v{latest.version}</b>
-            {latest.pubDate ? `（发布于 ${fmtDate(latest.pubDate)}）` : ""}
-          </p>
-          {latest.notes && <p className="update-notes">{latest.notes}</p>}
-          <div className="update-acts">
-            <button type="button" className="btn primary" onClick={() => void download()}>
+        {status === "downloaded" && <span className="update-badge done">待安装</span>}
+        {status === "error" && <span className="update-badge err">更新失败</span>}
+        {/* 主操作常驻头部：更新说明再长也不会把「安装」挤到滚动区外 */}
+        <div className="update-head-acts">
+          {status === "update" && (
+            <button type="button" className="btn primary sm" onClick={() => void download()}>
               下载并安装
             </button>
-            {latest.releaseUrl && (
-              <button type="button" className="btn" onClick={openRelease}>
-                查看发布说明
+          )}
+          {status === "downloaded" && (
+            <button type="button" className="btn primary sm" onClick={() => void onInstallClick()}>
+              立即安装并重启
+            </button>
+          )}
+          {status === "error" && (
+            <button type="button" className="btn primary sm" onClick={() => void retry()}>
+              重试
+            </button>
+          )}
+          <button
+            type="button"
+            className="update-check"
+            disabled={busy}
+            onClick={() => void check()}
+          >
+            <Icon name="refresh" size={11} />
+            {status === "checking" ? "检查中…" : "检查更新"}
+          </button>
+        </div>
+      </header>
+
+      {status === "checking" && <p className="update-line">正在检查更新…</p>}
+
+      {status === "uptodate" && (
+        <>
+          <p className="update-line ok">
+            <Icon name="check" size={12} />
+            已是最新版本（v{version}）
+          </p>
+          <p className="update-hint">
+            发现新版本时，这里会显示版本对比、更新说明与安装入口。
+          </p>
+        </>
+      )}
+
+      {(hasNew || status === "error") && latest && (
+        <div className="update-ver">
+          <span className="update-ver-old">v{version}</span>
+          <span className="update-ver-arrow" aria-hidden="true">
+            →
+          </span>
+          <span className="update-ver-new">v{latest.version}</span>
+          <span className="update-ver-right">
+            {latest.pubDate && (
+              <span className="update-ver-date">{fmtDate(latest.pubDate)} 发布</span>
+            )}
+            {latest.releaseUrl && status !== "error" && (
+              <button type="button" className="update-link" onClick={openRelease}>
+                发布说明
               </button>
             )}
-          </div>
+          </span>
         </div>
       )}
+
+      {hasNew && latest && <ReleaseNotes notes={latest.notes} />}
 
       {status === "downloading" && (
         <div className="update-progress">
           <div className="bar">
             <div className="bar-fill" style={{ width: `${pct(progress)}%` }} />
           </div>
-          <p className="update-line">
-            {progress?.source ? `${progress.source} · ` : ""}
-            下载中 {fmtBytes(progress?.downloaded)} / {fmtBytes(progress?.total)}
-          </p>
+          <div className="update-progress-meta">
+            <b>{pct(progress)}%</b>
+            <span>
+              {fmtBytes(progress?.downloaded)} / {fmtBytes(progress?.total)}
+            </span>
+            {progress?.source && <span className="src">{progress.source}</span>}
+          </div>
         </div>
       )}
 
       {status === "downloaded" && (
-        <div className="update-found">
-          <p className="update-line">更新已下载完成，点击安装将关闭 Zetla 并启动安装程序。</p>
-          <div className="update-acts">
-            <button type="button" className="btn primary" onClick={() => void onInstallClick()}>
-              立即安装
-            </button>
-            {latest?.releaseUrl && (
-              <button type="button" className="btn" onClick={openRelease}>
-                查看发布说明
-              </button>
-            )}
-          </div>
-        </div>
+        <p className="update-line">更新已下载完成，安装将关闭 Zetla 并自动重启。</p>
       )}
 
       {status === "error" && (
         <div className="update-err">
-          <p className="update-line err">更新失败：{error}</p>
-          <div className="update-acts">
-            <button type="button" className="btn" onClick={() => void retry()}>
-              重试
+          <p className="update-line err">
+            <Icon name="alert" size={12} />
+            {error}
+          </p>
+          {latest?.releaseUrl && (
+            <button type="button" className="update-link" onClick={openRelease}>
+              去发布页手动下载
             </button>
-            {latest?.releaseUrl && (
-              <button type="button" className="btn" onClick={openRelease}>
-                去发布页手动下载
-              </button>
-            )}
-          </div>
+          )}
         </div>
       )}
-
-      <div className="update-actions-bottom">
-        <button
-          type="button"
-          className="btn"
-          disabled={status === "checking" || status === "downloading"}
-          onClick={() => void check()}
-        >
-          {status === "checking" ? "检查中…" : "检查更新"}
-        </button>
-      </div>
-    </div>
+    </section>
   );
 }

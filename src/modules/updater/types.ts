@@ -9,7 +9,11 @@ export interface InstallerSrc {
 /** latest.json 结构 */
 export interface LatestInfo {
   version: string;
-  notes?: string;
+  /**
+   * 更新说明：支持轻量标记（`## 标题` / `- 条目` / `1. 条目` / `**粗体**` / `` `代码` ``），
+   * 也可直接给字符串数组（每项一行）。解析见 `notes.ts`。
+   */
+  notes?: string | string[];
   /** ISO 时间字符串，用于展示发布日期 */
   pubDate?: string;
   /** 发布页（GitHub Release / Gitee Release） */
