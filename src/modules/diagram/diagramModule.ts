@@ -17,7 +17,7 @@ export function registerDiagramModule(): void {
     requires: ["editor"],
     defaultEnabled: true,
     // 不声明 slot：UI 由自带视图（view）承载，避免被 ModuleDock 重复挂载
-    view: { id: "diagram", icon: "wand", label: "绘图", order: 7 },
+    view: { id: "diagram", icon: "draw", label: "绘图", order: 7 },
     component: lazy(() => import("./DiagramSidebar")),
   });
 }
