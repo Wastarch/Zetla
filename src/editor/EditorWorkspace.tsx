@@ -115,24 +115,11 @@ export function EditorWorkspace() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openDialog, saveBuffer]);
 
-  // M1-9：活动文本缓冲被外部修改时的提示条
-  const activeBuffer = buffers.find((b) => b.path === activePath);
-  const activeExternal = !!activeBuffer?.externallyChanged;
-  const activeDirty = !!activeBuffer && activeBuffer.content !== activeBuffer.savedContent;
-
   // 查找面板状态 + 当前缓冲类型（非文本不显示面板）
   const findOpen = useFindStore((s) => s.open);
   const activeKind = useBuffersStore(
     (s) => s.buffers.find((b) => b.path === s.activePath)?.kind ?? null,
   );
-
-  const reloadExternal = useCallback(() => {
-    if (activePath) void useBuffersStore.getState().revertBuffer(activePath);
-  }, [activePath]);
-
-  const ignoreExternal = useCallback(() => {
-    if (activePath) useBuffersStore.getState().dismissExternal(activePath);
-  }, [activePath]);
 
   // 面板关闭时清理所有编辑器（含隐藏缓冲）残留的搜索高亮
   useEffect(() => {
@@ -186,22 +173,6 @@ export function EditorWorkspace() {
       <TabBar onFind={() => useFindStore.getState().openFind()} />
 
       {showEditorToolbar && <EditorToolbar />}
-
-      {activeExternal && (
-        <div className="ext-changed-bar">
-          <span>
-            {activeDirty
-              ? "此文件已在编辑器外部被修改，是否重新加载？（未保存的本地修改将丢失）"
-              : "此文件已在编辑器外部被修改，是否重新加载以显示最新内容？"}
-          </span>
-          <button type="button" className="btn primary" onClick={reloadExternal}>
-            重新加载
-          </button>
-          <button type="button" className="btn" onClick={ignoreExternal}>
-            忽略
-          </button>
-        </div>
-      )}
 
       <div className="code-wrap">
         {buffers.length === 0 ? (

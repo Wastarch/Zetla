@@ -2,18 +2,14 @@
 // Rust 端已按 500ms 防抖推 project_changed（只含文件增减）；
 // 这里再做一层合并：刷新在飞时只记一次 pending，避免连续事件堆积全树扫描。
 // 编译进行中不刷新（latexmk 会连续产出 .aux/.log/.pdf），改由 compile_finished 统一刷一次。
+// 2026-11-14（用户指令）：移除「文件已在编辑器外部被修改，是否重新加载？」提示条，
+// 因此这里的 file_changed 订阅一并撤掉 —— 外部改动不再提示、也不自动重载缓冲
+// （需要手工从盘重读时仍可用 useBuffers.revertBuffer）。Rust 侧事件保留，零改动。
 import { useEffect } from "react";
 import { RustEvents, onKernelEvent } from "@/ipc/events";
 import { useAppStore } from "@/core/store";
 import { useProjectStore } from "./useProject";
-import { useBuffersStore } from "@/editor/useBuffers";
-import { projectApi } from "@/ipc/invoke";
-import type { FileChanged, ProjectChanged } from "@/types";
-
-/** 比较磁盘与编辑器文本时忽略平台换行符差异，避免自身保存 CRLF 文件后误报。 */
-function normalizeEol(text: string): string {
-  return text.replace(/\r\n?/g, "\n");
-}
+import type { ProjectChanged } from "@/types";
 
 export function useProjectWatch(): void {
   useEffect(() => {
@@ -21,9 +17,6 @@ export function useProjectWatch(): void {
     const unlisteners: Array<() => void> = [];
     let refreshing = false;
     let pending = false;
-    // notify 可能为一次落盘连续发送多条 Modify；按路径合并，并用序号丢弃过期异步读取。
-    const fileChangeTimers = new Map<string, number>();
-    const fileChangeSeq = new Map<string, number>();
 
     const run = async (root: string): Promise<void> => {
       const st = useProjectStore.getState();
@@ -56,51 +49,8 @@ export function useProjectWatch(): void {
       else un();
     });
 
-    // M1-9：文件被外部修改 → 与内存内容比对，不一致则提示重载。
-    // 同一路径短时间内的事件只读取一次；读取完成前若又有新事件，旧结果作废。
-    void onKernelEvent<FileChanged>(RustEvents.fileChanged, (e) => {
-      if (!alive) return;
-      const cur = useBuffersStore
-        .getState()
-        .buffers.find((b) => b.path === e.path && b.kind === "text");
-      if (!cur) return;
-
-      const seq = (fileChangeSeq.get(e.path) ?? 0) + 1;
-      fileChangeSeq.set(e.path, seq);
-      const oldTimer = fileChangeTimers.get(e.path);
-      if (oldTimer !== undefined) window.clearTimeout(oldTimer);
-
-      const timer = window.setTimeout(() => {
-        fileChangeTimers.delete(e.path);
-        void projectApi
-          .readFile(e.path)
-          .then((d) => {
-            if (!alive || fileChangeSeq.get(e.path) !== seq) return;
-            const now = useBuffersStore
-              .getState()
-              .buffers.find((b) => b.path === e.path && b.kind === "text");
-            if (!now) return;
-            const changed =
-              normalizeEol(d.content) !== normalizeEol(now.content) ||
-              d.eol !== now.eol ||
-              d.encoding.toLowerCase() !== now.encoding.toLowerCase();
-            useBuffersStore.getState().setExternalChanged(e.path, changed);
-          })
-          .catch(() => {
-            /* 读取失败（文件已删等）→ 交给树刷新/打开逻辑处理 */
-          });
-      }, 180);
-      fileChangeTimers.set(e.path, timer);
-    }).then((un) => {
-      if (alive) unlisteners.push(un);
-      else un();
-    });
-
     return () => {
       alive = false;
-      fileChangeTimers.forEach((timer) => window.clearTimeout(timer));
-      fileChangeTimers.clear();
-      fileChangeSeq.clear();
       unlisteners.forEach((u) => u());
     };
   }, []);

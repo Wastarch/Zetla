@@ -72,8 +72,6 @@ export interface EditorBuffer {
   mounted: boolean;
   /** 缓冲类型（决定渲染方式与是否可保存） */
   kind: BufferKind;
-  /** M1-9：文件被外部修改、待用户决定是否重新加载 */
-  externallyChanged?: boolean;
 }
 
 /** 轻量反馈（toast） */
@@ -144,12 +142,9 @@ export interface BuffersState {
   clearNotice: () => void;
   /** 更新光标位置（状态栏行/列展示） */
   setCursor: (pos: CursorPos) => void;
-  /** M1-9：标记/清除某缓冲的「外部已修改」状态 */
-  setExternalChanged: (path: string, val: boolean) => void;
-  /** M1-9：放弃缓冲、重新从盘读回（revert_file 回填并清脏）；返回是否成功 */
+  /** 放弃缓冲、重新从盘读回（revert_file 回填并清脏）；返回是否成功。
+   *  2026-11-14 起外部改动不再自动提示，需要手工重读时调用本方法。 */
   revertBuffer: (path: string) => Promise<boolean>;
-  /** M1-9：忽略外部改动提示（不再提示，直到下次外部改动） */
-  dismissExternal: (path: string) => void;
   /** 诊断用：缓冲是否脏 */
   isDirty: (path: string) => boolean;
 }
@@ -323,7 +318,6 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
                 savedContent: written,
                 encoding: d.encoding,
                 eol: d.eol,
-                externallyChanged: false,
               }
             : b,
         ),
@@ -389,16 +383,6 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
 
   setCursor: (pos) => set({ cursor: pos }),
 
-  setExternalChanged: (path, val) => {
-    set((s) => ({
-      buffers: s.buffers.map((b) =>
-        b.path === path && !!b.externallyChanged !== val
-          ? { ...b, externallyChanged: val }
-          : b,
-      ),
-    }));
-  },
-
   revertBuffer: async (path) => {
     const buf = get().buffers.find((b) => b.path === path);
     if (!buf || buf.kind !== "text") return false;
@@ -413,7 +397,6 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
                 savedContent: d.content,
                 encoding: d.encoding,
                 eol: d.eol,
-                externallyChanged: false,
               }
             : b,
         ),
@@ -423,14 +406,6 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
       set({ notice: { text: `重新加载失败 ${buf.name}：${String(e)}`, kind: "err" } });
       return false;
     }
-  },
-
-  dismissExternal: (path) => {
-    set((s) => ({
-      buffers: s.buffers.map((b) =>
-        b.path === path && b.externallyChanged ? { ...b, externallyChanged: false } : b,
-      ),
-    }));
   },
 
   isDirty: (path) => {
