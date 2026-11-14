@@ -1362,6 +1362,8 @@ function UpdateRegion({ version }: { version: string }) {
   const openPackage = useUpdateStore((s) => s.openPackage);
   const downloadedPath = useUpdateStore((s) => s.downloadedPath);
   const [copied, setCopied] = useState(false);
+  // macOS 要先把上百 MB 的 .app 解压出来（1~3s）才退出，给个「正在准备」的即时反馈
+  const [preparing, setPreparing] = useState(false);
 
   const busy = status === "checking" || status === "downloading";
   const hasNew = status === "update" || status === "downloading" || status === "downloaded";
@@ -1392,6 +1394,11 @@ function UpdateRegion({ version }: { version: string }) {
       .catch(() => {});
   };
 
+  // 换包失败时 store 会落到 error 态，按钮要恢复可点（否则一直显示「正在准备…」）
+  useEffect(() => {
+    if (status === "error") setPreparing(false);
+  }, [status]);
+
   const isWindows = (env?.os ?? "windows") === "windows";
   const onInstallClick = async () => {
     // U3：Windows 仍是「拉起安装向导」，Linux/macOS 是「替换自身后重启」，文案分开
@@ -1401,7 +1408,9 @@ function UpdateRegion({ version }: { version: string }) {
         : "将关闭 Zetla，替换为新版本后自动重启，是否继续？",
       { title: "安装更新", kind: "warning" },
     );
-    if (ok) void confirmInstall();
+    if (!ok) return;
+    setPreparing(true);
+    void confirmInstall();
   };
 
   return (
@@ -1438,8 +1447,13 @@ function UpdateRegion({ version }: { version: string }) {
             </button>
           )}
           {status === "downloaded" && !manualInstall && (
-            <button type="button" className="btn primary sm" onClick={() => void onInstallClick()}>
-              立即安装并重启
+            <button
+              type="button"
+              className="btn primary sm"
+              disabled={preparing}
+              onClick={() => void onInstallClick()}
+            >
+              {preparing ? "正在准备…" : "立即安装并重启"}
             </button>
           )}
           {status === "downloaded" && manualInstall && (
@@ -1522,6 +1536,14 @@ function UpdateRegion({ version }: { version: string }) {
           {isWindows
             ? "更新已下载完成，点击安装将关闭 Zetla 并启动安装程序。"
             : "更新已下载完成，点击安装将替换当前版本并自动重启。"}
+        </p>
+      )}
+
+      {status === "downloaded" && preparing && !manualInstall && (
+        <p className="update-hint">
+          {isWindows
+            ? "正在启动安装程序…"
+            : "正在解压更新包，完成后 Zetla 会自动重启（期间请勿强制退出）。"}
         </p>
       )}
 

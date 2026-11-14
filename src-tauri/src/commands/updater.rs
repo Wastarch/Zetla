@@ -197,7 +197,7 @@ pub fn linux_swap_plan(target: &std::path::Path, ts: u128) -> Option<LinuxSwapPl
 }
 
 /// 实测目录可写（建临时文件再删），不靠权限位猜 —— 只读挂载 / root 安装都能识别
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // 仅 Linux 运行时调用
+#[cfg_attr(not(any(target_os = "linux", target_os = "macos")), allow(dead_code))] // 仅 Linux/macOS 运行时调用
 pub fn probe_write(dir: &std::path::Path) -> bool {
     if !dir.is_dir() {
         return false;
@@ -212,6 +212,197 @@ pub fn probe_write(dir: &std::path::Path) -> bool {
     }
 }
 
+// ── macOS 换包（U5）的纯逻辑：全部跨平台可单测，避免 Mac 专有代码只能靠肉眼审 ──
+
+/// macOS 应用包根：从可执行文件上溯到最近的 `*.app` 祖先。
+/// `/Applications/Zetla.app/Contents/MacOS/zetla` → `/Applications/Zetla.app`。
+/// 不是从 .app 内启动（开发模式 `target/debug/zetla`）时返回 None。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn macos_bundle_root(exe: &std::path::Path) -> Option<PathBuf> {
+    let mut cur = exe.parent()?;
+    loop {
+        if cur.extension().and_then(|e| e.to_str()) == Some("app") {
+            return Some(cur.to_path_buf());
+        }
+        cur = cur.parent()?;
+    }
+}
+
+/// 应用所在路径是否「不该自更新」：从 DMG/外接卷运行、或被 Gatekeeper 随机化（translocation）。
+/// 两种情况下换包要么写不进去，要么下次启动找不到包，必须在退出前拦住。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 运行时调用；单测已覆盖
+pub fn macos_path_problem(bundle: &str) -> Option<String> {
+    // translocate 的路径形如 /private/var/folders/…/T/AppTranslocation/XXXX/d/Zetla.app
+    if bundle.contains("/AppTranslocation/") {
+        return Some(
+            "Zetla 正处于 Gatekeeper 随机只读路径（App Translocation）。请把 Zetla 拖到「应用程序」文件夹并重新打开后再更新。"
+                .to_string(),
+        );
+    }
+    // 直接从 DMG / 外接卷运行：/Volumes/Zetla/Zetla.app
+    if bundle.starts_with("/Volumes/") {
+        return Some(
+            "Zetla 正在从 DMG 或外接卷运行，无法就地更新。请先把它拖到「应用程序」文件夹再更新。"
+                .to_string(),
+        );
+    }
+    None
+}
+
+/// 在目录里找唯一的 `*.app`（顶层优先，找不到再看一层子目录——部分打包工具会套一层目录）
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 运行时调用；单测已覆盖
+pub fn pick_app_bundle(dir: &std::path::Path) -> Option<PathBuf> {
+    fn collect(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|e| e.to_str()) == Some("app") && p.is_dir() {
+                out.push(p);
+            }
+        }
+    }
+
+    let mut top = Vec::new();
+    collect(dir, &mut top);
+    if top.len() == 1 {
+        return top.pop();
+    }
+    if top.len() > 1 {
+        return None;
+    }
+    // 多套一层目录的情况
+    let mut nested = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                collect(&p, &mut nested);
+            }
+        }
+    }
+    if nested.len() == 1 {
+        nested.pop()
+    } else {
+        None
+    }
+}
+
+/// 解出来的 `.app` 是否像个能启动的 bundle：Info.plist 在 + MacOS/ 下有可执行文件。
+/// 只校验结构、不校验二进制文件名 —— 未来改二进制名不会让老客户端拒绝升级。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 运行时调用；单测已覆盖
+pub fn app_bundle_looks_valid(bundle: &std::path::Path) -> bool {
+    if !bundle.join("Contents/Info.plist").is_file() {
+        return false;
+    }
+    let macos_dir = bundle.join("Contents/MacOS");
+    match std::fs::read_dir(&macos_dir) {
+        Ok(mut it) => it.next().is_some(),
+        Err(_) => false,
+    }
+}
+
+/// 换包所需的三条路径（纯计算，可跨平台单测）
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 运行时调用；单测已覆盖
+pub struct MacosSwapPlan {
+    /// 本次更新的落盘目录 `<temp>/zetla-update-<ts>`
+    pub work: PathBuf,
+    /// 解压目标 `<work>/stage`
+    pub stage: PathBuf,
+    /// 换包脚本 `<work>/swap.sh`
+    pub script: PathBuf,
+    /// 当前应用包 `/Applications/Zetla.app`
+    pub bundle: PathBuf,
+}
+
+/// 由「下载下来的 tar.gz 路径 + 当前 bundle」生成换包计划。
+/// work 目录取自安装包所在的 `<temp>/zetla-update-<ts>`，与下载落盘保持一致。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 运行时调用；单测已覆盖
+pub fn macos_swap_plan(pkg: &std::path::Path, bundle: PathBuf) -> Option<MacosSwapPlan> {
+    let work = pkg.parent()?;
+    // 裸文件名（parent 为空）不可信，别往当前目录里解压
+    if work.as_os_str().is_empty() {
+        return None;
+    }
+    let work = work.to_path_buf();
+    Some(MacosSwapPlan {
+        stage: work.join("stage"),
+        script: work.join("swap.sh"),
+        work,
+        bundle,
+    })
+}
+
+/// 换包脚本内容（纯常量，便单测断言关键步骤）。
+/// 参数：`$1`=父进程 pid `$2`=bundle `$3`=解出来的新 .app `$4`=work 目录
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))] // 仅 macOS 运行时调用；单测已覆盖
+pub fn swap_script() -> &'static str {
+    r#"#!/bin/sh
+set -u
+
+PARENT="$1"
+BUNDLE="$2"
+NEW="$3"
+WORK="$4"
+
+# 1) 等父进程真正退出（最多 30s，每 0.1s 试一次）
+#    kill -0 对「僵尸进程」也返回成功（父进程还没被 reaper 收走），
+#    所以再查一次进程状态，Z 就当作已退出，否则会白等到超时。
+is_alive() {
+  kill -0 "$1" 2>/dev/null || return 1
+  case "$(ps -p "$1" -o stat= 2>/dev/null)" in
+    Z*) return 1 ;;
+  esac
+  return 0
+}
+
+i=0
+while is_alive "$PARENT" && [ "$i" -lt 300 ]; do
+  sleep 0.1
+  i=$((i+1))
+done
+
+# 2) 旧包改名备份；失败就重开旧版，绝不留下「应用不见了」的状态
+rm -rf "$BUNDLE.old"
+if ! mv "$BUNDLE" "$BUNDLE.old"; then
+  open -n "$BUNDLE"
+  exit 1
+fi
+
+# 3) ditto 而非 cp/mv：保留符号链接、权限位、扩展属性
+#    （Contents/Frameworks 里是一串 symlink，mv 跨卷会退化成拷贝且丢权限）
+if ! ditto "$NEW" "$BUNDLE"; then
+  rm -rf "$BUNDLE"
+  mv "$BUNDLE.old" "$BUNDLE"
+  open -n "$BUNDLE"
+  exit 1
+fi
+
+# 4) 兜底清隔离位：我们自己的下载一般没有，但被包过一层就可能带上，带上了 Gatekeeper 会拦
+xattr -dr com.apple.quarantine "$BUNDLE" 2>/dev/null
+
+# 5) 删备份与解压产物；脚本本身留在 WORK 里，由下次启动的 sweep 兜底清
+rm -rf "$BUNDLE.old" "$WORK/stage"
+
+# 6) 重开：-n 强制新实例，避免 LaunchServices 复用旧注册信息
+open -n "$BUNDLE" || open "$BUNDLE" || true
+"#
+}
+
+/// 解压 `.tar.gz` 到目录。tar crate 自带 `..` 路径校验（不会穿越到目录外）。
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn unpack_tar_gz(pkg: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    let file = std::fs::File::open(pkg).map_err(|e| format!("打开更新包失败：{e}"))?;
+    let gz = flate2::read::GzDecoder::new(std::io::BufReader::new(file));
+    let mut ar = tar::Archive::new(gz);
+    // 保留 Unix 权限位：.app 里的可执行文件丢了 x 位就打不开
+    ar.set_preserve_permissions(true);
+    ar.unpack(dst).map_err(|e| format!("解压更新包失败：{e}"))?;
+    Ok(())
+}
+
 /// 能力判定（纯函数，便于单测）：返回 (能否自更新, 不能时的原因)。
 /// 这里只判「操作系统 + 包型」这一层；Linux AppImage 的目录可写性属运行期条件，
 /// 由 `resolve_capability` 在本机再实测一次（见 U3）。
@@ -223,9 +414,10 @@ fn capability(os: &str, kind: &str) -> (bool, Option<String>) {
             false,
             Some("当前为系统包安装版本（deb/rpm），请用系统包管理器更新，或前往发布页下载安装包。".to_string()),
         ),
+        ("macos", "app-tar-gz") => (true, None),
         ("macos", _) => (
             false,
-            Some("macOS 的应用内换包尚未提供，请前往发布页下载安装包手动安装。".to_string()),
+            Some("更新包类型与当前平台不匹配（macOS 需要 app-tar-gz），请前往发布页下载安装包。".to_string()),
         ),
         _ => (
             false,
@@ -267,7 +459,45 @@ fn resolve_capability(_os: &str, _kind: &str) -> (bool, Option<String>) {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
+/// 本机能力：macOS 追加「是否从 .app 内启动 / 路径是否可用 / 上级目录可写」的实测
+#[cfg(target_os = "macos")]
+fn resolve_capability(os: &str, kind: &str) -> (bool, Option<String>) {
+    let (ok, reason) = capability(os, kind);
+    if !ok {
+        return (ok, reason);
+    }
+    let Ok(exe) = std::env::current_exe() else {
+        return (
+            false,
+            Some("无法定位当前可执行文件，请从发布页手动下载安装包。".to_string()),
+        );
+    };
+    let Some(bundle) = macos_bundle_root(&exe) else {
+        return (
+            false,
+            Some("当前不是从 .app 应用包启动（像是直接运行可执行文件），无法自动更新，请前往发布页下载。".to_string()),
+        );
+    };
+    if let Some(msg) = macos_path_problem(&bundle.to_string_lossy()) {
+        return (false, Some(msg));
+    }
+    match bundle.parent() {
+        Some(dir) if probe_write(dir) => (true, None),
+        Some(dir) => (
+            false,
+            Some(format!(
+                "{} 不可写（或应用装在只读卷），无法自动替换。请把 Zetla 拖到「应用程序」后重试，或从发布页手动下载。",
+                dir.display()
+            )),
+        ),
+        None => (
+            false,
+            Some("无法定位应用所在目录，请从发布页手动下载安装包。".to_string()),
+        ),
+    }
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 fn resolve_capability(os: &str, kind: &str) -> (bool, Option<String>) {
     capability(os, kind)
 }
@@ -458,17 +688,22 @@ fn sha256_of(path: &std::path::Path) -> Result<String, String> {
 /// 应用更新并退出 Zetla（U3 起三平台统一入口，内部按平台分派）：
 /// - windows：detached 拉起 Inno 向导，退出后由安装器接管覆盖安装；
 /// - linux：原地替换 `$APPIMAGE` 再拉起新版本（U3）；
-/// - macos：换包逻辑 U5 落地，当前返回错误让前端引导去发布页。
+/// - macos：解压 → 写 swap 脚本 → 拉起脚本；脚本等本进程退出后换包并重开。
 /// 预检/换包/拉起任一步失败都返回 Err —— 进程继续活着，前端能显示原因，
 /// 绝不出现「更新失败但应用已退出」。
+///
+/// 用 async + spawn_blocking 而不是同步命令：macOS 要解压上百 MB 的 tar.gz，
+/// 同步命令跑在主线程上会冻住窗口（而它恰好是用户点「立即安装」之后的时刻）。
 #[tauri::command]
-pub fn apply_update_and_exit(path: String) -> Result<(), String> {
+pub async fn apply_update_and_exit(path: String) -> Result<(), String> {
     let pkg = PathBuf::from(path.trim());
     if !pkg.is_file() {
         return Err(format!("更新包不存在：{}", pkg.display()));
     }
-    spawn_update(&pkg)?;
-    // 走到这里说明新版本/安装器已成功拉起，释放自身
+    tauri::async_runtime::spawn_blocking(move || spawn_update(&pkg))
+        .await
+        .map_err(|e| format!("更新任务异常：{e}"))??;
+    // 走到这里说明新版本/安装器/换包脚本已成功拉起，释放自身
     std::process::exit(0);
 }
 
@@ -544,9 +779,86 @@ fn spawn_update(pkg: &std::path::Path) -> Result<(), String> {
     }
 }
 
+/// U5 · macOS 换包：
+/// 预检（.app 内启动 / 非 translocation / 非 DMG / 上级目录可写）
+/// → 解压 tar.gz 到 `<work>/stage`
+/// → 校验恰好一个且结构完整的 `.app`
+/// → 写 `swap.sh` 并 detached 拉起，脚本等本进程退出后再换包重开。
+///
+/// 换包本身不在这里做：`ditto` 上百万个文件要几秒，放在退出后的脚本里更稳，
+/// 且「落包失败」能在脚本内部回滚到 `.old`。这里只保证「脚本成功起飞」。
 #[cfg(target_os = "macos")]
-fn spawn_update(_pkg: &std::path::Path) -> Result<(), String> {
-    Err("macOS 的应用内换包尚未提供，请前往发布页下载安装包手动安装。".to_string())
+fn spawn_update(pkg: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::process::CommandExt;
+
+    let exe = std::env::current_exe().map_err(|e| format!("无法定位当前可执行文件：{e}"))?;
+    let bundle = macos_bundle_root(&exe).ok_or_else(|| {
+        "当前不是从 .app 应用包启动，无法自动更新，请前往发布页下载安装包。".to_string()
+    })?;
+    // 同样的预检在做能力判定时已经跑过一次，这里再跑：两次之间用户可能把包挪走了
+    if let Some(msg) = macos_path_problem(&bundle.to_string_lossy()) {
+        return Err(msg);
+    }
+    let parent = bundle
+        .parent()
+        .ok_or_else(|| "无法定位应用所在目录，请从发布页手动下载安装包。".to_string())?;
+    if !probe_write(parent) {
+        return Err(format!(
+            "{} 不可写（或应用装在只读卷），无法自动替换。请把 Zetla 拖到「应用程序」后重试，或从发布页手动下载。",
+            parent.display()
+        ));
+    }
+    let plan = macos_swap_plan(pkg, bundle)
+        .ok_or_else(|| "无法定位更新包的落盘目录，请重新下载。".to_string())?;
+
+    // 1) 解压：先清掉可能存在的旧 stage（同一目录重试时会留下）
+    if plan.stage.exists() {
+        let _ = std::fs::remove_dir_all(&plan.stage);
+    }
+    std::fs::create_dir_all(&plan.stage).map_err(|e| format!("创建解压目录失败：{e}"))?;
+    if let Err(e) = unpack_tar_gz(pkg, &plan.stage) {
+        let _ = std::fs::remove_dir_all(&plan.stage);
+        return Err(e);
+    }
+
+    // 2) 校验：包里必须恰好一个 .app，且结构完整（此时还没动现有 bundle）
+    let new_app = match pick_app_bundle(&plan.stage) {
+        Some(p) => p,
+        None => {
+            let _ = std::fs::remove_dir_all(&plan.stage);
+            return Err(
+                "更新包格式异常：解压后未找到唯一的 .app，已放弃安装（当前版本未受影响）。".to_string(),
+            );
+        }
+    };
+    if !app_bundle_looks_valid(&new_app) {
+        let _ = std::fs::remove_dir_all(&plan.stage);
+        return Err(
+            "更新包不完整（缺少 Contents/Info.plist 或 Contents/MacOS），已放弃安装（当前版本未受影响）。"
+                .to_string(),
+        );
+    }
+
+    // 3) 写脚本 + 拉起：脚本自己等本进程退出（最多 30s）再换包
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::write(&plan.script, swap_script())
+        .map_err(|e| format!("写入更新脚本失败：{e}"))?;
+    let _ = std::fs::set_permissions(&plan.script, std::fs::Permissions::from_mode(0o755));
+
+    let mut cmd = std::process::Command::new("/bin/sh");
+    cmd.arg(&plan.script)
+        .arg(std::process::id().to_string())
+        .arg(&plan.bundle)
+        .arg(&new_app)
+        .arg(&plan.work)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        // 自成进程组：本进程 exit 后脚本不会被一起带走
+        .process_group(0);
+    cmd.spawn()
+        .map_err(|e| format!("启动更新脚本失败：{e}（当前版本可继续使用）"))?;
+    Ok(())
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
@@ -657,24 +969,17 @@ fn cleanup_platform_leftovers() {
 
 #[cfg(target_os = "macos")]
 fn cleanup_platform_leftovers() {
-    // …/Zetla.app/Contents/MacOS/zetla → 上溯 3 级得到 bundle 根，清同级 Zetla.app.old
+    // 换包脚本正常会自己删 `<bundle>.old`；这里兜底清「ditto 成功后没删掉」的残留
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    let mut cur: &std::path::Path = &exe;
-    for _ in 0..3 {
-        match cur.parent() {
-            Some(p) => cur = p,
-            None => return,
-        }
-    }
-    if cur.extension().and_then(|e| e.to_str()) != Some("app") {
-        return;
-    }
-    let Some(name) = cur.file_name().and_then(|n| n.to_str()) else {
+    let Some(bundle) = macos_bundle_root(&exe) else {
         return;
     };
-    let backup = cur.with_file_name(format!("{name}.old"));
+    let Some(name) = bundle.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    let backup = bundle.with_file_name(format!("{name}.old"));
     if backup.is_dir() {
         let _ = std::fs::remove_dir_all(&backup);
     }
@@ -820,10 +1125,19 @@ mod tests {
     }
 
     #[test]
-    fn capability_macos_still_pending() {
+    fn capability_macos_app_tar_gz_can_self_update() {
+        // OS 层放行；bundle 位置/可写性由 resolve_capability 在运行期实测
         let (ok, reason) = capability("macos", "app-tar-gz");
-        assert!(!ok, "macOS 换包要到 U5，U3 不应宣称可自更新");
-        assert!(reason.unwrap().contains("尚未提供"));
+        assert!(ok);
+        assert!(reason.is_none());
+    }
+
+    #[test]
+    fn capability_macos_rejects_mismatched_kind() {
+        // 清单把 Windows exe 喂给 macOS：宁可拒绝也不装错包
+        let (ok, reason) = capability("macos", "exe");
+        assert!(!ok);
+        assert!(reason.unwrap().contains("不匹配"));
     }
 
     #[test]
@@ -955,6 +1269,221 @@ mod tests {
     #[test]
     fn swap_plan_needs_parent() {
         assert!(linux_swap_plan(std::path::Path::new("Zetla.AppImage"), 1).is_none());
+    }
+
+    // ── U5 macOS 换包的纯逻辑 ────────────────────────────────────────────
+
+    #[test]
+    fn bundle_root_walks_up_to_dot_app() {
+        assert_eq!(
+            macos_bundle_root(std::path::Path::new("/Applications/Zetla.app/Contents/MacOS/zetla")),
+            Some(PathBuf::from("/Applications/Zetla.app"))
+        );
+        // 开发模式：不是从 .app 内启动
+        assert_eq!(
+            macos_bundle_root(std::path::Path::new("/Users/u/zetla/src-tauri/target/debug/zetla")),
+            None
+        );
+        // 名字里带 .app 但不是目录层级不算
+        assert_eq!(
+            macos_bundle_root(std::path::Path::new("/Applications/Zetla.appX/Contents/MacOS/zetla")),
+            None
+        );
+        // 裸文件名
+        assert_eq!(macos_bundle_root(std::path::Path::new("zetla")), None);
+    }
+
+    #[test]
+    fn path_problem_flags_dmg_and_translocation() {
+        assert!(macos_path_problem("/Volumes/Zetla/Zetla.app")
+            .unwrap()
+            .contains("DMG"));
+        assert!(
+            macos_path_problem("/private/var/folders/xy/T/AppTranslocation/ABC-1/d/Zetla.app")
+                .unwrap()
+                .contains("App Translocation")
+        );
+        // 正常位置不能误报
+        assert!(macos_path_problem("/Applications/Zetla.app").is_none());
+        assert!(macos_path_problem("/Users/u/Applications/Zetla.app").is_none());
+    }
+
+    #[test]
+    fn swap_script_orders_backup_before_replace() {
+        let sh = swap_script();
+        // 必备步骤
+        assert!(sh.contains("set -u"));
+        assert!(sh.contains("is_alive"), "必须等父进程退出（含僵尸态判断）");
+        assert!(sh.contains(r#"kill -0 "$1""#), "存活判断要基于 kill -0");
+        assert!(
+            sh.contains("Z*) return 1"),
+            "僵尸进程（kill -0 仍成功）必须视为已退出，否则白等 30s"
+        );
+        assert!(sh.contains(r#"mv "$BUNDLE" "$BUNDLE.old""#), "必须先备份旧包");
+        assert!(sh.contains(r#"ditto "$NEW" "$BUNDLE""#), "必须用 ditto 保留 symlink/权限");
+        assert!(sh.contains("com.apple.quarantine"), "必须兜底清隔离位");
+        assert!(sh.contains(r#"open -n "$BUNDLE""#), "必须以新实例重开");
+        // 顺序：备份 → ditto → 删备份（删备份绝不能在 ditto 成功之前）
+        let i_backup = sh.find(r#"mv "$BUNDLE" "$BUNDLE.old""#).unwrap();
+        let i_ditto = sh.find(r#"ditto "$NEW" "$BUNDLE""#).unwrap();
+        let i_cleanup = sh.find(r#"rm -rf "$BUNDLE.old" "$WORK/stage""#).unwrap();
+        assert!(i_backup < i_ditto);
+        assert!(i_ditto < i_cleanup);
+        // 失败回滚：ditto 失败要把 .old rename 回来
+        assert!(sh.contains(r#"mv "$BUNDLE.old" "$BUNDLE""#));
+        // 不能把脚本自己所在的 WORK 整目录删掉（正在被 sh 读取）
+        assert!(!sh.contains(r#"rm -rf "$WORK""#), "脚本不能删掉自己所在的目录");
+    }
+
+    #[test]
+    fn swap_plan_lives_beside_downloaded_package() {
+        let plan = macos_swap_plan(
+            std::path::Path::new("/var/folders/tmp/zetla-update-123/Zetla_0.4.0_universal.app.tar.gz"),
+            PathBuf::from("/Applications/Zetla.app"),
+        )
+        .expect("有父目录就该有计划");
+        assert_eq!(plan.work.file_name().unwrap(), "zetla-update-123");
+        assert_eq!(plan.stage, plan.work.join("stage"));
+        assert_eq!(plan.script, plan.work.join("swap.sh"));
+        assert_eq!(plan.bundle, PathBuf::from("/Applications/Zetla.app"));
+        // 解压目录与脚本都在 work 内，才会被启动 sweep 一起清掉
+        assert!(plan.stage.starts_with(&plan.work));
+        assert!(plan.script.starts_with(&plan.work));
+    }
+
+    #[test]
+    fn swap_plan_rejects_bare_package_name() {
+        assert!(
+            macos_swap_plan(std::path::Path::new("Zetla.app.tar.gz"), PathBuf::from("/a/Z.app"))
+                .is_none()
+        );
+    }
+
+    /// 造一个假的 .app 目录（无需真实二进制）
+    fn fake_bundle(root: &std::path::Path, with_plist: bool, with_exe: bool) -> PathBuf {
+        let app = root.join("Zetla.app");
+        std::fs::create_dir_all(app.join("Contents/MacOS")).unwrap();
+        if with_plist {
+            std::fs::write(app.join("Contents/Info.plist"), b"<plist/>").unwrap();
+        }
+        if with_exe {
+            std::fs::write(app.join("Contents/MacOS/zetla"), b"#!/bin/sh\n").unwrap();
+        }
+        app
+    }
+
+    #[test]
+    fn bundle_validity_checks_structure_not_name() {
+        let ts = nanos();
+        let root = std::env::temp_dir().join(format!("zetla-app-{}-{ts}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+
+        let good = fake_bundle(&root, true, true);
+        assert!(app_bundle_looks_valid(&good));
+
+        // 二进制改名不该影响校验（避免未来改名把老客户端卡死）
+        std::fs::rename(good.join("Contents/MacOS/zetla"), good.join("Contents/MacOS/Zetla")).unwrap();
+        assert!(app_bundle_looks_valid(&good));
+
+        let no_plist = root.join("noplist");
+        std::fs::create_dir_all(&no_plist).unwrap();
+        fake_bundle(&no_plist, false, true);
+        assert!(!app_bundle_looks_valid(&no_plist.join("Zetla.app")));
+
+        let no_exe = root.join("noexe");
+        std::fs::create_dir_all(&no_exe).unwrap();
+        fake_bundle(&no_exe, true, false);
+        assert!(!app_bundle_looks_valid(&no_exe.join("Zetla.app")));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn pick_app_bundle_needs_exactly_one() {
+        let ts = nanos();
+        let root = std::env::temp_dir().join(format!("zetla-pick-{}-{ts}", std::process::id()));
+
+        // 恰好一个（顶层）
+        let one = root.join("one");
+        std::fs::create_dir_all(&one).unwrap();
+        fake_bundle(&one, true, true);
+        assert_eq!(
+            pick_app_bundle(&one).map(|p| p.file_name().unwrap().to_string_lossy().to_string()),
+            Some("Zetla.app".to_string())
+        );
+
+        // 套了一层目录也要找到
+        let nested = root.join("nested");
+        std::fs::create_dir_all(nested.join("Zetla_0.4.0")).unwrap();
+        fake_bundle(&nested.join("Zetla_0.4.0"), true, true);
+        assert!(pick_app_bundle(&nested).is_some());
+
+        // 两个 .app 拒绝（不知道该装哪个）
+        let two = root.join("two");
+        std::fs::create_dir_all(&two).unwrap();
+        fake_bundle(&two, true, true);
+        let second = two.join("Other.app");
+        std::fs::create_dir_all(second.join("Contents/MacOS")).unwrap();
+        assert!(pick_app_bundle(&two).is_none());
+
+        // 一个都没有
+        let empty = root.join("empty");
+        std::fs::create_dir_all(&empty).unwrap();
+        assert!(pick_app_bundle(&empty).is_none());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unpack_tar_gz_roundtrip_produces_valid_bundle() {
+        let ts = nanos();
+        let root = std::env::temp_dir().join(format!("zetla-unpack-{}-{ts}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+
+        // 造一个真的 .tar.gz（内容是 Zetla.app 的最小骨架）
+        let pkg = root.join("Zetla_0.4.0_universal.app.tar.gz");
+        {
+            let f = std::fs::File::create(&pkg).unwrap();
+            let enc = flate2::write::GzEncoder::new(f, flate2::Compression::fast());
+            let mut b = tar::Builder::new(enc);
+            for (path, body) in [
+                ("Zetla.app/Contents/Info.plist", &b"<plist/>"[..]),
+                ("Zetla.app/Contents/MacOS/zetla", &b"#!/bin/sh\n"[..]),
+            ] {
+                let mut h = tar::Header::new_gnu();
+                h.set_size(body.len() as u64);
+                h.set_mode(0o755);
+                h.set_cksum();
+                b.append_data(&mut h, path, body).unwrap();
+            }
+            b.into_inner().unwrap().finish().unwrap();
+        }
+
+        let stage = root.join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+        unpack_tar_gz(&pkg, &stage).expect("解压应成功");
+
+        let app = pick_app_bundle(&stage).expect("应识别出 .app");
+        assert_eq!(app.file_name().unwrap(), "Zetla.app");
+        assert!(app_bundle_looks_valid(&app));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn unpack_tar_gz_reports_broken_package() {
+        let ts = nanos();
+        let root = std::env::temp_dir().join(format!("zetla-unpack-bad-{}-{ts}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let pkg = root.join("broken.app.tar.gz");
+        std::fs::write(&pkg, b"this is not gzip").unwrap();
+        let stage = root.join("stage");
+        std::fs::create_dir_all(&stage).unwrap();
+
+        let err = unpack_tar_gz(&pkg, &stage).unwrap_err();
+        assert!(err.contains("解压更新包失败"), "错误信息应可读：{err}");
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

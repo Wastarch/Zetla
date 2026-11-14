@@ -1,0 +1,98 @@
+name: Build macOS
+
+# 手动触发：在仓库 Actions 页 → Build macOS → Run workflow。
+# 产出 universal（arm64 + x86_64）的 .app / .dmg，并把 .app 打成
+# 自动更新用的 Zetla_<ver>_universal.app.tar.gz（latest.json 里 darwin-universal 指向它）。
+on:
+  workflow_dispatch:
+    inputs:
+      sign:
+        description: "签名方式（adhoc=临时签名，首次打开需右键；developer=需配置证书）"
+        required: true
+        default: "adhoc"
+        type: choice
+        options:
+          - "adhoc"
+          - "developer"
+
+jobs:
+  build-macos:
+    name: Build macOS (${{ github.event.inputs.sign }})
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Setup Rust toolchain (both targets for universal)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Cargo registry & build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: macos-universal
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # ad-hoc 签名不需要证书；Developer ID 走 Actions secrets。
+      # 注意 src-tauri/tauri.macos.conf.json 里 signingIdentity 默认是 "-"，
+      # 这里用环境变量覆盖成真身份（Tauri 优先读 APPLE_SIGNING_IDENTITY）。
+      - name: Configure signing
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ "${{ github.event.inputs.sign }}" = "developer" ]; then
+            if [ -z "$APPLE_CERTIFICATE" ]; then
+              echo "::error::选择了 developer 签名，但缺少 APPLE_CERTIFICATE secrets"
+              exit 1
+            fi
+            echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/cert.p12
+            security create-keychain -p actions temp.keychain
+            security default-keychain -s temp.keychain
+            security unlock-keychain -p actions temp.keychain
+            security import /tmp/cert.p12 -k temp.keychain -P "$APPLE_CERTIFICATE_PASSWORD" \
+              -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k actions temp.keychain
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          else
+            echo "使用 ad-hoc 签名（signingIdentity = \"-\"）"
+          fi
+
+      # tauri.macos.conf.json 已把 bundle.active 打开并指定 app,dmg。
+      # universal 构建需要两个 target，上面已 rustup target add。
+      - name: Build Tauri macOS bundles
+        run: npm run tauri build -- --ci --target universal-apple-darwin --bundles app,dmg
+
+      # 自动更新包：把 .app 打成 tar.gz（保留符号链接与权限位，
+      # Rust 侧用 tar + GzDecoder 解压，然后用 ditto 落包）。
+      - name: Package updater artifact (.app.tar.gz)
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          BUNDLE_DIR="src-tauri/target/universal-apple-darwin/release/bundle/macos"
+          OUT="$BUNDLE_DIR/Zetla_${VERSION}_universal.app.tar.gz"
+          tar -czf "$OUT" -C "$BUNDLE_DIR" Zetla.app
+          ls -lh "$OUT"
+          echo "SHA256: $(shasum -a 256 "$OUT" | awk '{print $1}')"
+          echo "UPDATER_PKG=$OUT" >> "$GITHUB_ENV"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: zetla-macos-universal
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+          if-no-files-found: warn
