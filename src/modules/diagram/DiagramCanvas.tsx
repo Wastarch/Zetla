@@ -149,7 +149,12 @@ import {
   pickInsertedStatementId,
 } from "./shapeInsert";
 // P3：暂存图 → 标准 \node{\includegraphics} 语句（纯逻辑，坐标 / 路径校验都在这里）
-import { buildImageNodeStatement } from "./imageNodeInsert.ts";
+import {
+  buildImageNodeStatement,
+  nodeHasIncludeGraphics,
+  planImageNodeResize,
+  type ImageResizePlan,
+} from "./imageNodeInsert.ts";
 import {
   boxCenter,
   boxHeight,
@@ -169,6 +174,7 @@ import {
   sizeValuesFromDrag,
   type SizeValues,
 } from "./sizeEdit.ts";
+import { CM_TO_PT } from "./imageSize.ts";
 import { GRID_STEP_PT, snapToGrid } from "./grid";
 import { findEditableNodeText, planNodeTextEdit } from "./nodeTextEdit.ts";
 import {
@@ -207,6 +213,9 @@ import {
   svgDataUrl,
 } from "./precisePreview";
 import { resolveImageAssets } from "./imageAssetBridge";
+// P4：本地即时显示真图（复用 <text data-source-id> 锚点 + 扩 viewBox + svg.ts 白名单）
+import { injectLocalImages } from "./localImageInject.ts";
+import { useProjectStore, parentOf } from "@/project/useProject";
 import type { TikzPreviewResult } from "@/types/diagram";
 import { getEditorView } from "@/editor/activeView";
 import {
@@ -346,6 +355,8 @@ interface TransformDrag {
   baseHeightPt: number;
   /** F4-1：非 Shift 尺寸路径最后一帧的值；null = 仍走 F3-4 的 scale= */
   sizeValues: SizeValues | null;
+  /** 图片节点 8 点柄缩放：直接改写 \includegraphics 宽高并去掉 text width/minimum height */
+  imageResizePlan: ImageResizePlan | null;
   /** F6：矩形端点 resize 的只读预检结果；null = 走原有选项变换 */
   resizeEligibility: RectangleEligibility | null;
   resizePlan: RectangleResizePlan | null;
@@ -566,8 +577,24 @@ export function DiagramCanvas() {
               // MathJax 不可用 → 保留引擎原文（$...$ 字面量），不白屏、不报错中断渲染。
             }
           }
+          // P4：本地通道把图片 node 的占位 <text> 换成真 <image>；精确通道走 <img> 不依赖此。
+          // 在 sanitizeSvg 之前合成 → 沿用既有消毒 / 注入 / 唯一真源管线（svg.ts 已放行
+          // image 与严格 asset 前缀 href）。注入失败（如 asset 协议暂不可用）退回字面量，不白屏。
+          let viewBox = r.viewBox;
+          if (previewMode === "local" && svg.includes("\\includegraphics")) {
+            try {
+              const root = useProjectStore.getState().root ?? "";
+              const texDir = targetTex ? parentOf(targetTex) : root;
+              const inj = await injectLocalImages(svg, { texDir, root });
+              if (cancelled) return;
+              if (inj.viewBox) viewBox = inj.viewBox;
+              svg = inj.svg;
+            } catch {
+              // 保持 svg 与 viewBox 原值（字面量占位），不中断渲染
+            }
+          }
           if (cancelled) return;
-          setResult({ ...r, svg });
+          setResult({ ...r, svg, viewBox });
           setError(null);
           setBusy(false);
           setRenderMeta({ source, statements: r.statements, compat: r.compat });
@@ -587,7 +614,7 @@ export function DiagramCanvas() {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [source, empty]);
+  }, [source, empty, previewMode, targetTex]);
 
   // F3-7：开关关闭时传 undefined → 缓存 key / Rust 派生片段与 F1-6 逐字节一致。
   const canvasPt = canvasSizeToPt(canvasSize);
@@ -1025,8 +1052,22 @@ export function DiagramCanvas() {
         notePreviewFailure(d);
         return;
       }
+      // P4 补强：实时预览候选 SVG 也要注入本地图片。applyPreviewGeometry 走
+      // sanitizeSvg 不注入，否则缩放 / 拖拽图片节点时整段 \includegraphics 会闪回字面量。
+      let candSvg = candidate.svg;
+      if (previewMode === "local" && candSvg.includes("\\includegraphics")) {
+        try {
+          const root = useProjectStore.getState().root ?? "";
+          const texDir = targetTex ? parentOf(targetTex) : root;
+          const inj = await injectLocalImages(candSvg, { texDir, root });
+          if (!previewActiveRef.current || dragRef.current !== d) return;
+          candSvg = inj.svg;
+        } catch {
+          // 注入失败（asset 暂不可用）退回字面量，不中断预览手势
+        }
+      }
       const changed = applyPreviewGeometry(svg, {
-        markup: candidate.svg,
+        markup: candSvg,
         baseViewBox: d.resultAtStart.viewBox,
         candidateViewBox: candidate.viewBox,
         zoom: renderPctRef.current,
@@ -2303,6 +2344,7 @@ export function DiagramCanvas() {
       baseWidthPt,
       baseHeightPt,
       sizeValues: null,
+      imageResizePlan: null,
       resizeEligibility,
       resizePlan: null,
       lastPointer: null,
@@ -2317,11 +2359,25 @@ export function DiagramCanvas() {
   function previewTransformCandidate(t: TransformDrag, candidate: string | null): void {
     if (!candidate || candidate === t.sourceAtStart) return;
     if (!shouldRenderPreview(t.previewSource, candidate, t.sourceAtStart)) return;
-    void renderTikz(candidate).then((r) => {
+    void renderTikz(candidate).then(async (r) => {
       const svg = stageSvg();
       if (!svg || transformRef.current !== t) return;
+      // P4 补强：变换 / 缩放预览也要注入本地图片，否则缩放图片节点时整段
+      // \includegraphics 会闪回字面量（applyPreviewGeometry 走 sanitizeSvg 不注入）。
+      let candSvg = r.svg;
+      if (previewMode === "local" && candSvg.includes("\\includegraphics")) {
+        try {
+          const root = useProjectStore.getState().root ?? "";
+          const texDir = targetTex ? parentOf(targetTex) : root;
+          const inj = await injectLocalImages(candSvg, { texDir, root });
+          if (!svg || transformRef.current !== t) return;
+          candSvg = inj.svg;
+        } catch {
+          // 注入失败退回字面量，不中断预览手势
+        }
+      }
       const ok = applyPreviewGeometry(svg, {
-        markup: r.svg,
+        markup: candSvg,
         baseViewBox: t.resultAtStart.viewBox,
         candidateViewBox: r.viewBox,
         zoom: renderPctRef.current,
@@ -2411,30 +2467,59 @@ export function DiagramCanvas() {
         if (plan.status === "ok") candidate = plan.nextSource;
         setDragLabel(`缩放 ${value.toFixed(2)}×`);
       } else {
-        // 按轴改节点文本框尺寸：sx/sy 分别写 text width / minimum height，绝不合并成 scale。
-        const vals = sizeValuesFromDrag({
-          baseWidthPt: t.baseWidthPt,
-          baseHeightPt: t.baseHeightPt,
-          sx: res.sx,
-          sy: res.sy,
-          corner: t.corner,
-        });
-        const values: SizeValues = {};
-        if (vals.width) values["text width"] = vals.width;
-        if (vals.height) values["minimum height"] = vals.height;
-        t.sizeValues = Object.keys(values).length > 0 ? values : null;
-        const plan = t.sizeValues
-          ? planSizePatches({
-              source: t.sourceAtStart,
-              statements: t.resultAtStart.statements,
-              elementIds: t.elementIds,
-              values,
-              compat: t.compat,
-              grouping: t.grouping,
-            })
-          : null;
-        if (plan?.status === "ok") candidate = plan.nextSource;
-        setDragLabel(`尺寸 ${vals.width ?? "—"} × ${vals.height ?? "—"}`);
+        // 图片节点：8 点柄直接改写 \includegraphics 宽高（bx=base*sx，by=base*sy），
+        // 与节点包围盒严格同形；同时去掉 text width / minimum height，否则框比图大、图不缩放。
+        const primaryStmt = t.resultAtStart.statements.find((st) => st.id === t.elementIds[0]);
+        const isImageNode =
+          t.elementIds.length === 1 &&
+          !!primaryStmt &&
+          primaryStmt.command === "node" &&
+          nodeHasIncludeGraphics(primaryStmt, t.sourceAtStart);
+        if (isImageNode && primaryStmt) {
+          const wCm = (t.baseWidthPt * res.sx) / CM_TO_PT;
+          const hCm = (t.baseHeightPt * res.sy) / CM_TO_PT;
+          const plan = planImageNodeResize({
+            source: t.sourceAtStart,
+            statement: primaryStmt,
+            newWidthCm: wCm,
+            newHeightCm: hCm,
+          });
+          t.sizeValues = null;
+          t.resizePlan = null;
+          t.imageResizePlan = plan.status === "ok" ? plan : null;
+          if (plan.status === "ok") candidate = plan.nextSource;
+          const r2 = (n: number) => String(Math.round(n * 100) / 100);
+          setDragLabel(
+            plan.status === "ok"
+              ? `图片尺寸 ${r2(wCm)} × ${r2(hCm)} cm`
+              : `图片缩放：${plan.reason}`,
+          );
+        } else {
+          // 按轴改节点文本框尺寸：sx/sy 分别写 text width / minimum height，绝不合并成 scale。
+          const vals = sizeValuesFromDrag({
+            baseWidthPt: t.baseWidthPt,
+            baseHeightPt: t.baseHeightPt,
+            sx: res.sx,
+            sy: res.sy,
+            corner: t.corner,
+          });
+          const values: SizeValues = {};
+          if (vals.width) values["text width"] = vals.width;
+          if (vals.height) values["minimum height"] = vals.height;
+          t.sizeValues = Object.keys(values).length > 0 ? values : null;
+          const plan = t.sizeValues
+            ? planSizePatches({
+                source: t.sourceAtStart,
+                statements: t.resultAtStart.statements,
+                elementIds: t.elementIds,
+                values,
+                compat: t.compat,
+                grouping: t.grouping,
+              })
+            : null;
+          if (plan?.status === "ok") candidate = plan.nextSource;
+          setDragLabel(`尺寸 ${vals.width ?? "—"} × ${vals.height ?? "—"}`);
+        }
       }
     }
     t.value = value;
@@ -2485,6 +2570,41 @@ export function DiagramCanvas() {
       return;
     }
     const sizeValues = t.sizeValues;
+    // 图片节点：松手按最后一帧指针重算，保证预览与提交同一份源码；一次 commit = 一条 Ctrl+Z。
+    if (t.imageResizePlan && t.imageResizePlan.status === "ok" && t.lastPointer) {
+      let plan = t.imageResizePlan;
+      const res = scaleFromDrag({
+        box: t.startBox,
+        corner: t.corner,
+        pointer: t.lastPointer,
+        uniform: false,
+        center: false,
+      });
+      const primaryStmt = t.resultAtStart.statements.find((st) => st.id === t.elementIds[0]);
+      if (res && primaryStmt) {
+        const wCm = (t.baseWidthPt * res.sx) / CM_TO_PT;
+        const hCm = (t.baseHeightPt * res.sy) / CM_TO_PT;
+        const p = planImageNodeResize({
+          source: t.sourceAtStart,
+          statement: primaryStmt,
+          newWidthCm: wCm,
+          newHeightCm: hCm,
+        });
+        if (p.status === "ok") plan = p;
+      }
+      restoreTransformPreview();
+      const write = commitDiagramPatches({
+        patches: plan.patches,
+        source: t.sourceAtStart,
+        nextSource: plan.nextSource,
+        fallback: setSource,
+      });
+      setNotice({
+        tone: write.written ? "ok" : "warn",
+        text: `已调整图片尺寸${write.written ? " · Ctrl+Z 一次退回" : " · 源码栏未就绪，无撤销记录"}`,
+      });
+      return;
+    }
     const plan = sizeValues
       ? planSizePatches({
           source: t.sourceAtStart,

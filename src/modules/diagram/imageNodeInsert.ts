@@ -13,6 +13,9 @@
 //    字符的文件名在落盘前就被拒绝进入「等待落点」状态（P2 已有边界）。
 //
 // 无 DOM / Tauri / React / store 依赖；相对 import 带 .ts，Node --experimental-strip-types 可直测。
+import type { SourceSpanPatch } from "./dragEdit.ts";
+import type { TikzStatement } from "./optionsEdit.ts";
+import { mergeSourcePatches } from "./grouping.ts";
 import { ASSET_EXTS, SAFE_PATH_RE } from "./imageRefs.ts";
 import { fmtCoord, fmtTikzNumber } from "./shapeInsert.ts";
 
@@ -87,4 +90,127 @@ export function buildImageNodeStatement(input: ImageNodeInput): ImageNodePlan {
 /** 插入主文档时是否需要补 graphicx 导言区（P0：非必需，但显式写更稳妥）。 */
 export function sourceNeedsGraphicx(source: string): boolean {
   return /\\includegraphics\b/.test(source);
+}
+
+/**
+ * 图片节点判定：节点内容里是否含 `\includegraphics`。优先看上游解析出的 nodeTexts
+ * （其 .text 已是去花括号的纯内容），兜底再扫语句原文。
+ */
+export function nodeHasIncludeGraphics(stmt: TikzStatement, source: string): boolean {
+  const texts = stmt.nodeTexts ?? [];
+  for (const nt of texts) {
+    if (nt.text.includes("\\includegraphics")) return true;
+  }
+  return source.slice(stmt.span.from, stmt.span.to).includes("\\includegraphics");
+}
+
+function fmtResizeCm(v: number): string {
+  const rounded = Math.round(v * 100) / 100;
+  const clamped = Number.isFinite(rounded) ? Math.max(0.05, rounded) : 0.05;
+  return String(clamped);
+}
+
+/** 匹配 `\includegraphics[opt]{path}`；opt / path 均不含 `]` / `{}`，避免跨段误吞。 */
+const IG_FULL_RE = /\\includegraphics\s*(?:\[([^\]]*)\])?\s*\{([^{}]*)\}/;
+
+/** 图片节点要剥离的文本框尺寸选项（框比图大、图不跟着缩放的根因）。 */
+const SIZE_OPT_RE = /^(text width|minimum height)\s*=/i;
+
+/**
+ * 单一、不重叠的选项补丁：去掉 text width / minimum height（框比图大的元凶），并确保
+ * inner sep=0（图片节点不要默认内边距，让框紧贴图片）；保留其它选项（如 fill / draw）。
+ * 返回 null 表示无需改动选项（例如节点本就没有这些选项）。
+ */
+function stripImageNodeOptions(
+  source: string,
+  statement: TikzStatement,
+): SourceSpanPatch | null {
+  const os = statement.optionsSpan;
+  let kept: string[];
+  if (os) {
+    const innerFrom = os.from + 1;
+    const innerTo = os.to - 1;
+    const inner = source.slice(innerFrom, innerTo);
+    kept = inner
+      .split(",")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0 && !SIZE_OPT_RE.test(s));
+    // 确保 inner sep=0：已存在则保留用户值，否则补上
+    if (!kept.some((s) => /^inner sep\s*=/i.test(s))) kept.push("inner sep=0");
+    return { from: innerFrom, to: innerTo, insert: kept.join(", ") };
+  }
+  // 无选项：在命令名之后插入 [inner sep=0]（insertOffset 由上游给出，指向 \node 之后）
+  const at = statement.insertOffset;
+  if (at == null || at < 0 || at > source.length) return null;
+  return { from: at, to: at, insert: "[inner sep=0]" };
+}
+
+export type ImageResizePlan =
+  | { status: "ok"; patches: SourceSpanPatch[]; nextSource: string; label: string }
+  | { status: "rejected" | "noop"; reason: string; patches: SourceSpanPatch[]; nextSource: string };
+
+/**
+ * 图片节点尺寸编辑：把 8 点柄拖出的 newWidthCm / newHeightCm 写回 `\includegraphics` 的
+ * [width=…, height=…]，并移除节点上的 `text width` / `minimum height`、补 `inner sep=0`
+ * （图片节点不需要文本框尺寸，否则框会比图大、图永远填不满 —— 这正是「缩放只改 text width
+ * 不改图」的根因）。保留除 width / height 外的其它 includegraphics 选项（如 angle / scale / trim）。
+ * 纯逻辑：最小 span 补丁，options 与 includegraphics 各一处、互不重叠，调用方一次 dispatch = 一条 Ctrl+Z。
+ */
+export function planImageNodeResize(args: {
+  source: string;
+  statement: TikzStatement;
+  newWidthCm: number;
+  newHeightCm: number;
+}): ImageResizePlan {
+  const { source, statement, newWidthCm, newHeightCm } = args;
+  if (statement.command !== "node") {
+    return { status: "rejected", reason: "图片尺寸只适用于 \\node 图片节点。", patches: [], nextSource: source };
+  }
+  const nt = statement.nodeTexts?.find((n) => n.source === "group") ?? statement.nodeTexts?.[0];
+  if (!nt) {
+    return { status: "rejected", reason: "无法定位节点内容。", patches: [], nextSource: source };
+  }
+  const content = source.slice(nt.span.from, nt.span.to);
+  const m = IG_FULL_RE.exec(content);
+  if (!m) {
+    return { status: "rejected", reason: "节点内未找到 \\includegraphics。", patches: [], nextSource: source };
+  }
+  const oldOpt = m[1] ?? "";
+  const path = m[2] ?? "";
+  if (!path.trim()) {
+    return { status: "rejected", reason: "图片路径为空。", patches: [], nextSource: source };
+  }
+  // 保留除 width / height 之外的原有选项（如 angle / scale / trim），仅重写宽高。
+  const rest = oldOpt
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !/^(width|height)\s*=/i.test(s))
+    .join(", ");
+  const newOpt =
+    `width=${fmtResizeCm(newWidthCm)}cm, height=${fmtResizeCm(newHeightCm)}cm` +
+    (rest ? `, ${rest}` : "");
+  const newInclude = `\\includegraphics[${newOpt}]{${path}}`;
+  const absFrom = nt.span.from + m.index;
+  const absTo = absFrom + m[0].length;
+  const includePatch: SourceSpanPatch = { from: absFrom, to: absTo, insert: newInclude };
+
+  // 单一补丁改写节点选项：去掉 text width / minimum height，确保 inner sep=0（见 stripImageNodeOptions）。
+  const optionPatch = stripImageNodeOptions(source, statement);
+
+  const patches: SourceSpanPatch[] = [includePatch];
+  if (optionPatch) patches.push(optionPatch);
+
+  const merged = mergeSourcePatches(source, patches);
+  if (!merged) {
+    return { status: "rejected", reason: "图片尺寸补丁区间重叠，已放弃写回。", patches: [], nextSource: source };
+  }
+  if (merged.nextSource === source) {
+    return { status: "noop", reason: "尺寸未变化。", patches: [], nextSource: source };
+  }
+  return {
+    status: "ok",
+    patches: merged.patches,
+    nextSource: merged.nextSource,
+    label: `图片尺寸 ${fmtResizeCm(newWidthCm)}×${fmtResizeCm(newHeightCm)}cm`,
+  };
 }
