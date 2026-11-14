@@ -113,7 +113,7 @@ pub fn run() {
             commands::updater::update_env_info,
             commands::updater::download_app_update,
             commands::updater::fetch_latest_json,
-            commands::updater::launch_installer_and_exit,
+            commands::updater::apply_update_and_exit,
             // 日志面板内置终端（feat/terminal）
             commands::terminal::terminal_create,
             commands::terminal::terminal_write,

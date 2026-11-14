@@ -1369,9 +1369,13 @@ function UpdateRegion({ version }: { version: string }) {
       ? "本次更新暂未提供当前平台的安装包，请前往发布页手动下载。"
       : "";
 
+  const isWindows = (env?.os ?? "windows") === "windows";
   const onInstallClick = async () => {
+    // U3：Windows 仍是「拉起安装向导」，Linux/macOS 是「替换自身后重启」，文案分开
     const ok = await confirm(
-      "将关闭 Zetla 并启动安装程序，是否继续？\n若系统弹出安全拦截提示，点击「仍要运行 / 仍要打开」即可（安装包未做代码签名）。",
+      isWindows
+        ? "将关闭 Zetla 并启动安装程序，是否继续？\n若系统弹出安全拦截提示，点击「仍要运行 / 仍要打开」即可（安装包未做代码签名）。"
+        : "将关闭 Zetla，替换为新版本后自动重启，是否继续？",
       { title: "安装更新", kind: "warning" },
     );
     if (ok) void confirmInstall();
@@ -1476,7 +1480,11 @@ function UpdateRegion({ version }: { version: string }) {
       )}
 
       {status === "downloaded" && (
-        <p className="update-line">更新已下载完成，安装将关闭 Zetla 并自动重启。</p>
+        <p className="update-line">
+          {isWindows
+            ? "更新已下载完成，点击安装将关闭 Zetla 并启动安装程序。"
+            : "更新已下载完成，点击安装将替换当前版本并自动重启。"}
+        </p>
       )}
 
       {status === "error" && (

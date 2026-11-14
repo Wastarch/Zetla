@@ -141,25 +141,135 @@ pub fn linux_package_kind(appimage: Option<&str>) -> &'static str {
     }
 }
 
-/// U1 只接入了 Windows 的「下载 → 拉起安装向导 → 退出」闭环；
-/// macOS 换包在 U5、Linux AppImage 替换在 U3，接入前绝不宣称可自更新。
-const SELF_UPDATE_READY_OS: &[&str] = &["windows"];
+/// 纳秒时间戳（落盘目录 / 暂存件命名）
+fn nanos() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0)
+}
 
-/// 能力判定（纯函数，便于单测）：返回 (能否自更新, 不能时的原因)
+/// `$APPIMAGE` 解析（空串 / 空白视为未设置）。单测在任意平台可跑。
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // 仅 Linux 运行时调用
+pub fn appimage_from_env(raw: Option<&str>) -> Option<PathBuf> {
+    let v = raw?.trim();
+    if v.is_empty() {
+        return None;
+    }
+    Some(PathBuf::from(v))
+}
+
+/// AppImage 解压运行形态的痕迹：`/tmp/.mount_ZetlaXXXX/usr/bin/zetla`
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // 仅 Linux 运行时调用
+pub fn looks_like_appimage_mount(exe: &str) -> bool {
+    exe.contains(".mount_")
+}
+
+/// AppImage 原地替换的三条路径（纯计算，可跨平台单测）
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // 仅 Linux 运行时构造
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinuxSwapPlan {
+    /// 目标 AppImage（符号链接已解析到真实文件）
+    pub target: PathBuf,
+    /// 同目录暂存的新版本；rename 覆盖后消失
+    pub new: PathBuf,
+    /// 同目录备份的旧版本；成功后删除，回滚时 rename 回来
+    pub backup: PathBuf,
+    /// 目标所在目录（可写性探测 + 错误提示用）
+    pub dir: PathBuf,
+}
+
+/// 生成原地替换计划：暂存件必须与目标同目录，否则 rename 跨设备会 EXDEV
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // 仅 Linux 运行时调用
+pub fn linux_swap_plan(target: &std::path::Path, ts: u128) -> Option<LinuxSwapPlan> {
+    let dir = target.parent()?;
+    // 裸文件名（parent 为空）不可信：$APPIMAGE 正常是绝对路径，解析不出目录就让调用方报错
+    if dir.as_os_str().is_empty() {
+        return None;
+    }
+    let dir = dir.to_path_buf();
+    Some(LinuxSwapPlan {
+        target: target.to_path_buf(),
+        new: dir.join(format!(".zetla-new-{ts}.AppImage")),
+        backup: dir.join(format!(".zetla-old-{ts}.AppImage")),
+        dir,
+    })
+}
+
+/// 实测目录可写（建临时文件再删），不靠权限位猜 —— 只读挂载 / root 安装都能识别
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))] // 仅 Linux 运行时调用
+pub fn probe_write(dir: &std::path::Path) -> bool {
+    if !dir.is_dir() {
+        return false;
+    }
+    let probe = dir.join(format!(".zetla-wtest-{}-{}", std::process::id(), nanos()));
+    match std::fs::write(&probe, b"") {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
+/// 能力判定（纯函数，便于单测）：返回 (能否自更新, 不能时的原因)。
+/// 这里只判「操作系统 + 包型」这一层；Linux AppImage 的目录可写性属运行期条件，
+/// 由 `resolve_capability` 在本机再实测一次（见 U3）。
 fn capability(os: &str, kind: &str) -> (bool, Option<String>) {
-    if kind == "none" {
-        return (
+    match (os, kind) {
+        ("windows", "exe") => (true, None),
+        ("linux", "appimage") => (true, None),
+        ("linux", _) => (
             false,
             Some("当前为系统包安装版本（deb/rpm），请用系统包管理器更新，或前往发布页下载安装包。".to_string()),
-        );
+        ),
+        ("macos", _) => (
+            false,
+            Some("macOS 的应用内换包尚未提供，请前往发布页下载安装包手动安装。".to_string()),
+        ),
+        _ => (
+            false,
+            Some("当前平台暂不支持应用内安装，请前往发布页下载安装包。".to_string()),
+        ),
     }
-    if SELF_UPDATE_READY_OS.contains(&os) {
-        return (true, None);
+}
+
+/// 本机能力：Linux 追加「$APPIMAGE 能否定位 + 所在目录是否真的可写」的实测
+#[cfg(target_os = "linux")]
+fn resolve_capability(_os: &str, _kind: &str) -> (bool, Option<String>) {
+    let Some(target) = appimage_from_env(std::env::var("APPIMAGE").ok().as_deref()) else {
+        // $APPIMAGE 为空但有 .mount_ 痕迹：AppImage 形态却定位不到文件（被包装器清过环境变量）
+        if std::env::current_exe()
+            .map(|e| looks_like_appimage_mount(&e.to_string_lossy()))
+            .unwrap_or(false)
+        {
+            return (
+                false,
+                Some("检测到 AppImage 运行形态，但无法定位文件（$APPIMAGE 为空），请手动下载安装包。".to_string()),
+            );
+        }
+        return capability("linux", "none");
+    };
+    let dir = target.parent().map(|d| d.to_path_buf());
+    match dir {
+        Some(d) if probe_write(&d) => (true, None),
+        Some(d) => (
+            false,
+            Some(format!(
+                "AppImage 所在目录不可写（{}），无法自动替换。请把它移到用户可写目录，或从发布页手动下载。",
+                d.display()
+            )),
+        ),
+        None => (
+            false,
+            Some("无法定位 AppImage 所在目录，请从发布页手动下载安装包。".to_string()),
+        ),
     }
-    (
-        false,
-        Some("当前平台的应用内更新尚未开放，请前往发布页下载安装包手动安装。".to_string()),
-    )
+}
+
+#[cfg(not(target_os = "linux"))]
+fn resolve_capability(os: &str, kind: &str) -> (bool, Option<String>) {
+    capability(os, kind)
 }
 
 #[cfg(target_os = "windows")]
@@ -217,7 +327,7 @@ pub fn update_env_info() -> UpdateEnv {
     let os = os_label();
     let arch = arch_label();
     let kind = expected_kind();
-    let (can_self_update, reason) = capability(os, kind);
+    let (can_self_update, reason) = resolve_capability(os, kind);
     UpdateEnv {
         os: os.to_string(),
         arch: arch.to_string(),
@@ -249,11 +359,7 @@ pub async fn download_app_update(
     // 落盘目录：<temp>/zetla-update-<纳秒戳>/<URL 末段文件名>
     // 目录化便于 macOS 解压出 .app 与临时脚本；文件名保留真实扩展名，供平台分支判别。
     // 启动时 cleanup_update_temp 会清掉上次残留（目录或旧版扁平 exe 都清）。
-    let ts = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let dir = std::env::temp_dir().join(staging_dir_name(ts));
+    let dir = std::env::temp_dir().join(staging_dir_name(nanos()));
     tokio::fs::create_dir_all(&dir)
         .await
         .map_err(|e| format!("创建临时目录失败：{e}"))?;
@@ -349,26 +455,103 @@ fn sha256_of(path: &std::path::Path) -> Result<String, String> {
     Ok(hex::encode(hasher.finalize()))
 }
 
-#[cfg(windows)]
-use std::os::windows::process::CommandExt;
-
-/// 拉起安装向导并退出 Zetla：detached 脱离父进程，Zetla 退出后安装器继续运行接管覆盖安装。
+/// 应用更新并退出 Zetla（U3 起三平台统一入口，内部按平台分派）：
+/// - windows：detached 拉起 Inno 向导，退出后由安装器接管覆盖安装；
+/// - linux：原地替换 `$APPIMAGE` 再拉起新版本（U3）；
+/// - macos：换包逻辑 U5 落地，当前返回错误让前端引导去发布页。
+/// 预检/换包/拉起任一步失败都返回 Err —— 进程继续活着，前端能显示原因，
+/// 绝不出现「更新失败但应用已退出」。
 #[tauri::command]
-pub fn launch_installer_and_exit(path: String) -> Result<(), String> {
-    let p = PathBuf::from(path.trim());
-    if !p.is_file() {
-        return Err(format!("安装包不存在：{}", p.display()));
+pub fn apply_update_and_exit(path: String) -> Result<(), String> {
+    let pkg = PathBuf::from(path.trim());
+    if !pkg.is_file() {
+        return Err(format!("更新包不存在：{}", pkg.display()));
     }
-    let mut cmd = std::process::Command::new(&p);
-    // 不传静默参数 → 启动 Inno Setup 向导（非 /SILENT）
-    #[cfg(windows)]
-    {
-        // 0x00000008 = DETACHED_PROCESS：子进程不随父进程退出而死
-        cmd.creation_flags(0x0000_0008);
-    }
-    cmd.spawn().map_err(|e| format!("启动安装程序失败：{e}"))?;
-    // 退出主进程，释放文件句柄，安装器接管
+    spawn_update(&pkg)?;
+    // 走到这里说明新版本/安装器已成功拉起，释放自身
     std::process::exit(0);
+}
+
+#[cfg(target_os = "windows")]
+fn spawn_update(pkg: &std::path::Path) -> Result<(), String> {
+    use std::os::windows::process::CommandExt;
+    // 不传静默参数 → 启动 Inno Setup 向导（非 /SILENT）
+    let mut cmd = std::process::Command::new(pkg);
+    // 0x00000008 = DETACHED_PROCESS：子进程不随父进程退出而死
+    cmd.creation_flags(0x0000_0008);
+    cmd.spawn().map_err(|e| format!("启动安装程序失败：{e}"))?;
+    Ok(())
+}
+
+/// U3 · AppImage 原地替换：
+/// 同目录 copy → chmod 755 → 备份旧文件 → rename 原子覆盖 → 新进程独立进程组拉起。
+/// 只有全部成功才返回 Ok；拉起失败会把旧文件 rename 回来再报错。
+#[cfg(target_os = "linux")]
+fn spawn_update(pkg: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::PermissionsExt;
+    use std::os::unix::process::CommandExt;
+
+    let target = appimage_from_env(std::env::var("APPIMAGE").ok().as_deref()).ok_or_else(|| {
+        "未检测到 AppImage 运行环境（$APPIMAGE 为空），请从发布页手动下载安装包。".to_string()
+    })?;
+    // 软链场景替换真实文件，别把链接本身换掉
+    let target = std::fs::canonicalize(&target).unwrap_or(target);
+    if !target.is_file() {
+        return Err(format!("找不到当前 AppImage：{}", target.display()));
+    }
+    let plan = linux_swap_plan(&target, nanos())
+        .ok_or_else(|| "无法定位 AppImage 所在目录，请手动下载安装包。".to_string())?;
+    // 只读目录（/opt 下 root 安装）不尝试提权，直接给出可操作提示
+    if !probe_write(&plan.dir) {
+        return Err(format!(
+            "AppImage 所在目录不可写（{}），请把它移到用户可写目录，或从发布页手动下载。",
+            plan.dir.display()
+        ));
+    }
+
+    // 1) 先拷到同目录：/tmp 常是 tmpfs，跨设备 rename 会 EXDEV
+    if let Err(e) = std::fs::copy(pkg, &plan.new) {
+        let _ = std::fs::remove_file(&plan.new);
+        return Err(format!("写入新版本失败：{e}"));
+    }
+    // 2) 可执行位必做：下载文件的 umask 可能给成 644，不 chmod 会「双击无反应」
+    if let Err(e) = std::fs::set_permissions(&plan.new, std::fs::Permissions::from_mode(0o755)) {
+        let _ = std::fs::remove_file(&plan.new);
+        return Err(format!("设置可执行权限失败：{e}"));
+    }
+    // 3) 备份旧文件：rename 覆盖后原内容就没了（备份失败不阻断，只是失去回滚能力）
+    let _ = std::fs::copy(&plan.target, &plan.backup);
+    // 4) 原子覆盖：rename 换目录项，运行中的旧 inode 仍被本进程持有
+    if let Err(e) = std::fs::rename(&plan.new, &plan.target) {
+        let _ = std::fs::remove_file(&plan.new);
+        let _ = std::fs::remove_file(&plan.backup);
+        return Err(format!("替换 AppImage 失败：{e}"));
+    }
+    // 5) 新进程自成进程组：父进程退出不把它带走
+    let mut cmd = std::process::Command::new(&plan.target);
+    cmd.process_group(0);
+    match cmd.spawn() {
+        Ok(_) => {
+            let _ = std::fs::remove_file(&plan.backup);
+            Ok(())
+        }
+        Err(e) => {
+            // 拉不起来就回滚，别让用户既没新版本也没旧版本
+            let _ = std::fs::remove_file(&plan.target);
+            let _ = std::fs::rename(&plan.backup, &plan.target);
+            Err(format!("启动新版本失败：{e}（已回滚到原版本）"))
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn spawn_update(_pkg: &std::path::Path) -> Result<(), String> {
+    Err("macOS 的应用内换包尚未提供，请前往发布页下载安装包手动安装。".to_string())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "linux", target_os = "macos")))]
+fn spawn_update(_pkg: &std::path::Path) -> Result<(), String> {
+    Err("当前平台暂不支持应用内安装，请前往发布页下载安装包。".to_string())
 }
 
 /// 启动清掉上次残留（Zetla 退出时安装器已自行清理，这里兜底）：
@@ -568,19 +751,32 @@ mod tests {
     }
 
     #[test]
-    fn capability_none_never_self_updates() {
+    fn capability_linux_appimage_ready_at_os_level() {
+        // OS 层放行；目录可写性由 resolve_capability 在运行期实测
+        let (ok, reason) = capability("linux", "appimage");
+        assert!(ok);
+        assert!(reason.is_none());
+    }
+
+    #[test]
+    fn capability_linux_system_package_never_self_updates() {
         let (ok, reason) = capability("linux", "none");
         assert!(!ok);
         assert!(reason.unwrap().contains("deb/rpm"));
     }
 
     #[test]
-    fn capability_other_platforms_pending() {
-        for (os, kind) in [("macos", "app-tar-gz"), ("linux", "appimage")] {
-            let (ok, reason) = capability(os, kind);
-            assert!(!ok, "{os}/{kind} 在 U1 不应宣称可自更新");
-            assert!(reason.unwrap().contains("尚未开放"));
-        }
+    fn capability_macos_still_pending() {
+        let (ok, reason) = capability("macos", "app-tar-gz");
+        assert!(!ok, "macOS 换包要到 U5，U3 不应宣称可自更新");
+        assert!(reason.unwrap().contains("尚未提供"));
+    }
+
+    #[test]
+    fn capability_unknown_platform_is_safe() {
+        let (ok, reason) = capability("freebsd", "exe");
+        assert!(!ok);
+        assert!(reason.unwrap().contains("暂不支持"));
     }
 
     // ── U2 落盘目录命名 / 清理命中规则 ───────────────────────────────────
@@ -652,11 +848,70 @@ mod tests {
         // macOS 的清单前缀是 darwin，不是展示用的 macos
         assert!(!env.key.starts_with("macos-"));
         assert!(!env.os.is_empty() && !env.arch.is_empty());
-        let (expect_ok, _) = capability(&env.os, &env.kind);
+        let (expect_ok, _) = resolve_capability(&env.os, &env.kind);
         assert_eq!(env.can_self_update, expect_ok);
-        // 只有 Windows 会拿到 exe；其余平台要么待接入、要么 none
+        // 只有 Windows 会拿到 exe
         if env.os != "windows" {
             assert_ne!(env.kind, "exe");
         }
+    }
+
+    // ── U3 AppImage 原地替换的纯逻辑 ─────────────────────────────────────
+
+    #[test]
+    fn appimage_env_parsing() {
+        assert_eq!(
+            appimage_from_env(Some("/home/u/Apps/Zetla.AppImage")),
+            Some(PathBuf::from("/home/u/Apps/Zetla.AppImage"))
+        );
+        // 环境变量被清成空白时按未设置处理，避免把 "" 当路径
+        assert_eq!(appimage_from_env(Some("   ")), None);
+        assert_eq!(appimage_from_env(Some("")), None);
+        assert_eq!(appimage_from_env(None), None);
+    }
+
+    #[test]
+    fn appimage_mount_form_is_detected() {
+        assert!(looks_like_appimage_mount(
+            "/tmp/.mount_ZetlaAbc123/usr/bin/zetla"
+        ));
+        assert!(!looks_like_appimage_mount("/usr/bin/zetla"));
+        assert!(!looks_like_appimage_mount("/home/u/Apps/Zetla.AppImage"));
+    }
+
+    #[test]
+    fn swap_plan_stays_in_same_directory() {
+        let plan = linux_swap_plan(std::path::Path::new("/home/u/Apps/Zetla.AppImage"), 7)
+            .expect("有父目录就该有计划");
+        assert_eq!(plan.dir.file_name().unwrap(), "Apps");
+        assert_eq!(plan.new.file_name().unwrap(), ".zetla-new-7.AppImage");
+        assert_eq!(plan.backup.file_name().unwrap(), ".zetla-old-7.AppImage");
+        // 暂存件必须与目标同目录，否则 rename 跨设备会 EXDEV
+        assert_eq!(plan.new.parent(), plan.target.parent());
+        assert_eq!(plan.backup.parent(), plan.target.parent());
+        // 暂存件要被启动清理命中，失败残留才不会越攒越多
+        assert!(is_stale_artifact(
+            &plan.new.file_name().unwrap().to_string_lossy()
+        ));
+        assert!(is_stale_artifact(
+            &plan.backup.file_name().unwrap().to_string_lossy()
+        ));
+    }
+
+    #[test]
+    fn swap_plan_needs_parent() {
+        assert!(linux_swap_plan(std::path::Path::new("Zetla.AppImage"), 1).is_none());
+    }
+
+    #[test]
+    fn probe_write_reflects_reality() {
+        let dir = std::env::temp_dir().join(format!("zetla-wtest-{}-{}", std::process::id(), nanos()));
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(probe_write(&dir), "自建临时目录应可写");
+        assert!(
+            !probe_write(&dir.join("nope")),
+            "不存在的目录不能被判为可写"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

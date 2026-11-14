@@ -117,8 +117,19 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   confirmInstall: async () => {
     const { downloadedPath } = get();
     if (!downloadedPath) return;
-    // 触发后进程会退出；前端无需处理返回值（invoke 可能因进程退出被拒，忽略即可）
-    await invoke("launch_installer_and_exit", { path: downloadedPath }).catch(() => {});
+    try {
+      // U3：统一入口，Rust 内按平台分派（Windows 拉起安装向导 / Linux 原地替换 AppImage）
+      await invoke("apply_update_and_exit", { path: downloadedPath });
+      // 成功时进程已被 Rust 退出，走不到这里
+    } catch (e) {
+      // 预检或换包失败时进程还活着，把原因显示出来（绝不静默失败）
+      set({
+        status: "error",
+        error: String(e),
+        // 落盘文件可能已被替换/清理，重试需要重新下载
+        progress: null,
+      });
+    }
   },
 
   openRelease: () => {
