@@ -12,6 +12,7 @@
     "version:sync": "node scripts/sync-version.mjs",
     "package:win": "npm run tauri build -- --no-bundle && npm run package:inno",
     "package:inno": "node scripts/package-inno.mjs",
+    "release:manifest": "node scripts/update-manifest.mjs",
     "postinstall": "patch-package"
   },
   "dependencies": {

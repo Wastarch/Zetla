@@ -170,13 +170,20 @@ const noneNoPkg = {
 };
 check(!needsManualInstall(noneNoPkg), "kind=none 但无 packages → 不算系统包通道");
 check(packageSources(noneNoPkg).length === 0, "kind=none 且无 packages → 空源数组");
-// kind 有值但也带了 packages（清单冗余）：系统包只作补充，不改变自更新通道
+// kind 有值但也带了 packages（同版本既出 AppImage 又出 deb）：系统包作补充，
+// 不改变 AppImage 用户的自更新通道，但 deb 用户仍要能取到 deb 源（U6）
 const appimageWithPkg = {
   kind: "appimage" as const,
   installers: [src("a.AppImage")],
   packages: [src("a.deb")],
 };
 check(!needsManualInstall(appimageWithPkg), "appimage + packages → 仍走自更新");
+check(packageSources(appimageWithPkg).length === 1, "appimage + packages → 系统包装源仍可取（deb 用户要靠它）");
+check(
+  packageSources(appimageWithPkg)[0].url.endsWith("a.deb"),
+  "appimage + packages → 取到的是 deb 而不是 AppImage",
+);
+check(packageSources({ kind: "none" as const, installers: [], packages: [] }).length === 0, "packages 为空数组 → 空源");
 
 console.log(`\n${failed === 0 ? "全部通过" : "存在失败"}：${passed} 通过 / ${failed} 失败`);
 if (failed > 0) process.exit(1);

@@ -61,6 +61,19 @@ jobs:
       - name: Build Tauri Linux bundles
         run: npm run tauri build -- --ci --bundles ${{ github.event.inputs.bundles }}
 
+      # 校验和随产物一起上传：发版时 scripts/update-manifest.mjs 生成的 sha256
+      # 必须与这里一致（人工核对用，脚本本身会重算）。
+      - name: Write SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd src-tauri/target/release/bundle
+          : > SHA256SUMS
+          for f in appimage/*.AppImage deb/*.deb rpm/*.rpm; do
+            [ -f "$f" ] || continue
+            sha256sum "$f" >> SHA256SUMS
+          done
+          cat SHA256SUMS
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -69,4 +82,5 @@ jobs:
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/bundle/appimage/*.AppImage
             src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/SHA256SUMS
           if-no-files-found: warn

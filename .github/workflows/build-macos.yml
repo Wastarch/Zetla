@@ -88,6 +88,19 @@ jobs:
           echo "SHA256: $(shasum -a 256 "$OUT" | awk '{print $1}')"
           echo "UPDATER_PKG=$OUT" >> "$GITHUB_ENV"
 
+      # 校验和随产物上传：发版时 scripts/update-manifest.mjs 会重算，
+      # 两边不一致说明产物被换过/上传错文件。
+      - name: Write SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd src-tauri/target/universal-apple-darwin/release/bundle
+          : > SHA256SUMS
+          for f in macos/*.app.tar.gz dmg/*.dmg; do
+            [ -f "$f" ] || continue
+            shasum -a 256 "$f" >> SHA256SUMS
+          done
+          cat SHA256SUMS
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -95,4 +108,5 @@ jobs:
           path: |
             src-tauri/target/universal-apple-darwin/release/bundle/macos/*.app.tar.gz
             src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/universal-apple-darwin/release/bundle/SHA256SUMS
           if-no-files-found: warn

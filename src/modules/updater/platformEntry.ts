@@ -68,9 +68,14 @@ export function needsManualInstall(entry: ResolvedEntry | null): boolean {
   return entry?.kind === "none" && (entry.packages?.length ?? 0) > 0;
 }
 
-/** 取系统包源（deb/rpm）；没有则空数组 —— 调用方据此判断能否走下载引导 */
+/**
+ * 取系统包源（deb/rpm）；没有则空数组 —— 调用方据此判断能否走下载引导。
+ * 注意：**不按 kind 过滤**。同一次发布常常既有 AppImage 又有 deb/rpm
+ * （`kind` 只能是其中一个），此时 deb 安装版的用户（`env.canSelfUpdate=false`）
+ * 仍要能拿到 deb 源；是否走这条通道由调用方的 `canSelfUpdate` 决定。
+ */
 export function packageSources(entry: ResolvedEntry | null): InstallerSrc[] {
-  return needsManualInstall(entry) ? (entry?.packages ?? []) : [];
+  return entry?.packages ?? [];
 }
 
 /**

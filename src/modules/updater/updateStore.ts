@@ -87,12 +87,15 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     }
     if (isNewer(latest.version, APP_VERSION)) {
       const entry = pickEntry(latest, env);
+      // U6：同一次发布可能既有 AppImage 又有 deb/rpm（kind 只能记一个）。
+      // 本机不能自更新（deb/rpm 安装版）+ 清单给了系统包 → 走系统安装器通道。
+      const canApplyHere = env ? env.canSelfUpdate : true;
       set({
         status: "update",
         latest,
         entry,
         // U4：deb/rpm 只能下载后交系统安装器，界面据此换按钮组
-        manualInstall: needsManualInstall(entry),
+        manualInstall: needsManualInstall(entry) || (!canApplyHere && packageSources(entry).length > 0),
         mandatory: isMandatory(latest),
       });
     } else {
@@ -107,8 +110,18 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   },
 
   download: async () => {
-    const { latest, entry } = get();
+    const { latest, entry, env } = get();
     if (!latest) return;
+    // U6：本机不能自更新（deb/rpm 安装版）时绝不下载「自更新包」再替换自身 ——
+    // 即便清单该平台的 kind 记成 appimage（同版本同时出了 AppImage 与 deb）。
+    if (env && !env.canSelfUpdate) {
+      set({
+        status: "error",
+        error: env.reason ?? "当前安装形态不支持应用内更新，请下载安装包后手动安装。",
+        progress: null,
+      });
+      return;
+    }
     if (!entry || entry.kind === "none" || entry.installers.length === 0) {
       // 没有可用的自更新包：如实报错，引导用户走发布页
       set({
@@ -209,8 +222,13 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     await get().check();
     if (get().status !== "update") return;
     // 重试也要按通道分流：deb/rpm 重新下载系统包，其余走自更新下载
-    if (needsManualInstall(get().entry)) await get().downloadPackage();
-    else await get().download();
+    const state = get();
+    const canApply = selectCanApply(state);
+    if (needsManualInstall(state.entry) || (!canApply && packageSources(state.entry).length > 0)) {
+      await get().downloadPackage();
+    } else {
+      await get().download();
+    }
   },
 }));
 
