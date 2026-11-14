@@ -166,6 +166,37 @@ export const configApi = {
     call<ProjectEntry[]>("archive_project", { path, archived }),
 };
 
+// ── 绘图模块 · 图片插入 TikZ · P2 暂存图生命周期 ─────────────────────────
+/** 与 Rust commands/image_staging.rs 的 StagedImageEntry 对齐 */
+export interface StagedImageEntry {
+  absPath: string;
+  sha256: string;
+  createdAt: string;
+  owned: boolean;
+}
+export interface StagingReport {
+  deleted: string[];
+  kept: string[];
+  promoted: string[];
+}
+
+export const stagingApi = {
+  /** 登记一张已落盘的暂存图（重复登记同路径会刷新 sha256） */
+  stageImage: (root: string, absPath: string) =>
+    call<StagedImageEntry>("stage_image", { root, absPath }),
+  listStagedImages: (root: string) =>
+    call<StagedImageEntry[]>("list_staged_images", { root }),
+  /** 按「主文档最终写入的 \includegraphics 路径命中者」移出 manifest（文件永久保留） */
+  promoteStagedImages: (root: string, absPaths: string[]) =>
+    call<StagingReport>("promote_staged_images", { root, absPaths }),
+  /** 安静删除：所有权 + 项目根 + sha256 三重校验；absPaths=null 清理全部 */
+  discardStagedImages: (root: string, absPaths: string[] | null) =>
+    call<StagingReport>("discard_staged_images", { root, absPaths }),
+  /** 启动扫描：清上次会话残留；已被 .tex 引用的保守保留 */
+  sweepStagedImages: (root: string) =>
+    call<StagingReport>("sweep_staged_images", { root }),
+};
+
 // ── 绘图模块（M2 · F1-6 XeLaTeX 精确预览 / F3-7 按画布尺寸导出）────────────────────
 /** F3-7：固定画布尺寸（world pt），只在 Rust 的派生 standalone 片段里生效，绝不写 CM6 source */
 export interface TikzCanvasSizeArg {

@@ -9,6 +9,7 @@ import { getEditorView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { notify, parentOf } from "@/project/useProject";
 import { buildDiagramFigureSnippet } from "./figureInsert";
+import { promoteFromInsertedCode } from "./imageStaging";
 import { useDiagramStore } from "./store";
 import {
   buildDiagramInsertCode,
@@ -60,7 +61,10 @@ export function insertDiagramCode(): boolean {
 
   const preamble = ensureTikzPreamble(view.state.doc.toString(), collectTikzLibraries(source));
   if (preamble) insertPreamble(view, preamble);
-  insertAtCursor(view, buildDiagramInsertCode(source, wrapFigure, caption, label));
+  const code = buildDiagramInsertCode(source, wrapFigure, caption, label);
+  insertAtCursor(view, code);
+  // P2 转正：按「主文档最终写入的 \includegraphics 路径命中者」保留暂存图（一次性快照）
+  void promoteFromInsertedCode(code);
   view.focus();
   useBuffersStore.getState().setActive(targetTex);
   notify(
@@ -117,6 +121,8 @@ export function insertFigureForImage(absImagePath: string): boolean {
     changes: { from: pos, insert: `${lead}${snippet}\n` },
     selection: { anchor: pos + lead.length + captionOffset },
   });
+  // P2：这里插入的是「导出成品」figure/diagram.png，源图不会命中 → 留待关 Tab 清理
+  void promoteFromInsertedCode(snippet);
   view.focus();
   useBuffersStore.getState().setActive(targetTex);
   return true;

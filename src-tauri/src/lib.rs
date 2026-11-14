@@ -92,6 +92,12 @@ pub fn run() {
             commands::image::import_image,
             commands::image::import_image_from_path,
             commands::image::image_exists,
+            // M2 · 图片插入 TikZ · P2：暂存图登记 / 转正 / 安静清理 / 启动扫描
+            commands::image_staging::stage_image,
+            commands::image_staging::list_staged_images,
+            commands::image_staging::promote_staged_images,
+            commands::image_staging::discard_staged_images,
+            commands::image_staging::sweep_staged_images,
             // 项目目录监听（M0-9a）
             commands::watch::watch_project,
             commands::watch::unwatch_project,

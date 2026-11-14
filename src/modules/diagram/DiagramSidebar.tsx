@@ -18,6 +18,14 @@ import { useDiagramStore } from "./store";
 import { LayersPanel } from "./LayersPanel";
 import { insertDiagramCode, insertFigureForImage } from "./insert";
 import { exportDiagram, type ExportFormat } from "./export";
+import {
+  inspectStagingTarget,
+  pickImageFile,
+  placeStagedImage,
+  type StagingContext,
+  type StagingPolicy,
+} from "./imageStaging";
+import { ImageConflictDialog } from "./ImageConflictDialog";
 import { notify } from "@/project/useProject";
 import type { ExportMode } from "@/types/diagram";
 import "./diagram.css";
@@ -128,6 +136,9 @@ export function DiagramSidebar() {
   // F5-2：image 模式落盘的文件名（不含扩展名）。刻意不持久化 —— 换图就该换名，
   // 固定 "diagram" 会让不同图互相覆盖。默认按 label 派生，便于与文档里的图对应。
   const [imageName, setImageName] = useState("diagram");
+  // P2：选图 → 暂存到 figure/；同名冲突时弹窗，确认后才真正落盘
+  const [staging, setStaging] = useState(false);
+  const [conflict, setConflict] = useState<StagingContext | null>(null);
 
   const formatChoices = exportMode === "image" ? IMAGE_INSERT_FORMATS : ALL_FORMATS;
 
@@ -150,6 +161,46 @@ export function DiagramSidebar() {
   useEffect(() => {
     openDiagramTab();
   }, []);
+
+  /** P2：落盘 + 登记 manifest；P3 才把 \node{...} 写进 CM6 源码 */
+  async function finalizeStaging(ctx: StagingContext, policy: StagingPolicy): Promise<void> {
+    const out = await placeStagedImage(ctx, policy);
+    if (out.status === "ok") {
+      notify(
+        `已暂存：${ctx.imageDir}/${out.fileName} · 可在绘图源码里用 \\includegraphics 引用`,
+        "ok",
+      );
+    }
+  }
+
+  async function handleStagePick(): Promise<void> {
+    const srcPath = await pickImageFile();
+    if (!srcPath) return;
+    setStaging(true);
+    try {
+      const ctx = await inspectStagingTarget(srcPath);
+      if (!ctx) return;
+      if (ctx.exists) {
+        setConflict(ctx);
+        return;
+      }
+      await finalizeStaging(ctx, "rename");
+    } finally {
+      setStaging(false);
+    }
+  }
+
+  async function handleConflictChoose(policy: StagingPolicy): Promise<void> {
+    const ctx = conflict;
+    setConflict(null);
+    if (!ctx) return;
+    setStaging(true);
+    try {
+      await finalizeStaging(ctx, policy);
+    } finally {
+      setStaging(false);
+    }
+  }
 
   const canInsert = exportMode === "source" && !!targetTex && source.trim().length > 0;
   // image 模式要插进主文档，必须已锁定 targetTex；file 模式只落盘，不要求。
@@ -215,6 +266,20 @@ export function DiagramSidebar() {
           设置里的「图层面板」开关只决定它的默认展开状态。 */}
       <Accordion title="图层管理" flush open={layersVisible}>
         <LayersPanel />
+      </Accordion>
+
+      {/* P2：图片先暂存到项目图片目录并登记 manifest；未插入主文档的会在关 Tab 后清理。
+          P3 再把选中的图写成 \node{\includegraphics{...}} 写回 CM6 源码。 */}
+      <Accordion title="图片素材" meta="figure/">
+        <button
+          type="button"
+          className="btn dg-stage-btn"
+          disabled={staging}
+          onClick={() => void handleStagePick()}
+          title="选一张 PNG / JPG / PDF 暂存到项目图片目录；未插入主文档的会在关闭绘图 Tab 后清理"
+        >
+          {staging ? "暂存中…" : "选择图片并暂存"}
+        </button>
       </Accordion>
 
       <Accordion title="导出与插入" meta="主 .tex 文档">
@@ -332,6 +397,15 @@ export function DiagramSidebar() {
         )}
       </Accordion>
 
+      {conflict && (
+        <ImageConflictDialog
+          fileName={conflict.fileName}
+          imageDir={conflict.imageDir}
+          owned={conflict.owned}
+          onCancel={() => setConflict(null)}
+          onChoose={(policy) => void handleConflictChoose(policy)}
+        />
+      )}
     </div>
   );
 }

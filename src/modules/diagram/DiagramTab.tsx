@@ -6,7 +6,9 @@ import { DiagramLayoutBar } from "./DiagramLayoutBar";
 import { DiagramCanvas } from "./DiagramCanvas";
 import { DiagramInspector } from "./DiagramInspector";
 import { DiagramCodePane } from "./DiagramCodePane";
+import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
+import { discardSessionStagedImages } from "./imageStaging";
 import "./diagram.css";
 
 export default function DiagramTab() {
@@ -15,6 +17,20 @@ export default function DiagramTab() {
   const setSplitRatio = useDiagramStore((s) => s.setSplitRatio);
   const bodyRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
+
+  // P2：关闭绘图 Tab = 本次编辑会话结束 → 安静清理未转正的暂存图。
+  // closeBuffer 先从 store 移除 buffer 再卸载组件；StrictMode 的假卸载 / Suspense 重挂载
+  // 时 buffer 仍在，据此跳过，避免刚打开就误删。
+  useEffect(
+    () => () => {
+      const stillOpen = useBuffersStore
+        .getState()
+        .buffers.some((b) => b.kind === "diagram");
+      if (stillOpen) return;
+      void discardSessionStagedImages({ keepIfEditing: false });
+    },
+    [],
+  );
 
   // 分屏分隔条：沿用 App.tsx 侧栏/预览的 window 级拖拽范式（body.col-resizing 抑制选中）。
   // 比例按容器实际宽度换算，窗口缩放后仍按比例分配；钳取在 store 的 0.2–0.8。

@@ -718,6 +718,72 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   color: var(--warn, #a86a12);
 }
 
+/* ── M2 · 图片插入 TikZ · P2：暂存入口与同名冲突弹窗 ───────── */
+.dg-stage-btn {
+  width: 100%;
+  box-sizing: border-box;
+  font-size: 11px;
+}
+.dg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 35%);
+}
+.dg-modal {
+  width: min(360px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 14px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 8px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+  box-shadow: 0 8px 28px rgb(0 0 0 / 22%);
+}
+.dg-modal-head {
+  font-size: 13px;
+  font-weight: 600;
+}
+.dg-modal-sub {
+  margin: 6px 0 10px;
+  font-size: 11px;
+  color: var(--txt-2, #777);
+  word-break: break-all;
+}
+.dg-modal-radios {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dg-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.dg-radio.is-on {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-modal-warn {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--warn, #a86a12);
+}
+.dg-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 12px;
+}
+
 /* ── M2·F1-6：双通道预览切换 + XeLaTeX 精确预览图 ───────────── */
 .dg-mode-switch {
   flex: none;
