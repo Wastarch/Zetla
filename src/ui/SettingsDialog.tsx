@@ -1345,6 +1345,8 @@ function ReleaseNotes({ notes }: { notes?: string | string[] }) {
 function UpdateRegion({ version }: { version: string }) {
   const status = useUpdateStore((s) => s.status);
   const latest = useUpdateStore((s) => s.latest);
+  const env = useUpdateStore((s) => s.env);
+  const entry = useUpdateStore((s) => s.entry);
   const mandatory = useUpdateStore((s) => s.mandatory);
   const error = useUpdateStore((s) => s.error);
   const progress = useUpdateStore((s) => s.progress);
@@ -1356,6 +1358,16 @@ function UpdateRegion({ version }: { version: string }) {
 
   const busy = status === "checking" || status === "downloading";
   const hasNew = status === "update" || status === "downloading" || status === "downloaded";
+  // U1：能否在应用内换包由 Rust 判定（env 取不到时按旧逻辑乐观处理）
+  const canApply = env ? env.canSelfUpdate : true;
+  // 该平台是否真的挑到了可下载的包（v2 清单可能不给某个平台）
+  const entryUsable = !!entry && entry.kind !== "none" && entry.installers.length > 0;
+  // 不能自更新时的原因文案
+  const blockReason = !canApply
+    ? (env?.reason ?? "当前平台的应用内更新尚未开放，请前往发布页下载安装包。")
+    : !entryUsable
+      ? "本次更新暂未提供当前平台的安装包，请前往发布页手动下载。"
+      : "";
 
   const onInstallClick = async () => {
     const ok = await confirm(
@@ -1378,9 +1390,14 @@ function UpdateRegion({ version }: { version: string }) {
         {status === "error" && <span className="update-badge err">更新失败</span>}
         {/* 主操作常驻头部：更新说明再长也不会把「安装」挤到滚动区外 */}
         <div className="update-head-acts">
-          {status === "update" && (
+          {status === "update" && canApply && entryUsable && (
             <button type="button" className="btn primary sm" onClick={() => void download()}>
               下载并安装
+            </button>
+          )}
+          {status === "update" && (!canApply || !entryUsable) && latest?.releaseUrl && (
+            <button type="button" className="btn primary sm" onClick={openRelease}>
+              去发布页下载
             </button>
           )}
           {status === "downloaded" && (
@@ -1388,7 +1405,7 @@ function UpdateRegion({ version }: { version: string }) {
               立即安装并重启
             </button>
           )}
-          {status === "error" && (
+          {status === "error" && canApply && entryUsable && (
             <button type="button" className="btn primary sm" onClick={() => void retry()}>
               重试
             </button>
@@ -1440,6 +1457,8 @@ function UpdateRegion({ version }: { version: string }) {
       )}
 
       {hasNew && latest && <ReleaseNotes notes={latest.notes} />}
+
+      {hasNew && blockReason && <p className="update-hint">{blockReason}</p>}
 
       {status === "downloading" && (
         <div className="update-progress">

@@ -109,6 +109,8 @@ pub fn run() {
             commands::watch::watch_project,
             commands::watch::unwatch_project,
             // M1-13：自动更新（自下载安装包 + 拉起安装向导）
+            // U1：清单协议 v2 —— 由 Rust 判定本机平台与能否自更新
+            commands::updater::update_env_info,
             commands::updater::download_app_update,
             commands::updater::fetch_latest_json,
             commands::updater::launch_installer_and_exit,
