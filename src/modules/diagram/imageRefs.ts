@@ -29,7 +29,7 @@ export interface PreparedImageSource {
 }
 
 /** P0 实测：-no-shell-escape 下 XeLaTeX 能直接吃这四种；SVG 需 svg 宏包 + shell-escape */
-const ASSET_EXTS = new Set(["png", "jpg", "jpeg", "pdf"]);
+export const ASSET_EXTS = new Set(["png", "jpg", "jpeg", "pdf"]);
 
 /** 只认 \includegraphics 的 {必选参数}；[opt] 允许跨行（不会被替换，故不影响行数） */
 const REF_RE = /\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}/g;
@@ -37,7 +37,7 @@ const REF_RE = /\\includegraphics\s*(?:\[[^\]]*\])?\s*\{([^{}]*)\}/g;
 /** 路径参数里允许的字符：Unicode 字母/数字 + 路径分隔符/点/下划线/连字符。
  *  空格、%、#、$、&、^、~、+、反斜杠都不收 —— 它们要么是 TeX 特殊字符，
  *  要么需要 grffile/detokenize 才能用，或可能是宏拼接（\imgdir/...）。 */
-const SAFE_PATH_RE = /^[\p{L}\p{N}/._-]+$/u;
+export const SAFE_PATH_RE = /^[\p{L}\p{N}/._-]+$/u;
 
 /** FNV-1a 双通道 → 12 位十六进制。确定性、零依赖、无需 Web Crypto 的异步 API。
  *  仅用于生成短文件名与缓存签名，不是加密 hash。 */

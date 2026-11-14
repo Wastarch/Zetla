@@ -724,6 +724,14 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   box-sizing: border-box;
   font-size: 11px;
 }
+/* P3：等待落点提示里的内联「取消」按钮（不占整行，避免和主按钮抢视觉） */
+.dg-stage-cancel {
+  margin-left: 6px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 16px;
+  vertical-align: baseline;
+}
 .dg-modal-overlay {
   position: fixed;
   inset: 0;
@@ -1224,6 +1232,11 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 }
 .dg-canvas-stage[data-tool]:not([data-tool="select"]) {
   cursor: crosshair;
+}
+/* P3：等待图片落点是「放置」而非「绘制」，用 copy 光标区分；
+   两条属性选择器保证特异性不低于上面的 crosshair 规则。 */
+.dg-canvas-stage[data-tool][data-pending-image="1"] {
+  cursor: copy;
 }
 /* 预览层由 createElementNS 追加到已消毒 SVG 之后；纯装饰，不参与命中。 */
 .dg-shape-preview {

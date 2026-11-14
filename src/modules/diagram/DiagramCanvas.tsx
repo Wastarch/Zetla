@@ -148,6 +148,8 @@ import {
   insertShapeStatement,
   pickInsertedStatementId,
 } from "./shapeInsert";
+// P3：暂存图 → 标准 \node{\includegraphics} 语句（纯逻辑，坐标 / 路径校验都在这里）
+import { buildImageNodeStatement } from "./imageNodeInsert.ts";
 import {
   boxCenter,
   boxHeight,
@@ -475,11 +477,21 @@ export function DiagramCanvas() {
   // F3-1：形状工具状态。会话 / 拖拽只留在本组件，不写进 store（不是跨组件共享数据）。
   const toolMode = useDiagramStore((s) => s.toolMode);
   const setToolMode = useDiagramStore((s) => s.setToolMode);
+  // P3：等待落点的暂存图。侧栏设置、画布消费，故放 store；会话态不持久化。
+  const pendingImage = useDiagramStore((s) => s.pendingImage);
+  const setPendingImage = useDiagramStore((s) => s.setPendingImage);
+  // 精确通道只读、stage 被 hidden，留着「等待落点」会变成死锁提示 → 自动放弃。
+  // 只清意图，不删已暂存的图片（P2 manifest 会在关 Tab / 换项目 / 启动时安静清理）。
+  useEffect(() => {
+    if (previewMode !== "local") setPendingImage(null);
+  }, [previewMode, setPendingImage]);
   const [sessionHint, setSessionHint] = useState<string | null>(null);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const shapeSessionRef = useRef<ShapeSession | null>(null);
   const toolDragRef = useRef<ToolDragState | null>(null);
   const shapeSeqRef = useRef(0);
+  // P3 与形状工具用不同 key 前缀，确保「画一条线后立刻放图」不会并进同一条撤销
+  const imageSeqRef = useRef(0);
   const shapeApiRef = useRef<ShapeApi>({
     move: () => undefined,
     up: () => undefined,
@@ -1410,6 +1422,45 @@ export function DiagramCanvas() {
     });
   }
 
+  /**
+   * P3：把侧栏已暂存的图片放到用户单击的落点。
+   * 与 commitShape 完全同一条写回管线（insertShapeStatement 最小补丁 →
+   * commitDiagramPatch → 一条 CM6 history → 重渲染后自动选中），因此 Ctrl+Z 一次撤销。
+   * 这里**不**调 promoteFromInsertedCode：转正判据绑定「主文档最终写入的
+   * \includegraphics 路径」，只有 insert.ts 的「插入到文档」成功时才成立（§2.2）。
+   */
+  function commitImageAt(e: ReactPointerEvent<HTMLDivElement>): void {
+    const pending = pendingImage;
+    if (!pending) return;
+    const p = pointerWorld(e.clientX, e.clientY);
+    if (!p) {
+      setNotice({ tone: "warn", text: "画布尚未就绪（坐标矩阵退化），请稍后再点一次。" });
+      return;
+    }
+    const built = buildImageNodeStatement({ relPath: pending.relPath, x: p.x, y: p.y });
+    if (!built.ok) {
+      setNotice({ tone: "warn", text: `无法放置图片：${built.reason}` });
+      return;
+    }
+    const src = sourceRef.current;
+    const ins = insertShapeStatement(src, built.statement);
+    const write = commitDiagramPatch({
+      key: `image:${(imageSeqRef.current += 1)}`,
+      source: src,
+      nextSource: ins.source,
+      fallback: (s) => setSource(s),
+    });
+    resetDiagramHistorySession();
+    setSelectedId(null);
+    setPendingSelection({ source: ins.source, from: ins.selection.from, to: ins.selection.to });
+    setPendingImage(null);
+    const suffix = write.written ? " · Ctrl+Z 一次撤销" : " · 源码栏未就绪，无撤销记录";
+    setNotice({
+      tone: write.written ? "ok" : "warn",
+      text: `已放置图片 ${pending.fileName}${ins.note ? ` · ${ins.note}` : ""}${suffix} · 插入主文档后转正`,
+    });
+  }
+
   /** 空白源码时先建一个空环境，才有 SVG 可承接指针与 getScreenCTM。 */
   function newBlankDiagram(): void {
     const src = sourceRef.current;
@@ -1543,6 +1594,14 @@ export function DiagramCanvas() {
           : null;
     // 焦点在源码栏 / 输入框时不抢按键，否则会破坏正常输入。
     if (el?.closest(".cm-editor, input, textarea, [contenteditable]")) return false;
+    // 同名冲突弹窗开着时 Esc 归弹窗，别顺手取消上一张待放置图片
+    if (document.querySelector(".dg-modal-overlay")) return false;
+    // P3：Esc 取消「等待落点」（不删文件：P2 manifest 会在关 Tab / 换项目 / 启动时安静清理）
+    if (e.key === "Escape" && useDiagramStore.getState().pendingImage) {
+      setPendingImage(null);
+      setNotice({ tone: "warn", text: "已取消放置图片（图片仍在暂存区，关闭绘图 Tab 会清理）" });
+      return true;
+    }
     const s = shapeSessionRef.current;
     if (e.key === "Escape") {
       if (toolDragRef.current || s) {
@@ -2734,6 +2793,14 @@ export function DiagramCanvas() {
     if (!canEditDiagramSource({ previewMode }).ok) return;
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
+    // P3：等待图片落点时「单击即放置」优先于形状工具 / 选择 / 框选。
+    // 图片必须先选文件，交互与「选工具再拖出形状」不同，故不新增 ToolMode，
+    // 用一次性的 store 会话态表达放置意图，放完 / 取消即刻清空。
+    if (pendingImage) {
+      e.preventDefault();
+      commitImageAt(e);
+      return;
+    }
     // F3-1：非「选择」工具时画布归形状工具，绝不触发 F2-1 的控制点拖拽 / 点选。
     if (toolMode !== "select") {
       if (previewMode === "local") {
@@ -2946,7 +3013,10 @@ export function DiagramCanvas() {
         ? `选中 ${selectedId}（画布左侧属性面板改属性 · Delete 删除）`
         : "未选中图元（点选后可改属性 / Delete 删除）";
   const footHint =
-    previewMode !== "local"
+    // P3：等待落点时提示覆盖工具 / 选中说明，避免用户以为点画布没反应
+    pendingImage
+      ? `待放置图片 ${pendingImage.fileName} · 在画布上单击落点 · Esc 取消 · 插入主文档后转正`
+      : previewMode !== "local"
       ? "精确预览只读 · 切回本地即时可绘制"
       : toolMode === "select"
         ? `${
@@ -3285,6 +3355,7 @@ export function DiagramCanvas() {
             className="dg-canvas-stage"
             ref={stageRef}
             data-tool={toolMode}
+            data-pending-image={pendingImage ? "1" : undefined}
             hidden={previewMode === "precise"}
             onPointerDown={onStagePointerDown}
           />

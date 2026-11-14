@@ -26,6 +26,8 @@ import {
   type StagingPolicy,
 } from "./imageStaging";
 import { ImageConflictDialog } from "./ImageConflictDialog";
+// P3：落盘后先校验路径形态，再进入「等待画布落点」；路径不合法不生成必编译失败的源码
+import { validateImageRelPath } from "./imageNodeInsert.ts";
 import { notify } from "@/project/useProject";
 import type { ExportMode } from "@/types/diagram";
 import "./diagram.css";
@@ -139,6 +141,9 @@ export function DiagramSidebar() {
   // P2：选图 → 暂存到 figure/；同名冲突时弹窗，确认后才真正落盘
   const [staging, setStaging] = useState(false);
   const [conflict, setConflict] = useState<StagingContext | null>(null);
+  // P3：已暂存、等待用户在画布上单击落点的图片（store 会话态，与 DiagramCanvas 共享）
+  const pendingImage = useDiagramStore((s) => s.pendingImage);
+  const setPendingImage = useDiagramStore((s) => s.setPendingImage);
 
   const formatChoices = exportMode === "image" ? IMAGE_INSERT_FORMATS : ALL_FORMATS;
 
@@ -162,15 +167,38 @@ export function DiagramSidebar() {
     openDiagramTab();
   }, []);
 
-  /** P2：落盘 + 登记 manifest；P3 才把 \node{...} 写进 CM6 源码 */
+  /**
+   * P3：落盘 + 登记 manifest → 进入「等待画布落点」。
+   * 路径过不了 P1 白名单（空格 / TeX 特殊字符 / 非法扩展名）时**不进入**等待态，
+   * 否则生成的 \includegraphics 会被 token 映射保守跳过、XeLaTeX 必然报 File not found。
+   * 该文件仍在 P2 manifest 里，未引用会在关 Tab / 换项目 / 启动时安静清理。
+   */
   async function finalizeStaging(ctx: StagingContext, policy: StagingPolicy): Promise<void> {
     const out = await placeStagedImage(ctx, policy);
-    if (out.status === "ok") {
+    if (out.status !== "ok") return;
+    const fileName = out.fileName ?? ctx.fileName;
+    const checked = validateImageRelPath(out.relPath ?? "");
+    if (!checked.ok) {
       notify(
-        `已暂存：${ctx.imageDir}/${out.fileName} · 可在绘图源码里用 \\includegraphics 引用`,
-        "ok",
+        `已暂存 ${ctx.imageDir}/${fileName}，但${checked.reason}；请改名后重新选择（未引用会在关 Tab 时清理）`,
+        "err",
       );
+      return;
     }
+    // 保证「点得到画布」：仅源码布局切回分屏，精确预览（只读）切回本地即时。
+    const s = useDiagramStore.getState();
+    if (s.layoutMode === "code") s.setLayoutMode("split");
+    if (s.previewMode !== "local") s.setPreviewMode("local");
+    const prev = s.pendingImage;
+    if (prev) {
+      notify(`上一张待放置图片 ${prev.fileName} 已取消（未引用会在关 Tab 时清理）`, "ok");
+    }
+    s.setPendingImage({
+      relPath: checked.path,
+      fileName,
+      absPath: out.absPath ?? "",
+    });
+    notify(`已暂存 ${ctx.imageDir}/${fileName} · 请在画布上单击放置（Esc 取消）`, "ok");
   }
 
   async function handleStagePick(): Promise<void> {
@@ -268,18 +296,31 @@ export function DiagramSidebar() {
         <LayersPanel />
       </Accordion>
 
-      {/* P2：图片先暂存到项目图片目录并登记 manifest；未插入主文档的会在关 Tab 后清理。
-          P3 再把选中的图写成 \node{\includegraphics{...}} 写回 CM6 源码。 */}
+      {/* P2 暂存 + P3 写回：选图 → 冲突 → 落盘 manifest → 画布点选落点 →
+          \node{\includegraphics{…}} 写进 CM6 源码。未插入主文档的会在关 Tab 后清理。 */}
       <Accordion title="图片素材" meta="figure/">
         <button
           type="button"
           className="btn dg-stage-btn"
           disabled={staging}
           onClick={() => void handleStagePick()}
-          title="选一张 PNG / JPG / PDF 暂存到项目图片目录；未插入主文档的会在关闭绘图 Tab 后清理"
+          title="选一张 PNG / JPG / PDF 暂存到项目图片目录，再在画布上单击放置；未插入主文档的会在关闭绘图 Tab 后清理"
         >
-          {staging ? "暂存中…" : "选择图片并暂存"}
+          {staging ? "暂存中…" : "选择图片并放置"}
         </button>
+        {pendingImage && (
+          <p className="dg-side-warn">
+            等待落点：{pendingImage.fileName} · 画布上单击放置
+            <button
+              type="button"
+              className="btn dg-stage-cancel"
+              onClick={() => setPendingImage(null)}
+              title="放弃本次放置；图片仍在暂存区，未引用会在关闭绘图 Tab 后清理"
+            >
+              取消
+            </button>
+          </p>
+        )}
       </Accordion>
 
       <Accordion title="导出与插入" meta="主 .tex 文档">

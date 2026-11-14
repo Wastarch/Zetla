@@ -255,6 +255,17 @@ export interface DiagramRenderMeta {
   compat: CompatReport;
 }
 
+/**
+ * P3：已暂存、等待用户在画布上点选落点的图片（会话态，不持久化）。
+ * relPath 是相对 targetTex 目录的正斜杠路径，写进 \includegraphics 后由 P1 token
+ * 映射、P2 转正判据共同消费；真源始终是 CM6 source，这里只是一次「放置意图」。
+ */
+export interface PendingDiagramImage {
+  relPath: string;
+  fileName: string;
+  absPath: string;
+}
+
 export interface DiagramState {
   /** 当前绘图源码（完整 tikzpicture 环境；由 Tab 内 LaTeXEditor 受控驱动） */
   source: string;
@@ -292,7 +303,11 @@ export interface DiagramState {
   setPreviewMode: (m: PreviewMode) => void;
   /** F3-1：当前工具；select 保留 F2-1 拖拽控制点，其余为形状绘制工具 */
   toolMode: ToolMode;
+  /** P3：切换形状工具 = 放弃等待图片落点（避免工具与「单击放图」意图打架） */
   setToolMode: (m: ToolMode) => void;
+  /** P3：等待画布点选落点的暂存图片；null = 无待放置项 */
+  pendingImage: PendingDiagramImage | null;
+  setPendingImage: (v: PendingDiagramImage | null) => void;
   /** F3-2：控制点视觉半径档位（命中半径独立且更大，见 handleVisual.ts） */
   handleSize: HandleSize;
   setHandleSize: (s: HandleSize) => void;
@@ -412,8 +427,11 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
   toolMode: readToolMode(),
   setToolMode: (m) => {
     writeSetting(TOOL_KEY, m);
-    set({ toolMode: m });
+    set({ toolMode: m, pendingImage: null });
   },
+  // P3：会话态，刷新 / 重启后不恢复（未写入源码的暂存图由 P2 manifest 清理）
+  pendingImage: null,
+  setPendingImage: (v) => set({ pendingImage: v }),
   handleSize: readHandleSize(),
   setHandleSize: (s) => {
     writeSetting(HANDLE_SIZE_KEY, s);

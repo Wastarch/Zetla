@@ -10,10 +10,13 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { notify, parentOf } from "@/project/useProject";
 import { buildDiagramFigureSnippet } from "./figureInsert";
 import { promoteFromInsertedCode } from "./imageStaging";
+// P3：按「本次真正写进主文档的代码」判定要不要补 graphicx 导言区
+import { sourceNeedsGraphicx } from "./imageNodeInsert.ts";
 import { useDiagramStore } from "./store";
 import {
   buildDiagramInsertCode,
   collectTikzLibraries,
+  ensureGraphicxPreamble,
   ensureTikzPreamble,
 } from "./diagramSnippet";
 
@@ -59,7 +62,13 @@ export function insertDiagramCode(): boolean {
     return false;
   }
 
-  const preamble = ensureTikzPreamble(view.state.doc.toString(), collectTikzLibraries(source));
+  // P3：源码含 P3 生成的 \node{\includegraphics{…}} 时补 graphicx，
+  // 否则主文档可能只有 tikz 却没显式加载 graphicx（P0：显式补无冲突）。
+  const preamble = ensureTikzPreamble(
+    view.state.doc.toString(),
+    collectTikzLibraries(source),
+    sourceNeedsGraphicx(source),
+  );
   if (preamble) insertPreamble(view, preamble);
   const code = buildDiagramInsertCode(source, wrapFigure, caption, label);
   insertAtCursor(view, code);
@@ -69,7 +78,7 @@ export function insertDiagramCode(): boolean {
   useBuffersStore.getState().setActive(targetTex);
   notify(
     preamble
-      ? "已插入 TikZ 源码，并在导言区补齐 tikz 宏包与依赖库"
+      ? "已插入 TikZ 源码，并在导言区补齐所需宏包与依赖库"
       : "已插入 TikZ 源码（导言区依赖已齐备）",
     "ok",
   );
@@ -113,6 +122,12 @@ export function insertFigureForImage(absImagePath: string): boolean {
     imageAbsPath: absImagePath,
     width,
   });
+
+  // P3：figure 片段必然含 \includegraphics，主文档缺 graphicx 时补导言区。
+  // 只补 graphicx —— 导出成品图的主文档不必用 tikz，别顺带塞 \usepackage{tikz}。
+  // 顺序同 insertDiagramCode：先写 preamble，再读光标（CM6 自动映射位置）。
+  const preamble = ensureGraphicxPreamble(view.state.doc.toString());
+  if (preamble) insertPreamble(view, preamble);
 
   const pos = view.state.selection.main.head;
   const needLeading = pos > 0 && !view.state.doc.sliceString(pos - 1, pos).includes("\n");
