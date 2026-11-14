@@ -58,16 +58,13 @@ pub struct UpdateEnv {
 }
 
 /// 包名安全化的兜底名（URL 末段不可用时）
-#[allow(dead_code)] // U2 落盘目录化时接入；单测已先行覆盖
 pub const PKG_FALLBACK_NAME: &str = "zetla-update.bin";
 /// 包名长度上限（字符数，避免超长文件名在部分文件系统上失败）
-#[allow(dead_code)] // 同上
 const MAX_PKG_NAME_CHARS: usize = 120;
 
 /// 从 URL / 路径末段取出安全文件名（U2 落盘目录化复用）：
 /// 丢查询串与片段、只取最后一段、替换控制字符与 Windows 保留字符、去掉尾部点与空格；
 /// 空 / `.` / `..` 一律回退兜底名，杜绝落到上层目录。
-#[allow(dead_code)] // U2 落盘目录化时接入；单测已先行覆盖
 pub fn sanitize_filename(raw: &str) -> String {
     let no_query = raw.split(['?', '#']).next().unwrap_or("");
     let leaf = no_query.rsplit(['/', '\\']).next().unwrap_or("").trim();
@@ -88,6 +85,24 @@ pub fn sanitize_filename(raw: &str) -> String {
         return cleaned.chars().take(MAX_PKG_NAME_CHARS).collect();
     }
     cleaned
+}
+
+/// 本次更新的落盘目录名：`zetla-update-<纳秒戳>`（U2 起一个更新一个目录）
+pub fn staging_dir_name(ts: u128) -> String {
+    format!("zetla-update-{ts}")
+}
+
+/// 落盘目录内的包文件名：取 URL 末段并安全化（保留真实扩展名，供 U3/U5 按后缀分派）
+pub fn pkg_file_name(url: &str) -> String {
+    sanitize_filename(url)
+}
+
+/// 启动清理的命中规则：旧版扁平包（`zetla-update-<ts>.exe`）、
+/// U2 的落盘目录（`zetla-update-<ts>`）、Linux 原地替换的暂存件（`.zetla-{new,old}-*`）
+pub fn is_stale_artifact(name: &str) -> bool {
+    name.starts_with("zetla-update-")
+        || name.starts_with(".zetla-new-")
+        || name.starts_with(".zetla-old-")
 }
 
 /// 清单查找键：`{manifest_os}-{arch}`（与 latest.json platforms 的键一致）
@@ -231,16 +246,23 @@ pub async fn download_app_update(
         .build()
         .map_err(|e| format!("初始化下载客户端失败：{e}"))?;
 
-    // 临时文件：%TEMP%/zetla-update-<纳秒戳>.exe（启动时 cleanup 会清旧文件）
+    // 落盘目录：<temp>/zetla-update-<纳秒戳>/<URL 末段文件名>
+    // 目录化便于 macOS 解压出 .app 与临时脚本；文件名保留真实扩展名，供平台分支判别。
+    // 启动时 cleanup_update_temp 会清掉上次残留（目录或旧版扁平 exe 都清）。
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    let dest = std::env::temp_dir().join(format!("zetla-update-{ts}.exe"));
+    let dir = std::env::temp_dir().join(staging_dir_name(ts));
+    tokio::fs::create_dir_all(&dir)
+        .await
+        .map_err(|e| format!("创建临时目录失败：{e}"))?;
 
     let mut last_err = String::new();
     for (idx, src) in installers.iter().enumerate() {
         let source = format!("源 {}/{}", idx + 1, installers.len());
+        // 每个源各自成文件：换源时不与上一源残缺文件混在一起
+        let dest = dir.join(pkg_file_name(&src.url));
         emit_progress(&app, 0, 0, &source);
         match try_download(&client, &app, &src.url, &dest, &source).await {
             Ok(()) => {
@@ -267,6 +289,8 @@ pub async fn download_app_update(
             }
         }
     }
+    // 全部源失败：把本次落盘目录也清掉，不留半截文件
+    let _ = std::fs::remove_dir_all(&dir);
     Err(format!("所有安装包源均不可用：{last_err}"))
 }
 
@@ -347,18 +371,80 @@ pub fn launch_installer_and_exit(path: String) -> Result<(), String> {
     std::process::exit(0);
 }
 
-/// 启动清掉上次残留的临时安装包（Zetla 退出时 NSIS/Inno 已自行清理，这里兜底）
+/// 启动清掉上次残留（Zetla 退出时安装器已自行清理，这里兜底）：
+/// - `<temp>/zetla-update-*`：U2 起是目录，0.2.x~0.3.x 是扁平 `.exe`，两种都清；
+/// - 平台残留：Linux 原地替换的 `.zetla-{new,old}-*`、macOS 换包失败留下的 `<bundle>.old`。
 pub fn cleanup_update_temp() {
-    let temp = std::env::temp_dir();
-    if let Ok(entries) = std::fs::read_dir(&temp) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with("zetla-update-") && name.ends_with(".exe") {
-                let _ = std::fs::remove_file(entry.path());
-            }
+    sweep_dir(&std::env::temp_dir());
+    cleanup_platform_leftovers();
+}
+
+/// 扫一个目录，删掉所有命中 `is_stale_artifact` 的文件/目录（可单测）
+fn sweep_dir(dir: &std::path::Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !is_stale_artifact(&name) {
+            continue;
+        }
+        let path = entry.path();
+        if path.is_dir() {
+            let _ = std::fs::remove_dir_all(&path);
+        } else {
+            let _ = std::fs::remove_file(&path);
         }
     }
 }
+
+#[cfg(target_os = "linux")]
+fn cleanup_platform_leftovers() {
+    // AppImage 原地替换的暂存件在 $APPIMAGE 同目录（U3 写入，这里先兜底清）
+    let Some(appimage) = std::env::var_os("APPIMAGE") else {
+        return;
+    };
+    let Some(dir) = std::path::Path::new(&appimage).parent() else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.starts_with(".zetla-new-") || name.starts_with(".zetla-old-") {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn cleanup_platform_leftovers() {
+    // …/Zetla.app/Contents/MacOS/zetla → 上溯 3 级得到 bundle 根，清同级 Zetla.app.old
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let mut cur: &std::path::Path = &exe;
+    for _ in 0..3 {
+        match cur.parent() {
+            Some(p) => cur = p,
+            None => return,
+        }
+    }
+    if cur.extension().and_then(|e| e.to_str()) != Some("app") {
+        return;
+    }
+    let Some(name) = cur.file_name().and_then(|n| n.to_str()) else {
+        return;
+    };
+    let backup = cur.with_file_name(format!("{name}.old"));
+    if backup.is_dir() {
+        let _ = std::fs::remove_dir_all(&backup);
+    }
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn cleanup_platform_leftovers() {}
 
 /// 通过 Rust 侧拉取 latest.json，绕过 WebView 的 CORS 限制
 /// （Gitee raw 不返回 Access-Control-Allow-Origin，浏览器 fetch 必被拦）。
@@ -495,6 +581,68 @@ mod tests {
             assert!(!ok, "{os}/{kind} 在 U1 不应宣称可自更新");
             assert!(reason.unwrap().contains("尚未开放"));
         }
+    }
+
+    // ── U2 落盘目录命名 / 清理命中规则 ───────────────────────────────────
+
+    #[test]
+    fn staging_dir_name_is_timestamped() {
+        assert_eq!(staging_dir_name(1_700_000_000_000_000_000), "zetla-update-1700000000000000000");
+        // 目录名必须能被清理规则命中，否则重启后残留清不掉
+        assert!(is_stale_artifact(&staging_dir_name(1)));
+    }
+
+    #[test]
+    fn pkg_file_name_keeps_real_extension() {
+        assert_eq!(
+            pkg_file_name("https://gitee.com/a/Zetla_0.3.1_x64-setup.exe?token=abc"),
+            "Zetla_0.3.1_x64-setup.exe"
+        );
+        assert_eq!(
+            pkg_file_name("https://cdn.example.com/Zetla_0.4.0_aarch64.app.tar.gz"),
+            "Zetla_0.4.0_aarch64.app.tar.gz"
+        );
+        assert_eq!(pkg_file_name("https://example.com/dir/"), PKG_FALLBACK_NAME);
+    }
+
+    #[test]
+    fn stale_artifact_matches_dirs_files_and_staging() {
+        assert!(is_stale_artifact("zetla-update-1700000000"));
+        assert!(is_stale_artifact("zetla-update-1700000000.exe"));
+        assert!(is_stale_artifact(".zetla-new-1700000000.AppImage"));
+        assert!(is_stale_artifact(".zetla-old-1700000000.AppImage"));
+        // 不能误伤
+        assert!(!is_stale_artifact("zetla-update"));
+        assert!(!is_stale_artifact("zetla-updater.exe"));
+        assert!(!is_stale_artifact("my-zetla-update-1"));
+        assert!(!is_stale_artifact("zetla.log"));
+    }
+
+    #[test]
+    fn sweep_removes_staging_dirs_and_legacy_files() {
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let root = std::env::temp_dir().join(format!("zetla-sweep-{}-{ts}", std::process::id()));
+        std::fs::create_dir_all(root.join("zetla-update-123")).unwrap();
+        std::fs::write(root.join("zetla-update-123/pkg.exe"), b"x").unwrap();
+        std::fs::write(root.join("zetla-update-456.exe"), b"x").unwrap();
+        std::fs::write(root.join(".zetla-new-789.AppImage"), b"x").unwrap();
+        std::fs::write(root.join("keep.txt"), b"x").unwrap();
+
+        sweep_dir(&root);
+
+        assert!(!root.join("zetla-update-123").exists(), "落盘目录应被整目录删除");
+        assert!(!root.join("zetla-update-456.exe").exists(), "旧版扁平 exe 应被删除");
+        assert!(!root.join(".zetla-new-789.AppImage").exists(), "Linux 暂存件应被删除");
+        assert!(root.join("keep.txt").exists(), "无关文件不能被误删");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn sweep_tolerates_missing_dir() {
+        sweep_dir(&std::env::temp_dir().join("zetla-sweep-not-exist-xyz"));
     }
 
     #[test]
