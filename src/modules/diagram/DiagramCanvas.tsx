@@ -204,6 +204,7 @@ import {
   requestPrecisePreview,
   svgDataUrl,
 } from "./precisePreview";
+import { resolveImageAssets } from "./imageAssetBridge";
 import type { TikzPreviewResult } from "@/types/diagram";
 import { getEditorView } from "@/editor/activeView";
 import {
@@ -604,7 +605,11 @@ export function DiagramCanvas() {
       return;
     }
     const engine = useSettingsStore.getState().settings.build.engine;
-    const hit = getCachedPreview(previewKey(source, engine, previewCanvasArg));
+    // P1：与 requestPrecisePreview 用同一个资源签名算 key，否则「缓存命中」判断会
+    // 和实际请求的 key 漂移（图片换了仍显示旧预览）。
+    const hit = getCachedPreview(
+      previewKey(source, engine, previewCanvasArg, resolveImageAssets(source).assetSig),
+    );
     if (hit) {
       setPrecise(hit);
       setPreciseBusy(false);

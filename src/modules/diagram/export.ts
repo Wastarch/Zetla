@@ -10,6 +10,7 @@ import { diagramApi } from "@/ipc/invoke";
 import { useDiagramStore } from "./store";
 import { useProjectStore, notify } from "@/project/useProject";
 import { canvasSizeToPt } from "./canvasSize";
+import { resolveImageAssets } from "./imageAssetBridge";
 import type { TikzExportResult } from "@/types/diagram";
 
 /** 默认图片目录（无项目 tree.imageDir 时回落），与 R5 导入 / 图形模块一致 */
@@ -64,11 +65,15 @@ export async function exportDiagram(opts: ExportDiagramOptions): Promise<ExportD
   if (!source.trim()) return { status: "error", message: "绘图源码为空，无法导出" };
 
   const canvas = resolveCanvas();
+  // P1：导出与精确预览共用同一份 token 派生结果，保证带图片段两条通道都能编译。
+  const prepared = resolveImageAssets(source);
   const baseArgs = {
-    source,
+    source: prepared.sourceWithTokens,
     engine: "xelatex", // 与精确预览一致；Rust 会按可用性回退 LuaLaTeX / pdfLaTeX
     canvas,
     format: opts.format,
+    assets: prepared.assets,
+    projectRoot: prepared.root || null,
   };
 
   // 1) 解析目标路径

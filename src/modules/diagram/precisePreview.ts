@@ -13,6 +13,7 @@ import {
   setCachedPreview,
   type PreviewCanvasKey,
 } from "./previewCache";
+import { resolveImageAssets } from "./imageAssetBridge";
 
 // 纯逻辑从 previewCache.ts 重新导出，保持 DiagramCanvas 的既有导入路径不变。
 export {
@@ -35,7 +36,10 @@ export function requestPrecisePreview(
   force = false,
   canvas?: PreviewCanvasKey,
 ): Promise<TikzPreviewResult> {
-  const key = previewKey(source, engine, canvas);
+  // P1：派发给 Rust 的是「路径换成 token 的源码副本 + 资源表」，CM6 真源码不动；
+  // 缓存 key 用真源码 + 资源签名，换图 / 增删引用都会重新编译。
+  const prepared = resolveImageAssets(source);
+  const key = previewKey(source, engine, canvas, prepared.assetSig);
   // 同 key 已有在途请求时直接复用：手动按钮在 busy 时禁用，这里再挡一层避免
   // 新任务覆盖 inflight map 后被旧任务的 delete(key) 误删。
   const pending = inflight.get(key);
@@ -50,7 +54,15 @@ export function requestPrecisePreview(
   const canvasArg: TikzCanvasSizeArg | undefined = canvas?.useCanvas
     ? { widthPt: canvas.widthPt, heightPt: canvas.heightPt }
     : undefined;
-  const task = diagramApi.tikzPreview(source, engine, canvasArg).then(
+  const task = diagramApi
+    .tikzPreview(
+      prepared.sourceWithTokens,
+      engine,
+      canvasArg,
+      prepared.assets,
+      prepared.root || null,
+    )
+    .then(
     (r) => {
       inflight.delete(key);
       setCachedPreview(key, r);

@@ -28,6 +28,27 @@ const CONVERT_TIMEOUT_SECS: u64 = 15;
 const MAX_SVG_BYTES: usize = 8 * 1024 * 1024;
 static WORK_SEQ: AtomicU64 = AtomicU64::new(0);
 
+// ── P1：\includegraphics 资源注入 ──────────────────────────────────────────
+// 片段编译的 CWD 是临时工作区，源码里相对主文档目录的图片路径在那里找不到。
+// 前端把派生 .tex 里的路径换成短 token，并给出 token → 项目内绝对路径的映射；
+// 这里只做 fs::copy，零 LaTeX 解析，编译器可见范围仍严格限于临时工作区。
+
+/// 单张图片 / 总量 / 数量上限，避免超大资源拖垮编译与 WebView。
+const MAX_ASSET_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_ASSETS_TOTAL_BYTES: u64 = 96 * 1024 * 1024;
+const MAX_ASSETS: usize = 24;
+/// P0 实测：-no-shell-escape 下 standalone 能直接吃这四种；SVG 需 svg 宏包 + shell-escape。
+const ASSET_EXTS: [&str; 4] = ["png", "jpg", "jpeg", "pdf"];
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TikzAsset {
+    /// 只出现在派生 .tex 里的短文件名
+    pub token: String,
+    /// 项目内的真实绝对路径
+    pub real_path: String,
+}
+
 /// 片段里禁止出现的构造（小写化后匹配）。
 /// -no-shell-escape 只挡 \write18 执行，挡不住 \input / \openout 读写任意文件；
 /// \documentclass / \begin{document} 会破坏 standalone 包装，也一并拒绝。
@@ -93,6 +114,10 @@ pub async fn compile_snippet_to_pdf(
     source: &str,
     engine: &str,
     canvas: Option<TikzCanvasSize>,
+    // P1：前端派生的图片资源表；为空时行为与 P1 之前完全一致
+    assets: &[TikzAsset],
+    // P1：项目根，用于资源越界校验（有 assets 时必填）
+    project_root: Option<&str>,
 ) -> Result<CompiledSnippet, CompileFailure> {
     if let Err(e) = validate_source(source) {
         return Err(CompileFailure {
@@ -122,6 +147,15 @@ pub async fn compile_snippet_to_pdf(
         });
     }
     let (doc, preamble_lines) = build_document_with_canvas(source, engine_name != "pdflatex", canvas);
+    // P1：资源必须先于编译落进工作区；任何失败分支都清掉整个 work。
+    if let Err(e) = prepare_assets(assets, project_root, &work) {
+        let _ = std::fs::remove_dir_all(&work);
+        return Err(CompileFailure {
+            message: e,
+            preamble_lines,
+            errors: Vec::new(),
+        });
+    }
     if let Err(e) = std::fs::write(work.join("snippet.tex"), &doc) {
         let _ = std::fs::remove_dir_all(&work);
         return Err(CompileFailure {
@@ -321,6 +355,94 @@ fn is_valid_tex_name(s: &str) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '+' | '.' | '-'))
 }
 
+/// token 必须是 `zetla-img-<12 位小写 hex>.<白名单扩展名>`。
+/// 严格限定字符集是为了杜绝 `../` 之类的路径穿越把 fs::copy 写到工作区外。
+fn is_valid_token(t: &str) -> bool {
+    if t.len() > 64
+        || !t
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-'))
+    {
+        return false;
+    }
+    let Some(rest) = t.strip_prefix("zetla-img-") else {
+        return false;
+    };
+    let Some((stem, ext)) = rest.rsplit_once('.') else {
+        return false;
+    };
+    if !ASSET_EXTS.contains(&ext) || stem.len() != 12 {
+        return false;
+    }
+    stem.chars()
+        .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
+
+/// 校验并把资源拷进临时工作区。任何失败都返回 Err，由调用方统一 `remove_dir_all(work)`。
+/// 校验链：数量 → 项目根 → token → canonicalize 双端越界 → 扩展名 → 大小 → copy。
+/// 同一 token + 同一真实文件出现多次（一张图被引用多处）只拷一次。
+fn prepare_assets(assets: &[TikzAsset], project_root: Option<&str>, work: &Path) -> Result<(), String> {
+    use std::collections::HashMap;
+    if assets.is_empty() {
+        return Ok(());
+    }
+    if assets.len() > MAX_ASSETS {
+        return Err(format!("图片资源过多（{} > {}）", assets.len(), MAX_ASSETS));
+    }
+    let raw_root = project_root
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "未打开项目，无法解析图片资源".to_string())?;
+    // canonicalize 双端：解析符号链接（macOS /var → /private/var），再按路径前缀比较。
+    let root = std::fs::canonicalize(raw_root)
+        .map_err(|e| format!("项目根不可访问：{e}"))?;
+    if !root.is_dir() {
+        return Err("项目根不是目录".to_string());
+    }
+
+    let mut copied: HashMap<String, PathBuf> = HashMap::new();
+    let mut total: u64 = 0;
+    for a in assets {
+        if !is_valid_token(&a.token) {
+            return Err(format!("非法图片 token：{}", a.token));
+        }
+        let real = std::fs::canonicalize(&a.real_path)
+            .map_err(|e| format!("图片不存在或不可访问：{}（{e}）", a.real_path))?;
+        if !real.starts_with(&root) {
+            return Err(format!("图片越出项目根，已拒绝：{}", a.real_path));
+        }
+        if !real.is_file() {
+            return Err(format!("图片不是文件：{}", a.real_path));
+        }
+        let ext = real
+            .extension()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if !ASSET_EXTS.contains(&ext.as_str()) {
+            return Err(format!("不支持的图片格式 .{ext}：{}", a.real_path));
+        }
+        let size = std::fs::metadata(&real).map(|m| m.len()).unwrap_or(0);
+        if size > MAX_ASSET_BYTES {
+            return Err(format!("单张图片过大（{size} 字节）：{}", a.real_path));
+        }
+        total = total.saturating_add(size);
+        if total > MAX_ASSETS_TOTAL_BYTES {
+            return Err("图片资源总量超过上限（96MB）".to_string());
+        }
+        if let Some(prev) = copied.get(&a.token) {
+            if prev != &real {
+                return Err(format!("图片 token 冲突：{}", a.token));
+            }
+            continue;
+        }
+        std::fs::copy(&real, work.join(&a.token))
+            .map_err(|e| format!("复制图片失败：{}（{e}）", a.real_path))?;
+        copied.insert(a.token.clone(), real);
+    }
+    Ok(())
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum DeclKind {
     Library,
@@ -507,6 +629,12 @@ fn build_document_with_canvas(
     for p in &pkgs {
         doc.push_str(&format!("\\usepackage{{{}}}\n", p));
     }
+    // P1：P0 实测 [tikz]{standalone} 已隐式加载 graphicx（6 组编译全过），这里显式补
+    // 只是「包装方式将来变化时」的稳妥冗余；用户源码里已声明过就不重复加载。
+    // 新增这一行只影响导言区，preamble_lines 是动态计算的，行号映射不变。
+    if !pkgs.iter().any(|p| p.eq_ignore_ascii_case("graphicx")) {
+        doc.push_str("\\usepackage{graphicx}\n");
+    }
     doc.push_str("\\begin{document}\n");
     let preamble_lines = doc.lines().count() as u32;
     match canvas {
@@ -663,15 +791,27 @@ fn has_page_suffix(p: &Path) -> bool {
 /// XeLaTeX 精确预览：把 tikzpicture 片段单独编译成矢量 SVG。
 /// 所有可预期的失败都以 status:"error" 返回（前端统一渲染错误态），只有临时目录 IO
 /// 异常才走 Err(String)。复用 compile_snippet_to_pdf 内核。
-#[tauri::command]
+#[tauri::command(rename_all = "camelCase")]
 pub async fn tikz_preview(
     app: AppHandle,
     source: String,
     engine: String,
     canvas: Option<TikzCanvasSize>,
+    // P1：图片资源表 + 项目根（可选，旧调用缺这两个键仍能工作）
+    assets: Option<Vec<TikzAsset>>,
+    project_root: Option<String>,
 ) -> Result<TikzPreviewResult, String> {
     let started = Instant::now();
-    let compiled = match compile_snippet_to_pdf(&app, &source, &engine, canvas).await {
+    let compiled = match compile_snippet_to_pdf(
+        &app,
+        &source,
+        &engine,
+        canvas,
+        assets.as_deref().unwrap_or_default(),
+        project_root.as_deref(),
+    )
+    .await
+    {
         Ok(c) => c,
         Err(f) => {
             return Ok(preview_failure(
@@ -766,6 +906,9 @@ pub async fn tikz_export(
     format: String,
     out_path: String,
     force: bool,
+    // P1：与 tikz_preview 同一份 token 派生结果
+    assets: Option<Vec<TikzAsset>>,
+    project_root: Option<String>,
 ) -> Result<TikzExportResult, String> {
     let started = Instant::now();
     let format = format.to_ascii_lowercase();
@@ -788,7 +931,15 @@ pub async fn tikz_export(
             message: Some("目标文件已存在，是否覆盖？".to_string()),
         });
     }
-    let compiled = match compile_snippet_to_pdf(&app, &source, &engine, canvas).await
+    let compiled = match compile_snippet_to_pdf(
+        &app,
+        &source,
+        &engine,
+        canvas,
+        assets.as_deref().unwrap_or_default(),
+        project_root.as_deref(),
+    )
+    .await
     {
         Ok(c) => c,
         Err(f) => return Ok(export_failure(f.message, started, f.preamble_lines, f.errors)),
@@ -1034,5 +1185,113 @@ mod tests {
         // 扩展名互不干扰：当前目录没有 svg。
         assert!(find_product(&dir, "svg").is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn asset_token_validation_is_strict() {
+        assert!(is_valid_token("zetla-img-0123456789ab.png"));
+        assert!(is_valid_token("zetla-img-abcdefabcdef.pdf"));
+        assert!(!is_valid_token("zetla-img-0123456789ab.svg"));
+        assert!(!is_valid_token("zetla-img-0123456789AB.png"));
+        assert!(!is_valid_token("zetla-img-0123456789a.png"));
+        assert!(!is_valid_token("../evil.png"));
+        // 路径穿越：token 会成为 fs::copy 的目标文件名，绝不能带 / 或 ..
+        assert!(!is_valid_token("zetla-img-0123456789ab.png/../../x"));
+    }
+
+    #[test]
+    fn prepare_assets_copies_once_and_rejects_outside_root() {
+        let base = temp_workdir();
+        let root = base.join("project");
+        let figure = root.join("figure");
+        let work = base.join("work");
+        std::fs::create_dir_all(&figure).unwrap();
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(figure.join("a.png"), b"PNGDATA").unwrap();
+        std::fs::write(base.join("outside.png"), b"OUT").unwrap();
+        let root_s = root.to_string_lossy().to_string();
+
+        let token = "zetla-img-0123456789ab.png".to_string();
+        let inside = TikzAsset {
+            token: token.clone(),
+            real_path: figure.join("a.png").to_string_lossy().to_string(),
+        };
+        // 同一张图被引用多处：只拷一次，且不误报 token 冲突
+        let assets = vec![inside.clone(), inside.clone()];
+        assert!(prepare_assets(&assets, Some(&root_s), &work).is_ok());
+        assert_eq!(std::fs::read(work.join(&token)).unwrap(), b"PNGDATA");
+
+        let outside = TikzAsset {
+            token: "zetla-img-abcdefabcdef.png".to_string(),
+            real_path: base.join("outside.png").to_string_lossy().to_string(),
+        };
+        let err = prepare_assets(&[outside], Some(&root_s), &work).unwrap_err();
+        assert!(err.contains("越出项目根"), "{err}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn prepare_assets_rejects_bad_format_missing_root_and_bad_token() {
+        let base = temp_workdir();
+        let root = base.join("project");
+        let figure = root.join("figure");
+        let work = base.join("work");
+        std::fs::create_dir_all(&figure).unwrap();
+        std::fs::create_dir_all(&work).unwrap();
+        std::fs::write(figure.join("a.svg"), b"SVG").unwrap();
+        std::fs::write(figure.join("b.png"), b"PNG").unwrap();
+        let root_s = root.to_string_lossy().to_string();
+        let mk = |name: &str, token: &str| TikzAsset {
+            token: token.to_string(),
+            real_path: figure.join(name).to_string_lossy().to_string(),
+        };
+        assert!(prepare_assets(
+            &[mk("a.svg", "zetla-img-111111111111.svg")],
+            Some(&root_s),
+            &work,
+        )
+        .unwrap_err()
+        .contains("非法图片 token"));
+        assert!(prepare_assets(
+            &[mk("a.svg", "zetla-img-111111111111.png")],
+            Some(&root_s),
+            &work,
+        )
+        .unwrap_err()
+        .contains("不支持的图片格式"));
+        assert!(prepare_assets(
+            &[mk("b.png", "zetla-img-222222222222.png")],
+            None,
+            &work,
+        )
+        .unwrap_err()
+        .contains("未打开项目"));
+        // 无资源时不要求项目根，行为与 P1 之前一致
+        assert!(prepare_assets(&[], None, &work).is_ok());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn graphicx_is_loaded_once_and_line_mapping_intact() {
+        let (doc, n) = build_document(SRC, false);
+        assert_eq!(
+            doc.lines()
+                .filter(|l| l.starts_with("\\usepackage{graphicx}"))
+                .count(),
+            1
+        );
+        assert_eq!(doc.lines().nth(n as usize), Some("\\begin{tikzpicture}"));
+
+        // 用户自己写了 \usepackage{graphicx} 时不重复加载；正文那行被注释但行数不变
+        let src = format!("\\usepackage{{graphicx}}\n{SRC}");
+        let (doc2, n2) = build_document(&src, false);
+        assert_eq!(
+            doc2.lines()
+                .filter(|l| l.starts_with("\\usepackage{graphicx}"))
+                .count(),
+            1
+        );
+        assert_eq!(doc2.lines().nth(n2 as usize), Some("% \\usepackage{graphicx}"));
+        assert_eq!(doc2.lines().nth(n2 as usize + 1), Some("\\begin{tikzpicture}"));
     }
 }

@@ -7,6 +7,13 @@ export type PreviewMode = "local" | "precise";
 /** 侧栏导出方式：source = 插入 TikZ 源码；image/file 由 F3 落盘链路接入 */
 export type ExportMode = "source" | "image" | "file";
 
+/** P1：图片资源映射（Rust `TikzAsset`，camelCase）。
+ *  token 只出现在派发给后端的源码副本里；realPath 是项目内的真实绝对路径。 */
+export interface TikzImageAsset {
+  token: string;
+  realPath: string;
+}
+
 /** tikz_preview 的返回结构（Rust TikzPreviewResult，camelCase） */
 export interface TikzPreviewResult {
   status: "ok" | "error";
@@ -31,6 +38,10 @@ export interface TikzExportPayload {
   outPath: string;
   /** 目标已存在时是否覆盖（覆盖前由前端 confirm 后再传 true） */
   force?: boolean;
+  /** P1：\includegraphics 的资源表；源码里的图片路径已在 source 中换成 token */
+  assets?: TikzImageAsset[];
+  /** P1：项目根绝对路径，Rust 用它做资源越界校验；无资源时可省略 */
+  projectRoot?: string | null;
 }
 
 /** F5-1：tikz_export 的返回结构（Rust TikzExportResult，camelCase） */

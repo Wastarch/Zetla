@@ -17,18 +17,28 @@ export interface PreviewCanvasKey {
   useCanvas: boolean;
 }
 
-/** FNV-1a 32 位；附长度进一步降低碰撞概率 */
-export function previewKey(source: string, engine: string, canvas?: PreviewCanvasKey): string {
+/** FNV-1a 32 位；附长度进一步降低碰撞概率。
+ *  P1：第四参 assetSig 为 imageRefs.assetSignature(assets) 的结果；无图片资源时传空串，
+ *  key 与 P1 之前逐字一致（既有 875 项回归断言不回改）。 */
+export function previewKey(
+  source: string,
+  engine: string,
+  canvas?: PreviewCanvasKey,
+  assetSig = "",
+): string {
   let h = 0x811c9dc5;
   for (let i = 0; i < source.length; i += 1) {
     h ^= source.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
   const base = `${engine}:${(h >>> 0).toString(16)}:${source.length}`;
-  if (!canvas?.useCanvas) return base;
-  const w = Number.isFinite(canvas.widthPt) ? Math.round(canvas.widthPt * 100) / 100 : 0;
-  const hh = Number.isFinite(canvas.heightPt) ? Math.round(canvas.heightPt * 100) / 100 : 0;
-  return `${base}|c:${w}:${hh}`;
+  const withCanvas = (() => {
+    if (!canvas?.useCanvas) return base;
+    const w = Number.isFinite(canvas.widthPt) ? Math.round(canvas.widthPt * 100) / 100 : 0;
+    const hh = Number.isFinite(canvas.heightPt) ? Math.round(canvas.heightPt * 100) / 100 : 0;
+    return `${base}|c:${w}:${hh}`;
+  })();
+  return assetSig ? `${withCanvas}|a:${assetSig}` : withCanvas;
 }
 
 export function getCachedPreview(key: string): TikzPreviewResult | undefined {

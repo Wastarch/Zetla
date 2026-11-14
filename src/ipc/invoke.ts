@@ -20,7 +20,12 @@ import type {
   TexInstallResult,
   WriteOptions,
 } from "@/types";
-import type { TikzPreviewResult, TikzExportPayload, TikzExportResult } from "@/types/diagram";
+import type {
+  TikzPreviewResult,
+  TikzExportPayload,
+  TikzExportResult,
+  TikzImageAsset,
+} from "@/types/diagram";
 
 /** 底层透传（未封装的命令临时入口） */
 export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -169,9 +174,23 @@ export interface TikzCanvasSizeArg {
 }
 
 export const diagramApi = {
-  /** 只编译 tikzpicture 片段 → standalone PDF → SVG 文本；失败以 status:"error" 返回 */
-  tikzPreview: (source: string, engine: string, canvas?: TikzCanvasSizeArg) =>
-    call<TikzPreviewResult>("tikz_preview", { source, engine, canvas: canvas ?? null }),
+  /** 只编译 tikzpicture 片段 → standalone PDF → SVG 文本；失败以 status:"error" 返回。
+   *  P1：source 为「图片路径已换 token」的派生副本，assets 给出 token → 真实路径，
+   *  projectRoot 供 Rust 做越界校验；无图片时后两参为空，行为与 P1 之前一致。 */
+  tikzPreview: (
+    source: string,
+    engine: string,
+    canvas?: TikzCanvasSizeArg,
+    assets?: TikzImageAsset[],
+    projectRoot?: string | null,
+  ) =>
+    call<TikzPreviewResult>("tikz_preview", {
+      source,
+      engine,
+      canvas: canvas ?? null,
+      assets: assets ?? [],
+      projectRoot: projectRoot ?? null,
+    }),
   /** F5-1：编译片段 → 转 PNG/SVG/PDF → 落盘到 outPath；覆盖前先以 force:true 重试 */
   tikzExport: (payload: TikzExportPayload) =>
     call<TikzExportResult>("tikz_export", payload as unknown as Record<string, unknown>),
