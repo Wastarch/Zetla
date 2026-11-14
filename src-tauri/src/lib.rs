@@ -53,6 +53,10 @@ pub fn run() {
             // 多遍编译（M0-9）
             commands::compile::compile_project,
             commands::compile::cancel_compile,
+            // M2 · 绘图模块 F1-6：XeLaTeX 只编译 TikZ 片段（精确预览内核）
+            commands::tikz_export::tikz_preview,
+            // M2 · 绘图模块 F5-1：把片段编译后导出 PNG / SVG / PDF 并落盘（复用同一内核）
+            commands::tikz_export::tikz_export,
             // M2：编译流程（Recipe）枚举（设置页展示 / 选择）
             commands::compile::list_recipes,
             // 日志解析（M0-11）
@@ -95,6 +99,12 @@ pub fn run() {
             commands::image::import_image,
             commands::image::import_image_from_path,
             commands::image::image_exists,
+            // M2 · 图片插入 TikZ · P2：暂存图登记 / 转正 / 安静清理 / 启动扫描
+            commands::image_staging::stage_image,
+            commands::image_staging::list_staged_images,
+            commands::image_staging::promote_staged_images,
+            commands::image_staging::discard_staged_images,
+            commands::image_staging::sweep_staged_images,
             // 项目目录监听（M0-9a）
             commands::watch::watch_project,
             commands::watch::unwatch_project,

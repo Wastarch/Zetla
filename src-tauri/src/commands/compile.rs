@@ -57,7 +57,7 @@ fn engine_exe_name(name: &str) -> String {
 ///
 /// 目录优先级由调用方保证：受管目录（config.tex）→ 注册表 PATH → 进程 PATH。
 /// 这样「Zetla 代装完成 / 用户手动装而进程 PATH 未刷新」时，无需重启就能检测到。
-fn find_engine(name: &str, search_dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
+pub(crate) fn find_engine(name: &str, search_dirs: &[std::path::PathBuf]) -> Option<std::path::PathBuf> {
     let exe = engine_exe_name(name);
     for dir in search_dirs {
         let candidate = dir.join(&exe);

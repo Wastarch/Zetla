@@ -6,6 +6,8 @@ pub mod core;
 pub mod envsetup;
 pub mod fsdoc;
 pub mod image;
+// M2 · 图片插入 TikZ · P2：暂存图 manifest / 转正 / 安静清理
+pub mod image_staging;
 pub mod logparse;
 pub mod perl;
 pub mod project_mgmt;
@@ -14,5 +16,6 @@ pub mod snippets;
 pub mod synctex;
 pub mod template;
 pub mod terminal;
+pub mod tikz_export;
 pub mod updater;
 pub mod watch;

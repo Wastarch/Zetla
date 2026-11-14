@@ -30,6 +30,19 @@ import {
   TERMINAL_FONT_SIZE_OPTIONS,
 } from "@/types/settings";
 import type { AppSettings, AppTheme, CompileEngine, PdfDefaultZoom } from "@/types/settings";
+import {
+  useDiagramStore,
+  type HandleSize,
+  type LayoutMode,
+} from "@/modules/diagram/store";
+import { HANDLE_SIZE_LABELS, handleSizeSummary } from "@/modules/diagram/handleVisual";
+import {
+  CANVAS_PRESET_LABELS,
+  canvasSizeForPreset,
+  presetMaxHeightCm,
+  type CanvasPreset,
+} from "@/modules/diagram/canvasSize";
+import type { PreviewMode } from "@/types/diagram";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "general", icon: "layout", label: "通用" },
@@ -39,6 +52,7 @@ const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "look", icon: "sun", label: "外观与保存" },
   { id: "snippets", icon: "list", label: "代码片段" },
   { id: "modules", icon: "wand", label: "模块" },
+  { id: "diagram", icon: "image", label: "绘图" },
   { id: "about", icon: "book", label: "关于 Zetla" },
 ];
 
@@ -230,6 +244,29 @@ export function SettingsDialog() {
 
   // M1-1：模块开关（写设置页草稿；经 useModuleRuntime 订阅即时启停，保存后落盘）
   const modules = useModuleList();
+  // M2 · 绘图模块 F1-5：轻量 UI 偏好走 diagram store（localStorage），不进 AppSettings draft
+  const diagramLayout = useDiagramStore((s) => s.layoutMode);
+  const setDiagramLayout = useDiagramStore((s) => s.setLayoutMode);
+  const diagramRatio = useDiagramStore((s) => s.splitRatio);
+  const setDiagramRatio = useDiagramStore((s) => s.setSplitRatio);
+  const diagramPreview = useDiagramStore((s) => s.previewMode);
+  const setDiagramPreview = useDiagramStore((s) => s.setPreviewMode);
+  const diagramHandleSize = useDiagramStore((s) => s.handleSize);
+  const setDiagramHandleSize = useDiagramStore((s) => s.setHandleSize);
+  // F3-3：图层面板显隐也是轻量 UI 偏好，纳入「恢复默认」
+  const diagramLayersVisible = useDiagramStore((s) => s.layersVisible);
+  const setDiagramLayersVisible = useDiagramStore((s) => s.setLayersVisible);
+  const diagramSnapEnabled = useDiagramStore((s) => s.snapEnabled);
+  const setDiagramSnapEnabled = useDiagramStore((s) => s.setSnapEnabled);
+  const diagramGridEnabled = useDiagramStore((s) => s.gridEnabled);
+  const setDiagramGridEnabled = useDiagramStore((s) => s.setGridEnabled);
+  const diagramSnapGrid = useDiagramStore((s) => s.snapGridEnabled);
+  const setDiagramSnapGrid = useDiagramStore((s) => s.setSnapGridEnabled);
+  const diagramCanvasSize = useDiagramStore((s) => s.canvasSize);
+  const setDiagramCanvasSize = useDiagramStore((s) => s.setCanvasSize);
+  const diagramCanvasAuto = useDiagramStore((s) => s.canvasSizeAuto);
+  const setDiagramCanvasAuto = useDiagramStore((s) => s.setCanvasSizeAuto);
+  const resetDiagramPreferences = useDiagramStore((s) => s.resetDiagramPreferences);
   const moduleNames: Record<string, string> = {};
   for (const m of modules) moduleNames[m.id] = m.name;
   const toggleModule = useCallback(
@@ -828,6 +865,190 @@ export function SettingsDialog() {
             )}
 
             {/* M2-5c：代码片段双栏管理（独立 snippets.json，页内自带保存） */}
+            {/* M2 · F1-5：绘图偏好（即时生效、本机保存，不随底部保存/取消回滚） */}
+            {pane === "diagram" && (
+              <div className="set-pane" role="tabpanel">
+                <h4>绘图 · TikZ</h4>
+                <p className="set-note">
+                  此页改动<strong>即时生效并保存在本机</strong>，不受底部「保存设置 / 取消」影响。
+                  XeLaTeX 精确预览需要本机安装 TeX 发行版与 pdftocairo。
+                </p>
+                <Fld label="Tab 内默认布局" hint="仅画布 / 仅源码 / 左右分屏，重启后保留">
+                  <select
+                    value={diagramLayout}
+                    onChange={(e) => setDiagramLayout(e.target.value as LayoutMode)}
+                  >
+                    <option value="split">左右分屏</option>
+                    <option value="canvas">仅画布</option>
+                    <option value="code">仅源码</option>
+                  </select>
+                </Fld>
+                <Fld label="分屏比例" hint="左右分屏时画布栏占比（20%–80%）">
+                  <select
+                    value={
+                      [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8].includes(diagramRatio)
+                        ? String(diagramRatio)
+                        : "custom"
+                    }
+                    onChange={(e) => {
+                      if (e.target.value !== "custom") setDiagramRatio(Number(e.target.value));
+                    }}
+                  >
+                    {![0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8].includes(diagramRatio) && (
+                      <option value="custom">
+                        {Math.round(diagramRatio * 100)}%（自定义）
+                      </option>
+                    )}
+                    {[0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8].map((v) => (
+                      <option key={v} value={String(v)}>
+                        {Math.round(v * 100)}%
+                      </option>
+                    ))}
+                  </select>
+                </Fld>
+                <Fld
+                  label="默认预览通道"
+                  hint="本地即时（毫秒级，覆盖集有限）/ XeLaTeX 精确（秒级，100% 还原）"
+                >
+                  <select
+                    value={diagramPreview}
+                    onChange={(e) => setDiagramPreview(e.target.value as PreviewMode)}
+                  >
+                    <option value="local">本地即时</option>
+                    <option value="precise">XeLaTeX 精确</option>
+                  </select>
+                </Fld>
+                <Fld
+                  label="控制点大小"
+                  hint={`只改视觉半径，命中范围始终更大 · 当前${handleSizeSummary(diagramHandleSize)}`}
+                >
+                  <select
+                    value={diagramHandleSize}
+                    onChange={(e) => setDiagramHandleSize(e.target.value as HandleSize)}
+                  >
+                    {(Object.keys(HANDLE_SIZE_LABELS) as HandleSize[]).map((s) => (
+                      <option key={s} value={s}>
+                        {HANDLE_SIZE_LABELS[s]} · {handleSizeSummary(s)}
+                      </option>
+                    ))}
+                  </select>
+                </Fld>
+                <Fld
+                  label="图层面板"
+                  hint="侧栏「图层管理」区默认展开；点标题行三角可随时开合，分组 / 隐藏 / 锁定数据不受影响"
+                >
+                  <Switch
+                    checked={diagramLayersVisible}
+                    onChange={(next) => setDiagramLayersVisible(next)}
+                  />
+                </Fld>
+                <Fld
+                  label="智能参考线吸附"
+                  hint="拖图元时与其他图元的边 / 中心或画布中心对齐，显示临时参考线并吸附"
+                >
+                  <Switch
+                    checked={diagramSnapEnabled}
+                    onChange={(next) => setDiagramSnapEnabled(next)}
+                  />
+                </Fld>
+                <Fld
+                  label="画布网格 + 标尺"
+                  hint="画布叠加 1cm 网格与顶部标尺（仅辅助显示，不写进源码）"
+                >
+                  <Switch
+                    checked={diagramGridEnabled}
+                    onChange={(next) => setDiagramGridEnabled(next)}
+                  />
+                </Fld>
+                <Fld
+                  label="吸附网格"
+                  hint="拖图元时落点自动对齐到最近网格交点（优先级高于智能参考线）"
+                >
+                  <Switch
+                    checked={diagramSnapGrid}
+                    onChange={(next) => setDiagramSnapGrid(next)}
+                  />
+                </Fld>
+                <Fld
+                  label="画布尺寸"
+                  hint="宽取主文档正文宽（A4 约 15cm），高默认 10cm 且不超过该纸张正文高；纸张框只是编辑参考，绝不写进 TikZ 源码"
+                >
+                  <div className="set-inline">
+                    <select
+                      value={diagramCanvasSize.preset}
+                      onChange={(e) =>
+                        setDiagramCanvasSize(
+                          canvasSizeForPreset(e.target.value as CanvasPreset, diagramCanvasSize),
+                        )
+                      }
+                    >
+                      {(Object.keys(CANVAS_PRESET_LABELS) as CanvasPreset[]).map((key) => (
+                        <option key={key} value={key}>
+                          {CANVAS_PRESET_LABELS[key]}
+                        </option>
+                      ))}
+                    </select>
+                    {diagramCanvasSize.preset === "custom" && (
+                      <>
+                        <input
+                          type="number"
+                          min={1}
+                          max={200}
+                          step={0.5}
+                          value={diagramCanvasSize.widthCm}
+                          title="正文宽 cm"
+                          onChange={(e) =>
+                            setDiagramCanvasSize({
+                              ...diagramCanvasSize,
+                              widthCm: Number(e.target.value),
+                            })
+                          }
+                        />
+                        <input
+                          type="number"
+                          min={1}
+                          max={presetMaxHeightCm("custom")}
+                          step={0.5}
+                          value={diagramCanvasSize.heightCm}
+                          title="正文高 cm"
+                          onChange={(e) =>
+                            setDiagramCanvasSize({
+                              ...diagramCanvasSize,
+                              heightCm: Number(e.target.value),
+                            })
+                          }
+                        />
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={diagramCanvasAuto}
+                      title="重新按主文档 \textwidth 推断默认尺寸"
+                      onClick={() => {
+                        setDiagramCanvasAuto(true);
+                        notify("画布尺寸已切回按主文档推断", "ok");
+                      }}
+                    >
+                      按文档宽度
+                    </button>
+                  </div>
+                </Fld>
+                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板 / 智能参考线 / 网格 / 吸附网格 / 画布尺寸 / 按画布导出一次性重置">
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => {
+                      resetDiagramPreferences();
+                      notify("绘图偏好已恢复默认", "ok");
+                    }}
+                  >
+                    重置
+                  </button>
+                </Fld>
+              </div>
+            )}
+
             {pane === "snippets" && <SnippetsPane />}
 
             {pane === "modules" && (

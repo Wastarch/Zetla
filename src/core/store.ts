@@ -25,7 +25,8 @@ export type SettingsPane =
   | "look"
   | "snippets"
   | "about"
-  | "modules";
+  | "modules"
+  | "diagram";
 
 /** 全局状态接口（M0-13：useWindowMemory 订阅布局字段需要类型） */
 export interface AppState {
@@ -39,6 +40,7 @@ export interface AppState {
   selectSidebarView: (v: SidebarView) => void;
   /** M1-5a：菜单/快捷键直接指定视图（总是展开，不折叠） */
   setSidebarView: (v: SidebarView) => void;
+
   /** M0-13：侧栏宽度（170–560，拖拽写入，偏好设置持久化） */
   sidebarWidth: number;
   /** M0-13：编辑区/预览比例（0.2–0.75，拖拽写入，偏好设置持久化） */

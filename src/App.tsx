@@ -34,6 +34,11 @@ import { startReferenceWatcher } from "@/modules/reference/useReferenceStore";
 import { refreshUserSnippets } from "@/editor/snippetsSupport";
 import { useAutosave } from "@/editor/useAutosave";
 import { useWindowMemory } from "@/window/useWindowMemory";
+// M2 · 图片插入 TikZ · P2：暂存图的启动扫描与换项目清理
+import {
+  discardSessionStagedImages,
+  sweepStagedImages,
+} from "@/modules/diagram/imageStaging";
 import "./styles/zetla.css";
 import "./App.css";
 
@@ -83,6 +88,18 @@ function App() {
   useEffect(() => {
     void checkEnvOnStartup();
   }, []);
+  // P2：启动扫描清掉上次会话遗留的孤儿暂存图；Rust 侧对已被 .tex 引用的会保守保留。
+  // root 变化时（换项目 / 关闭项目）清理旧项目的暂存；Tab 仍开且源码仍含图片节点时
+  // 由 imageStaging 延后到关 Tab，避免打断继续编辑。
+  useEffect(() => {
+    void sweepStagedImages();
+  }, []);
+  useEffect(() => {
+    if (!root) return;
+    return () => {
+      void discardSessionStagedImages({ keepIfEditing: true });
+    };
+  }, [root]);
   useSettingsEffects();
   useAutosave();
   // M0-13：窗口几何/布局/上次项目（settings 加载完成后统一恢复）

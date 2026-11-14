@@ -155,6 +155,14 @@ export interface LaTeXEditorProps {
   onJumpToPdf?: (line: number, col: number) => void;
   /** M1-14b：当前文档路径（区分 .tex / .bib 以切换语言与高亮） */
   path?: string;
+  /**
+   * M2·F1-2：精简模式（绘图 Tab 的 TikZ 源码栏用）。
+   * 只保留 LaTeX 词法高亮 + 编辑基础（行号/撤销/括号/软换行/Tab 缩进/环境诊断），
+   * 跳过主文档专属扩展：✎ 环境徽标、\Box 公式槽位、引用补全/悬浮/跳转、
+   * \input 跳转、synctex Ctrl+点击、图片拖入导入、minimap、Mod-s 保存键。
+   * 主文档编辑器不传此开关，行为完全不变。
+   */
+  bare?: boolean;
 }
 
 /**
@@ -194,7 +202,11 @@ function latexLintFor(getPath: () => string | undefined) {
  * M1-14j：按语言档位装配「词法 + 诊断」扩展。
  * plain 不挂任何语言（交给 basicSetup 的默认高亮 fallback = 不染色），即纯文本渲染。
  */
-function langSupport(lang: EditorLang, getPath: () => string | undefined) {
+function langSupport(
+  lang: EditorLang,
+  getPath: () => string | undefined,
+  bare = false,
+) {
   switch (lang) {
     case "bib":
       return [
@@ -224,9 +236,15 @@ function langSupport(lang: EditorLang, getPath: () => string | undefined) {
           enableLinting: false,
         }),
         linter(latexLintFor(getPath), { delay: 500 }),
-        // M1-14e：.tex 内 \cite{key} 引用缺失告警（key 不在 store.byKey 即标红）
-        linter(missingCiteLinter(), { delay: 400 }),
-        lintGutter(),
+        // M2·F1-2：bare 下无 \cite 语境，且窄栏不该被 lint gutter 占宽；
+        // 环境配对/括号闭合等文件内诊断仍保留（latexLintFor 会自动按片段降噪）。
+        ...(bare
+          ? []
+          : [
+              // M1-14e：.tex 内 \cite{key} 引用缺失告警（key 不在 store.byKey 即标红）
+              linter(missingCiteLinter(), { delay: 400 }),
+              lintGutter(),
+            ]),
       ];
   }
 }
@@ -266,6 +284,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
       lineWrapping = true,
       onJumpToPdf,
       path,
+      bare = false,
     },
     ref,
   ) {
@@ -303,7 +322,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const pathRef = useRef(path);
     pathRef.current = path;
     // \input 跳转的悬浮提示需要在点击/悬浮时拿到当前路径（模块级同步，避免切换标签重建扩展）
-    setInputJumpPath(path);
+    // M2·F1-2：bare 编辑器不挂 \input 跳转扩展，也不用 undefined 覆盖主文档的模块级当前路径。
+    if (!bare) setInputJumpPath(path);
 
     // M1-14j：状态栏手动指定的语言优先于扩展名自动识别（缺省按扩展名，未收录 → 纯文本）
     const langOverride = useLangOverride((s) => (path ? s.byPath[path] : undefined));
@@ -313,21 +333,27 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const extensions = useMemo(
       () => [
         // M1 · 右侧缩略图（null = 关闭；Facet 自动挂载渲染插件，主题色取自编辑器自身）
-        showMinimap.of(minimapOn ? MINIMAP_CONFIG : null),
+        // M2·F1-2：bare（绘图 Tab 源码栏）不挂，窄栏无需缩略图
+        ...(bare ? [] : [showMinimap.of(minimapOn ? MINIMAP_CONFIG : null)]),
         // M1-14i/j：按档位装配词法（bib/bst/log 专属；plain 不挂语言；latex 含全部 LaTeX 方言）
-        ...langSupport(lang, () => pathRef.current),
+        ...langSupport(lang, () => pathRef.current, bare),
         // 软换行：只影响显示，不向文档写入换行符
         lineWrapping ? EditorView.lineWrapping : [],
-        keymap.of([
-          {
-            key: "Mod-s",
-            preventDefault: true,
-            run: () => {
-              onSaveRef.current?.();
-              return true;
-            },
-          },
-        ]),
+        // M0-4：Ctrl+S / Cmd+S。M2·F1-2：bare 没有可保存的文档，不吞按键，交给全局「全部保存」。
+        ...(bare
+          ? []
+          : [
+              keymap.of([
+                {
+                  key: "Mod-s",
+                  preventDefault: true,
+                  run: () => {
+                    onSaveRef.current?.();
+                    return true;
+                  },
+                },
+              ]),
+            ]),
         EditorView.updateListener.of((u) => {
           if (u.selectionSet || u.docChanged) {
             const head = u.state.selection.main.head;
@@ -337,105 +363,117 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
         }),
         // 语法高亮配色（亮/暗双份，随主题切换；plain 不染色；LaTeX 由设置驱动）
         langHighlight(lang, theme, latexGroups),
-        // M1-11：公式搭建器槽位导航（\Box 占位高亮 + Tab 跳转），仅 LaTeX 文档启用
-        ...(lang === "latex" ? mathSlotsExtension : []),
-        // M1-14c：.tex 内 \cite{ 补全 + 悬浮预览。
-        // 唯一的 autocompletion override（合并 LaTeX 命令补全 + 引用补全 + M2-5b 片段补全），
-        // 因 latex() 已设 enableAutocomplete:false，此处不会再有第二个 override 冲突。
-        // 片段项 type="text" + boost=-99（排在命令补全之后，视觉上以 text 图标区分）。
-        ...(lang === "latex"
-          ? [
-              autocompletion({
-                override: [
-                  latexCompletionSource(true),
-                  citeCompletionSource,
-                  snippetCompletionSource,
-                ],
-                defaultKeymap: true,
-                activateOnTyping: true,
-                icons: true,
-              }),
-              keymap.of(completionKeymap),
-              // M2-5b：显式唤起补全的备用键位（Ctrl+Space 被中文输入法占用）
-              snippetExplicitKeymap,
-              // M2-5b：Tab 直展触发词（最低优先级：弹窗 accept / 公式槽位导航先于此）
-              snippetTabKeymap,
-              hoverTooltip(citeHoverSource),
-              // M1-14d+：Ctrl 按住时 \cite 显示可点链接提示（下划线+手型）+ 跳转提示气泡
-              citeLinkDecorations,
-              ctrlHeldPlugin,
-              hoverTooltip(citeJumpHint),
-              // M1-4+：\input / \include 文件跳转（同款：Ctrl 按住显链接 + 悬浮提示）
-              inputLinkDecorations,
-              hoverTooltip(inputJumpHint),
-              // M1-19/M1-20：环境反向编辑 · 环境开头常驻 ✎ 标记（点标记载入公式/表格到对应面板编辑）
-              envMarkExtension,
-            ]
-          : // M2-5b：非 LaTeX 档位补回 Tab 缩进（全局已关 @uiw indentWithTab；片段仅 .tex 生效）
-            [plainTabKeymap]),
+        // M1-11 / M1-14c / M1-19：主文档专属扩展（公式槽位 / 引用 / \input / ✎ 徽标）。
+        // M2·F1-2：bare（绘图 Tab 的 TikZ 源码栏）整块跳过，只补回 Tab 缩进；
+        // 这些扩展在纯 tikzpicture 源码里全是噪音，且 ✎ 徽标会与绘图反向编辑概念撞车。
+        ...(bare
+          ? [plainTabKeymap]
+          : lang === "latex"
+            ? [
+                mathSlotsExtension,
+                // 唯一的 autocompletion override（LaTeX 命令 + 引用 + 片段）；
+                // latex() 已设 enableAutocomplete:false，不会再有第二个 override 冲突。
+                autocompletion({
+                  override: [
+                    latexCompletionSource(true),
+                    citeCompletionSource,
+                    snippetCompletionSource,
+                  ],
+                  defaultKeymap: true,
+                  activateOnTyping: true,
+                  icons: true,
+                }),
+                keymap.of(completionKeymap),
+                // M2-5b：显式唤起补全的备用键位（Ctrl+Space 被中文输入法占用）
+                snippetExplicitKeymap,
+                // M2-5b：Tab 直展触发词（最低优先级：弹窗 accept / 公式槽位导航先于此）
+                snippetTabKeymap,
+                hoverTooltip(citeHoverSource),
+                // M1-14d+：Ctrl 按住时 \cite 显示可点链接提示 + 跳转提示气泡
+                citeLinkDecorations,
+                ctrlHeldPlugin,
+                hoverTooltip(citeJumpHint),
+                // M1-4+：\input / \include 文件跳转
+                inputLinkDecorations,
+                hoverTooltip(inputJumpHint),
+                // M1-19/M1-20：环境反向编辑 · 环境开头常驻 ✎ 标记
+                envMarkExtension,
+              ]
+            : // M2-5b：非 LaTeX 档位补回 Tab 缩进（全局已关 @uiw indentWithTab）
+              [plainTabKeymap]),
         // M1-4：Ctrl/⌘+点击 → 优先 \cite 跳 bib 条目（M1-14d），否则回落 synctex 正向跳转
-        EditorView.domEventHandlers({
-          mousedown: (e, view) => {
-            if (e.button !== 0 || !(e.ctrlKey || e.metaKey)) return false;
-            const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-            if (pos == null) return false;
-            // \input / \include 目标文件：Ctrl+点击打开并跳转（命中即消费）
-            if (inputJumpAtCursor(view.state.doc, pos, pathRef.current)) {
-              e.preventDefault();
-              return true;
-            }
-            // M1-14d：点击落在 \cite{key} 上 → 跳 bib 条目（命中即消费，不回落 synctex）
-            if (citeJumpAtCursor(view.state.doc, pos)) {
-              e.preventDefault();
-              return true;
-            }
-            // 否则回落现有 synctex 正向跳转
-            const line = view.state.doc.lineAt(pos);
-            onJumpRef.current?.(line.number, pos - line.from + 1);
-            e.preventDefault();
-            return true;
-          },
-        }),
+        // M2·F1-2：bare 下无 \cite / \input / synctex 语境，整块不挂。
+        ...(bare
+          ? []
+          : [
+              EditorView.domEventHandlers({
+                mousedown: (e, view) => {
+                  if (e.button !== 0 || !(e.ctrlKey || e.metaKey)) return false;
+                  const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
+                  if (pos == null) return false;
+                  // \input / \include 目标文件：Ctrl+点击打开并跳转（命中即消费）
+                  if (inputJumpAtCursor(view.state.doc, pos, pathRef.current)) {
+                    e.preventDefault();
+                    return true;
+                  }
+                  // M1-14d：点击落在 \cite{key} 上 → 跳 bib 条目（命中即消费，不回落 synctex）
+                  if (citeJumpAtCursor(view.state.doc, pos)) {
+                    e.preventDefault();
+                    return true;
+                  }
+                  // 否则回落现有 synctex 正向跳转
+                  const line = view.state.doc.lineAt(pos);
+                  onJumpRef.current?.(line.number, pos - line.from + 1);
+                  e.preventDefault();
+                  return true;
+                },
+              }),
+            ]),
         // R5 拖拽 / 粘贴图片导入（M1-7）：仅拦截含图片文件的拖放与粘贴，纯文本原样交还 CM 处理
-        EditorView.domEventHandlers({
-          dragover: (event, view) => {
-            const dt = event.dataTransfer;
-            if (dt && Array.from(dt.items).some((i) => i.kind === "file")) {
-              event.preventDefault();
-              view.dom.classList.add("drag-over");
-              return true;
-            }
-            return false;
-          },
-          dragleave: (event, view) => {
-            const related = event.relatedTarget;
-            if (related == null || !view.dom.contains(related as Node)) {
-              view.dom.classList.remove("drag-over");
-            }
-            return false;
-          },
-          drop: (event, view) => {
-            const dt = event.dataTransfer;
-            view.dom.classList.remove("drag-over");
-            if (!dt) return false;
-            const files = Array.from(dt.files).filter(isImageFile);
-            if (files.length === 0) return false;
-            event.preventDefault();
-            void importAndInsert(files);
-            return true;
-          },
-          paste: (_event, _view) => {
-            const dt = _event.clipboardData;
-            if (!dt) return false;
-            const files = Array.from(dt.files).filter(isImageFile);
-            if (files.length === 0) return false; // 纯文本粘贴 → 交还 CM，零副作用
-            _event.preventDefault();
-            void importAndInsert(files);
-            return true;
-          },
-        }),
+        // M2·F1-2：bare 下禁用，避免把 \includegraphics 塞进 TikZ 源码。
+        ...(bare
+          ? []
+          : [
+              EditorView.domEventHandlers({
+                dragover: (event, view) => {
+                  const dt = event.dataTransfer;
+                  if (dt && Array.from(dt.items).some((i) => i.kind === "file")) {
+                    event.preventDefault();
+                    view.dom.classList.add("drag-over");
+                    return true;
+                  }
+                  return false;
+                },
+                dragleave: (event, view) => {
+                  const related = event.relatedTarget;
+                  if (related == null || !view.dom.contains(related as Node)) {
+                    view.dom.classList.remove("drag-over");
+                  }
+                  return false;
+                },
+                drop: (event, view) => {
+                  const dt = event.dataTransfer;
+                  view.dom.classList.remove("drag-over");
+                  if (!dt) return false;
+                  const files = Array.from(dt.files).filter(isImageFile);
+                  if (files.length === 0) return false;
+                  event.preventDefault();
+                  void importAndInsert(files);
+                  return true;
+                },
+                paste: (_event, _view) => {
+                  const dt = _event.clipboardData;
+                  if (!dt) return false;
+                  const files = Array.from(dt.files).filter(isImageFile);
+                  if (files.length === 0) return false; // 纯文本粘贴 → 交还 CM，零副作用
+                  _event.preventDefault();
+                  void importAndInsert(files);
+                  return true;
+                },
+              }),
+            ]),
       ],
-      [lineWrapping, theme, lang, minimapOn, latexGroups, SEARCH_EXT, SEARCH_MATCH_HL],
+      [lineWrapping, theme, lang, minimapOn, latexGroups, bare, SEARCH_EXT, SEARCH_MATCH_HL],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置
@@ -475,10 +513,13 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     // M1-find：把 CM 视图登记到全局注册表（路径 → 视图），供关闭查找面板时统一清理高亮。
     // 视图在 @uiw 的 layout effect 中创建，此处用 rAF 轮询确保已就绪。
     useEffect(() => {
+      // M2·F1-2：bare（绘图 Tab 源码栏）不传 path —— 不向全局 activeView 注册，
+      // 也不做无意义的 rAF 轮询（否则每帧空转，且可能与主文档的命令桥互相覆盖）。
+      if (!path) return;
       let raf = 0;
       const tryReg = () => {
         const v = cmRef.current?.view;
-        if (v && path) {
+        if (v) {
           registerEditorView(path, v);
           return;
         }
@@ -487,7 +528,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
       tryReg();
       return () => {
         cancelAnimationFrame(raf);
-        if (path) unregisterEditorView(path);
+        unregisterEditorView(path);
       };
     }, [path]);
 
