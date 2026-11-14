@@ -6,7 +6,7 @@ import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { fetchLatest, fetchUpdateEnv, isMandatory, isNewer } from "./checkUpdate";
-import { pickEntry } from "./platformEntry";
+import { pickEntry, needsManualInstall, packageSources } from "./platformEntry";
 import { APP_VERSION } from "@/version";
 import type {
   LatestInfo,
@@ -35,9 +35,17 @@ interface UpdateState {
   error: string | null;
   progress: UpdateProgress | null;
   downloadedPath: string | null;
+  /** U4：本次更新只能「下载 + 交系统安装器」（deb/rpm），应用不会替换自身 */
+  manualInstall: boolean;
+  /** U4：打开安装包失败的原因（无图形界面 / 无关联安装器）；有值时界面提示手动安装 */
+  openError: string | null;
   loadEnv: () => Promise<UpdateEnv | null>;
   check: () => Promise<void>;
   download: () => Promise<void>;
+  /** U4：deb/rpm 引导 —— 下载系统安装包并交给系统安装器 */
+  downloadPackage: () => Promise<void>;
+  /** U4：重新用系统安装器打开已下载的包（无 GUI 场景下由用户手动安装） */
+  openPackage: () => Promise<void>;
   confirmInstall: () => Promise<void>;
   openRelease: () => void;
   retry: () => Promise<void>;
@@ -53,6 +61,8 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   error: null,
   progress: null,
   downloadedPath: null,
+  manualInstall: false,
+  openError: null,
 
   setProgress: (p) => set({ progress: p }),
 
@@ -66,7 +76,7 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   },
 
   check: async () => {
-    set({ status: "checking", error: null });
+    set({ status: "checking", error: null, openError: null });
     // 先拿平台环境：失败也继续（pickEntry 会退回顶层 installers，Windows 行为不变）
     const env = await get().loadEnv();
     const latest = await fetchLatest();
@@ -76,14 +86,23 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       return;
     }
     if (isNewer(latest.version, APP_VERSION)) {
+      const entry = pickEntry(latest, env);
       set({
         status: "update",
         latest,
-        entry: pickEntry(latest, env),
+        entry,
+        // U4：deb/rpm 只能下载后交系统安装器，界面据此换按钮组
+        manualInstall: needsManualInstall(entry),
         mandatory: isMandatory(latest),
       });
     } else {
-      set({ status: "uptodate", latest, entry: null, mandatory: false });
+      set({
+        status: "uptodate",
+        latest,
+        entry: null,
+        manualInstall: false,
+        mandatory: false,
+      });
     }
   },
 
@@ -102,6 +121,8 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
     set({
       status: "downloading",
       error: null,
+      manualInstall: false,
+      openError: null,
       progress: { downloaded: 0, total: 0, source: "" },
     });
     try {
@@ -111,6 +132,52 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
       set({ status: "downloaded", downloadedPath: path, progress: null });
     } catch (e) {
       set({ status: "error", error: String(e), progress: null });
+    }
+  },
+
+  /**
+   * U4 · deb/rpm 引导：下载系统安装包后交给系统安装器（xdg-open → GNOME Software /
+   * Discover / GDebi，自带提权）。应用不替换自身、不退出。
+   * 打不开时（无 GUI / 无关联安装器）保持「已下载」状态并记下 openError，
+   * 由界面降级为「安装包已下载到 …」+「复制路径」。
+   */
+  downloadPackage: async () => {
+    const { latest, entry } = get();
+    if (!latest) return;
+    const sources = packageSources(entry);
+    if (sources.length === 0) {
+      set({
+        status: "error",
+        error: "本次更新未提供当前平台的系统安装包，请前往发布页手动下载。",
+        progress: null,
+      });
+      return;
+    }
+    set({
+      status: "downloading",
+      error: null,
+      manualInstall: true,
+      openError: null,
+      progress: { downloaded: 0, total: 0, source: "" },
+    });
+    try {
+      const path = await invoke<string>("download_app_update", { installers: sources });
+      set({ status: "downloaded", downloadedPath: path, progress: null });
+      // 下载完直接拉起系统安装器；失败只影响提示，不改状态
+      await get().openPackage();
+    } catch (e) {
+      set({ status: "error", error: String(e), progress: null });
+    }
+  },
+
+  openPackage: async () => {
+    const { downloadedPath } = get();
+    if (!downloadedPath) return;
+    try {
+      await invoke("open_downloaded_package", { path: downloadedPath });
+      set({ openError: null });
+    } catch (e) {
+      set({ openError: String(e) });
     }
   },
 
@@ -140,7 +207,10 @@ export const useUpdateStore = create<UpdateState>((set, get) => ({
   retry: async () => {
     set({ error: null });
     await get().check();
-    if (get().status === "update") await get().download();
+    if (get().status !== "update") return;
+    // 重试也要按通道分流：deb/rpm 重新下载系统包，其余走自更新下载
+    if (needsManualInstall(get().entry)) await get().downloadPackage();
+    else await get().download();
   },
 }));
 

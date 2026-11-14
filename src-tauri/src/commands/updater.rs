@@ -554,6 +554,60 @@ fn spawn_update(_pkg: &std::path::Path) -> Result<(), String> {
     Err("当前平台暂不支持应用内安装，请前往发布页下载安装包。".to_string())
 }
 
+/// U4 · 打开已下载的系统安装包（deb/rpm 引导通道）。
+/// 不自行提权（绝不调 sudo/pkexec），交给系统安装器弹授权框；
+/// 不改动应用本体、不退出进程 —— 用户可能在软件中心里取消安装。
+#[tauri::command]
+pub async fn open_downloaded_package(path: String) -> Result<(), String> {
+    let pkg = PathBuf::from(path.trim());
+    if !pkg.is_file() {
+        return Err(format!("安装包不存在：{}", pkg.display()));
+    }
+    let (program, args) = open_package_command(os_label(), &pkg.to_string_lossy());
+    let mut cmd = tokio::process::Command::new(&program);
+    cmd.args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    let mut child = cmd.spawn().map_err(|e| {
+        format!("无法调用 {program}：{e}（当前环境可能没有图形界面，请手动安装）")
+    })?;
+    // 只等一小会儿：xdg-open 正常立刻返回；某些安装器会一直挂到用户关窗口，
+    // 超时即视为「已交给系统」—— 不阻塞前端，也不杀子进程。
+    match tokio::time::timeout(Duration::from_secs(8), child.wait()).await {
+        Ok(Ok(st)) if st.success() => Ok(()),
+        Ok(Ok(st)) => Err(format!(
+            "{program} 退出码 {}：系统可能没有关联安装器。请手动双击安装包，或复制路径后在终端安装。",
+            st.code()
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "未知".to_string())
+        )),
+        Ok(Err(e)) => Err(format!("等待 {program} 失败：{e}")),
+        Err(_) => Ok(()),
+    }
+}
+
+/// 打开安装包要执行的命令（纯函数，便于单测）：
+/// - linux：`xdg-open`（GNOME Software / Discover / GDebi 自带提权）
+/// - macos：`open`
+/// - windows：`cmd /C start ""`——`start` 的第一个参数会被当作窗口标题，必须给空串，
+///   否则路径被当成标题吞掉
+pub fn open_package_command(os: &str, path: &str) -> (String, Vec<String>) {
+    match os {
+        "macos" => ("open".to_string(), vec![path.to_string()]),
+        "windows" => (
+            "cmd".to_string(),
+            vec![
+                "/C".to_string(),
+                "start".to_string(),
+                String::new(),
+                path.to_string(),
+            ],
+        ),
+        _ => ("xdg-open".to_string(), vec![path.to_string()]),
+    }
+}
+
 /// 启动清掉上次残留（Zetla 退出时安装器已自行清理，这里兜底）：
 /// - `<temp>/zetla-update-*`：U2 起是目录，0.2.x~0.3.x 是扁平 `.exe`，两种都清；
 /// - 平台残留：Linux 原地替换的 `.zetla-{new,old}-*`、macOS 换包失败留下的 `<bundle>.old`。
@@ -913,5 +967,41 @@ mod tests {
             "不存在的目录不能被判为可写"
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ── U4 deb/rpm 引导：打开安装包的命令映射 ────────────────────────────
+
+    #[test]
+    fn open_package_command_linux_uses_xdg_open() {
+        let (prog, args) = open_package_command("linux", "/tmp/zetla-update-1/Zetla_0.4.0_amd64.deb");
+        assert_eq!(prog, "xdg-open");
+        // 路径必须原样作为唯一参数，不能被拆成多个或加引号
+        assert_eq!(args, vec!["/tmp/zetla-update-1/Zetla_0.4.0_amd64.deb"]);
+    }
+
+    #[test]
+    fn open_package_command_macos_uses_open() {
+        let (prog, args) = open_package_command("macos", "/tmp/Zetla_0.4.0.dmg");
+        assert_eq!(prog, "open");
+        assert_eq!(args, vec!["/tmp/Zetla_0.4.0.dmg"]);
+    }
+
+    #[test]
+    fn open_package_command_windows_fills_start_title() {
+        let (prog, args) = open_package_command("windows", r"C:\Temp\zetla-update-1\Zetla_0.4.0_x64-setup.exe");
+        assert_eq!(prog, "cmd");
+        // start 的第一个参数会被当窗口标题，空串占位少了就会把路径当标题吞掉
+        assert_eq!(args.len(), 4);
+        assert_eq!(args[0], "/C");
+        assert_eq!(args[1], "start");
+        assert_eq!(args[2], "");
+        assert_eq!(args[3], r"C:\Temp\zetla-update-1\Zetla_0.4.0_x64-setup.exe");
+    }
+
+    #[test]
+    fn open_package_command_unknown_os_falls_back_to_xdg_open() {
+        let (prog, args) = open_package_command("freebsd", "/tmp/a.deb");
+        assert_eq!(prog, "xdg-open");
+        assert_eq!(args, vec!["/tmp/a.deb"]);
     }
 }

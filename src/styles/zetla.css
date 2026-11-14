@@ -4700,6 +4700,36 @@ body.row-resizing {
   text-decoration: underline;
 }
 
+/* U4 · deb/rpm 引导：安装包落盘路径与操作行 */
+.update-pkg {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+}
+
+.update-path {
+  max-width: 100%;
+  margin: 0;
+  padding: 5px 9px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--txt-2);
+  background: rgba(127, 127, 127, 0.1);
+  border: 1px solid var(--line-soft);
+  border-radius: 6px;
+  word-break: break-all;
+  user-select: text;
+}
+
+.update-pkg-acts {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
 .update-progress {
   display: flex;
   flex-direction: column;

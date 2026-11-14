@@ -114,6 +114,8 @@ pub fn run() {
             commands::updater::download_app_update,
             commands::updater::fetch_latest_json,
             commands::updater::apply_update_and_exit,
+            // U4：deb/rpm 引导 —— 交给系统安装器打开已下载的包（不提权、不退出）
+            commands::updater::open_downloaded_package,
             // 日志面板内置终端（feat/terminal）
             commands::terminal::terminal_create,
             commands::terminal::terminal_write,

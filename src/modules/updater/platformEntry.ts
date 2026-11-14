@@ -61,6 +61,19 @@ function universalKey(key: string): string {
 }
 
 /**
+ * 该条目是否只能「下载 + 交系统安装器」（deb/rpm，U4）。
+ * 判定与 `toEntry` 保持一致：kind=none 且带 packages。
+ */
+export function needsManualInstall(entry: ResolvedEntry | null): boolean {
+  return entry?.kind === "none" && (entry.packages?.length ?? 0) > 0;
+}
+
+/** 取系统包源（deb/rpm）；没有则空数组 —— 调用方据此判断能否走下载引导 */
+export function packageSources(entry: ResolvedEntry | null): InstallerSrc[] {
+  return needsManualInstall(entry) ? (entry?.packages ?? []) : [];
+}
+
+/**
  * 按本机环境挑选更新包条目。
  * - `env` 为 null（Rust 命令失败）时按旧逻辑使用顶层 `installers`，保持 0.2.x 行为不变；
  * - 非 Windows 平台不回退顶层 `installers`（那是 Windows 安装器，喂给别的平台必失败）；

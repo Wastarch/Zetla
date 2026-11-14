@@ -1355,6 +1355,13 @@ function UpdateRegion({ version }: { version: string }) {
   const confirmInstall = useUpdateStore((s) => s.confirmInstall);
   const openRelease = useUpdateStore((s) => s.openRelease);
   const retry = useUpdateStore((s) => s.retry);
+  // U4：deb/rpm 引导通道
+  const manualInstall = useUpdateStore((s) => s.manualInstall);
+  const openError = useUpdateStore((s) => s.openError);
+  const downloadPackage = useUpdateStore((s) => s.downloadPackage);
+  const openPackage = useUpdateStore((s) => s.openPackage);
+  const downloadedPath = useUpdateStore((s) => s.downloadedPath);
+  const [copied, setCopied] = useState(false);
 
   const busy = status === "checking" || status === "downloading";
   const hasNew = status === "update" || status === "downloading" || status === "downloaded";
@@ -1362,12 +1369,28 @@ function UpdateRegion({ version }: { version: string }) {
   const canApply = env ? env.canSelfUpdate : true;
   // 该平台是否真的挑到了可下载的包（v2 清单可能不给某个平台）
   const entryUsable = !!entry && entry.kind !== "none" && entry.installers.length > 0;
+  // U4：deb/rpm 只能「下载 + 交系统安装器」（清单里给了 packages 才有这条路）
+  const hasPackages = (entry?.packages?.length ?? 0) > 0;
+  const canDownloadPkg = !canApply && hasPackages;
   // 不能自更新时的原因文案
   const blockReason = !canApply
-    ? (env?.reason ?? "当前平台的应用内更新尚未开放，请前往发布页下载安装包。")
+    ? canDownloadPkg
+      ? "下载后由系统安装器接管（需要你授权），Zetla 不会被自动替换。"
+      : (env?.reason ?? "当前平台的应用内更新尚未开放，请前往发布页下载安装包。")
     : !entryUsable
       ? "本次更新暂未提供当前平台的安装包，请前往发布页手动下载。"
       : "";
+
+  const copyPkgPath = () => {
+    if (!downloadedPath) return;
+    void navigator.clipboard
+      .writeText(downloadedPath)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  };
 
   const isWindows = (env?.os ?? "windows") === "windows";
   const onInstallClick = async () => {
@@ -1399,17 +1422,32 @@ function UpdateRegion({ version }: { version: string }) {
               下载并安装
             </button>
           )}
-          {status === "update" && (!canApply || !entryUsable) && latest?.releaseUrl && (
+          {/* U4：deb/rpm —— 下载系统安装包，交给系统安装器（不替换自身） */}
+          {status === "update" && canDownloadPkg && (
+            <button
+              type="button"
+              className="btn primary sm"
+              onClick={() => void downloadPackage()}
+            >
+              下载安装包
+            </button>
+          )}
+          {status === "update" && !canDownloadPkg && (!canApply || !entryUsable) && latest?.releaseUrl && (
             <button type="button" className="btn primary sm" onClick={openRelease}>
               去发布页下载
             </button>
           )}
-          {status === "downloaded" && (
+          {status === "downloaded" && !manualInstall && (
             <button type="button" className="btn primary sm" onClick={() => void onInstallClick()}>
               立即安装并重启
             </button>
           )}
-          {status === "error" && canApply && entryUsable && (
+          {status === "downloaded" && manualInstall && (
+            <button type="button" className="btn primary sm" onClick={() => void openPackage()}>
+              打开安装包
+            </button>
+          )}
+          {status === "error" && (hasPackages || (canApply && entryUsable)) && (
             <button type="button" className="btn primary sm" onClick={() => void retry()}>
               重试
             </button>
@@ -1479,12 +1517,52 @@ function UpdateRegion({ version }: { version: string }) {
         </div>
       )}
 
-      {status === "downloaded" && (
+      {status === "downloaded" && !manualInstall && (
         <p className="update-line">
           {isWindows
             ? "更新已下载完成，点击安装将关闭 Zetla 并启动安装程序。"
             : "更新已下载完成，点击安装将替换当前版本并自动重启。"}
         </p>
+      )}
+
+      {/* U4：deb/rpm —— 已交给系统安装器；打不开时降级为手动安装 */}
+      {status === "downloaded" && manualInstall && (
+        <div className="update-pkg">
+          {openError ? (
+            <>
+              <p className="update-line err">
+                <Icon name="alert" size={12} />
+                {openError}
+              </p>
+              <p className="update-line">安装包已下载，可手动双击安装：</p>
+            </>
+          ) : (
+            <p className="update-line">
+              安装包已下载并交给系统安装器，按提示授权即可完成安装。Zetla 会保持当前版本运行，
+              安装完成后重新打开即为新版。
+            </p>
+          )}
+          {downloadedPath && (
+            <p className="update-path" title={downloadedPath}>
+              {downloadedPath}
+            </p>
+          )}
+          <div className="update-pkg-acts">
+            <button type="button" className="update-link" onClick={() => void openPackage()}>
+              重新打开
+            </button>
+            {downloadedPath && (
+              <button type="button" className="update-link" onClick={copyPkgPath}>
+                {copied ? "已复制" : "复制路径"}
+              </button>
+            )}
+            {latest?.releaseUrl && (
+              <button type="button" className="update-link" onClick={openRelease}>
+                发布说明
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       {status === "error" && (

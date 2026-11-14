@@ -1,6 +1,11 @@
 // U1 · 清单协议 v2 平台条目选择单测（Node 直接跑）：
 //   node --experimental-strip-types scripts/update-platform-entry.test.ts
-import { normalizeKind, pickEntry } from "../src/modules/updater/platformEntry.ts";
+import {
+  needsManualInstall,
+  normalizeKind,
+  packageSources,
+  pickEntry,
+} from "../src/modules/updater/platformEntry.ts";
 import type {
   InstallerSrc,
   LatestInfo,
@@ -148,6 +153,30 @@ check(
   pickEntry({ version: "1.0.0", installers: [] as InstallerSrc[], platforms: {} }, WIN) === null,
   "platforms 为 {} → null",
 );
+
+// ── 6) U4 · deb/rpm 引导通道判定 ───────────────────────────────
+console.log("\n== 6) U4 系统包引导通道 ==");
+check(needsManualInstall(deb), "只有 deb 包 → 走系统安装器通道");
+check(packageSources(deb).length === 1, "packageSources 取到 deb 源");
+check(packageSources(deb)[0]?.url.endsWith(".deb"), "系统包源是 deb");
+check(!needsManualInstall(pickEntry(v2, LINUX)), "AppImage 条目不走系统安装器");
+check(!needsManualInstall(pickEntry(v2, WIN)), "Windows exe 条目不走系统安装器");
+check(!needsManualInstall(null), "entry 为 null → 不误判为系统包通道");
+check(packageSources(null).length === 0, "entry 为 null → 无系统包源");
+// kind=none 但没有 packages（清单写漏）：不能当成可下载，避免空下载
+const noneNoPkg = {
+  kind: "none" as const,
+  installers: [],
+};
+check(!needsManualInstall(noneNoPkg), "kind=none 但无 packages → 不算系统包通道");
+check(packageSources(noneNoPkg).length === 0, "kind=none 且无 packages → 空源数组");
+// kind 有值但也带了 packages（清单冗余）：系统包只作补充，不改变自更新通道
+const appimageWithPkg = {
+  kind: "appimage" as const,
+  installers: [src("a.AppImage")],
+  packages: [src("a.deb")],
+};
+check(!needsManualInstall(appimageWithPkg), "appimage + packages → 仍走自更新");
 
 console.log(`\n${failed === 0 ? "全部通过" : "存在失败"}：${passed} 通过 / ${failed} 失败`);
 if (failed > 0) process.exit(1);
