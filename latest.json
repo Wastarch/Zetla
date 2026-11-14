@@ -1,18 +1,77 @@
 {
-    "version": "0.2.8",
-    "notes": "新增内置终端模块：底部日志面板新增「终端」页签\n许可证切换为 AGPLv3",
-    "pubDate": "2026-11-09T00:00:00+08:00",
-    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.2.8",
+    "version": "0.3.0",
+    "notes": "## 绘图模块（TikZ）\n- 侧栏新增「绘图」视图：在 Zetla 里直接画图，TikZ 源码就是唯一真源\n- 拖控制点、改样式、调尺寸、排公式都以最小补丁写回源码，与键盘编辑共用一条撤销栈\n- 节点内 `$...$` 由 MathJax 渲染，双击节点可就地改文字或公式\n- 导出 PNG / SVG / PDF，一键插入 figure 环境；也可把 PNG / JPG / PDF 暂存进项目后在画布上放置\n\n## 跨平台\n- TeX Live 自动安装支持 Linux / macOS：安装器按平台分流，下载并发测速择优、卡住或低速自动换源，并补上中文集合\n- 更新器支持 Linux AppImage 原地换包、deb / rpm 下载后交系统安装器，以及 macOS .app 换包后自动重启\n- 关于页重做：更新说明按标题与列表结构化展示，主操作常驻顶部",
+    "pubDate": "2026-11-14T21:11:42+08:00",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.3.0",
     "installers": [
         {
-            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.2.8/Zetla_0.2.8_x64-setup.exe",
-            "sha256": "4D1609B1E74D9DEC05C2B544347BAF0FC74DB02D56F93050A900AEA9A1B48B9B"
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_x64-setup.exe",
+            "sha256": "70A9BEF324E8DBA61F7708DBC752C620B03A0358EAD84192B672D7EF7219A59C"
         },
         {
-            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.2.8/Zetla_0.2.8_x64-setup.exe",
-            "sha256": "4D1609B1E74D9DEC05C2B544347BAF0FC74DB02D56F93050A900AEA9A1B48B9B"
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_x64-setup.exe",
+            "sha256": "70A9BEF324E8DBA61F7708DBC752C620B03A0358EAD84192B672D7EF7219A59C"
         }
     ],
+    "platforms": {
+        "darwin-universal": {
+            "kind": "app-tar-gz",
+            "installers": [
+                {
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_universal.app.tar.gz",
+                    "sha256": "C020BB484A56636B78130B354A58E39D5EAF4AF2238687CDE8535C2B0BE79FA1"
+                },
+                {
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_universal.app.tar.gz",
+                    "sha256": "C020BB484A56636B78130B354A58E39D5EAF4AF2238687CDE8535C2B0BE79FA1"
+                }
+            ]
+        },
+        "linux-x86_64": {
+            "kind": "appimage",
+            "installers": [
+                {
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_amd64.AppImage",
+                    "sha256": "892B8E90311F4D56D93CC83A5C394060200A2CA6854866558C7B5A2AC61CA03A"
+                },
+                {
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_amd64.AppImage",
+                    "sha256": "892B8E90311F4D56D93CC83A5C394060200A2CA6854866558C7B5A2AC61CA03A"
+                }
+            ],
+            "packages": [
+                {
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_amd64.deb",
+                    "sha256": "3889ACDA1F525B4A159917CAEE9DC853329063F70CF695F48FC122B9E16A6723"
+                },
+                {
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_amd64.deb",
+                    "sha256": "3889ACDA1F525B4A159917CAEE9DC853329063F70CF695F48FC122B9E16A6723"
+                },
+                {
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla-0.3.0-1.x86_64.rpm",
+                    "sha256": "05024D236F9791A916A5C95BD559BBA932790F1A179F515A6CA3DD76F07DE0FE"
+                },
+                {
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla-0.3.0-1.x86_64.rpm",
+                    "sha256": "05024D236F9791A916A5C95BD559BBA932790F1A179F515A6CA3DD76F07DE0FE"
+                }
+            ]
+        },
+        "windows-x86_64": {
+            "kind": "exe",
+            "installers": [
+                {
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_x64-setup.exe",
+                    "sha256": "70A9BEF324E8DBA61F7708DBC752C620B03A0358EAD84192B672D7EF7219A59C"
+                },
+                {
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.3.0/Zetla_0.3.0_x64-setup.exe",
+                    "sha256": "70A9BEF324E8DBA61F7708DBC752C620B03A0358EAD84192B672D7EF7219A59C"
+                }
+            ]
+        }
+    },
     "minVersion": "0.1.0",
     "mandatory": false
 }

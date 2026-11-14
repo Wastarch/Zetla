@@ -4,6 +4,96 @@
 
 ---
 
+## Zetla 0.3.0 —— 绘图模块（TikZ）· 跨平台 TeX 安装 · Linux / macOS 自更新
+
+本版把「画图」搬进了工作台：侧栏新增「绘图」视图，**TikZ 源码是唯一真源**——在画布上拖控制点、改样式、调尺寸、排公式，每一处改动都以最小补丁写回源码，并与键盘编辑共用同一条撤销栈；画完可导出 PNG / SVG / PDF，或直接插入 `figure` 环境。同版把「装 TeX」与「升级 Zetla」两条链路铺到 Linux / macOS：TeX Live 安装器按平台分流并支持测速择优、异常自动换源，更新器新增清单协议 v2、AppImage 原地换包、deb / rpm 交系统安装器与 macOS `.app` 换包后自动重启，关于页也重做为结构化的更新说明。
+
+### 亮点
+
+- **绘图模块（TikZ）**
+  - **入口与布局**：活动栏新增「绘图」视图，打开一个 `diagram://editor` 伪标签页；Tab 内支持仅画布 / 仅源码 / 左右分屏三布局，分屏比例可拖拽并记忆
+  - **双预览通道**：本地通道用内置 tikz-editor 引擎即时渲染（160ms 防抖 + LRU 缓存，零网络零外部依赖）；XeLaTeX 精确通道产出与导出一致的最终效果。引擎不支持的构造有常驻「预览不完整」提示与可点诊断，可一键切精确通道
+  - **控制点编辑**：拖动句柄写回源码坐标，拖动过程实时预览几何变化；选中框 8 点柄缩放、旋转柄旋转、`Delete` 删除、方向键微调、复制粘贴与 `Ctrl+D` 复制，多选一次撤销
+  - **属性与样式**：颜色 / 线宽 / 箭头 / 线型 / 填充五类属性下拉 + 自定义值，改的是选项 span；能力矩阵判定为不可写的图元显示挂锁与具体理由，绝不静默改语义
+  - **尺寸与公式**：节点 W / H 数值面板（cm / pt），画布 8 点柄按轴改写 `text width` / `minimum height`，可批量套用到同类节点并识别共享 `.style`；节点内 `$...$` / `$$...$$` 由 MathJax 渲染为公式字形，混排按真实字形宽度排版
+  - **就地编辑**：双击节点弹出输入框，只替换 `{...}` 内容 span，可写中文、公式与换行
+  - **选择与组织**：空白区框选、`Shift` 加减选；虚拟分组支持命名 / 嵌套 / 折叠 / 锁定 / 隐藏（只存本机，不写进源码）；图层树首层即 z-order，可一键置顶置底
+  - **对齐与变换**：对齐 / 分布、拖动时的智能参考线吸附、网格标尺与吸附网格、变换面板数值旋转缩放
+  - **画布与视角**：固定画布 A4 / A5 / Letter / B5 或自定义（高度不超过纸张正文高），滚轮锚点缩放 0.25×–16×、抓手平移、适应画布 / 适应内容；缩放只影响视角，不改 `viewBox` 真源
+  - **导出与插入**：导出 PNG / SVG / PDF 到项目图片目录或「另存为」；可开启「按画布尺寸导出」保留固定留白（只在派生片段加 bounding box，绘图源码一字不改）；一键插入 `figure` 环境并按画布宽度设置 `width`
+  - **图片素材**：选 PNG / JPG / PDF 暂存到项目图片目录（默认 `figure/`）→ 画布上单击放置 → 写回 `\includegraphics` 并自动补 `graphicx` 导言区；本地画布直接显示真图，8 点柄缩放改写 `width` / `height`；同名文件可选重命名或覆盖（覆盖既有文件二次确认），未插入主文档的暂存图在关闭绘图 Tab 后清理
+  - **安全与只读**：XeLaTeX 通道下所有写源码入口统一置灰并给出理由；SVG 走元素 / 属性白名单消毒；编译固定 `-no-shell-escape`，危险构造直接拒绝
+- **跨平台 TeX Live 安装**
+  - Linux / macOS 改用官方 `install-tl-unx.tar.gz`（约 5MB，Windows 仍用 `install-tl.zip`），下载体积省约 80%；Unix 直接以 shebang 启动安装器，解压保留可执行位
+  - Unix 使用系统 Perl 并在下载前做前置检查，缺失时给出 `apt` / `brew` / MacTeX 提示，不再白下载后失败
+  - 默认安装目录改为按平台动态获取，向导不再显示 Windows 的 `%LOCALAPPDATA%` 路径
+  - **下载链路增强**：并发测速择优、15 秒无数据判定 stall 并换源、低于 20KB/s 持续 6 秒自动换源、速度改为 5 秒滑窗均值、界面常驻显示当前镜像，并支持手动换源
+  - **续传安全**：只在同一镜像内用 `Range` + `If-Range` 续传，跨镜像一律截断重下，避免拼出不同快照的坏包
+  - **中文支持**：基础方案补 `collection-langchinese`，修 Linux / macOS 上 PDF 中文全空白的隐蔽问题；日志中的 `Missing character` 聚合为一条警告
+- **Linux / macOS 自动更新**
+  - **清单协议 v2**：`latest.json` 新增 `platforms`（`windows-x86_64` / `darwin-universal` / `linux-x86_64`，每项含 `kind` / `installers` / `packages`）；顶层 `installers` 继续指向 Windows 包，保证只读这一项的老客户端（0.2.x）仍能收到更新
+  - **AppImage 自更新**：同目录 copy → `chmod 755` → 备份 → `rename` 原子覆盖 → 拉起新进程，失败自动回滚；不需要外部安装器
+  - **deb / rpm 引导安装**：下载后交系统安装器（`xdg-open`），不自行提权、不覆盖 `/usr`；关于页只出现「下载安装包」，打开失败降级为手动安装提示并给出路径
+  - **macOS 换包**：解压 `app.tar.gz` → 退出后由脚本 `ditto` 换包 → 清 `com.apple.quarantine` → `open -n` 自动重开，失败自动回滚；改名运行中的 `.app` 是 macOS 允许的，因此无需管理员权限
+  - **下载落盘目录化**：每次更新落在 `<temp>/zetla-update-<时间戳>/<真实文件名>`，多源各自成文件、失败即清；启动时清理残留（含 macOS `.old` 与 Linux `.zetla-*`）
+  - **关于页重做**：身份卡 + 结构化更新说明（标题 / 列表 / 粗体 / 代码，超 6 行折叠为「展开全部」）+ 主操作常驻顶部，版本迁移行显示 `v0.2.8 → v0.3.0` 与发布日期；状态细化为检查中 / 已是最新 / 下载中（百分比 + 已下/总量 + 当前源）/ 待安装 / 失败（原因 + 重试 + 去发布页）
+- **发布工程**
+  - 新增 `scripts/update-manifest.mjs`：扫产物目录、按「后缀 + 文件名含版本号」识别、重算 sha256，一次生成 `latest.json` 的顶层 `installers` 与 `platforms`（幂等，支持 `--dry-run` / `--assets` / `--base` / `--notes`）
+  - CI 新增 macOS universal 工作流（产物为 `.app` + `dmg` + `app.tar.gz`），Linux / macOS 两个工作流都补了 `SHA256SUMS` 并随产物上传
+  - 修混合清单下一个真 bug：同版本既出 AppImage 又出 deb 时，deb 安装版取到空下载源
+
+### 改进 / 修复
+
+- 导出片段把 `\usepackage` / `\usetikzlibrary` 抽到导言区并在正文注释掉（行数不变），修 `Can be used only in preamble` 与 `30.sty not found`
+- PNG 导出加 `-singlefile` 并按扩展名兜底查找产物，修 pdftocairo 未按预期命名导致「导出成功但没有文件」
+- 精确通道失败时优先展示结构化解析错误，不再把 XeTeX 启动横幅当报错；工具条新增「重新编译」跳过缓存
+- 控制点恒屏尺寸补乘 `viewBox → px` 比例，修小图里控制点被放大到约 21px；`ResizeObserver` 覆盖侧栏伸缩 / 分屏 / 窗口缩放
+- 矩形 8 点柄按角 / 边语义改写端点坐标（角锚对角、边锚对边），支持反向 / 对角书写的矩形
+- 多 `path-point` 图元（线 / 矩形 / 多边形）拖本体整体平移，不再只动一个句柄
+- 隐藏控制点后仍可拖本体与选中框平移；`fit` 节点改为移动被引用的节点
+- 重复命名的坐标句柄不再遮挡节点拖拽（节点仍可拖、箭头仍跟随命名引用）
+- 公式按 em 归一 MathJax 字号并注入 `measureText` 实测字形宽度，修 α 被放大约 2.2 倍与文字间空隙
+- 安装向导安装期间点击背景 / 关闭按钮不再误触取消，唯一入口是「取消安装」
+- macOS 窗口改为系统红绿灯按钮布局；修正 macOS 上配置路径显示错误，并默认打开 `main.tex`（感谢 @zhangwenwen 的 PR）
+- 移除「文件已在编辑器外部被修改」提示条（手工重读原语保留）
+- 绘图 Tab 图标与活动栏「绘图」视图统一为画笔 sprite
+
+### 安装 / 升级
+
+1. Windows：下载 `Zetla_0.3.0_x64-setup.exe` 并运行
+2. 安装包未签名，SmartScreen 提示时选「更多信息 → 仍要运行」
+3. 需要 Windows 10/11；WebView2 Runtime 已内置时直接使用，缺失时安装包会尝试自动下载安装（需联网）
+4. 从 0.2.x 及更早版本升级可直接覆盖安装：安装标识不变，配置、偏好、最近项目、上次项目、自定义编译流程、语法配色与终端设置都会保留；新增字段自动补默认值
+5. Linux：`Zetla_0.3.0_amd64.AppImage`（`chmod +x` 后直接运行，可自更新）、`zetla_0.3.0_amd64.deb`、`.rpm`（系统包安装版只提供下载引导）
+6. macOS：`Zetla_0.3.0_universal.app.tar.gz`（通用二进制，自更新）或 `.dmg`（首次安装）；ad-hoc 签名，首次打开需在「系统设置 → 隐私与安全性」允许
+7. TeX 可选：不装也可以，首次启动的引导页可直接安装 TeX Live；绘图模块的 XeLaTeX 精确预览与导出需要可用的 TeX 环境
+
+SHA256：Windows 安装包与 Linux / macOS 产物的校验和以 Releases 页与 `latest.json` 为准（本版清单由 `npm run release:manifest` 生成，sha256 与上传产物一一对应）。
+
+### 已知限制
+
+- **绘图**：引擎未覆盖的 TikZ 构造（`\pic`、`angles` / `quotes` 库等）在本地预览中会被跳过，界面已常驻提示「预览不完整」，导出以 XeLaTeX 通道为准
+- 绘图仅以 `tikzpicture` 为真源：不做 pgfplots / circuitikz / chemfig，函数图像、画布内表格、图元形状热切换、自由钢笔路径均未实现
+- 组件库只列出 5 类模板（神经网络 / 概率图 / 流程图 / 张量 / 受力分析）分类，尚未提供一键插入
+- 图片插入：`\includegraphics` 不支持 SVG，图片模式只给 PNG / PDF；PDF 在本地通道回落到字面量（精确通道可显示真图）
+- 绘图 Tab 内的图与主文档里的 `tikzpicture` 是两份，暂未提供「从主文档反向载入再回写」
+- 单个 `tikzpicture` 的规模上限与多图性能优化未做，超大图可能变慢
+- **平台**：Windows 为正式发布与验收平台；本版 Linux / macOS 首次接入自更新链路（macOS 同时首次提供构建产物），仍属适配阶段，遇到问题请附发行版与版本号提 Issue
+- 安装包未签名；Windows 应用内更新拉起安装向导时若被 SmartScreen 拦截需点「仍要运行」
+- Linux deb / rpm 安装版不能自更新，只能下载新包后由系统安装器覆盖安装
+- macOS 为 ad-hoc 签名、未经公证：从浏览器下载的 `.dmg` / `.app.tar.gz` 首次打开需在「系统设置 → 隐私与安全性」放行一次；应用内自更新会自动清理 quarantine，不再二次提示
+- **单活动项目**：当前一次只打开一个项目，未支持同时打开多个项目工作区
+- BibTeX 解析为轻量实现，Zotero 仅支持「导出 `.bib` 后导入」，不做 API 双向同步
+- 许可证：GNU Affero General Public License v3（AGPLv3，OSI 开源；通过网络提供服务时需提供修改后的完整源码）
+
+### 反馈
+
+问题与建议请提 Issue：https://github.com/Wastarch/Zetla/issues
+
+完整对比：https://github.com/Wastarch/Zetla/compare/v0.2.8...v0.3.0
+
+---
+
 ## Zetla 0.2.8 —— 内置终端 · 多会话 · 终端设置
 
 本版把终端搬进了工作台：底部日志面板新增「终端」页签，基于 xterm.js + portable-pty，Windows 默认 PowerShell、Linux / Unix 跟随 `$SHELL`。终端支持多会话，每个会话拥有独立的 xterm 缓冲与 PTY，切换页签或会话不会销毁进程；终端 PATH 复用编译引擎的搜索目录，终端里能用的 `latexmk` / `xelatex` 与一键编译保持一致。同时新增「编辑器 → 终端」设置分组，并修复了打开终端即卡死（`0xCFFFFFFF STATUS_APPLICATION_HANG`）等稳定性问题。

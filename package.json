@@ -13,6 +13,7 @@
     "package:win": "npm run tauri build -- --no-bundle && npm run package:inno",
     "package:inno": "node scripts/package-inno.mjs",
     "release:manifest": "node scripts/update-manifest.mjs",
+    "release:sha": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sha256.ps1",
     "postinstall": "patch-package"
   },
   "dependencies": {
