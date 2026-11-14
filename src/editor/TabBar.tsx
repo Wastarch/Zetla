@@ -48,11 +48,13 @@ export function TabBar({ onFind }: TabBarProps) {
         {buffers.map((b) => {
           const active = b.path === activePath;
           const dirty = b.content !== b.savedContent;
+          // 绘图 Tab 图标与侧栏「绘图」视图同源（sprite `#i-draw`，即
+          // src/assets/icon/绘图.svg 的同一 path），改一处两边一致
           const iconName =
             b.kind === "image" ? "image"
               : b.kind === "pdf" ? "pdf"
                 : b.kind === "figure" ? "image"
-                  : b.kind === "diagram" ? "wand"
+                  : b.kind === "diagram" ? "draw"
                     : "tex";
           return (
             <div
