@@ -40,6 +40,62 @@ export function isImageFile(f: File): boolean {
   return f.type.startsWith("image/");
 }
 
+/** MIME / UTI 字符串 → 落盘扩展名（覆盖 macOS `public.png` 之类写法） */
+function extFromMime(s: string): string {
+  const t = s.toLowerCase();
+  if (/jpe?g/.test(t)) return "jpg";
+  if (/png/.test(t)) return "png";
+  if (/gif/.test(t)) return "gif";
+  if (/webp/.test(t)) return "webp";
+  if (/tif/.test(t)) return "tif";
+  if (/bmp/.test(t)) return "bmp";
+  if (/avif/.test(t)) return "avif";
+  if (/svg/.test(t)) return "svg";
+  return "png";
+}
+
+/**
+ * 从 DataTransfer 同步取出图片 File（剪贴板粘贴 / HTML5 拖放共用，跨平台）。
+ *
+ * 平台差异：
+ *  - Chromium / WebView2（Windows，多数 Linux 发行版）：clipboardData.files 直接有图；
+ *  - WKWebView（macOS）/ WebKitGTK：有时 files 为空、图片只在 items 里，且 getAsFile()
+ *    得到的 File.name 可能为空或固定 image.png，type 也可能是 UTI（public.png）而非 image/png。
+ *
+ * 优先用 files（有值即返回，避免与 items 重复取到同一张图）；files 为空才走 items 兜底，
+ * 并给缺名 / 扩展名非图片的 File 补一个合法文件名——FigureSidebar 生成代码时直接用
+ * src.file.name 调 import_image 落盘，空名或无扩展名会导致落盘失败 / 生成坏文件名。
+ *
+ * 必须在事件回调的同步阶段调用：clipboardData 在 await 之后即失效。
+ */
+export function imagesFromDataTransfer(dt: DataTransfer | null): File[] {
+  if (!dt) return [];
+  const fromFiles = Array.from(dt.files ?? []).filter(isImageFile);
+  if (fromFiles.length > 0) return fromFiles;
+
+  const out: File[] = [];
+  const items = dt.items;
+  for (let i = 0; i < (items?.length ?? 0); i++) {
+    const item = items[i]!;
+    if (item.kind !== "file") continue;
+    const f = item.getAsFile?.();
+    if (!f) continue;
+    // item.type 与 f.type 都可能是 UTI / 空，合并后按关键字判定
+    const meta = `${item.type} ${f.type}`;
+    if (!isImageFile(f) && !/image\/|png|jpe?g|gif|webp|tiff?|bmp/i.test(meta)) continue;
+    const ext = extFromMime(meta);
+    const hasGoodName = !!f.name && /\.[A-Za-z0-9]+$/.test(f.name) && EXT_IMG.has(extOf(f.name));
+    out.push(
+      hasGoodName
+        ? f
+        : new File([f], `pasted-${Date.now()}-${i}.${ext}`, {
+            type: `image/${ext === "jpg" ? "jpeg" : ext}`,
+          }),
+    );
+  }
+  return out;
+}
+
 /** 组装一个 figure 环境片段（M2-5d：与 fig 片段共用 core/latexTemplates.buildFigure） */
 export function buildFigureSnippet(relPath: string, slug: string, labelPrefix = "fig:"): string {
   return buildFigure({ path: relPath, caption: "", label: `${labelPrefix}${slug}` });

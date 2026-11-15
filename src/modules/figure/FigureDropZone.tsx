@@ -16,7 +16,7 @@
 // 判断落点是否属于任一拼图区域；侧栏 / 预览页同时挂载也不会把一次 drop 重复消费。
 import { useEffect, type ReactNode } from "react";
 import { listen, TauriEvent, type UnlistenFn } from "@tauri-apps/api/event";
-import { isImageFile } from "@/editor/image/importImage";
+import { imagesFromDataTransfer } from "@/editor/image/importImage";
 import { dropPathsToCanvas, pasteImagesToCanvas } from "./figureImport";
 
 interface Props {
@@ -116,9 +116,14 @@ hot?.dispose(() => {
   setHighlight(null);
 });
 
-/** dragover 阶段 dataTransfer.files 恒为空，只能用 types 判断是否为文件拖入 */
+/**
+ * dragover 阶段 dataTransfer.files 恒为空，只能用 types 判断是否为文件拖入。
+ * Chromium/WebView2 给 "Files"；WKWebView(macOS) 也可能给 "public.file-url" 等 UTI，
+ * 故做宽松匹配，避免 macOS 上 preventDefault 不执行导致 drop 不派发。
+ */
 function isFileDrag(dt: DataTransfer | null): boolean {
-  return !!dt && Array.from(dt.types).includes("Files");
+  if (!dt) return false;
+  return Array.from(dt.types).some((t) => t === "Files" || /file|public\./i.test(t));
 }
 
 export default function FigureDropZone({ className, children }: Props) {
@@ -141,7 +146,7 @@ export default function FigureDropZone({ className, children }: Props) {
       onPaste={(e) => {
         const dt = e.clipboardData;
         if (!dt) return;
-        const imgs = Array.from(dt.files).filter(isImageFile);
+        const imgs = imagesFromDataTransfer(dt);
         if (imgs.length === 0) return; // 非图片粘贴（如行列框数字）→ 放行
         e.preventDefault();
         void pasteImagesToCanvas(imgs);
@@ -158,7 +163,7 @@ export default function FigureDropZone({ className, children }: Props) {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHighlight(null);
       }}
       onDrop={(e) => {
-        const imgs = Array.from(e.dataTransfer?.files ?? []).filter(isImageFile);
+        const imgs = imagesFromDataTransfer(e.dataTransfer);
         if (imgs.length === 0) return;
         e.preventDefault();
         setHighlight(null);

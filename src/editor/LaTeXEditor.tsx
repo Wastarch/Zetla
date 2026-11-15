@@ -36,7 +36,7 @@ import {
   duplicateKeyLinter,
   missingCiteLinter,
 } from "@/modules/reference/lint";
-import { importAndInsert, isImageFile } from "./image/importImage";
+import { importAndInsert, imagesFromDataTransfer } from "./image/importImage";
 import {
   inputJumpAtCursor,
   inputJumpHint,
@@ -455,7 +455,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
                   const dt = event.dataTransfer;
                   view.dom.classList.remove("drag-over");
                   if (!dt) return false;
-                  const files = Array.from(dt.files).filter(isImageFile);
+                  const files = imagesFromDataTransfer(dt);
                   if (files.length === 0) return false;
                   event.preventDefault();
                   void importAndInsert(files);
@@ -464,7 +464,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
                 paste: (_event, _view) => {
                   const dt = _event.clipboardData;
                   if (!dt) return false;
-                  const files = Array.from(dt.files).filter(isImageFile);
+                  const files = imagesFromDataTransfer(dt);
                   if (files.length === 0) return false; // 纯文本粘贴 → 交还 CM，零副作用
                   _event.preventDefault();
                   void importAndInsert(files);
