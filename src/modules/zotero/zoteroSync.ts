@@ -336,10 +336,51 @@ export function shouldPull(
   return !Number.isFinite(t) || now - t >= minIntervalMs;
 }
 
-/** 路径归一化：统一分隔符、剥 Windows verbatim 前缀、大小写折叠（仅用于比对） */
+/**
+ * 路径归一化（仅用于比对）：统一分隔符、剥 Windows verbatim 前缀、
+ * 折叠重复斜杠 / `.` / `..`、大小写折叠。
+ *
+ * 必要性：项目树里的 `ProjectNode.path` 是 Windows 反斜杠写法，而绑定路径
+ * `normalizeBibPath()` 统一输出正斜杠（还可能带 `./`）；若只做 toLowerCase
+ * 比对，同一个 .bib 会被当成两个文件解析两遍 → 引用面板出现重复分组、
+ * 重复 key 告警。UNC / POSIX 前导斜杠与盘符必须保留。
+ */
 export function pathKey(s: string): string {
-  const v = s.replace(/\\/g, "/").replace(/^\/\/\?\//, "");
-  return v.toLowerCase();
+  const raw = s.replace(/\\/g, "/").replace(/^\/\/\?\//, "");
+  const unc = raw.startsWith("//");
+  const absolute = raw.startsWith("/");
+  const parts: string[] = [];
+  for (const seg of raw.split("/")) {
+    if (seg === "" || seg === ".") continue;
+    if (seg === "..") {
+      if (parts.length > 0 && parts[parts.length - 1] !== "..") parts.pop();
+      else if (!absolute && !unc) parts.push("..");
+      continue;
+    }
+    parts.push(seg.toLowerCase());
+  }
+  const body = parts.join("/");
+  if (unc) return `//${body}`;
+  if (absolute) return `/${body}`;
+  return body;
+}
+
+/**
+ * 合并「项目树内的 .bib」与「Zotero 绑定的外部 .bib」，按规范化路径去重。
+ * 顺序保证：项目树路径优先保留 —— `BibEntry.file` 必须与 `ProjectNode.path`
+ * 的写法一致，否则 Ctrl+点击跳转与资源树定位会匹配不上。
+ */
+export function mergeBibPaths(treePaths: string[], externalPaths: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const p of [...treePaths, ...externalPaths]) {
+    if (!p || !p.trim()) continue;
+    const k = pathKey(p);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(p);
+  }
+  return out;
 }
 
 /** 相对项目根 → 绝对路径；已是绝对路径原样返回（纯字符串，不依赖 node:path） */

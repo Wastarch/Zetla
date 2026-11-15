@@ -176,7 +176,13 @@ function handleBibChanged(e: ZoteroBibChanged): void {
       } else {
         st.setSyncError(null);
         try {
-          await useBuffersStore.getState().revertBuffer(e.path);
+          // Rust 事件路径与项目树/缓冲路径写法可能不同（反斜杠、正斜杠、verbatim 前缀），
+          // 而 revertBuffer 内部是精确字符串匹配；先按规范化路径找到缓冲，再用它自己的 path 重载。
+          const evKey = pathKey(e.path);
+          const opened = useBuffersStore
+            .getState()
+            .buffers.find((b) => b.kind === "text" && pathKey(b.path) === evKey);
+          if (opened) await useBuffersStore.getState().revertBuffer(opened.path);
         } catch {
           /* 文件可能正在被 BBT 重写，下一轮事件会再来 */
         }

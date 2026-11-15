@@ -19,6 +19,7 @@ import {
   isPathInsideRoot,
   itemsToBibtex,
   makeCiteKey,
+  mergeBibPaths,
   normalizeBibPath,
   parseCollections,
   parseItemKeyNotes,
@@ -227,6 +228,25 @@ eq(isPathInsideRoot("E:/Proj", "E:/Proj/references.bib"), true, "项目内路径
 eq(isPathInsideRoot("E:/Proj", "e:/proj/sub/A.BIB"), true, "大小写不敏感");
 eq(isPathInsideRoot("E:/Proj", "E:/ProjectElsewhere/a.bib"), false, "同前缀不同目录不误判");
 eq(isPathInsideRoot("E:/Proj", "D:/Other/a.bib"), false, "跨盘符拒绝");
+// 回归：引用面板出现两个同名 references.bib 分组 + 18 个重复 key
+// 根因 = 项目树反斜杠路径与绑定正斜杠路径只做了 toLowerCase 比对
+eq(pathKey("E:\\Proj\\.\\refs\\a.bib"), "e:/proj/refs/a.bib", "折叠 . 段");
+eq(pathKey("E:/Proj//sub/../refs.bib"), "e:/proj/refs.bib", "折叠重复斜杠与 .. 段");
+eq(pathKey("//srv/share/Refs.bib"), "//srv/share/refs.bib", "UNC 前导 // 保留");
+eq(pathKey("\\\\?\\E:\\Proj\\Refs.bib"), "e:/proj/refs.bib", "反斜杠 verbatim 前缀也可剥离");
+const merged = mergeBibPaths(
+  ["E:\\Proj\\references.bib"],
+  ["E:/Proj/references.bib", "E:/Proj/./references.bib"],
+);
+eq(merged.length, 1, "同一 .bib 的项目树写法与绑定写法合并为一条");
+eq(merged[0], "E:\\Proj\\references.bib", "优先保留项目树写法，保证跳转可定位");
+const merged2 = mergeBibPaths(
+  ["E:\\Proj\\ref.bib"],
+  ["D:/Other/a.bib", "d:\\other\\A.bib", ""],
+);
+eq(merged2.length, 2, "外部路径自身也按规范化去重，空路径丢弃");
+eq(merged2[1], "D:/Other/a.bib", "保留外部路径首次写法");
+eq(mergeBibPaths([], []).length, 0, "空输入返回空数组");
 eq(isNewChange(null, { path: "a", hash: "h", reason: "external" }), true, "首条变更必发");
 eq(isNewChange({ path: "a", hash: "h" }, { path: "A", hash: "h", reason: "sync" }), false, "同路径同 hash 去重（大小写）");
 eq(isNewChange({ path: "a", hash: "h1" }, { path: "a", hash: "h2", reason: "external" }), true, "hash 变化视为新变更");

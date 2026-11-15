@@ -7,6 +7,7 @@ import { parseBib, findDuplicateKeys, type BibEntry } from "./bibParser";
 import { useProjectStore, extOf } from "@/project/useProject";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { projectApi } from "@/ipc/invoke";
+import { mergeBibPaths, pathKey } from "@/modules/zotero/zoteroSync";
 import { scanCitesForIndex } from "./lintLogic";
 import type { ProjectNode } from "@/types";
 
@@ -71,8 +72,9 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
   externalBibPaths: [],
 
   setExternalBibPaths: (paths) => {
-    const uniq = [...new Set(paths.filter(Boolean))];
-    set({ externalBibPaths: uniq });
+    // 同一文件可能有多种写法（大小写 / 正反斜杠 / ./），先规范化去重；
+    // 与项目树路径的最终合并去重在 reindex() 里用 mergeBibPaths 完成。
+    set({ externalBibPaths: mergeBibPaths([], paths) });
   },
 
   invalidateCitations: () => {
@@ -94,20 +96,17 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
     }
 
     // 1) .bib → 条目（已打开缓冲优先，否则读盘）
-    const bibPaths: string[] = [];
-    collectBibFiles(tree.nodes, bibPaths);
-    // P1：把项目树外的受管 .bib 纳入同一份索引（大小写不敏感去重）
-    const seenBib = new Set(bibPaths.map((p) => p.toLowerCase()));
-    for (const p of get().externalBibPaths) {
-      if (!seenBib.has(p.toLowerCase())) {
-        seenBib.add(p.toLowerCase());
-        bibPaths.push(p);
-      }
-    }
+    const treeBibPaths: string[] = [];
+    collectBibFiles(tree.nodes, treeBibPaths);
+    // P1：把项目树外的受管 .bib 纳入同一份索引。
+    // 必须用规范化路径去重：绑定路径是正斜杠，项目树是反斜杠，
+    // 只比 toLowerCase 会把同一个 .bib 解析两次（重复分组 + 重复 key 告警）。
+    const bibPaths = mergeBibPaths(treeBibPaths, get().externalBibPaths);
     const open = useBuffersStore.getState().buffers;
     const textByPath = new Map<string, string>();
     for (const p of bibPaths) {
-      const buf = open.find((b) => b.path.toLowerCase() === p.toLowerCase());
+      const pk = pathKey(p);
+      const buf = open.find((b) => pathKey(b.path) === pk);
       if (buf) {
         textByPath.set(p, buf.content);
         continue;
@@ -142,12 +141,13 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
     collectTexFiles(tree.nodes, texPaths);
     const allCites: { key: string; file: string; line: number }[] = [];
     for (const p of texPaths) {
-      const buf = open.find((b) => b.path.toLowerCase() === p.toLowerCase());
+      const pk = pathKey(p);
+      const buf = open.find((b) => pathKey(b.path) === pk);
       let content: string | null = null;
       if (buf) {
         content = buf.content; // 实时：内存优先，零磁盘 IO
       } else {
-        const cached = citeCache.get(p);
+        const cached = citeCache.get(pk);
         if (cached) {
           allCites.push(...cached.citations.map((c) => ({ ...c, file: p })));
           continue; // 关闭文件且已缓存 → 复用，不读盘不重扫
@@ -160,13 +160,13 @@ export const useReferenceStore = create<ReferenceState>((set, get) => ({
         }
       }
       if (content != null) {
-        const cached = citeCache.get(p);
+        const cached = citeCache.get(pk);
         if (cached && cached.content === content) {
           allCites.push(...cached.citations.map((c) => ({ ...c, file: p })));
           continue; // 内容未变 → 复用
         }
         const cites = scanCitesForIndex(content);
-        citeCache.set(p, { content, citations: cites });
+        citeCache.set(pk, { content, citations: cites });
         allCites.push(...cites.map((c) => ({ ...c, file: p })));
       }
     }
