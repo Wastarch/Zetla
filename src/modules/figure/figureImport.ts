@@ -95,9 +95,10 @@ export async function pasteImagesToCanvas(files: File[]): Promise<void> {
 }
 
 /**
- * 从 Tauri 原生拖放（`drag-drop` 事件）拿到的文件路径载入拼图画布。
+ * 从 Tauri 原生拖放拿到的文件路径载入拼图画布。
  * Tauri v2 默认 dragDropEnabled=true 会接管窗口级文件拖放，webview 内 HTML5 onDrop 收不到，
- * 只能走 `drag-drop` 事件；本函数由 FigureSidebar 在 drop 命中面板区域时调用。
+ * 只能监听 TauriEvent.DRAG_DROP（tauri://drag-drop）；
+ * 本函数由 FigureDropZone 在 drop 命中任一拼图区域（侧栏 / 中心预览页）时调用。
  * 与 pickImagesToCanvas 同口径：仅记录 path 来源（零拷贝预览），落盘推迟到「生成代码」时。
  * 画布已有图 → 追加（addImages）；否则新建（initFromImages）并打开预览。
  */

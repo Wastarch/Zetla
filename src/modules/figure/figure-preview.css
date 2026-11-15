@@ -232,3 +232,10 @@
 [data-figure-dropzone]:focus {
   outline: none;
 }
+
+/* Tauri 接管原生拖放时系统光标反馈不足：拖到拼图区域内给出明确高亮，提示「松手即加入」。
+   用 outline（不占布局空间、不触发重排）而非 border，避免侧栏滚动条跳动。 */
+[data-figure-dropzone][data-figure-dropover] {
+  outline: 2px dashed var(--accent, #4a90d9);
+  outline-offset: -4px;
+}
