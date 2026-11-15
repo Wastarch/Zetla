@@ -8176,3 +8176,71 @@ body.row-resizing {
   background: var(--bg-3);
   overflow: auto;
 }
+
+/* ── Zotero 联动 · P0：状态栏连接灯 / 设置页诊断卡 ───────────────────── */
+.statusbar .zotero-lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.zotero-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex: none;
+  background: var(--line);
+}
+.zotero-lamp.zotero-ok .zotero-dot { background: var(--ok); }
+.zotero-lamp.zotero-warn .zotero-dot { background: var(--warn); }
+.zotero-lamp.zotero-err .zotero-dot { background: var(--err); }
+.zotero-lamp.zotero-muted .zotero-dot { background: var(--txt-3); opacity: 0.45; }
+
+.fld .zotero-port { min-width: 96px; }
+.zotero-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 4px 0 10px;
+}
+.zotero-last {
+  font-size: 11px;
+  color: var(--txt-3);
+  opacity: 0.8;
+}
+.zotero-diag {
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--bg-3);
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.zotero-diag > b { display: block; margin-bottom: 6px; color: var(--txt); }
+.zotero-diag p {
+  margin: 0 0 6px;
+  line-height: 1.65;
+  color: var(--txt-2);
+}
+.zotero-diag ol {
+  margin: 6px 0 0;
+  padding-left: 20px;
+  line-height: 1.7;
+  color: var(--txt-2);
+}
+.zotero-diag.zotero-ok { border-left-color: var(--ok); }
+.zotero-diag.zotero-warn { border-left-color: var(--warn); }
+.zotero-diag.zotero-err { border-left-color: var(--err); }
+.zotero-diag.zotero-muted { border-left-color: var(--line); }
+.zotero-caps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 8px 0 0;
+  border-top: 1px solid var(--line-soft);
+  color: var(--txt-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.7;
+}
+.zotero-probe { font-style: italic; }

@@ -51,6 +51,8 @@ import {
   type CanvasPreset,
 } from "@/modules/diagram/canvasSize";
 import type { PreviewMode } from "@/types/diagram";
+// Zotero 联动 · P0：偏好设置页签（独立组件，自带自检副作用）
+import { ZoteroPane } from "@/modules/zotero/ZoteroPane";
 
 const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "general", icon: "layout", label: "通用" },
@@ -61,6 +63,7 @@ const PANES: { id: SettingsPane; icon: string; label: string }[] = [
   { id: "snippets", icon: "list", label: "代码片段" },
   { id: "modules", icon: "wand", label: "模块" },
   { id: "diagram", icon: "image", label: "绘图" },
+  { id: "zotero", icon: "bib", label: "Zotero 联动" },
   { id: "about", icon: "book", label: "关于 Zetla" },
 ];
 
@@ -352,6 +355,7 @@ export function SettingsDialog() {
             ))}
           </div>
           <div className="set-panes">
+            {pane === "zotero" && <ZoteroPane />}
             {pane === "general" && (
               <div className="set-pane" role="tabpanel">
                 <h4>启动与布局</h4>

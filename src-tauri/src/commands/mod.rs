@@ -19,3 +19,5 @@ pub mod terminal;
 pub mod tikz_export;
 pub mod updater;
 pub mod watch;
+// Zotero 联动 · P0：本地 API 只读客户端 / 能力探测
+pub mod zotero;

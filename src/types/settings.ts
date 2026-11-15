@@ -1,6 +1,7 @@
 // M0-14a · 应用配置 / 偏好设置类型（与 src-tauri/src/commands/config.rs 的 AppConfig 一一对应，camelCase）
 // schema v1；M0-13 在此追加 window / session / layout
 import type { ProjectEntry } from "./project";
+import { DEFAULT_ZOTERO_SETTINGS, type ZoteroSettings } from "./zotero";
 
 /** M1-22：编辑器/终端字体族为**任意字符串**（取消白名单；Rust 侧仅去空白，空回退默认）。
  *  以下三项仅作为设置页 datalist 建议（可自由输入系统内任意字体名） */
@@ -219,6 +220,8 @@ export interface AppSettings {
   highlight: HighlightSettings;
   /** M1-22：内置终端配置（与 Rust TerminalConfig 一一对应，camelCase） */
   terminal: TerminalSettings;
+  /** Zotero 联动 · P0：连接与同步偏好（与 Rust ZoteroConfig 一一对应） */
+  zotero: ZoteroSettings;
 }
 
 /** M1-22：内置终端设置（与 Rust TerminalConfig 一一对应，camelCase） */
@@ -381,6 +384,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     rightClickPaste: true,
     defaultCwd: "project",
   },
+  /** Zotero 联动默认关闭；开启后本期也只做只读自检，不写回 Zotero */
+  zotero: { ...DEFAULT_ZOTERO_SETTINGS },
 };
 
 /**

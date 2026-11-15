@@ -166,11 +166,11 @@ mod tests {
         let r = place_image(root.to_str().unwrap(), "figures", "pic.png", b"data").unwrap();
         assert_eq!(r.file_name, "pic.png");
         // rel_root_path 是规范的「相对项目根、正斜杠」路径
-        assert_eq!(r.rel_root_path, "figure/pic.png");
+        assert_eq!(r.rel_root_path, "figures/pic.png");
         // abs_path 平台相关（Windows 为反斜杠），只校验关键段存在
         assert!(r.abs_path.contains("figures") && r.abs_path.contains("pic.png"));
-        assert!(root.join("figure/pic.png").is_file());
-        assert_eq!(std::fs::read(root.join("figure/pic.png")).unwrap(), b"data");
+        assert!(root.join("figures/pic.png").is_file());
+        assert_eq!(std::fs::read(root.join("figures/pic.png")).unwrap(), b"data");
     }
 
     #[test]
@@ -179,7 +179,7 @@ mod tests {
         let _ = place_image(root.to_str().unwrap(), "figures", "pic.png", b"a").unwrap();
         let r = place_image(root.to_str().unwrap(), "figures", "pic.png", b"b").unwrap();
         assert_eq!(r.file_name, "pic-1.png");
-        assert!(root.join("figure/pic-1.png").is_file());
+        assert!(root.join("figures/pic-1.png").is_file());
     }
 
     #[test]

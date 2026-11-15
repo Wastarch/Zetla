@@ -21,6 +21,9 @@ import { cancelCompile, effectiveEngine, startCompile } from "@/compile/useCompi
 import { useSettingsStore } from "@/core/settings";
 import { LANG_META, LANG_ORDER, isKnownExt, langLabel, langOf } from "@/editor/langByExt";
 import { useLangOverride } from "@/editor/langOverride";
+// Zotero 联动 · P0：状态栏连接灯 + 全局自检运行时（模块级单例，重复挂载无副作用）
+import { startZoteroRuntime, useZoteroStore } from "@/modules/zotero/useZoteroStore";
+import { formatCheckedAt, stateTone, statusLabel } from "@/modules/zotero/zoteroDiagnostics";
 
 const DOT_CLASS: Record<string, string> = {
   running: "run",
@@ -47,6 +50,21 @@ export function StatusBar() {
   const currentRecipe = useCurrentRecipe();
   const flowLabel = currentRecipe ?? defaultRecipe ?? "内置 latexmk（默认）";
   const activeEngine = tree ? effectiveEngine(engineSetting, tree.engine) : null;
+
+  // Zotero 联动 · P0：StatusBar 是常驻组件，在这里启动一次全局自检运行时
+  // （模块级单例，StrictMode 假卸载不会重复注册；关闭联动时不自动发请求）
+  useEffect(() => {
+    startZoteroRuntime();
+  }, []);
+  const zoteroEnabled = useSettingsStore((s) => s.settings.zotero?.enabled ?? false);
+  const zoteroHealth = useZoteroStore((s) => s.health);
+  const zoteroChecking = useZoteroStore((s) => s.checking);
+  const zoteroLastGood = useZoteroStore((s) => s.lastGoodAt);
+  const zoteroLabel = statusLabel(zoteroHealth, zoteroEnabled, zoteroChecking);
+  const zoteroTone =
+    zoteroChecking || !zoteroEnabled || !zoteroHealth
+      ? "muted"
+      : stateTone(zoteroHealth.state);
 
   const running = compileStatus === "running";
   const statusText =
@@ -165,6 +183,29 @@ export function StatusBar() {
         <Icon name="terminal" />
         日志
       </button>
+
+      {/* Zotero 联动 · P0 连接灯：仅在启用时占位，点击直达设置页 */}
+      {zoteroEnabled && zoteroLabel && (
+        <>
+          <span className="divider" />
+          <button
+            type="button"
+            className={`sbtn zotero-lamp zotero-${zoteroTone}`}
+            title={[
+              zoteroLabel,
+              zoteroHealth?.message ?? "",
+              zoteroLastGood ? `上次连接 ${formatCheckedAt(zoteroLastGood)}（离线时沿用缓存 .bib）` : "",
+              "点击打开「偏好设置 → Zotero 联动」",
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+            onClick={() => useAppStore.getState().openSettings("zotero")}
+          >
+            <span className="zotero-dot" />
+            {zoteroLabel}
+          </button>
+        </>
+      )}
 
       {/* 右侧：光标 / 语言 / 文件 / 编码 / 换行 */}
       {active && (

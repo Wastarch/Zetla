@@ -27,6 +27,7 @@ import type {
   TikzExportResult,
   TikzImageAsset,
 } from "@/types/diagram";
+import type { ZoteroHealth } from "@/types/zotero";
 
 /** 底层透传（未封装的命令临时入口） */
 export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -171,6 +172,16 @@ export const configApi = {
     call<ProjectEntry[]>("pin_project", { path, pinned }),
   archiveProject: (path: string, archived: boolean) =>
     call<ProjectEntry[]>("archive_project", { path, archived }),
+};
+
+// ── Zotero 联动（P0：只读连接地基）────────────────────────────
+// 所有 HTTP 都在 Rust 侧发出：Zotero 10 丢弃带 Origin / 浏览器 UA 的请求，
+// BBT CAYW 也禁止浏览器访问；前端只拿结构化结果，绝不直接 fetch 23119。
+export const zoteroApi = {
+  /** 连接自检：GET /api/ 读响应头 + 探测 BBT；任何失败都以 state 返回（不抛断连异常） */
+  health: (port: number) => call<ZoteroHealth>("zotero_health", { port }),
+  /** 单独探测 Better BibTeX（probe=1 只返回 ready，不弹 Zotero 选择器） */
+  probeBbt: (port: number) => call<boolean>("zotero_probe_bbt", { port }),
 };
 
 // ── 绘图模块 · 图片插入 TikZ · P2 暂存图生命周期 ─────────────────────────

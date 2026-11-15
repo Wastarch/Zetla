@@ -16,6 +16,7 @@ import {
   type EffectiveTheme,
 } from "@/types/settings";
 import type { ProjectEntry } from "@/types/project";
+import { DEFAULT_ZOTERO_SETTINGS } from "@/types/zotero";
 
 const FONT_SIZE_MIN = 8;
 const FONT_SIZE_MAX = 32;
@@ -88,6 +89,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         build: { ...DEFAULT_SETTINGS.build, ...(cfg.build ?? {}) },
         // M1-22：terminal 子对象深合并（旧配置缺 terminal 时补默认值）
         terminal: { ...DEFAULT_SETTINGS.terminal, ...(cfg.terminal ?? {}) },
+        // Zotero 联动 P0：旧配置缺 zotero 段时补默认值，避免整对象回写丢字段
+        zotero: { ...DEFAULT_ZOTERO_SETTINGS, ...(cfg.zotero ?? {}) },
       };
       // M1-9c：空列表 = 使用内置默认清单（语义统一）；旧配置缺字段时回退默认，UI 不显示空白列表
       if (

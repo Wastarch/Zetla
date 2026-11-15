@@ -78,6 +78,8 @@ pub struct AppConfig {
     pub highlight: HighlightConfig,
     /// M1-22：内置终端配置（设置页「编辑器 → 终端」分组）
     pub terminal: TerminalConfig,
+    /// Zotero 联动 · P0：连接与同步偏好（设置页「Zotero 联动」分组）
+    pub zotero: ZoteroConfig,
 }
 
 impl Default for AppConfig {
@@ -100,8 +102,90 @@ impl Default for AppConfig {
             recent_projects: Vec::new(),
             highlight: HighlightConfig::default(),
             terminal: TerminalConfig::default(),
+            zotero: ZoteroConfig::default(),
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Zotero 联动 · P0 配置（与 src/types/zotero.ts ZoteroSettings 一一对应）
+// 默认关闭：不改变存量用户行为；开启后本期也只做只读自检，不写回 Zotero。
+// ─────────────────────────────────────────────────────────────
+
+/// 端口固定走 localhost，主机不可配置（防端口转发 / SSRF）
+pub const ZOTERO_DEFAULT_PORT: u16 = 23119;
+/// 轮询间隔合法范围（秒）：太密会打搅 Zotero，太疏则状态灯滞后
+pub const ZOTERO_POLL_MIN: u32 = 10;
+pub const ZOTERO_POLL_MAX: u32 = 300;
+pub const ZOTERO_POLL_DEFAULT: u32 = 30;
+/// 引用命令白名单（P2 Citation Picker 使用；与前端 ZOTERO_COMMANDS 一致）
+pub const ZOTERO_COMMANDS: [&str; 6] = ["cite", "citep", "citet", "autocite", "parencite", "textcite"];
+/// citekey 生成策略白名单（P1 使用）
+pub const ZOTERO_KEY_STRATEGIES: [&str; 2] = ["bbt-first", "zetla"];
+pub const ZOTERO_DEFAULT_CSL_STYLE: &str = "china-national-standard-gb-t-7714-2015-numeric";
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ZoteroConfig {
+    /// 总开关；false 时不自动发请求、状态栏不显示连接灯（设置页仍可手动自检）
+    pub enabled: bool,
+    /// 本地 API 端口（默认 23119；Juris-M 为 24119）
+    pub port: u16,
+    /// P1：定时/窗口获焦自动同步
+    pub auto_sync: bool,
+    /// P1：编译前校验 .bib 与 \cite 一致性
+    pub sync_on_compile: bool,
+    /// P2：Citation Picker 默认引用命令
+    pub default_command: String,
+    /// P3：CSL 引文预览样式 id（仅预览/复制，不驱动 LaTeX 输出）
+    pub csl_style: String,
+    /// P1：citekey 策略（优先 BBT / Zetla 自生成）
+    pub key_strategy: String,
+    /// P0：状态自检轮询间隔（秒）
+    pub poll_interval_seconds: u32,
+}
+
+impl Default for ZoteroConfig {
+    fn default() -> Self {
+        ZoteroConfig {
+            enabled: false,
+            port: ZOTERO_DEFAULT_PORT,
+            auto_sync: true,
+            sync_on_compile: true,
+            default_command: "cite".to_string(),
+            csl_style: ZOTERO_DEFAULT_CSL_STYLE.to_string(),
+            key_strategy: "bbt-first".to_string(),
+            poll_interval_seconds: ZOTERO_POLL_DEFAULT,
+        }
+    }
+}
+
+/// Zotero 配置归一化：端口、枚举白名单、样式 id 字符集、轮询钳制。
+/// 注意 normalize(default) 必须与 default 完全相等（配置往返单测依赖此性质）。
+pub fn normalize_zotero(mut z: ZoteroConfig) -> ZoteroConfig {
+    if z.port == 0 {
+        z.port = ZOTERO_DEFAULT_PORT;
+    }
+    if !ZOTERO_COMMANDS.contains(&z.default_command.as_str()) {
+        z.default_command = "cite".to_string();
+    }
+    if !ZOTERO_KEY_STRATEGIES.contains(&z.key_strategy.as_str()) {
+        z.key_strategy = "bbt-first".to_string();
+    }
+    z.csl_style = z.csl_style.trim().to_string();
+    if z.csl_style.is_empty()
+        || z.csl_style.len() > 128
+        || !z
+            .csl_style
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    {
+        z.csl_style = ZOTERO_DEFAULT_CSL_STYLE.to_string();
+    }
+    z.poll_interval_seconds = z
+        .poll_interval_seconds
+        .clamp(ZOTERO_POLL_MIN, ZOTERO_POLL_MAX);
+    z
 }
 
 /// 窗口几何：None 表示未记录（沿用 tauri.conf.json 的初始窗口配置）
@@ -952,6 +1036,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     cfg.highlight = normalize_highlight(cfg.highlight);
     // M1-22：终端配置归一化（字号/回滚钳制；光标样式与工作目录白名单）
     cfg.terminal = normalize_terminal(cfg.terminal);
+    // Zotero 联动 · P0：端口/枚举/样式 id/轮询间隔归一化
+    cfg.zotero = normalize_zotero(cfg.zotero);
     // M0-15a：tex 代装记录归一化（先去空白再校验 distro 白名单）
     // distro 非法 → 清空；distro 为 null 允许保留目录（「手动指定引擎目录」场景）
     cfg.tex.distro = clean_opt_str(cfg.tex.distro);
@@ -1940,5 +2026,71 @@ mod tests {
             normalize(high).build.live_preview_delay_ms,
             LIVE_PREVIEW_DELAY_MAX
         );
+    }
+
+    #[test]
+    fn zotero_default_is_disabled_and_roundtrip() {
+        let d = ZoteroConfig::default();
+        assert!(!d.enabled);
+        assert_eq!(d.port, ZOTERO_DEFAULT_PORT);
+        assert_eq!(d.poll_interval_seconds, ZOTERO_POLL_DEFAULT);
+        // normalize(default) 恒等：保证 write/read 往返断言不被归一化改写
+        assert_eq!(normalize_zotero(d.clone()), d);
+
+        let p = tmp_dir("zotero-roundtrip").join(CONFIG_FILE_NAME);
+        let mut cfg = AppConfig::default();
+        cfg.zotero.enabled = true;
+        cfg.zotero.port = 24119;
+        cfg.zotero.default_command = "parencite".to_string();
+        write_config(&p, &cfg).unwrap();
+        let back = read_config(&p);
+        assert!(back.zotero.enabled);
+        assert_eq!(back.zotero.port, 24119);
+        assert_eq!(back.zotero.default_command, "parencite");
+    }
+
+    #[test]
+    fn zotero_normalize_clamps_port_enums_and_poll() {
+        let z = ZoteroConfig {
+            enabled: true,
+            port: 0,
+            auto_sync: false,
+            sync_on_compile: false,
+            default_command: "rm -rf".to_string(),
+            csl_style: "  apa; DROP TABLE  ".to_string(),
+            key_strategy: "random".to_string(),
+            poll_interval_seconds: 1,
+        };
+        let n = normalize_zotero(z);
+        assert_eq!(n.port, ZOTERO_DEFAULT_PORT);
+        assert_eq!(n.default_command, "cite");
+        assert_eq!(n.key_strategy, "bbt-first");
+        assert_eq!(n.csl_style, ZOTERO_DEFAULT_CSL_STYLE);
+        assert_eq!(n.poll_interval_seconds, ZOTERO_POLL_MIN);
+
+        let high = ZoteroConfig {
+            poll_interval_seconds: 9999,
+            ..ZoteroConfig::default()
+        };
+        assert_eq!(normalize_zotero(high).poll_interval_seconds, ZOTERO_POLL_MAX);
+    }
+
+    #[test]
+    fn zotero_missing_field_falls_back_to_defaults_and_camel_case() {
+        // 旧 config.json 没有 zotero 段 → serde default，不报错
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true },
+            "build": { "saveBeforeCompile": true }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(parsed.zotero, ZoteroConfig::default());
+
+        let text = serde_json::to_string(&normalize(AppConfig::default())).unwrap();
+        assert!(text.contains("\"zotero\""));
+        assert!(text.contains("\"pollIntervalSeconds\""));
+        assert!(text.contains("\"defaultCommand\":\"cite\""));
+        assert!(text.contains("\"keyStrategy\":\"bbt-first\""));
+        assert!(!text.contains("poll_interval_seconds"));
     }
 }

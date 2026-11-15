@@ -8,3 +8,4 @@ export * from "./settings";
 export * from "./snippets";
 export * from "./synctex";
 export * from "./terminal";
+export * from "./zotero";

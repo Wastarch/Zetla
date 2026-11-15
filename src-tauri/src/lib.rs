@@ -108,6 +108,9 @@ pub fn run() {
             // 项目目录监听（M0-9a）
             commands::watch::watch_project,
             commands::watch::unwatch_project,
+            // Zotero 联动 · P0：连接自检 / BBT 探测（只读，全部请求从 Rust 发出）
+            commands::zotero::zotero_health,
+            commands::zotero::zotero_probe_bbt,
             // M1-13：自动更新（自下载安装包 + 拉起安装向导）
             // U1：清单协议 v2 —— 由 Rust 判定本机平台与能否自更新
             commands::updater::update_env_info,

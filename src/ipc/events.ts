@@ -23,6 +23,10 @@ export const RustEvents = {
   terminalOutput: "terminal_output",
   /** 内置终端子进程退出（feat/terminal） */
   terminalExit: "terminal_exit",
+  /** Zotero 联动 · P0：zotero_health 完成后的连接状态（payload = ZoteroHealth） */
+  zoteroStatus: "zotero:status",
+  /** Zotero 联动 · P1 预留：受管 .bib 变更（当前 Rust 尚未发射） */
+  zoteroBibChanged: "zotero:bib-changed",
 } as const;
 
 /** 前端内部总线事件名（bus.emit/on，见 core/bus.ts） */

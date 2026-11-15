@@ -26,7 +26,8 @@ export type SettingsPane =
   | "snippets"
   | "about"
   | "modules"
-  | "diagram";
+  | "diagram"
+  | "zotero";
 
 /** 全局状态接口（M0-13：useWindowMemory 订阅布局字段需要类型） */
 export interface AppState {
