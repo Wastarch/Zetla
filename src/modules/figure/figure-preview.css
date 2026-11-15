@@ -217,3 +217,18 @@
   text-align: center;
   line-height: 1.5;
 }
+
+/* ------------------------------------------------------------------ *
+ * 粘贴 / 拖入统一容器（FigureDropZone）
+ * 内部 .fig-approx / .fig-real / .fig-preview-placeholder 都是
+ * position:absolute; inset:0，外层必须同样铺满，否则定位基准改变会破坏布局。
+ * ------------------------------------------------------------------ */
+.fig-preview-root {
+  position: absolute;
+  inset: 0;
+}
+
+/* 容器为接收 Ctrl+V 而可聚焦，但不显示浏览器默认焦点框（工具面板，非键盘导航项） */
+[data-figure-dropzone]:focus {
+  outline: none;
+}
