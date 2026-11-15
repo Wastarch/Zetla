@@ -15,6 +15,7 @@ import { useProjectStore, notify } from "@/project/useProject";
 import { projectApi } from "@/ipc/invoke";
 import { jumpToFile } from "@/editor/jump";
 import { insertSnippet } from "@/core/moduleRegistry";
+import { openZoteroItem } from "@/modules/zotero/zoteroReverseRuntime";
 import { firstDuplicateEntry, type MissingCiteSummary } from "./lintLogic";
 import { RefPreviewCard } from "./RefPreviewCard";
 import type { BibEntry } from "./bibParser";
@@ -46,6 +47,8 @@ export default function ReferencePanel() {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   /** 手动刷新中（重扫项目 + 重建索引） */
   const [refreshing, setRefreshing] = useState(false);
+  /** P3-1：反向跳转进行中（禁用重复点击，避免并发搜索） */
+  const [zoteroBusy, setZoteroBusy] = useState(false);
   /** 右键菜单：命中的条目、屏幕坐标、以及「查看反向引用」用的浮窗锚点 */
   const [menu, setMenu] = useState<{
     entry: BibEntry;
@@ -122,6 +125,25 @@ export default function ReferencePanel() {
   const onInsert = useCallback((key: string) => {
     if (!insertSnippet(`\\cite{${key}}`)) {
       notify("请先打开一个 .tex 编辑器并定位光标", "err");
+    }
+  }, []);
+
+  /** P3-1：在 Zotero 中定位条目（只读；失败只给 toast，不影响编辑与编译） */
+  const onOpenInZotero = useCallback(async (e: BibEntry) => {
+    setZoteroBusy(true);
+    try {
+      const r = await openZoteroItem({
+        key: e.key,
+        title: e.title,
+        doi: e.fields?.doi,
+        author: e.author,
+        year: e.year,
+      });
+      notify(r.message, r.ok ? "ok" : "err");
+    } catch (err) {
+      notify(`打开 Zotero 失败：${String(err)}`, "err");
+    } finally {
+      setZoteroBusy(false);
     }
   }, []);
 
@@ -399,6 +421,18 @@ export default function ReferencePanel() {
           <button
             type="button"
             className="ctx-item"
+            disabled={zoteroBusy}
+            title="按 citekey → itemKey 映射在 Zotero 中定位并高亮该条目"
+            onClick={() => {
+              void onOpenInZotero(menu.entry);
+              setMenu(null);
+            }}
+          >
+            {zoteroBusy ? "定位中…" : "在 Zotero 中打开"}
+          </button>
+          <button
+            type="button"
+            className="ctx-item"
             onClick={() => {
               setPreview({ entry: menu.entry, mode: "refs", ...menu.pos });
               setMenu(null);
@@ -423,6 +457,8 @@ export default function ReferencePanel() {
             jumpToFile(file, line);
             setPreview(null);
           }}
+          onOpenInZotero={() => void onOpenInZotero(preview.entry)}
+          zoteroBusy={zoteroBusy}
         />
       )}
     </div>

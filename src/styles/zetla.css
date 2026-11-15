@@ -7327,6 +7327,8 @@ body.row-resizing {
   color: var(--txt-4);
 }
 .ref-preview-src {
+  flex: 1 1 auto;
+  min-width: 0;
   font-family: var(--font-mono, monospace);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -7334,6 +7336,29 @@ body.row-resizing {
 }
 .ref-preview-cites {
   flex: none;
+}
+
+/* P3-1 · 引用卡片「在 Zotero 中打开」（citekey → itemKey 反向跳转） */
+.ref-zotero-open {
+  flex: none;
+  padding: 2px 7px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  outline: none;
+  white-space: nowrap;
+}
+.ref-zotero-open:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.ref-zotero-open:disabled,
+.ctx-item:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* ── M1-find · 单文件查找替换浮动面板（VS Code 风格，悬浮于编辑区右上角） ── */

@@ -31,6 +31,9 @@ export interface RefPreviewCardProps {
   onMode: (m: "info" | "refs") => void;
   onClose: () => void;
   onJump: (file: string, line: number) => void;
+  /** P3-1：可选的「在 Zotero 中打开」入口（由父组件注入，卡片保持纯展示） */
+  onOpenInZotero?: () => void;
+  zoteroBusy?: boolean;
 }
 
 export function RefPreviewCard({
@@ -42,6 +45,8 @@ export function RefPreviewCard({
   onMode,
   onClose,
   onJump,
+  onOpenInZotero,
+  zoteroBusy,
 }: RefPreviewCardProps) {
   const extras = EXTRA_FIELDS.map((name) => ({ name, value: entry.fields[name] })).filter(
     (x): x is { name: string; value: string } => !!x.value,
@@ -103,6 +108,17 @@ export function RefPreviewCard({
             <span className="ref-preview-src" title={entry.file}>
               {entry.file.split(/[\\/]/).pop()}:{entry.line}
             </span>
+            {onOpenInZotero && (
+              <button
+                type="button"
+                className="ref-zotero-open"
+                disabled={!!zoteroBusy}
+                title="按 citekey → itemKey 映射在 Zotero 中定位并高亮该条目"
+                onClick={onOpenInZotero}
+              >
+                {zoteroBusy ? "定位中…" : "在 Zotero 中打开"}
+              </button>
+            )}
             <span className="ref-preview-cites">
               {refs.length > 0 ? `被引用 ${refs.length} 次` : "未被引用"}
             </span>
