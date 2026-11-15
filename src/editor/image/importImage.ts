@@ -9,7 +9,7 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { getActiveView } from "@/editor/activeView";
 import { insertSnippetSelect } from "@/core/moduleRegistry";
 import { buildFigure } from "@/core/latexTemplates";
-import { relativePath, slugify } from "./pathUtils";
+import { joinAbs, relativePath, slugify } from "./pathUtils";
 import { useFigureStore } from "@/modules/figure/figureStore";
 import { useAppStore } from "@/core/store";
 import type { FigureCellSource } from "@/types/figure";
@@ -46,10 +46,12 @@ export function buildFigureSnippet(relPath: string, slug: string, labelPrefix = 
 }
 
 /** 把落盘结果组装成 figure 片段并插入编辑器（光标落于空 caption 内） */
-function finalize(results: ImportImageResult[], texDir: string): void {
+function finalize(results: ImportImageResult[], texDir: string, root: string): void {
   if (results.length === 0) return;
   const snippets = results.map((r) =>
-    buildFigureSnippet(relativePath(texDir, r.absPath), slugify(r.fileName)),
+    // 用前端同源 root + Rust 算好的「相对项目根」路径重建绝对路径，避免直接比对
+    // 跨进程返回的 absPath（Mac 上大小写/NFD/符号链接表示差异会多出 ../）
+    buildFigureSnippet(relativePath(texDir, joinAbs(root, r.relRootPath)), slugify(r.fileName)),
   );
   const combined = snippets.join("\n\n");
 
@@ -123,7 +125,7 @@ export async function importAndInsert(files: File[]): Promise<void> {
       notify(`导入「${f.name}」失败：${String(e)}`, "err");
     }
   }
-  finalize(results, ctx.texDir);
+  finalize(results, ctx.texDir, ctx.root);
 }
 
 /** 菜单选图入口：openFileDialog 返回磁盘路径 */
@@ -146,5 +148,5 @@ export async function importImageFromPaths(paths: string[]): Promise<void> {
       notify(`导入「${p}」失败：${String(e)}`, "err");
     }
   }
-  finalize(results, ctx.texDir);
+  finalize(results, ctx.texDir, ctx.root);
 }

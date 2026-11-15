@@ -170,7 +170,7 @@ export async function placeStagedImage(
       status: "ok",
       fileName: res.fileName,
       absPath: entry.absPath,
-      relPath: relativePath(texDir, res.absPath),
+      relPath: relativePath(texDir, `${root}/${res.relRootPath}`),
     };
   } catch (e) {
     const message = `暂存图片失败：${String(e)}`;

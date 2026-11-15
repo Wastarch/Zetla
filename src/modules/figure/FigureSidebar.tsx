@@ -11,7 +11,8 @@ import { pickImagesToCanvas } from "./figureImport";
 import { generateSubfigure, generateComposite } from "./figureGen";
 import { hasPackage, SUBCAPTION_SNIPPET, insertBeforeDocument } from "@/core/preamble";
 import { parentOf, notify, useProjectStore } from "@/project/useProject";
-import { relativePath, slugify } from "@/editor/image/pathUtils";
+import { joinAbs, relativePath, slugify } from "@/editor/image/pathUtils";
+import type { ImportImageResult } from "@/types/project";
 import { loadCellImage, composeFigure, DEFAULT_COMPOSE_WIDTH } from "./figureCompose";
 import { renderCaption, type RenderedCaption } from "./captionRender";
 import { sourceName } from "./figurePreviewUrl";
@@ -196,7 +197,7 @@ export default function FigureSidebar() {
                 src.file.name,
                 new Uint8Array(await src.file.arrayBuffer()),
               );
-        relPaths[i] = relativePath(texDir, res.absPath);
+        relPaths[i] = relativePath(texDir, joinAbs(root, res.relRootPath));
       } catch (e) {
         notify(`图片「${name}」落盘失败：${String(e)}`, "err");
         return;
@@ -292,7 +293,7 @@ export default function FigureSidebar() {
 
     // 4) 落盘：import_image 为去重语义（冲突会改名），合成模式要求同名直接覆盖 → 先删后写
     const absPath = `${root}/${imageDir}/${fileName}`;
-    let res: { absPath: string };
+    let res: ImportImageResult;
     try {
       if (await projectApi.imageExists(root, imageDir, fileName)) {
         await projectApi.removeEntry(absPath);
@@ -302,7 +303,7 @@ export default function FigureSidebar() {
       notify(`合成图落盘失败：${String(e)}`, "err");
       return;
     }
-    const relPath = relativePath(texDir, res.absPath);
+    const relPath = relativePath(texDir, joinAbs(root, res.relRootPath));
 
     // 5) 生成单图直插代码（\includegraphics[width=\linewidth] + \caption{图片标题}）并插入
     const code = generateComposite(layout, relPath);
