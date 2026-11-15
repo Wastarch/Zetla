@@ -15,6 +15,16 @@ import {
   type ReverseEntry,
 } from "../src/modules/zotero/zoteroReverse.ts";
 import { parseZoteroItems } from "../src/modules/zotero/zoteroSync.ts";
+import {
+  DEFAULT_ZOTERO_OPEN_TARGET,
+  ZOTERO_PDF_BASE,
+  paperUrlFromFields,
+  pickPdfAttachment,
+  plainBibValue,
+  targetDisabled,
+  targetHint,
+  zoteroPdfUrl,
+} from "../src/modules/zotero/zoteroOpenTargets.ts";
 
 let failures = 0;
 let total = 0;
@@ -222,6 +232,206 @@ eq(
   true,
   "URL 采用官方 zotero://select 格式",
 );
+
+// ── P3-1b · 打开目标下拉（纯逻辑） ────────────────────────────────────────
+console.log("P3-1b · 默认动作与 open-pdf URL");
+eq(DEFAULT_ZOTERO_OPEN_TARGET, "pdf", "主按钮默认目标是打开全文");
+eq(
+  zoteroPdfUrl("AB12CD34"),
+  `${ZOTERO_PDF_BASE}/library/items/AB12CD34`,
+  "个人库 open-pdf URL 用附件 itemKey",
+);
+eq(
+  zoteroPdfUrl("AB12CD34", { type: "group", id: 123 }),
+  `${ZOTERO_PDF_BASE}/groups/123/items/AB12CD34`,
+  "群组库 open-pdf URL",
+);
+eq(zoteroPdfUrl("doe2020deep"), null, "citekey 绝不拼进 open-pdf URL");
+eq(zoteroPdfUrl("AB12CD3"), null, "7 位 key 拒绝");
+eq(zoteroPdfUrl(null as unknown as string), null, "null key 拒绝");
+eq(
+  String(zoteroPdfUrl("AB12CD34") ?? "").startsWith("zotero://open-pdf/"),
+  true,
+  "协议是 Zotero 原生 open-pdf",
+);
+
+console.log("P3-1b · plainBibValue：LaTeX 值清洗");
+eq(plainBibValue("{Deep Learning}"), "Deep Learning", "剥花括号");
+eq(
+  plainBibValue("\\url{https://example.org/paper}"),
+  "https://example.org/paper",
+  "\\url{} 取内容",
+);
+eq(plainBibValue("\\doi{10.1000/xyz}"), "10.1000/xyz", "\\doi{} 取内容");
+eq(
+  plainBibValue("https://x.org/?a=1\\&b=2"),
+  "https://x.org/?a=1&b=2",
+  "\\& 还原成查询串分隔符",
+);
+eq(plainBibValue("\\emph{Deep}  Learning"), "Deep Learning", "剥 emph 命令并压平空白");
+eq(plainBibValue(null), "", "null 返回空串");
+
+console.log("P3-1b · paperUrlFromFields：只放行 http(s)，DOI 兜底");
+eq(
+  paperUrlFromFields({ url: "https://example.org/paper" }),
+  "https://example.org/paper",
+  "https url 原样可用",
+);
+eq(
+  paperUrlFromFields({ url: "\\url{http://example.org/p}" }),
+  "http://example.org/p",
+  "http + \\url{} 可用",
+);
+eq(
+  paperUrlFromFields({ url: "https://x.org/?a=1\\&b=2" }),
+  "https://x.org/?a=1&b=2",
+  "LaTeX 转义的查询串可用",
+);
+eq(
+  paperUrlFromFields({ url: "https://example.org/p", doi: "10.1000/xyz" }),
+  "https://example.org/p",
+  "url 优先于 doi",
+);
+eq(
+  paperUrlFromFields({ doi: "10.1000/xyz" }),
+  "https://doi.org/10.1000/xyz",
+  "无 url 时由 DOI 生成 doi.org 链接",
+);
+eq(
+  paperUrlFromFields({ doi: "https://doi.org/10.1000/xyz" }),
+  "https://doi.org/10.1000/xyz",
+  "DOI 带 doi.org 前缀不重复拼接",
+);
+eq(
+  paperUrlFromFields({ doi: "\\doi{10.1000/{xyz}}" }),
+  "https://doi.org/10.1000/xyz",
+  "DOI 里的 LaTeX 命令与花括号先被剥掉",
+);
+eq(paperUrlFromFields({}), null, "无字段返回 null");
+eq(paperUrlFromFields(null), null, "null 字段表返回 null");
+eq(paperUrlFromFields({ doi: "" }), null, "空 DOI 返回 null");
+eq(paperUrlFromFields({ doi: "not-a-doi" }), null, "非法 DOI 返回 null");
+eq(paperUrlFromFields({ url: "javascript:alert(1)" }), null, "javascript: 协议拒绝");
+eq(paperUrlFromFields({ url: "file:///C:/secret.pdf" }), null, "file: 协议拒绝");
+eq(paperUrlFromFields({ url: "zotero://select/library/items/AB12CD34" }), null, "zotero: 协议拒绝");
+eq(paperUrlFromFields({ url: "ftp://example.org/p" }), null, "ftp: 协议拒绝");
+eq(paperUrlFromFields({ url: "https://" }), null, "缺 host 的 URL 拒绝");
+
+console.log("P3-1b · pickPdfAttachment：附件筛选与 best 排序");
+function child(over: Record<string, unknown> = {}) {
+  // key 属于 Zotero JSON 的外层；其余覆盖项落在 data 里
+  const { key, ...dataOver } = over;
+  return {
+    key: key ?? "AT12CD34",
+    data: {
+      itemType: "attachment",
+      contentType: "application/pdf",
+      filename: "paper.pdf",
+      dateAdded: "2026-01-01T00:00:00Z",
+      linkMode: "imported_file",
+      url: "",
+      ...dataOver,
+    },
+  };
+}
+eq(
+  pickPdfAttachment(JSON.stringify([child()]))?.itemKey,
+  "AT12CD34",
+  "单个 PDF 附件命中",
+);
+eq(
+  pickPdfAttachment(JSON.stringify([child({ filename: "a.pdf" })]))?.filename,
+  "a.pdf",
+  "返回附件文件名用于 toast",
+);
+eq(pickPdfAttachment("[]"), null, "空子项返回 null");
+eq(pickPdfAttachment("not json"), null, "垃圾 JSON 返回 null");
+eq(pickPdfAttachment("{}"), null, "非数组返回 null");
+eq(
+  pickPdfAttachment(JSON.stringify([{ key: "NOTE1234", data: { itemType: "note" } }])),
+  null,
+  "笔记不是附件，排除",
+);
+eq(
+  pickPdfAttachment(JSON.stringify([child({ contentType: "text/html" })])),
+  null,
+  "非 PDF 附件排除",
+);
+eq(
+  pickPdfAttachment(JSON.stringify([child({ linkMode: "linked_url" })])),
+  null,
+  "纯网页链接附件排除",
+);
+eq(
+  pickPdfAttachment(JSON.stringify([child({ deleted: true })])),
+  null,
+  "回收站条目排除",
+);
+eq(
+  pickPdfAttachment(JSON.stringify([child({ trashed: true })])),
+  null,
+  "trashed 标记排除",
+);
+eq(
+  pickPdfAttachment(JSON.stringify([{ ...child(), key: "citekey" }])),
+  null,
+  "非法附件 key 排除",
+);
+eq(
+  pickPdfAttachment(JSON.stringify([{ key: "AT12CD34", itemType: "attachment", contentType: "application/pdf" }]))?.itemKey,
+  "AT12CD34",
+  "兼容字段在顶层的扁平 JSON",
+);
+eq(
+  pickPdfAttachment(
+    JSON.stringify([
+      child({ key: "ZZ99ZZ99", dateAdded: "2026-03-01T00:00:00Z" }),
+      child({ key: "AA11AA11", dateAdded: "2026-01-01T00:00:00Z" }),
+    ]),
+  )?.itemKey,
+  "AA11AA11",
+  "多 PDF 时取 dateAdded 最早的（贴近 Zotero best attachment）",
+);
+eq(
+  pickPdfAttachment(
+    JSON.stringify([
+      child({ key: "AA11AA11", dateAdded: "2026-01-01T00:00:00Z" }),
+      child({ key: "ZZ99ZZ99", dateAdded: "2026-02-01T00:00:00Z", url: "https://x.org/p" }),
+    ]),
+    "https://x.org/p",
+  )?.itemKey,
+  "ZZ99ZZ99",
+  "url 与父条目一致优先于更早的 dateAdded",
+);
+eq(
+  pickPdfAttachment(
+    JSON.stringify([
+      child({ key: "ZZ99ZZ99", dateAdded: "" }),
+      child({ key: "AA11AA11", dateAdded: "2026-01-01T00:00:00Z" }),
+    ]),
+  )?.itemKey,
+  "AA11AA11",
+  "空 dateAdded 排最后",
+);
+eq(
+  pickPdfAttachment(
+    JSON.stringify([
+      child({ key: "ZZ99ZZ99", dateAdded: "2026-01-01T00:00:00Z" }),
+      child({ key: "AA11AA11", dateAdded: "2026-01-01T00:00:00Z" }),
+    ]),
+  )?.itemKey,
+  "AA11AA11",
+  "同日期用 key 字典序稳定兜底",
+);
+
+console.log("P3-1b · 下拉项可用性");
+eq(targetDisabled("web", { doi: "10.1000/xyz" }), false, "有 DOI 时论文网页可用");
+eq(targetDisabled("web", {}), true, "无 URL/DOI 时论文网页置灰");
+eq(targetDisabled("pdf", {}), false, "打开全文不因字段缺失置灰（失败走回退）");
+eq(targetDisabled("item", {}), false, "打开条目不因字段缺失置灰");
+eq(String(targetHint("web", { doi: "10.1000/xyz" })).includes("doi.org"), true, "网页项 hint 含目标 URL");
+eq(String(targetHint("web", {})).includes("没有"), true, "网页项不可用时 hint 说明原因");
+eq(String(targetHint("pdf", {})).includes("回退"), true, "全文项 hint 说明失败自动回退");
 
 console.log(`\n${total - failures}/${total} 通过`);
 if (failures > 0) process.exitCode = 1;

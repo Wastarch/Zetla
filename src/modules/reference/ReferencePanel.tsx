@@ -16,8 +16,15 @@ import { projectApi } from "@/ipc/invoke";
 import { jumpToFile } from "@/editor/jump";
 import { insertSnippet } from "@/core/moduleRegistry";
 import { openZoteroItem } from "@/modules/zotero/zoteroReverseRuntime";
+import {
+  targetDisabled,
+  targetHint,
+  type ZoteroOpenTarget,
+} from "@/modules/zotero/zoteroOpenTargets";
+import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
 import { firstDuplicateEntry, type MissingCiteSummary } from "./lintLogic";
 import { RefPreviewCard } from "./RefPreviewCard";
+import { ZoteroOpenSplit } from "./ZoteroOpenSplit";
 import type { BibEntry } from "./bibParser";
 
 /** 浮窗尺寸估算（用于定位 clamp，实际宽高由 CSS 决定） */
@@ -36,6 +43,32 @@ function previewPos(rect: DOMRect): { left: number; top: number } {
   return { left, top };
 }
 
+/** P3-1b：打开目标下拉三项；primary 项 = 主按钮默认动作（打开全文） */
+function zoteroOpenActions(
+  entry: BibEntry,
+  run: (target: ZoteroOpenTarget) => void,
+): CtxAction[] {
+  return [
+    {
+      label: "打开 PDF 全文",
+      primary: true,
+      hint: targetHint("pdf", entry.fields),
+      onClick: () => run("pdf"),
+    },
+    {
+      label: "在 Zotero 中打开条目",
+      hint: targetHint("item", entry.fields),
+      onClick: () => run("item"),
+    },
+    {
+      label: "论文网页（DOI/URL）",
+      hint: targetHint("web", entry.fields),
+      disabled: targetDisabled("web", entry.fields),
+      onClick: () => run("web"),
+    },
+  ];
+}
+
 export default function ReferencePanel() {
   const entries = useReferenceStore((s) => s.entries);
   const byKey = useReferenceStore((s) => s.byKey);
@@ -49,6 +82,12 @@ export default function ReferencePanel() {
   const [refreshing, setRefreshing] = useState(false);
   /** P3-1：反向跳转进行中（禁用重复点击，避免并发搜索） */
   const [zoteroBusy, setZoteroBusy] = useState(false);
+  /** P3-1b：打开目标下拉（放在菜单/卡片外部：点 ▾ 时父菜单会卸载） */
+  const [openMenu, setOpenMenu] = useState<{
+    x: number;
+    y: number;
+    entry: BibEntry;
+  } | null>(null);
   /** 右键菜单：命中的条目、屏幕坐标、以及「查看反向引用」用的浮窗锚点 */
   const [menu, setMenu] = useState<{
     entry: BibEntry;
@@ -86,7 +125,12 @@ export default function ReferencePanel() {
     if (!preview) return;
     const onPointerDown = (ev: PointerEvent) => {
       const t = ev.target as HTMLElement | null;
-      if (t && (t.closest(".ref-preview") || t.closest(".ref-entry"))) return;
+      // P3-1b：点打开目标下拉时不收起卡片（下拉由本组件在外层渲染）
+      if (
+        t &&
+        (t.closest(".ref-preview") || t.closest(".ref-entry") || t.closest(".zo-menu-layer"))
+      )
+        return;
       setPreview(null);
     };
     const onKey = (e: KeyboardEvent) => {
@@ -128,20 +172,24 @@ export default function ReferencePanel() {
     }
   }, []);
 
-  /** P3-1：在 Zotero 中定位条目（只读；失败只给 toast，不影响编辑与编译） */
-  const onOpenInZotero = useCallback(async (e: BibEntry) => {
+  /** P3-1b：按目标打开（pdf 默认 / item / web）；只读，失败只给 toast，不影响编辑与编译 */
+  const runZoteroOpen = useCallback(async (e: BibEntry, target: ZoteroOpenTarget) => {
     setZoteroBusy(true);
     try {
-      const r = await openZoteroItem({
-        key: e.key,
-        title: e.title,
-        doi: e.fields?.doi,
-        author: e.author,
-        year: e.year,
-      });
+      const r = await openZoteroItem(
+        {
+          key: e.key,
+          title: e.title,
+          doi: e.fields?.doi,
+          author: e.author,
+          year: e.year,
+          fields: e.fields ?? null,
+        },
+        target,
+      );
       notify(r.message, r.ok ? "ok" : "err");
     } catch (err) {
-      notify(`打开 Zotero 失败：${String(err)}`, "err");
+      notify(`打开失败：${String(err)}`, "err");
     } finally {
       setZoteroBusy(false);
     }
@@ -418,18 +466,20 @@ export default function ReferencePanel() {
           >
             跳到条目
           </button>
-          <button
-            type="button"
-            className="ctx-item"
-            disabled={zoteroBusy}
-            title="按 citekey → itemKey 映射在 Zotero 中定位并高亮该条目"
-            onClick={() => {
-              void onOpenInZotero(menu.entry);
+          <ZoteroOpenSplit
+            variant="menu"
+            busy={zoteroBusy}
+            menuOpen={false}
+            onRun={(target) => {
+              void runZoteroOpen(menu.entry, target);
               setMenu(null);
             }}
-          >
-            {zoteroBusy ? "定位中…" : "在 Zotero 中打开"}
-          </button>
+            onOpenMenu={(pos) => {
+              // 用户拍板：点 ▾ 时父右键菜单消失，只留下拉
+              setMenu(null);
+              setOpenMenu({ ...pos, entry: menu.entry });
+            }}
+          />
           <button
             type="button"
             className="ctx-item"
@@ -457,9 +507,36 @@ export default function ReferencePanel() {
             jumpToFile(file, line);
             setPreview(null);
           }}
-          onOpenInZotero={() => void onOpenInZotero(preview.entry)}
-          zoteroBusy={zoteroBusy}
+          onRun={(target) => void runZoteroOpen(preview.entry, target)}
+          onOpenMenu={(pos) =>
+            setOpenMenu((prev) => {
+              const id = `${preview.entry.file}:${preview.entry.line}`;
+              return prev && `${prev.entry.file}:${prev.entry.line}` === id
+                ? null
+                : { ...pos, entry: preview.entry };
+            })
+          }
+          menuOpen={
+            !!openMenu &&
+            `${openMenu.entry.file}:${openMenu.entry.line}` ===
+              `${preview.entry.file}:${preview.entry.line}`
+          }
+          busy={zoteroBusy}
         />
+      )}
+
+      {/* P3-1b：打开目标下拉（编译 ▾ 同款 InsertCtxMenu；父菜单卸载后本节点仍在） */}
+      {openMenu && (
+        <div className="zo-menu-layer">
+          <InsertCtxMenu
+            x={openMenu.x}
+            y={openMenu.y}
+            onClose={() => setOpenMenu(null)}
+            actions={zoteroOpenActions(openMenu.entry, (t) =>
+              void runZoteroOpen(openMenu.entry, t),
+            )}
+          />
+        </div>
       )}
     </div>
   );

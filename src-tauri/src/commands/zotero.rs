@@ -762,6 +762,54 @@ pub async fn zotero_search(
     fetch_search(&client, &url).await
 }
 
+// ── P3-1b · 附件清单（只读，供 zotero://open-pdf 定位 PDF 附件） ──────────────
+//
+// open-pdf 协议需要「附件」itemKey，而 map.json 里存的是父条目 itemKey；
+// 因此先查本地 API 的 /children 拿子项列表（纯 GET、零写、无需 API key），
+// 由前端纯逻辑筛出 PDF 附件。仍然只允许 localhost + 8 位 itemKey。
+const CHILDREN_DEFAULT_LIMIT: u32 = 50;
+const CHILDREN_MAX_LIMIT: u32 = 100;
+
+fn clamp_children_limit(limit: u32) -> u32 {
+    if limit == 0 {
+        CHILDREN_DEFAULT_LIMIT
+    } else {
+        limit.min(CHILDREN_MAX_LIMIT)
+    }
+}
+
+/// 与前端 isItemKey 同口径：8 位字母数字，杜绝把 citekey 拼进 API 路径
+pub fn is_item_key(raw: &str) -> bool {
+    let s = raw.trim();
+    s.len() == 8 && s.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+/// /children 固定个人库 + 显式 limit（本地 API 省略 limit 会返回全量子项）
+pub fn children_url(port: u16, parent_key: &str, limit: u32) -> String {
+    format!(
+        "{}/api/users/0/items/{}/children?format=json&limit={}",
+        base_url(port),
+        safe_key(parent_key),
+        clamp_children_limit(limit)
+    )
+}
+
+/// P3-1b：读取某个父条目的子项原始 JSON（附件 / 笔记），解析放前端纯逻辑。
+#[tauri::command]
+pub async fn zotero_fetch_children(
+    port: u16,
+    parent_key: String,
+    limit: Option<u32>,
+) -> Result<String, String> {
+    let key = parent_key.trim();
+    if !is_item_key(key) {
+        return Err("父条目 itemKey 非法（必须是 8 位字母数字）".into());
+    }
+    let client = build_client()?;
+    let url = children_url(port, key, limit.unwrap_or(0));
+    fetch_text(&client, &url, "读取 Zotero 附件清单").await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1050,5 +1098,44 @@ mod tests {
         assert_eq!(clamp_picker_limit(0), PICKER_DEFAULT_LIMIT);
         assert_eq!(clamp_picker_limit(1), 1);
         assert_eq!(clamp_picker_limit(101), PICKER_MAX_LIMIT);
+    }
+
+    // ── P3-1b · 附件清单端点 ────────────────────────────────────────────
+    #[test]
+    fn children_url_pins_localhost_and_clamps_limit() {
+        assert_eq!(
+            children_url(0, "AB12CD34", 0),
+            "http://localhost:23119/api/users/0/items/AB12CD34/children?format=json&limit=50"
+        );
+        let u = children_url(24119, "AB12CD34", 999);
+        assert!(u.starts_with("http://localhost:24119/api/users/0/items/AB12CD34/children?"));
+        assert!(u.contains("limit=100"));
+        assert!(!u.contains("127.0.0.1"));
+    }
+
+    #[test]
+    fn children_url_strips_injected_key_and_query() {
+        // safe_key 只保留字母数字并截断，路径穿越 / &limit= 注入都不可能生效
+        assert_eq!(
+            children_url(23119, "../../etc/passwd", 10),
+            "http://localhost:23119/api/users/0/items/etcpasswd/children?format=json&limit=10"
+        );
+        assert_eq!(
+            children_url(23119, "AB12CD34&limit=99999", 10),
+            "http://localhost:23119/api/users/0/items/AB12CD34limit99999/children?format=json&limit=10"
+        );
+    }
+
+    #[test]
+    fn item_key_gate_rejects_citekeys() {
+        assert!(is_item_key("AB12CD34"));
+        assert!(is_item_key("abcdefgh"));
+        assert!(!is_item_key("doe2020deep"));
+        assert!(!is_item_key("AB12CD3"));
+        assert!(!is_item_key("AB12CD345"));
+        assert!(!is_item_key("AB12-D34"));
+        assert!(!is_item_key(""));
+        // 命令入口用的是 trim 后的 gate：前后空白不算非法
+        assert!(is_item_key("  AB12CD34  "));
     }
 }

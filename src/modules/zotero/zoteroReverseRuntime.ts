@@ -1,7 +1,12 @@
-// Zotero 联动 · P3-1 反向跳转运行时
+// Zotero 联动 · P3-1 / P3-1b 反向跳转运行时
 //
-// 只读：只发 GET 搜索 + 打开 `zotero://select` 本地协议，零写请求、零授权弹窗。
+// 只读：只发 GET（搜索 / children）+ 打开本地协议或 http(s) 链接，零写请求、零授权弹窗。
 // 反查结果只放内存（不回写 map.json、不写盘）；模块级单例缓存，HMR 时清理。
+//
+// 三个打开目标（见 zoteroOpenTargets.ts）：
+//   pdf  → 父 itemKey → /children → 附件 itemKey → zotero://open-pdf（失败自动回退 item）
+//   item → zotero://select（P3-1 原行为，离线 / 关闭联动仍可用）
+//   web  → .bib 的 url / doi → https 网页（零 API）
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { zoteroApi } from "@/ipc/invoke";
 import { useSettingsStore } from "@/core/settings";
@@ -17,13 +22,27 @@ import {
   zoteroSelectUrl,
   type ReverseEntry,
 } from "./zoteroReverse";
+import {
+  DEFAULT_ZOTERO_OPEN_TARGET,
+  pickPdfAttachment,
+  plainBibValue,
+  paperUrlFromFields,
+  zoteroPdfUrl,
+  type ZoteroOpenTarget,
+} from "./zoteroOpenTargets";
 
 export interface ZoteroOpenResult {
   ok: boolean;
   message: string;
   itemKey: string | null;
-  /** map = 命中 .ltex/zotero/map.json；search = 本地 API 反查；null = 未定位 */
-  source: "map" | "search" | null;
+  /** map = 命中 .ltex/zotero/map.json；search = 本地 API 反查；web = 论文网页（不解析 itemKey） */
+  source: "map" | "search" | "web" | null;
+  /** 本次实际执行的打开目标 */
+  target: ZoteroOpenTarget;
+  /** pdf 失败后是否回退到了 item */
+  fallback: boolean;
+  /** 实际交给 openUrl 的链接（失败时为 null），便于真机排障 */
+  url: string | null;
 }
 
 const reverseCache = new Map<string, string>();
@@ -46,99 +65,185 @@ function currentSettings(): ZoteroSettings {
 }
 
 /** 明确离线 / 403 / 400 时省掉一次必然失败的超时；其余状态（含未自检）仍尝试 */
-function searchBlocked(): boolean {
+function apiBlocked(): boolean {
   const cfg = currentSettings();
   if (!cfg.enabled) return true;
   const state = useZoteroStore.getState().health?.state;
   return state === "offline" || state === "api-disabled" || state === "bad-request";
 }
 
-async function lookupBySearch(
-  entry: ReverseEntry,
-  keyMap: ZoteroKeyMap | null,
-): Promise<{ itemKey: string; reason: string } | null> {
-  if (searchBlocked()) return null;
-  const cfg = currentSettings();
-  const port = normalizePort(cfg.port);
-  for (const q of buildReverseQueries(entry)) {
-    try {
-      const r = await zoteroApi.search(port, q, REVERSE_SEARCH_LIMIT, 0);
-      const m = pickReverseMatch(entry, parseSearchItems(r.items), keyMap);
-      if (m) return { itemKey: m.itemKey, reason: m.reason };
-    } catch {
-      // 单次失败继续下一个查询词；全部失败由调用方给统一提示，不打断编译/编辑
+interface Resolved {
+  itemKey: string;
+  source: "map" | "search";
+  reason: string;
+}
+
+/** citekey → 父条目 itemKey：map.json → 内存缓存 → 最多 3 次只读全库反查 */
+async function resolveItemKey(entry: ReverseEntry): Promise<Resolved | null> {
+  const citeKey = String(entry.key ?? "").trim();
+  const store = useZoteroStore.getState();
+  const keyMap: ZoteroKeyMap | null = store.keyMap;
+  const serverId = keyMap?.serverId ?? store.health?.serverId ?? null;
+
+  const mapped = mappedItemKey(citeKey, keyMap);
+  if (mapped) return { itemKey: mapped, source: "map", reason: "" };
+
+  const cached = reverseCache.get(cacheKey(serverId, citeKey));
+  if (cached) return { itemKey: cached, source: "search", reason: "缓存" };
+
+  if (!apiBlocked()) {
+    const cfg = currentSettings();
+    const port = normalizePort(cfg.port);
+    for (const q of buildReverseQueries(entry)) {
+      try {
+        const r = await zoteroApi.search(port, q, REVERSE_SEARCH_LIMIT, 0);
+        const m = pickReverseMatch(entry, parseSearchItems(r.items), keyMap);
+        if (m) {
+          reverseCache.set(cacheKey(serverId, citeKey), m.itemKey);
+          return { itemKey: m.itemKey, source: "search", reason: m.reason };
+        }
+      } catch {
+        // 单次失败继续下一个查询词；全部失败由调用方统一提示，不打断编译/编辑
+      }
     }
   }
   return null;
 }
 
+async function tryOpen(url: string): Promise<string | null> {
+  try {
+    await openUrl(url);
+    return null;
+  } catch (e) {
+    return String(e);
+  }
+}
+
+function fail(
+  message: string,
+  target: ZoteroOpenTarget,
+  itemKey: string | null = null,
+): ZoteroOpenResult {
+  return { ok: false, message, itemKey, source: null, target, fallback: false, url: null };
+}
+
 /**
- * 由引用条目在 Zotero 中定位并高亮对应题录。
- * 顺序：map.json → 内存缓存 → 只读全库反查 → 打开 URL；任何失败都返回结构化结果，不抛异常。
+ * 按目标打开引用条目。任何失败都返回结构化结果，不抛异常。
+ * 默认 pdf：拿不到 PDF 附件 / API 不可用 / open-pdf 被系统拒收时，自动回退到 select。
  */
-export async function openZoteroItem(entry: ReverseEntry): Promise<ZoteroOpenResult> {
+export async function openZoteroItem(
+  entry: ReverseEntry,
+  target: ZoteroOpenTarget = DEFAULT_ZOTERO_OPEN_TARGET,
+): Promise<ZoteroOpenResult> {
   const citeKey = String(entry.key ?? "").trim();
-  if (!citeKey) {
-    return { ok: false, message: "该条目没有 citekey，无法定位 Zotero 条目", itemKey: null, source: null };
+  if (!citeKey) return fail("该条目没有 citekey，无法定位 Zotero 条目", target);
+
+  // ① 论文网页：不需要 itemKey、不需要本地 API
+  if (target === "web") {
+    const url = paperUrlFromFields(entry.fields);
+    if (!url) return fail(`「${citeKey}」没有可用的 http(s) URL 或 DOI`, target);
+    const err = await tryOpen(url);
+    if (err) return { ...fail(`打开论文网页失败：${err}`, target), url };
+    return {
+      ok: true,
+      message: `已打开论文网页「${citeKey}」· ${url}`,
+      itemKey: null,
+      source: "web",
+      target,
+      fallback: false,
+      url,
+    };
   }
 
-  const store = useZoteroStore.getState();
-  const keyMap = store.keyMap;
-  const serverId = keyMap?.serverId ?? store.health?.serverId ?? null;
-  let itemKey = mappedItemKey(citeKey, keyMap);
-  let source: ZoteroOpenResult["source"] = itemKey ? "map" : null;
-  let reason = "";
-
-  if (!itemKey) {
-    const cached = reverseCache.get(cacheKey(serverId, citeKey));
-    if (cached) {
-      itemKey = cached;
-      source = "search";
-    }
-  }
-  if (!itemKey) {
-    const hit = await lookupBySearch(entry, keyMap);
-    if (hit) {
-      itemKey = hit.itemKey;
-      reason = hit.reason;
-      source = "search";
-      reverseCache.set(cacheKey(serverId, citeKey), itemKey);
-    }
-  }
-
-  if (!itemKey) {
+  // ② 解析父条目 itemKey（pdf / item 共用同一条链路）
+  const resolved = await resolveItemKey(entry);
+  if (!resolved) {
     const cfg = currentSettings();
     const why = !cfg.enabled
       ? "Zotero 联动未启用，且没有 citekey → itemKey 映射"
       : "本地 API 离线或未找到可确信匹配的题录";
+    return fail(
+      `「${citeKey}」无法定位到 Zotero：${why}。可在设置页开启联动并同步一次绑定分类；也可选择「论文网页」。`,
+      target,
+    );
+  }
+
+  const via = resolved.source === "map" ? "键映射" : `全库反查（${resolved.reason || "缓存"}）`;
+  const selectUrl = zoteroSelectUrl(resolved.itemKey);
+  if (!selectUrl) {
+    return fail(
+      `「${citeKey}」映射到的 itemKey 非法（${resolved.itemKey}），已拒绝跳转`,
+      target,
+      resolved.itemKey,
+    );
+  }
+
+  // ③ 只定位题录（原 P3-1 行为）
+  if (target === "item") {
+    const err = await tryOpen(selectUrl);
+    if (err) {
+      return {
+        ...fail(`打开 ${selectUrl} 失败：${err}；请确认 Zotero 已安装并运行`, target, resolved.itemKey),
+        url: selectUrl,
+      };
+    }
     return {
-      ok: false,
-      message: `「${citeKey}」无法定位到 Zotero：${why}。可在设置页开启联动并同步一次绑定分类。`,
-      itemKey: null,
-      source: null,
+      ok: true,
+      message: `已在 Zotero 中打开「${citeKey}」· ${via}`,
+      itemKey: resolved.itemKey,
+      source: resolved.source,
+      target,
+      fallback: false,
+      url: selectUrl,
     };
   }
 
-  const url = zoteroSelectUrl(itemKey);
-  if (!url) {
-    return {
-      ok: false,
-      message: `「${citeKey}」映射到的 itemKey 非法（${itemKey}），已拒绝跳转`,
-      itemKey,
-      source,
-    };
-  }
-
+  // ④ 打开 PDF 全文：children → 附件 itemKey → open-pdf
+  let pdfFailure = "";
+  let pdfUrl: string | null = null;
   try {
-    await openUrl(url);
-    const via = source === "map" ? "键映射" : `全库反查（${reason || "缓存"}）`;
-    return { ok: true, message: `已在 Zotero 中打开「${citeKey}」· ${via}`, itemKey, source };
-  } catch (e) {
+    if (apiBlocked()) throw new Error("Zotero 联动未启用或本地 API 不可用");
+    const port = normalizePort(currentSettings().port);
+    const raw = await zoteroApi.fetchChildren(port, resolved.itemKey, 50);
+    const parentUrl = plainBibValue(entry.fields?.url ?? "");
+    const att = pickPdfAttachment(raw, parentUrl);
+    if (!att) throw new Error("该条目没有可打开的 PDF 附件");
+    pdfUrl = zoteroPdfUrl(att.itemKey);
+    if (!pdfUrl) throw new Error("附件 itemKey 非法");
+    const err = await tryOpen(pdfUrl);
+    if (err) throw new Error(err);
     return {
-      ok: false,
-      message: `打开 ${url} 失败：${String(e)}；请确认 Zotero 已安装并运行`,
-      itemKey,
-      source,
+      ok: true,
+      message: `已打开 PDF 全文「${att.filename || citeKey}」· ${via}`,
+      itemKey: resolved.itemKey,
+      source: resolved.source,
+      target,
+      fallback: false,
+      url: pdfUrl,
+    };
+  } catch (e) {
+    pdfFailure = String(e);
+  }
+
+  // ⑤ 主按钮兜底：全文打不开就回退到条目，绝不静默失败
+  const fallbackErr = await tryOpen(selectUrl);
+  if (fallbackErr) {
+    return {
+      ...fail(
+        `打开全文失败（${pdfFailure}）；回退到条目也失败：${fallbackErr}；请确认 Zotero 已安装并运行`,
+        target,
+        resolved.itemKey,
+      ),
+      url: selectUrl,
     };
   }
+  return {
+    ok: true,
+    message: `未打开全文（${pdfFailure}），已回退到 Zotero 条目「${citeKey}」· ${via}`,
+    itemKey: resolved.itemKey,
+    source: resolved.source,
+    target,
+    fallback: true,
+    url: selectUrl,
+  };
 }

@@ -21,6 +21,8 @@ export interface ReverseEntry {
   doi?: string;
   author?: string;
   year?: string;
+  /** P3-1b：原始字段表，供「论文网页」目标读取 url / doi */
+  fields?: Record<string, string> | null;
 }
 
 /** 个人库 / 群组库；本期只生成链接，不接群组库 API */

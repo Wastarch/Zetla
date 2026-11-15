@@ -220,6 +220,11 @@ export const zoteroApi = {
       limit,
       start,
     }),
+
+  // ── P3-1b · 打开目标下拉：只读附件清单（open-pdf 需要附件 itemKey）──
+  /** 父条目的子项原始 JSON；parentKey 必须是 8 位 itemKey */
+  fetchChildren: (port: number, parentKey: string, limit = 50) =>
+    call<string>("zotero_fetch_children", { port, parentKey, limit }),
 };
 
 // ── 绘图模块 · 图片插入 TikZ · P2 暂存图生命周期 ─────────────────────────

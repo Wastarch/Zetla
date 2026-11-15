@@ -1,6 +1,8 @@
 // M1-14g+ · 引用条目浮窗预览卡片（纯展示，无写操作）
 // 左键点条目 → info 模式展示作者/标题/字段/来源；右键「查看反向引用」→ refs 模式列引用位置。
 import type { BibEntry } from "./bibParser";
+import type { ZoteroOpenTarget } from "@/modules/zotero/zoteroOpenTargets";
+import { ZoteroOpenSplit } from "./ZoteroOpenSplit";
 
 /** 预览中额外展示的字段（存在才显示） */
 const EXTRA_FIELDS = [
@@ -31,9 +33,11 @@ export interface RefPreviewCardProps {
   onMode: (m: "info" | "refs") => void;
   onClose: () => void;
   onJump: (file: string, line: number) => void;
-  /** P3-1：可选的「在 Zotero 中打开」入口（由父组件注入，卡片保持纯展示） */
-  onOpenInZotero?: () => void;
-  zoteroBusy?: boolean;
+  /** P3-1b：可选的「打开目标」分体按钮（由父组件注入，卡片保持纯展示） */
+  onRun?: (target: ZoteroOpenTarget) => void;
+  onOpenMenu?: (pos: { x: number; y: number }) => void;
+  menuOpen?: boolean;
+  busy?: boolean;
 }
 
 export function RefPreviewCard({
@@ -45,8 +49,10 @@ export function RefPreviewCard({
   onMode,
   onClose,
   onJump,
-  onOpenInZotero,
-  zoteroBusy,
+  onRun,
+  onOpenMenu,
+  menuOpen,
+  busy,
 }: RefPreviewCardProps) {
   const extras = EXTRA_FIELDS.map((name) => ({ name, value: entry.fields[name] })).filter(
     (x): x is { name: string; value: string } => !!x.value,
@@ -108,16 +114,14 @@ export function RefPreviewCard({
             <span className="ref-preview-src" title={entry.file}>
               {entry.file.split(/[\\/]/).pop()}:{entry.line}
             </span>
-            {onOpenInZotero && (
-              <button
-                type="button"
-                className="ref-zotero-open"
-                disabled={!!zoteroBusy}
-                title="按 citekey → itemKey 映射在 Zotero 中定位并高亮该条目"
-                onClick={onOpenInZotero}
-              >
-                {zoteroBusy ? "定位中…" : "在 Zotero 中打开"}
-              </button>
+            {onRun && onOpenMenu && (
+              <ZoteroOpenSplit
+                variant="card"
+                busy={!!busy}
+                menuOpen={menuOpen}
+                onRun={onRun}
+                onOpenMenu={onOpenMenu}
+              />
             )}
             <span className="ref-preview-cites">
               {refs.length > 0 ? `被引用 ${refs.length} 次` : "未被引用"}
