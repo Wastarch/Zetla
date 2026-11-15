@@ -244,12 +244,12 @@ pub struct ProjectConfigDoc {
     pub exclude: Option<Vec<String>>,
 }
 
-fn project_json_path(root: &Path) -> PathBuf {
+pub(crate) fn project_json_path(root: &Path) -> PathBuf {
     root.join(".ltex").join("config.json")
 }
 
 /// 读 .ltex/config.json 为 JSON 对象（缺失/损坏返回空 Map）
-fn read_project_obj(root: &Path) -> Map<String, serde_json::Value> {
+pub(crate) fn read_project_obj(root: &Path) -> Map<String, serde_json::Value> {
     match std::fs::read_to_string(project_json_path(root)) {
         Ok(text) => serde_json::from_str(&text).unwrap_or_else(|_| Map::new()),
         Err(_) => Map::new(),

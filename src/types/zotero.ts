@@ -84,3 +84,103 @@ export interface ZoteroHealth {
   checkedAt: string;
   message: string;
 }
+
+// ── P1 · 自动化同步协议 ────────────────────────────────────────
+
+/** Zotero 分类（本地 API `GET /api/users/0/collections` 的条目） */
+export interface ZoteroCollection {
+  key: string;
+  name: string;
+  /** 父分类 key；顶层为 false / 空 */
+  parentCollection: string | false;
+}
+
+/** 项目级绑定：collection → 项目内 .bib（`.ltex/config.json` 的 zoteroBindings） */
+export interface ZoteroBinding {
+  collectionKey: string;
+  collectionName: string;
+  /** 相对项目根（推荐）或项目内绝对路径；Rust 写盘时校验不越界 */
+  bibPath: string;
+  /** BBT pull export 格式 */
+  format: "bibtex" | "biblatex";
+  enabled: boolean;
+}
+
+export const DEFAULT_ZOTERO_BINDING: ZoteroBinding = {
+  collectionKey: "",
+  collectionName: "",
+  bibPath: "references.bib",
+  format: "bibtex",
+  enabled: true,
+};
+
+/** `zotero_write_bib` 返回 */
+export interface ZoteroWriteResult {
+  path: string;
+  hash: string;
+  written: boolean;
+  bytes: number;
+  message: string;
+}
+
+/** `zotero:bib-changed` 事件负载 */
+export interface ZoteroBibChanged {
+  path: string;
+  hash: string;
+  reason: "external" | "sync";
+}
+
+/** 从本地 API `format=json` 归一化出的题录（只保留同步需要的字段） */
+export interface ZoteroItem {
+  itemKey: string;
+  itemType: string;
+  title: string;
+  authors: string[];
+  year: string;
+  /** 期刊 / 会议论文集 / 出版社（按 itemType 落到 journal / booktitle / publisher） */
+  publicationTitle: string;
+  doi: string;
+  url: string;
+  extra: string;
+  /** BBT 写在 Extra 里的稳定 citekey */
+  citationKey: string;
+}
+
+/** `.ltex/zotero/map.json`：citekey ↔ itemKey 双向映射（按 serverId 分区） */
+export interface ZoteroKeyMap {
+  serverId: string | null;
+  updatedAt: string;
+  /** citeKey → Zotero itemKey */
+  byCiteKey: Record<string, string>;
+  /** itemKey → citeKey */
+  byItemKey: Record<string, string>;
+  /** .bib 中未被映射的 key（多半是用户手写条目） */
+  unmapped: string[];
+}
+
+/** 编译前一致性诊断（只读，不阻断编译） */
+export interface ZoteroConsistency {
+  checkedAt: string;
+  /** \cite 引用了但 .bib 里没有 */
+  missing: string[];
+  /** .bib 里有但全文没人引用 */
+  orphaned: string[];
+  /** .bib 中重复定义的 key */
+  duplicates: string[];
+  bibCount: number;
+  citeCount: number;
+}
+
+/** 一次同步的结果（设置页展示 + 节流依据） */
+export interface ZoteroSyncRecord {
+  at: string;
+  ok: boolean;
+  /** "bbt" | "local-api" | "skipped" */
+  source: "bbt" | "local-api" | "skipped";
+  written: boolean;
+  hash: string;
+  entryCount: number;
+  mappedCount: number;
+  message: string;
+  bibPath: string;
+}

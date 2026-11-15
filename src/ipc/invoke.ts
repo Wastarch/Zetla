@@ -27,7 +27,11 @@ import type {
   TikzExportResult,
   TikzImageAsset,
 } from "@/types/diagram";
-import type { ZoteroHealth } from "@/types/zotero";
+import type {
+  ZoteroBinding,
+  ZoteroHealth,
+  ZoteroWriteResult,
+} from "@/types/zotero";
 
 /** 底层透传（未封装的命令临时入口） */
 export function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -182,6 +186,29 @@ export const zoteroApi = {
   health: (port: number) => call<ZoteroHealth>("zotero_health", { port }),
   /** 单独探测 Better BibTeX（probe=1 只返回 ready，不弹 Zotero 选择器） */
   probeBbt: (port: number) => call<boolean>("zotero_probe_bbt", { port }),
+
+  // ── P1 · 自动化同步（只读 HTTP / 受管 .bib 写盘 / 绑定与映射缓存 / 多路径监听）──
+  /** 分类列表原始 JSON（解析放 zoteroSync.ts 纯逻辑） */
+  fetchCollections: (port: number) => call<string>("zotero_fetch_collections", { port }),
+  /** 题录原始 JSON；collectionKey 为空 = 全库 top-level */
+  fetchItems: (port: number, collectionKey: string | null, limit?: number) =>
+    call<string>("zotero_fetch_items", { port, collectionKey, limit: limit ?? null }),
+  /** BBT pull export：直接拿 BibTeX 文本 */
+  fetchBbtExport: (port: number, collectionKey: string, format: "bibtex" | "biblatex") =>
+    call<string>("zotero_fetch_bbt_export", { port, collectionKey, format }),
+  /** 原子写项目内 .bib（UTF-8 + LF，内容未变则不写盘；返回 hash） */
+  writeBib: (root: string, bibPath: string, content: string) =>
+    call<ZoteroWriteResult>("zotero_write_bib", { root, bibPath, content }),
+  /** 项目级绑定读写（.ltex/config.json 的 zoteroBindings） */
+  getBindings: (root: string) => call<ZoteroBinding[]>("zotero_get_bindings", { root }),
+  setBindings: (root: string, bindings: ZoteroBinding[]) =>
+    call<void>("zotero_set_bindings", { root, bindings }),
+  /** citekey ↔ itemKey 映射缓存（.ltex/zotero/map.json） */
+  loadMap: (root: string) => call<string | null>("zotero_load_map", { root }),
+  saveMap: (root: string, json: string) => call<void>("zotero_save_map", { root, json }),
+  /** 多路径 watcher：替换整组监听；返回实际监听的目录数 */
+  watchBibs: (paths: string[]) => call<number>("zotero_watch_bibs", { paths }),
+  unwatchBibs: () => call<void>("zotero_unwatch_bibs"),
 };
 
 // ── 绘图模块 · 图片插入 TikZ · P2 暂存图生命周期 ─────────────────────────

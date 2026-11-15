@@ -23,6 +23,7 @@ import { LANG_META, LANG_ORDER, isKnownExt, langLabel, langOf } from "@/editor/l
 import { useLangOverride } from "@/editor/langOverride";
 // Zotero 联动 · P0：状态栏连接灯 + 全局自检运行时（模块级单例，重复挂载无副作用）
 import { startZoteroRuntime, useZoteroStore } from "@/modules/zotero/useZoteroStore";
+import { startZoteroSyncRuntime } from "@/modules/zotero/zoteroRuntime";
 import { formatCheckedAt, stateTone, statusLabel } from "@/modules/zotero/zoteroDiagnostics";
 
 const DOT_CLASS: Record<string, string> = {
@@ -55,6 +56,7 @@ export function StatusBar() {
   // （模块级单例，StrictMode 假卸载不会重复注册；关闭联动时不自动发请求）
   useEffect(() => {
     startZoteroRuntime();
+    startZoteroSyncRuntime();
   }, []);
   const zoteroEnabled = useSettingsStore((s) => s.settings.zotero?.enabled ?? false);
   const zoteroHealth = useZoteroStore((s) => s.health);

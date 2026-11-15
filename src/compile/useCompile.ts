@@ -12,6 +12,8 @@ import { getActiveView } from "@/editor/activeView";
 import { anchorPdfToSource } from "@/preview/syncTex";
 import { base, notify, useProjectStore } from "@/project/useProject";
 import { ensureEnv } from "@/env/useEnvCheck";
+// Zotero 联动 · P1-7：编译前一致性校验（实时预览不参与，失败一律不阻断编译）
+import { runZoteroPreCompile } from "@/modules/zotero/zoteroRuntime";
 import { resolveRecipeSelection } from "@/compile/recipePicker";
 import { DEFAULT_AUX_EXTENSIONS, liveSafeAuxExtensions, stepsLabel } from "@/types";
 import type { CompileEngine } from "@/types";
@@ -114,6 +116,11 @@ export async function startCompile(opts?: {
   } else if (dirtyBefore > 0) {
     if (!live) notify("编译前自动保存已关闭，本次编译使用磁盘上的内容", "err");
   }
+
+  // Zotero 联动 · P1-7：保存之后、真正编译之前做一致性校验（+ 60s 节流的可选主动拉取）。
+  // live（实时预览）跳过：避免每次防抖都触发 HTTP / 全量 reindex。
+  // runZoteroPreCompile 内部吞掉所有异常，绝不阻断编译。
+  if (!live) await runZoteroPreCompile();
 
   // M1-18c：实时预览触发的编译**不抢界面**——不清日志、不展开面板，只写日志备查
   if (!live) {

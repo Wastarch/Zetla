@@ -11,7 +11,15 @@ import { create } from "zustand";
 import { zoteroApi } from "@/ipc/invoke";
 import { onKernelEvent, RustEvents } from "@/ipc/events";
 import { useSettingsStore } from "@/core/settings";
-import { DEFAULT_ZOTERO_SETTINGS, type ZoteroHealth, type ZoteroSettings } from "@/types/zotero";
+import {
+  DEFAULT_ZOTERO_SETTINGS,
+  type ZoteroBinding,
+  type ZoteroConsistency,
+  type ZoteroHealth,
+  type ZoteroKeyMap,
+  type ZoteroSettings,
+  type ZoteroSyncRecord,
+} from "@/types/zotero";
 import {
   nextPollDelayMs,
   normalizePort,
@@ -30,6 +38,27 @@ export interface ZoteroStoreState {
   check: (port?: number) => Promise<ZoteroHealth | null>;
   /** 由 Rust 事件或命令结果写入（幂等） */
   applyHealth: (h: ZoteroHealth) => void;
+
+  // ── P1 · 自动化同步状态 ──────────────────────────────────
+  /** 当前项目的 collection → .bib 绑定 */
+  bindings: ZoteroBinding[];
+  /** citekey ↔ itemKey 映射（.ltex/zotero/map.json 的内存镜像） */
+  keyMap: ZoteroKeyMap | null;
+  /** 最近一次主动同步结果 */
+  lastSync: ZoteroSyncRecord | null;
+  syncBusy: boolean;
+  syncError: string | null;
+  /** 编译前一致性诊断（只读，不阻断编译） */
+  consistency: ZoteroConsistency | null;
+  /** 最近一次受管 .bib 变更事件 */
+  bibChange: { path: string; hash: string; reason: string; at: string } | null;
+  setBindings: (b: ZoteroBinding[]) => void;
+  setKeyMap: (m: ZoteroKeyMap | null) => void;
+  setLastSync: (r: ZoteroSyncRecord | null) => void;
+  setSyncBusy: (v: boolean) => void;
+  setSyncError: (v: string | null) => void;
+  setConsistency: (c: ZoteroConsistency | null) => void;
+  noteBibChange: (e: { path: string; hash: string; reason: string }) => void;
 }
 
 /** IPC 本身失败（非 Tauri 预览环境 / 命令未注册）时的本地兜底结果 */
@@ -54,6 +83,24 @@ export const useZoteroStore = create<ZoteroStoreState>((set, get) => ({
   checking: false,
   lastGoodAt: null,
   error: null,
+
+  // P1 状态初值（纯内存，换项目时由 zoteroRuntime 重新载入）
+  bindings: [],
+  keyMap: null,
+  lastSync: null,
+  syncBusy: false,
+  syncError: null,
+  consistency: null,
+  bibChange: null,
+  setBindings: (bindings) => set({ bindings }),
+  setKeyMap: (keyMap) => set({ keyMap }),
+  setLastSync: (lastSync) => set({ lastSync }),
+  setSyncBusy: (syncBusy) => set({ syncBusy }),
+  setSyncError: (syncError) => set({ syncError }),
+  setConsistency: (consistency) => set({ consistency }),
+  noteBibChange: (e) =>
+    set({ bibChange: { ...e, at: new Date().toISOString() } }),
+
   check: async (port) => {
     const cfg = currentSettings();
     const p = normalizePort(port ?? cfg.port);

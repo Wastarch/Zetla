@@ -19,5 +19,7 @@ pub mod terminal;
 pub mod tikz_export;
 pub mod updater;
 pub mod watch;
-// Zotero 联动 · P0：本地 API 只读客户端 / 能力探测
+// Zotero 联动 · P0：本地 API 只读客户端 / 能力探测；P1：同步 HTTP / 受管 .bib 写盘
 pub mod zotero;
+// Zotero 联动 · P1：受管 .bib 多路径 watcher
+pub mod zotero_watch;

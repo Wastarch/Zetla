@@ -8244,3 +8244,38 @@ body.row-resizing {
   line-height: 1.7;
 }
 .zotero-probe { font-style: italic; }
+
+/* Zotero 联动 · P1：项目绑定向导与同步状态 */
+.zotero-bind-pane {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--line-soft);
+}
+.zotero-bind-line { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.zotero-bind-select { flex: 1 1 220px; min-width: 180px; }
+.zotero-bind-input { flex: 1 1 200px; min-width: 160px; }
+.zotero-bind-format { width: 108px; flex: 0 0 auto; }
+.zotero-bind-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.zotero-bind-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-soft); border-radius: var(--r-md);
+  background: var(--bg-3);
+}
+.zotero-bind-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.zotero-bind-meta b { font-size: 12px; color: var(--txt); }
+.zotero-bind-meta span,
+.zotero-bind-meta em {
+  font-size: 10.5px; color: var(--txt-3); font-family: var(--font-mono);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zotero-bind-meta em { font-style: normal; color: var(--accent); font-family: inherit; }
+.zotero-bind-ops { display: flex; gap: 6px; flex: 0 0 auto; }
+.zotero-bind-stats {
+  display: flex; flex-wrap: wrap; gap: 6px 14px;
+  margin: 8px 0 12px; font-size: 11px; color: var(--txt-3);
+}
+.zotero-bind-stats span {
+  padding: 3px 8px;
+  border: 1px solid var(--line-soft); border-radius: 999px;
+  background: var(--bg-3);
+}

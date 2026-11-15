@@ -21,6 +21,10 @@ pub fn run() {
         ))
         // M0-9a：项目目录监听（资源树自动刷新）
         .manage(std::sync::Arc::new(commands::watch::WatchState::default()))
+        // Zotero 联动 · P1：受管 .bib 多路径监听（与项目树 watcher 相互独立）
+        .manage(std::sync::Arc::new(
+            commands::zotero_watch::ZoteroWatchState::default(),
+        ))
         // M1-4：SyncTeX 索引缓存（正/反向跳转查询）
         .manage(std::sync::Arc::new(
             commands::synctex::SyncTexState::default(),
@@ -111,6 +115,17 @@ pub fn run() {
             // Zotero 联动 · P0：连接自检 / BBT 探测（只读，全部请求从 Rust 发出）
             commands::zotero::zotero_health,
             commands::zotero::zotero_probe_bbt,
+            // Zotero 联动 · P1：自动同步（只读 HTTP / 受管 .bib 写盘 / 绑定与映射缓存 / 多路径监听）
+            commands::zotero::zotero_fetch_collections,
+            commands::zotero::zotero_fetch_items,
+            commands::zotero::zotero_fetch_bbt_export,
+            commands::zotero::zotero_write_bib,
+            commands::zotero::zotero_get_bindings,
+            commands::zotero::zotero_set_bindings,
+            commands::zotero::zotero_load_map,
+            commands::zotero::zotero_save_map,
+            commands::zotero_watch::zotero_watch_bibs,
+            commands::zotero_watch::zotero_unwatch_bibs,
             // M1-13：自动更新（自下载安装包 + 拉起安装向导）
             // U1：清单协议 v2 —— 由 Rust 判定本机平台与能否自更新
             commands::updater::update_env_info,

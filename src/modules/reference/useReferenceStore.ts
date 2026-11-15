@@ -52,18 +52,28 @@ interface ReferenceState {
   invalidateCitations: () => void;
   /** 重新扫描并重建索引 */
   reindex: () => Promise<void>;
+  /** P1 · Zotero 联动：项目树外的 .bib 路径白名单（BBT 可导出到任意位置） */
+  externalBibPaths: string[];
+  /** 设置白名单（不自动重建，由调用方随后 reindex） */
+  setExternalBibPaths: (paths: string[]) => void;
 }
 
 /** 反向引用增量缓存：path → 内容 + 已解析引用（已打开走 buffer，关闭文件缓存复用） */
 let citeCache = new Map<string, { content: string; citations: { key: string; line: number }[] }>();
 
-export const useReferenceStore = create<ReferenceState>((set) => ({
+export const useReferenceStore = create<ReferenceState>((set, get) => ({
   ready: false,
   entries: [],
   byKey: new Map(),
   duplicateKeys: new Set(),
   citations: [],
   citesByKey: new Map(),
+  externalBibPaths: [],
+
+  setExternalBibPaths: (paths) => {
+    const uniq = [...new Set(paths.filter(Boolean))];
+    set({ externalBibPaths: uniq });
+  },
 
   invalidateCitations: () => {
     citeCache.clear();
@@ -86,6 +96,14 @@ export const useReferenceStore = create<ReferenceState>((set) => ({
     // 1) .bib → 条目（已打开缓冲优先，否则读盘）
     const bibPaths: string[] = [];
     collectBibFiles(tree.nodes, bibPaths);
+    // P1：把项目树外的受管 .bib 纳入同一份索引（大小写不敏感去重）
+    const seenBib = new Set(bibPaths.map((p) => p.toLowerCase()));
+    for (const p of get().externalBibPaths) {
+      if (!seenBib.has(p.toLowerCase())) {
+        seenBib.add(p.toLowerCase());
+        bibPaths.push(p);
+      }
+    }
     const open = useBuffersStore.getState().buffers;
     const textByPath = new Map<string, string>();
     for (const p of bibPaths) {

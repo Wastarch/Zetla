@@ -14,6 +14,7 @@ import {
   normalizePort,
 } from "./zoteroDiagnostics";
 import { useZoteroStore } from "./useZoteroStore";
+import { ZoteroBindingPane } from "./ZoteroBindingPane";
 
 function Row({
   label,
@@ -110,7 +111,7 @@ export function ZoteroPane() {
       <h4>连接</h4>
       <Row
         label="启用 Zotero 联动"
-        hint="本期只读：连接自检、能力探测与状态灯；不会修改 Zotero 文献库"
+        hint="只读联动：连接自检、.bib 自动同步、引用索引刷新；不会修改 Zotero 文献库"
       >
         <Toggle
           checked={z.enabled}
@@ -140,13 +141,13 @@ export function ZoteroPane() {
           }}
         />
       </Row>
-      <Row label="自动同步（P1）" hint="定时 + 窗口获焦自动刷新连接；本期仅用于状态自检节奏">
+      <Row label="自动同步" hint="监听受管 .bib（防抖 + hash 去重）+ 窗口获焦主动拉取（60 秒节流）">
         <Toggle
           checked={z.autoSync}
           onChange={(v) => update((cur) => ({ ...cur, autoSync: v }))}
         />
       </Row>
-      <Row label="编译前校验（P1）" hint="编译前检查 .bib 与 \cite 一致性；失败也不阻断编译">
+      <Row label="编译前校验" hint="编译前检查 .bib 与 \cite 一致性并写入日志；失败不阻断编译">
         <Toggle
           checked={z.syncOnCompile}
           onChange={(v) => update((cur) => ({ ...cur, syncOnCompile: v }))}
@@ -213,6 +214,8 @@ export function ZoteroPane() {
         )}
         {probeNote && <p className="zotero-probe">{probeNote}</p>}
       </div>
+
+      <ZoteroBindingPane />
 
       <p className="set-note">
         安全边界：只连接本机 127.0.0.1/localhost，不转发 23119 端口；本地读请求无需鉴权，

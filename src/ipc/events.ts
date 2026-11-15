@@ -25,7 +25,7 @@ export const RustEvents = {
   terminalExit: "terminal_exit",
   /** Zotero 联动 · P0：zotero_health 完成后的连接状态（payload = ZoteroHealth） */
   zoteroStatus: "zotero:status",
-  /** Zotero 联动 · P1 预留：受管 .bib 变更（当前 Rust 尚未发射） */
+  /** Zotero 联动 · P1：受管 .bib 变更（payload = ZoteroBibChanged，见 types/zotero.ts） */
   zoteroBibChanged: "zotero:bib-changed",
 } as const;
 
