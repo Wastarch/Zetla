@@ -35,7 +35,7 @@ export interface DiagramFigureSnippet {
  */
 export function buildDiagramFigureSnippet(p: DiagramFigureParts): DiagramFigureSnippet {
   const relPath = relativePath(p.texDir, p.imageAbsPath);
-  const fileName = p.imageAbsPath.split(/[\\/]/).pop() || "figure";
+  const fileName = p.imageAbsPath.split(/[\\/]/).pop() || "figures";
   const snippet = buildFigure({
     path: relPath,
     caption: "",

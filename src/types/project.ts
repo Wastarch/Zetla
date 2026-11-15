@@ -50,7 +50,7 @@ export interface ProjectTree {
   mainFile: string;
   /** 编译引擎（.ltex/config.json 的 engine，缺省 xelatex） */
   engine: string;
-  /** 图片目录（R5 拖拽导入；.ltex/config.json 的 imageDir，缺省 "figure"；相对项目根） */
+  /** 图片目录（R5 拖拽导入；.ltex/config.json 的 imageDir，缺省 "figures"；相对项目根） */
   imageDir?: string;
   nodes: ProjectNode[];
 }

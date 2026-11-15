@@ -1203,7 +1203,7 @@ mod tests {
     fn prepare_assets_copies_once_and_rejects_outside_root() {
         let base = temp_workdir();
         let root = base.join("project");
-        let figure = root.join("figure");
+        let figure = root.join("figures");
         let work = base.join("work");
         std::fs::create_dir_all(&figure).unwrap();
         std::fs::create_dir_all(&work).unwrap();
@@ -1234,7 +1234,7 @@ mod tests {
     fn prepare_assets_rejects_bad_format_missing_root_and_bad_token() {
         let base = temp_workdir();
         let root = base.join("project");
-        let figure = root.join("figure");
+        let figure = root.join("figures");
         let work = base.join("work");
         std::fs::create_dir_all(&figure).unwrap();
         std::fs::create_dir_all(&work).unwrap();

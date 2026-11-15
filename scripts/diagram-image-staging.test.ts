@@ -22,8 +22,8 @@ function check(cond: boolean, msg: string) {
 const WIN_ROOT = "E:\\Project\\Zetla";
 const WIN_TEX = "E:\\Project\\Zetla\\chapters";
 // Rust fs::canonicalize 在 Windows 上返回的 verbatim 形态
-const STAGED = ["\\\\?\\E:\\Project\\Zetla\\chapters\\figure\\x.png"];
-const IMG = "\\includegraphics[width=3cm]{figure/x.png}";
+const STAGED = ["\\\\?\\E:\\Project\\Zetla\\chapters\\figures\\x.png"];
+const IMG = "\\includegraphics[width=3cm]{figures/x.png}";
 
 console.log("=== 1. TikZ 源码模式：命中暂存源图 → 转正 ===");
 {
@@ -36,7 +36,7 @@ console.log("=== 1. TikZ 源码模式：命中暂存源图 → 转正 ===");
   check(!p.uncertain, "路径可解析，不走保守分支");
   check(p.resolved.length === 1, "折算出 1 条绝对路径");
   check(
-    p.resolved[0] === "e:/Project/Zetla/chapters/figure/x.png",
+    p.resolved[0] === "e:/Project/Zetla/chapters/figures/x.png",
     "基准是 targetTex 目录而非项目根：" + p.resolved[0],
   );
   check(
@@ -50,14 +50,14 @@ console.log("=== 2. 导出并插入模式：成品图不命中源图 → 留待�
 {
   const p = planPromotion({
     insertedCode:
-      "\\begin{figure}\n\\includegraphics[width=0.8\\linewidth]{figure/diagram.png}\n\\end{figure}",
+      "\\begin{figure}\n\\includegraphics[width=0.8\\linewidth]{figures/diagram.png}\n\\end{figure}",
     texDir: WIN_TEX,
     root: WIN_ROOT,
     stagedPaths: STAGED,
   });
   check(!p.uncertain, "成品路径本身可解析");
   check(
-    p.resolved[0] === "e:/Project/Zetla/chapters/figure/diagram.png",
+    p.resolved[0] === "e:/Project/Zetla/chapters/figures/diagram.png",
     "折算的是导出成品：",
   );
   check(
@@ -86,9 +86,9 @@ console.log("=== 4. 解析不到 → 决策 9①「默认保留」 ===");
   const cases: [string, string][] = [
     ["\\includegraphics{\\imgdir/x.png}", "宏拼接路径"],
     ["\\includegraphics{/abs/x.png}", "绝对路径"],
-    ["\\includegraphics{figure/x.png\n}", "跨行路径参数"],
+    ["\\includegraphics{figures/x.png\n}", "跨行路径参数"],
     ["\\includegraphics{../../secret.png}", "越出项目根"],
-    ["\\includegraphics{figure/x.svg}", "不支持的格式"],
+    ["\\includegraphics{figures/x.svg}", "不支持的格式"],
   ];
   for (const [code, label] of cases) {
     const p = planPromotion({
@@ -116,9 +116,9 @@ console.log("=== 5. 多图 / 相对上跳 / 去重 ===");
 {
   const p = planPromotion({
     insertedCode: [
-      "\\includegraphics{figure/x.png}",
-      "\\includegraphics{figure/x.png}",
-      "\\includegraphics[width=2cm]{figure/y.jpg}",
+      "\\includegraphics{figures/x.png}",
+      "\\includegraphics{figures/x.png}",
+      "\\includegraphics[width=2cm]{figures/y.jpg}",
     ].join("\n"),
     texDir: WIN_TEX,
     root: WIN_ROOT,
@@ -128,18 +128,18 @@ console.log("=== 5. 多图 / 相对上跳 / 去重 ===");
   check(p.pathsToPromote.length === 2, "去重后待转正列表 2 条");
 
   const up = planPromotion({
-    insertedCode: "\\includegraphics{../figure/x.png}",
+    insertedCode: "\\includegraphics{../figures/x.png}",
     texDir: WIN_TEX,
     root: WIN_ROOT,
-    stagedPaths: ["\\\\?\\E:\\Project\\Zetla\\figure\\x.png"],
+    stagedPaths: ["\\\\?\\E:\\Project\\Zetla\\figures\\x.png"],
   });
   check(
-    up.resolved[0] === "e:/Project/Zetla/figure/x.png",
+    up.resolved[0] === "e:/Project/Zetla/figures/x.png",
     ".. 相对基准目录折叠：",
   );
   check(
     stagingPathKey(up.resolved[0]) ===
-      stagingPathKey("\\\\?\\E:\\Project\\Zetla\\figure\\x.png"),
+      stagingPathKey("\\\\?\\E:\\Project\\Zetla\\figures\\x.png"),
     "上跳结果与 canonical 形态可比对",
   );
 }
@@ -147,8 +147,8 @@ console.log("=== 5. 多图 / 相对上跳 / 去重 ===");
 console.log("=== 6. 跨平台路径归一 ===");
 {
   check(
-    stagingPathKey("\\\\?\\E:\\Project\\Zetla\\figure\\X.png") ===
-      stagingPathKey("e:/project/zetla/figure/x.png"),
+    stagingPathKey("\\\\?\\E:\\Project\\Zetla\\figures\\X.png") ===
+      stagingPathKey("e:/project/zetla/figures/x.png"),
     "Windows：剥 \\\\?\\ 前缀 + 大小写不敏感",
   );
   const nfc = "/Users/me/项目/图.png";
@@ -161,13 +161,13 @@ console.log("=== 6. 跨平台路径归一 ===");
     "macOS / Linux：大小写敏感",
   );
   check(
-    stagingPathKey("//server/share/figure/A.png") ===
-      stagingPathKey("//server/share/figure/a.png"),
+    stagingPathKey("//server/share/figures/A.png") ===
+      stagingPathKey("//server/share/figures/a.png"),
     "UNC：按 Windows 口径大小写不敏感",
   );
   check(
-    stagingPathKey("E:\\Project\\Zetla\\figure\\x.png\\") ===
-      stagingPathKey("e:/Project/Zetla/figure/x.png"),
+    stagingPathKey("E:\\Project\\Zetla\\figures\\x.png\\") ===
+      stagingPathKey("e:/Project/Zetla/figures/x.png"),
     "尾斜杠与盘符差异被吸收",
   );
 }

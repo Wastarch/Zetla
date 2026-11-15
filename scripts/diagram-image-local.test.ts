@@ -25,15 +25,15 @@ function approx(a: number, b: number, eps = 1e-6): boolean {
 
 // ── parseIncludeGraphics ──────────────────────────────────────────────
 {
-  const p = parseIncludeGraphics("\\includegraphics[width=3cm]{figure/x.png}");
+  const p = parseIncludeGraphics("\\includegraphics[width=3cm]{figures/x.png}");
   check(p !== null, "能解析基本形态");
-  check(p?.relPath === "figure/x.png", "路径提取正确");
+  check(p?.relPath === "figures/x.png", "路径提取正确");
   check(p?.widthCm === 3, "width=3cm 提取为 3");
   check(p?.heightCm === null, "未给 height 为 null");
 }
 {
-  const p = parseIncludeGraphics("\\includegraphics[height=2.5cm,width=4cm]{../figure/a.jpg}");
-  check(p !== null && p.relPath === "../figure/a.jpg", "上跳路径提取正确");
+  const p = parseIncludeGraphics("\\includegraphics[height=2.5cm,width=4cm]{../figures/a.jpg}");
+  check(p !== null && p.relPath === "../figures/a.jpg", "上跳路径提取正确");
   check(p?.widthCm === 4 && p?.heightCm === 2.5, "height,width 顺序无关");
 }
 {

@@ -20,40 +20,40 @@ function check(cond: boolean, msg: string) {
 {
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:/Project/demo",
-    imageAbsPath: "E:/Project/demo/figure/fig-loss.png",
+    imageAbsPath: "E:/Project/demo/figures/fig-loss.png",
   });
   check(
-    snippet.includes("\\includegraphics[width=0.8\\linewidth]{figure/fig-loss.png}"),
-    "同项目根：相对路径为 figure/xxx.png",
+    snippet.includes("\\includegraphics[width=0.8\\linewidth]{figures/fig-loss.png}"),
+    "同项目根：相对路径为 figures/xxx.png",
   );
 }
 
 {
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:/Project/demo/chapters",
-    imageAbsPath: "E:/Project/demo/figure/fig-loss.png",
+    imageAbsPath: "E:/Project/demo/figures/fig-loss.png",
   });
   check(
-    snippet.includes("{../figure/fig-loss.png}"),
-    "章节子目录：向上回退到项目图片目录（../figure/…）",
+    snippet.includes("{../figures/fig-loss.png}"),
+    "章节子目录：向上回退到项目图片目录（../figures/…）",
   );
 }
 
 {
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:/Project/demo/chapters/sub",
-    imageAbsPath: "E:/Project/demo/figure/a.png",
+    imageAbsPath: "E:/Project/demo/figures/a.png",
   });
-  check(snippet.includes("{../../figure/a.png}"), "多层子目录：逐级回退（../../…）");
+  check(snippet.includes("{../../figures/a.png}"), "多层子目录：逐级回退（../../…）");
 }
 
 {
   // Windows 反斜杠必须折算成正斜杠：LaTeX 里 `\f` 会被当转义。
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:\\Project\\demo",
-    imageAbsPath: "E:\\Project\\demo\\figure\\a.png",
+    imageAbsPath: "E:\\Project\\demo\\figures\\a.png",
   });
-  check(snippet.includes("{figure/a.png}"), "反斜杠输入 → 正斜杠输出（LaTeX 路径要求）");
+  check(snippet.includes("{figures/a.png}"), "反斜杠输入 → 正斜杠输出（LaTeX 路径要求）");
   check(!snippet.includes("figure\\a.png"), "产物不含反斜杠路径");
 }
 
@@ -61,7 +61,7 @@ function check(cond: boolean, msg: string) {
 {
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:/p",
-    imageAbsPath: "E:/p/figure/a.png",
+    imageAbsPath: "E:/p/figures/a.png",
     width: "8.5cm",
   });
   check(snippet.includes("width=8.5cm"), "固定画布：用画布物理宽度（cm）而非 \\linewidth");
@@ -70,7 +70,7 @@ function check(cond: boolean, msg: string) {
 {
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:/p",
-    imageAbsPath: "E:/p/figure/a.png",
+    imageAbsPath: "E:/p/figures/a.png",
   });
   check(snippet.includes("width=0.8\\linewidth"), "未指定宽度：回落 0.8\\linewidth 默认值");
 }
@@ -79,7 +79,7 @@ function check(cond: boolean, msg: string) {
 {
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:/p",
-    imageAbsPath: "E:/p/figure/Fig Loss.PNG",
+    imageAbsPath: "E:/p/figures/Fig Loss.PNG",
   });
   check(snippet.includes("\\label{fig:fig-loss}"), "label 由文件名 slug 生成（fig:fig-loss）");
 }
@@ -88,7 +88,7 @@ function check(cond: boolean, msg: string) {
   // 中文文件名保留非 ASCII，只归一空格/点/下划线
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:/p",
-    imageAbsPath: "E:/p/figure/损失曲线.png",
+    imageAbsPath: "E:/p/figures/损失曲线.png",
   });
   check(snippet.includes("\\label{fig:损失曲线}"), "中文文件名保留非 ASCII 字符");
 }
@@ -97,7 +97,7 @@ function check(cond: boolean, msg: string) {
 {
   const { snippet, captionOffset } = buildDiagramFigureSnippet({
     texDir: "E:/p",
-    imageAbsPath: "E:/p/figure/a.png",
+    imageAbsPath: "E:/p/figures/a.png",
   });
   check(snippet.includes("\\caption{}"), "caption 留空（由用户填图题）");
   check(
@@ -114,7 +114,7 @@ function check(cond: boolean, msg: string) {
 {
   const { snippet } = buildDiagramFigureSnippet({
     texDir: "E:/p",
-    imageAbsPath: "E:/p/figure/a.png",
+    imageAbsPath: "E:/p/figures/a.png",
   });
   check(
     snippet.startsWith("\\begin{figure}[htbp]") && snippet.endsWith("\\end{figure}"),

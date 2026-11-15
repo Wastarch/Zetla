@@ -378,7 +378,7 @@ export function ProjectSettingsDialog() {
                         style={{ minWidth: 280 }}
                         value={draft.imageDir}
                         onChange={(e) => set("imageDir", e.target.value)}
-                        placeholder="figure"
+                        placeholder="figures"
                         spellCheck={false}
                       />
                     </Fld>

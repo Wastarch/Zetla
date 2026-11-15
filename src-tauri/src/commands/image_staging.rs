@@ -386,7 +386,7 @@ mod tests {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("figure")).unwrap();
+        std::fs::create_dir_all(dir.join("figures")).unwrap();
         dir
     }
 
@@ -395,7 +395,7 @@ mod tests {
     }
 
     fn write_pic(root: &Path, name: &str, bytes: &[u8]) -> String {
-        let p = root.join("figure").join(name);
+        let p = root.join("figures").join(name);
         std::fs::write(&p, bytes).unwrap();
         p.to_string_lossy().into_owned()
     }
@@ -425,7 +425,7 @@ mod tests {
         let b = write_pic(&root, "b.png", b"b");
         stage_image(r.clone(), a.clone()).unwrap();
         stage_image(r.clone(), b.clone()).unwrap();
-        let rep = promote_staged_images(r.clone(), vec!["figure/diagram.png".into()]).unwrap();
+        let rep = promote_staged_images(r.clone(), vec!["figures/diagram.png".into()]).unwrap();
         assert!(rep.promoted.is_empty(), "导出成品路径不命中任何暂存源图");
         assert_eq!(list_staged_images(r).unwrap().len(), 2);
         let _ = std::fs::remove_dir_all(&root);
@@ -473,7 +473,7 @@ mod tests {
         stage_image(r.clone(), orphan.clone()).unwrap();
         std::fs::write(
             root.join("main.tex"),
-            r"\includegraphics[width=3cm]{figure/used.png}",
+            r"\includegraphics[width=3cm]{figures/used.png}",
         )
         .unwrap();
 

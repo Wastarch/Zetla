@@ -52,12 +52,12 @@ function mkNode(opts: string, content: string): { src: string; stmt: TikzStateme
 {
   const { src, stmt } = mkNode(
     "text width=3.86cm, minimum height=0.69cm",
-    "\\includegraphics[width=1cm]{figure/x.png}",
+    "\\includegraphics[width=1cm]{figures/x.png}",
   );
   const plan = planImageNodeResize({ source: src, statement: stmt, newWidthCm: 7.72, newHeightCm: 1.38 });
   check(plan.status === "ok", "A: 状态 ok");
   check(plan.nextSource.includes("width=7.72cm, height=1.38cm"), "A: 写入新宽高");
-  check(plan.nextSource.includes("figure/x.png"), "A: 路径保留");
+  check(plan.nextSource.includes("figures/x.png"), "A: 路径保留");
   check(!plan.nextSource.includes("width=1cm"), "A: 旧 1cm 已被替换");
   check(!plan.nextSource.includes("text width"), "A: 移除 text width");
   check(!plan.nextSource.includes("minimum height"), "A: 移除 minimum height");

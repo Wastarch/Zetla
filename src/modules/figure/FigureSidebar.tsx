@@ -39,7 +39,7 @@ const basename = (p: string): string => p.split(/[\\/]/).pop() ?? p;
 const sanitizeFileName = (name: string): string => {
   // 使用 \x00-\x1f / \x7f 匹配控制符，避免源文件里塞入不可见字符
   const cleaned = name.replace(/[\x00-\x1f\x7f\\/:*?"<>|]/g, "").trim();
-  return cleaned.length > 0 ? cleaned : "figure";
+  return cleaned.length > 0 ? cleaned : "figures";
 };
 
 /** 把生成代码插入到指定视图光标处（活动缓冲非 tex 时仍可用目标 tex 视图） */
@@ -135,10 +135,10 @@ export default function FigureSidebar() {
       notify("缺少项目根或目标 .tex，无法生成", "err");
       return;
     }
-    const imageDir = project.tree?.imageDir?.trim() || "figure";
+    const imageDir = project.tree?.imageDir?.trim() || "figures";
     const texDir = parentOf(targetTex);
 
-    // 1) 计算每格拟落盘文件名，并检测 figure/ 下是否已存在同名文件
+    // 1) 计算每格拟落盘文件名，并检测 figures/ 下是否已存在同名文件
     const intended: { index: number; name: string }[] = [];
     for (let i = 0; i < cells.length; i++) {
       const src = cells[i]!.source;
@@ -182,7 +182,7 @@ export default function FigureSidebar() {
       const name = src.kind === "path" ? basename(src.abs) : src.file.name;
       const choice = choices.get(i) ?? "rename";
       if (choice === "use") {
-        // 复用 figure/ 中已有的同名文件（不再复制）
+        // 复用 figures/ 中已有的同名文件（不再复制）
         relPaths[i] = relativePath(texDir, `${root}/${imageDir}/${name}`);
         continue;
       }
@@ -238,7 +238,7 @@ export default function FigureSidebar() {
       notify("缺少项目根或目标 .tex，无法合成", "err");
       return;
     }
-    const imageDir = project.tree?.imageDir?.trim() || "figure";
+    const imageDir = project.tree?.imageDir?.trim() || "figures";
     const texDir = parentOf(targetTex);
 
     // 1) 预取所有图（同源缓存；PDF 取首页），合成到白底 canvas
@@ -286,7 +286,7 @@ export default function FigureSidebar() {
     } else {
       const first = cells[0]!;
       const rawName = first.source ? sourceName(first.source) : first.path;
-      const slug = rawName ? slugify(basename(rawName)) : "figure";
+      const slug = rawName ? slugify(basename(rawName)) : "figures";
       fileName = `fig-${slug}-composite.png`;
     }
 
@@ -356,7 +356,7 @@ export default function FigureSidebar() {
     setConflicts(null);
     const project = useProjectStore.getState();
     const root = project.root;
-    const imageDir = project.tree?.imageDir?.trim() || "figure";
+    const imageDir = project.tree?.imageDir?.trim() || "figures";
     const texDir = targetTex ? parentOf(targetTex) : "";
     if (!root || !targetTex) {
       notify("缺少项目根或目标 .tex，无法生成", "err");
@@ -513,7 +513,7 @@ export default function FigureSidebar() {
       {conflicts && (
         <div className="figside-modal-overlay">
           <div className="figside-modal">
-            <div className="figside-modal-head">figure/ 中存在同名文件</div>
+            <div className="figside-modal-head">figures/ 中存在同名文件</div>
             <p className="figside-modal-sub">
               以下图片在项目图片目录中已有同名文件，请选择处理方式（仅影响最终进入代码的文件）：
             </p>
@@ -530,7 +530,7 @@ export default function FigureSidebar() {
                       checked={c.choice === "use"}
                       onChange={() => updateChoice(c.index, "use")}
                     />
-                    用 figure 中现有的
+                    用 figures 中现有的
                   </label>
                   <label
                     className={c.choice === "rename" ? "figside-radio is-on" : "figside-radio"}

@@ -1,5 +1,5 @@
 // 图片导入（开发文档 §R5 · M1-7）—— 拖拽/粘贴/插入菜单的图片落盘
-// import_image：接收图片字节，写盘到项目图片目录（来自 .ltex/config.json 的 imageDir，缺省 figure），
+// import_image：接收图片字节，写盘到项目图片目录（来自 .ltex/config.json 的 imageDir，缺省 figures），
 //   文件名冲突自动去重，返回绝对路径/相对根路径/最终文件名。
 // import_image_from_path：菜单选图入口，源是磁盘路径，读字节后复用同一落盘逻辑。
 use serde::Serialize;
@@ -163,12 +163,12 @@ mod tests {
     #[test]
     fn places_into_figure_subdir_and_returns_paths() {
         let root = tmp_root("basic");
-        let r = place_image(root.to_str().unwrap(), "figure", "pic.png", b"data").unwrap();
+        let r = place_image(root.to_str().unwrap(), "figures", "pic.png", b"data").unwrap();
         assert_eq!(r.file_name, "pic.png");
         // rel_root_path 是规范的「相对项目根、正斜杠」路径
         assert_eq!(r.rel_root_path, "figure/pic.png");
         // abs_path 平台相关（Windows 为反斜杠），只校验关键段存在
-        assert!(r.abs_path.contains("figure") && r.abs_path.contains("pic.png"));
+        assert!(r.abs_path.contains("figures") && r.abs_path.contains("pic.png"));
         assert!(root.join("figure/pic.png").is_file());
         assert_eq!(std::fs::read(root.join("figure/pic.png")).unwrap(), b"data");
     }
@@ -176,8 +176,8 @@ mod tests {
     #[test]
     fn deduplicates_on_conflict() {
         let root = tmp_root("dedup");
-        let _ = place_image(root.to_str().unwrap(), "figure", "pic.png", b"a").unwrap();
-        let r = place_image(root.to_str().unwrap(), "figure", "pic.png", b"b").unwrap();
+        let _ = place_image(root.to_str().unwrap(), "figures", "pic.png", b"a").unwrap();
+        let r = place_image(root.to_str().unwrap(), "figures", "pic.png", b"b").unwrap();
         assert_eq!(r.file_name, "pic-1.png");
         assert!(root.join("figure/pic-1.png").is_file());
     }
@@ -201,15 +201,15 @@ mod tests {
     #[test]
     fn reports_existing_and_missing() {
         let root = tmp_root("exists");
-        let _ = place_image(root.to_str().unwrap(), "figure", "pic.png", b"a").unwrap();
+        let _ = place_image(root.to_str().unwrap(), "figures", "pic.png", b"a").unwrap();
         assert!(image_exists(
             root.to_str().unwrap().to_string(),
-            "figure".to_string(),
+            "figures".to_string(),
             "pic.png".to_string()
         ));
         assert!(!image_exists(
             root.to_str().unwrap().to_string(),
-            "figure".to_string(),
+            "figures".to_string(),
             "nope.png".to_string()
         ));
     }

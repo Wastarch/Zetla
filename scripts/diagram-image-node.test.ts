@@ -35,31 +35,31 @@ const BASE_SRC = "\\begin{tikzpicture}\n  \\draw (0,0) -- (1,1);\n\\end{tikzpict
 
 console.log("=== 1. 图片 node 语句：P0 定稿形态 / world pt → cm ===");
 {
-  const b = buildImageNodeStatement({ relPath: "figure/x.png", x: 0, y: 0 });
+  const b = buildImageNodeStatement({ relPath: "figures/x.png", x: 0, y: 0 });
   check(b.ok, "(0,0) 合法路径生成成功");
   if (b.ok) {
     check(
-      b.statement === "\\node at (0,0) {\\includegraphics[width=3cm]{figure/x.png}};",
+      b.statement === "\\node at (0,0) {\\includegraphics[width=3cm]{figures/x.png}};",
       "语句逐字匹配 P0 定稿形态：" + b.statement,
     );
     check(b.statement.includes("width=3cm"), "默认宽度 3cm");
     check(!b.statement.includes("\\pgfimage"), "不使用 \\pgfimage（P0 实测不可用）");
   }
   const cm = buildImageNodeStatement({
-    relPath: "figure/x.png",
+    relPath: "figures/x.png",
     x: TIKZ_PT_PER_CM,
     y: TIKZ_PT_PER_CM * 2,
   });
   check(cm.ok && cm.statement.startsWith("\\node at (1,2) "), "world pt 28.4528 → 1cm、56.9055 → 2cm");
   const frac = buildImageNodeStatement({
-    relPath: "figure/x.png",
+    relPath: "figures/x.png",
     x: -TIKZ_PT_PER_CM * 1.5,
     y: TIKZ_PT_PER_CM * 2.25,
     widthCm: 2.5,
   });
   check(frac.ok && frac.statement.startsWith("\\node at (-1.5,2.25) "), "负坐标 + 两位小数正确");
   check(frac.ok && frac.statement.includes("[width=2.5cm]"), "自定义宽度生效");
-  const negZero = buildImageNodeStatement({ relPath: "figure/x.png", x: -0.0001, y: 0 });
+  const negZero = buildImageNodeStatement({ relPath: "figures/x.png", x: -0.0001, y: 0 });
   check(negZero.ok && negZero.statement.includes("(0,0)"), "绝不产生 -0");
   check(DEFAULT_IMAGE_WIDTH_CM === 3, "默认宽度常量为 3cm");
 }
@@ -67,18 +67,18 @@ console.log("=== 1. 图片 node 语句：P0 定稿形态 / world pt → cm ===")
 console.log("=== 2. 合法路径：中文 / 上跳 / 大小写扩展名 ===");
 {
   for (const p of [
-    "figure/x.png",
-    "../figure/x.png",
-    "figure/示意图.png",
+    "figures/x.png",
+    "../figures/x.png",
+    "figures/示意图.png",
     "assets/sub_dir/my-photo.JPG",
-    "figure/x.jpeg",
-    "figure/x.pdf",
+    "figures/x.jpeg",
+    "figures/x.pdf",
   ]) {
     const v = validateImageRelPath(p);
     check(v.ok && v.path === p, `放行 ${p}`);
   }
-  const trimmed = validateImageRelPath("  figure/x.png  ");
-  check(trimmed.ok && trimmed.path === "figure/x.png", "首尾空白被 trim，路径本体不变");
+  const trimmed = validateImageRelPath("  figures/x.png  ");
+  check(trimmed.ok && trimmed.path === "figures/x.png", "首尾空白被 trim，路径本体不变");
 }
 
 console.log("=== 3. 非法路径：与 P1 resolveImagePath 同一口径 ===");
@@ -86,20 +86,20 @@ console.log("=== 3. 非法路径：与 P1 resolveImagePath 同一口径 ===");
   const bad: [string, string][] = [
     ["", "空路径"],
     ["   ", "全空白路径"],
-    ["figure/my pic.png", "含空格"],
-    ["figure\\x.png", "反斜杠"],
+    ["figures/my pic.png", "含空格"],
+    ["figures\\x.png", "反斜杠"],
     ["/abs/x.png", "Unix 绝对路径"],
     ["E:/abs/x.png", "Windows 盘符绝对路径"],
-    ["figure/x%20y.png", "TeX 特殊字符 %"],
-    ["figure/x#y.png", "TeX 特殊字符 #"],
-    ["figure/x$y.png", "TeX 特殊字符 $"],
-    ["figure/x&y.png", "TeX 特殊字符 &"],
-    ["figure/{x}.png", "花括号"],
-    ["figure/x.svg", "SVG（-no-shell-escape 不可用）"],
-    ["figure/x.eps", "EPS"],
-    ["figure/x.bmp", "BMP"],
-    ["figure/x.png\n", "路径跨行"],
-    ["figure/\nx.png", "路径内部换行"],
+    ["figures/x%20y.png", "TeX 特殊字符 %"],
+    ["figures/x#y.png", "TeX 特殊字符 #"],
+    ["figures/x$y.png", "TeX 特殊字符 $"],
+    ["figures/x&y.png", "TeX 特殊字符 &"],
+    ["figures/{x}.png", "花括号"],
+    ["figures/x.svg", "SVG（-no-shell-escape 不可用）"],
+    ["figures/x.eps", "EPS"],
+    ["figures/x.bmp", "BMP"],
+    ["figures/x.png\n", "路径跨行"],
+    ["figures/\nx.png", "路径内部换行"],
   ];
   for (const [p, label] of bad) {
     check(!validateImageRelPath(p).ok, `拒绝 ${label}`);
@@ -113,11 +113,11 @@ console.log("=== 4. 坐标 / 宽度边界 ===");
     [Number.NaN, 0, "NaN 坐标"],
     [0, Number.POSITIVE_INFINITY, "Infinity 坐标"],
   ] as [number, number, string][]) {
-    check(!buildImageNodeStatement({ relPath: "figure/x.png", x, y }).ok, `拒绝 ${label}`);
+    check(!buildImageNodeStatement({ relPath: "figures/x.png", x, y }).ok, `拒绝 ${label}`);
   }
   for (const w of [0, -1, Number.NaN, 999]) {
     check(
-      !buildImageNodeStatement({ relPath: "figure/x.png", x: 0, y: 0, widthCm: w }).ok,
+      !buildImageNodeStatement({ relPath: "figures/x.png", x: 0, y: 0, widthCm: w }).ok,
       `拒绝越界宽度 ${w}`,
     );
   }
@@ -125,7 +125,7 @@ console.log("=== 4. 坐标 / 宽度边界 ===");
 
 console.log("=== 5. 与 P1 token 映射契约兼容（行数不变 / 生成 asset） ===");
 {
-  const b = buildImageNodeStatement({ relPath: "figure/x.png", x: 0, y: 0 });
+  const b = buildImageNodeStatement({ relPath: "figures/x.png", x: 0, y: 0 });
   if (!b.ok) throw new Error("基准语句生成失败，无法继续");
   const ins = insertShapeStatement(BASE_SRC, b.statement);
   const scan = scanImageRefs(ins.source, TEX_DIR, ROOT);
@@ -133,7 +133,7 @@ console.log("=== 5. 与 P1 token 映射契约兼容（行数不变 / 生成 asse
   check(scan.skipped.length === 0, "路径不被保守跳过");
   check(scan.assets[0]?.token.startsWith("zetla-img-") === true, "token 前缀正确");
   check(
-    scan.sourceWithTokens.includes("zetla-img-") && !scan.sourceWithTokens.includes("figure/x.png"),
+    scan.sourceWithTokens.includes("zetla-img-") && !scan.sourceWithTokens.includes("figures/x.png"),
     "源码副本里的路径被替换成 token",
   );
   check(
@@ -147,7 +147,7 @@ console.log("=== 5. 与 P1 token 映射契约兼容（行数不变 / 生成 asse
 
 console.log("=== 6. 与 CM6 写回契约：最小补丁 / 自动选中 ===");
 {
-  const b = buildImageNodeStatement({ relPath: "figure/x.png", x: TIKZ_PT_PER_CM, y: 0 });
+  const b = buildImageNodeStatement({ relPath: "figures/x.png", x: TIKZ_PT_PER_CM, y: 0 });
   if (!b.ok) throw new Error("基准语句生成失败，无法继续");
   const ins = insertShapeStatement(BASE_SRC, b.statement);
   check(
@@ -189,7 +189,7 @@ console.log("=== 7. graphicx 导言区（P3 新增，向后兼容两参数调用
   const patched = insertBeforeDocument(bare, both);
   check(patched.indexOf(both) < patched.indexOf("\\begin{document}"), "片段插在 \\begin{document} 之前");
   check(ensureTikzPreamble(patched, [], true) === "", "补齐后再次计算为空串（幂等）");
-  check(sourceNeedsGraphicx("\\includegraphics[width=3cm]{figure/x.png}"), "含插图 → 需要 graphicx");
+  check(sourceNeedsGraphicx("\\includegraphics[width=3cm]{figures/x.png}"), "含插图 → 需要 graphicx");
   check(!sourceNeedsGraphicx(BASE_SRC), "纯 TikZ → 不需要 graphicx");
   const figCode = buildDiagramInsertCode(BASE_SRC, true, "图", "fig:x");
   check(figCode.startsWith("\\begin{figure}"), "figure 包裹既有逻辑不受影响");

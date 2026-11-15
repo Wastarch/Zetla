@@ -3,7 +3,7 @@
 // 覆盖确认、结果反馈。F5-2（插入主文档）/ F5-3（仅保存）的落盘机制都走这里。
 //
 // 两条落盘路径：
-//  · image 模式 → 写到项目 imageDir（默认 figure/），供后续 figure 插入；
+//  · image 模式 → 写到项目 imageDir（默认 figures/），供后续 figure 插入；
 //  · file  模式 → 弹系统保存框，用户自选路径，不改主文档（F5-3）。
 import { save as saveDialog, confirm } from "@tauri-apps/plugin-dialog";
 import { diagramApi } from "@/ipc/invoke";
@@ -14,7 +14,7 @@ import { resolveImageAssets } from "./imageAssetBridge";
 import type { TikzExportResult } from "@/types/diagram";
 
 /** 默认图片目录（无项目 tree.imageDir 时回落），与 R5 导入 / 图形模块一致 */
-const DEFAULT_IMAGE_DIR = "figure";
+const DEFAULT_IMAGE_DIR = "figures";
 
 /**
  * 保证保存路径带正确扩展名。Tauri 的 save 对话框不会自动补扩展名：

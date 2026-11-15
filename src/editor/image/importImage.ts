@@ -15,7 +15,7 @@ import { useAppStore } from "@/core/store";
 import type { FigureCellSource } from "@/types/figure";
 
 /** 默认图片目录（无 .ltex/config.json/imageDir 时回落） */
-const DEFAULT_IMAGE_DIR = "figure";
+const DEFAULT_IMAGE_DIR = "figures";
 
 /** 校验上下文：未打开项目 / 无活动 .tex / 取不到图片目录则提示并返回 null */
 export function precheck(): { root: string; imageDir: string; texDir: string } | null {
@@ -83,7 +83,7 @@ function finalize(results: ImportImageResult[], texDir: string): void {
 
 /**
  * F6 · 多图导入：仅记录来源载入拼图画布（预填），【不】落盘、不插入编辑器源码。
- * 落盘推迟到「生成代码」时，且仅拷贝真正进入代码的图片（避免污染项目 figure/）。
+ * 落盘推迟到「生成代码」时，且仅拷贝真正进入代码的图片（避免污染项目 figures/）。
  * 单图仍走 finalize 直插（设计约定，拷后即插，无需进画布）。
  */
 function importToCanvas(sources: FigureCellSource[]): void {

@@ -37,7 +37,7 @@ pub struct ProjectTree {
     pub main_file: String,
     /// 编译引擎（.ltex/config.json 的 engine，缺省 xelatex）—— M0-9 状态栏展示
     pub engine: String,
-    /// 图片目录（R5 拖拽导入；.ltex/config.json 的 imageDir，缺省 "figure"；相对项目根）
+    /// 图片目录（R5 拖拽导入；.ltex/config.json 的 imageDir，缺省 "figures"；相对项目根）
     pub image_dir: Option<String>,
     pub nodes: Vec<ProjectNode>,
 }
@@ -181,7 +181,7 @@ fn config_engine(root: &Path) -> String {
 }
 
 /// 读 .ltex/config.json 的 imageDir（R5 拖拽导入）。
-/// 缺省/缺失/非法（绝对路径或含 ..）→ None，前端回落 "figure"。
+/// 缺省/缺失/非法（绝对路径或含 ..）→ None，前端回落 "figures"。
 fn config_image_dir(root: &Path) -> Option<String> {
     let cfg = root.join(".ltex").join("config.json");
     let text = std::fs::read_to_string(cfg).ok()?;
@@ -194,7 +194,7 @@ fn config_image_dir(root: &Path) -> Option<String> {
 }
 
 /// 写回 .ltex/config.json 的 imageDir（R5 项目设置）。
-/// 空串 = 删除该键（回落默认 "figure"）；仅允许相对项目根、禁止绝对路径与 .. 穿越。
+/// 空串 = 删除该键（回落默认 "figures"）；仅允许相对项目根、禁止绝对路径与 .. 穿越。
 #[tauri::command]
 pub fn save_project_config(root: String, image_dir: String) -> Result<(), String> {
     let root_path = Path::new(&root);
@@ -1356,7 +1356,7 @@ mod tests {
                 engine: Some("pdflatex".into()),
                 main_file: Some("main.tex".into()),
                 output_dir: Some("out".into()),
-                image_dir: Some("figure".into()),
+                image_dir: Some("figures".into()),
                 name: Some("  我的论文  ".into()),
                 description: Some("desc".into()),
                 project_type: Some("article".into()),
@@ -1372,7 +1372,7 @@ mod tests {
         assert_eq!(v["engine"], "pdflatex");
         assert_eq!(v["mainFile"], "main.tex");
         assert_eq!(v["outputDir"], "out");
-        assert_eq!(v["imageDir"], "figure");
+        assert_eq!(v["imageDir"], "figures");
         assert_eq!(v["name"], "我的论文"); // trim
         assert_eq!(v["description"], "desc");
         assert_eq!(v["projectType"], "article");

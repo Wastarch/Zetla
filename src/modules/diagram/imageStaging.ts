@@ -17,7 +17,7 @@ import {
   stagingPathKey,
 } from "./imageStagingPlan.ts";
 
-const DEFAULT_IMAGE_DIR = "figure";
+const DEFAULT_IMAGE_DIR = "figures";
 /** 与 P1 / P0 一致：-no-shell-escape 下 XeLaTeX 可直接吃这四种，SVG 排除 */
 const STAGE_EXTS = ["png", "jpg", "jpeg", "pdf"];
 /** 本会话登记过暂存图的项目根：换项目 / 重启后仍能找到旧 manifest 做清理 */
