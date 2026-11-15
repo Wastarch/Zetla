@@ -7,7 +7,7 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { EXT_IMG, notify, useProjectStore } from "@/project/useProject";
 import type { FigureCellSource } from "@/types/figure";
-import { precheck } from "@/editor/image/importImage";
+import { isImageFile, precheck } from "@/editor/image/importImage";
 import { useFigureStore } from "./figureStore";
 import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -38,4 +38,33 @@ export async function pickImagesToCanvas(append = false): Promise<void> {
   useBuffersStore.getState().openFigure();
   void useProjectStore.getState().refresh();
   notify(`已载入 ${sources.length} 张图片`, "ok");
+}
+
+/**
+ * 从剪贴板 / 拖拽的 File 列表载入拼图画布（截图一次只能截一张，故支持多次粘贴累积）。
+ * 画布已有图 → 追加（addImages）；否则新建（initFromImages）并打开预览。
+ * 与 pickImagesToCanvas 同口径：仅记录来源，落盘推迟到「生成代码」时。
+ */
+export async function pasteImagesToCanvas(files: File[]): Promise<void> {
+  const ctx = precheck();
+  if (!ctx) return;
+  const imgs = files.filter(isImageFile);
+  if (imgs.length === 0) return;
+
+  // 仅记录来源（File，此刻不落盘）；落盘在生成代码时进行
+  const sources: FigureCellSource[] = imgs.map((f) => ({ kind: "file", file: f }));
+  const store = useFigureStore.getState();
+  const hadCells = store.layout.cells.length > 0;
+  const targetTex = useBuffersStore.getState().activePath;
+  if (hadCells) {
+    store.addImages(sources);
+  } else {
+    store.initFromImages(sources, targetTex);
+  }
+
+  // 确保在拼图画布视图并打开中心预览 Tab（即便从别处触发也切过去）
+  useAppStore.getState().setSidebarView("figure");
+  useBuffersStore.getState().openFigure();
+  void useProjectStore.getState().refresh();
+  notify(`已${hadCells ? "追加" : "载入"} ${imgs.length} 张图片到拼图`, "ok");
 }

@@ -7,10 +7,11 @@ import type { EditorView } from "@codemirror/view";
 import { useFigureStore } from "./figureStore";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { getActiveView, getEditorView } from "@/editor/activeView";
-import { pickImagesToCanvas } from "./figureImport";
+import { pasteImagesToCanvas, pickImagesToCanvas } from "./figureImport";
 import { generateSubfigure, generateComposite } from "./figureGen";
 import { hasPackage, SUBCAPTION_SNIPPET, insertBeforeDocument } from "@/core/preamble";
 import { parentOf, notify, useProjectStore } from "@/project/useProject";
+import { isImageFile } from "@/editor/image/importImage";
 import { joinAbs, relativePath, slugify } from "@/editor/image/pathUtils";
 import type { ImportImageResult } from "@/types/project";
 import { loadCellImage, composeFigure, DEFAULT_COMPOSE_WIDTH } from "./figureCompose";
@@ -383,7 +384,28 @@ export default function FigureSidebar() {
   };
 
   return (
-    <div className="figside">
+    <div
+      className="figside"
+      onPaste={(e) => {
+        const dt = e.clipboardData;
+        if (!dt) return;
+        const imgs = Array.from(dt.files).filter(isImageFile);
+        if (imgs.length === 0) return; // 非图片（如行列框粘贴数字）→ 放行
+        e.preventDefault();
+        void pasteImagesToCanvas(imgs);
+      }}
+      onDrop={(e) => {
+        const dt = e.dataTransfer;
+        if (!dt) return;
+        const imgs = Array.from(dt.files).filter(isImageFile);
+        if (imgs.length === 0) return;
+        e.preventDefault();
+        void pasteImagesToCanvas(imgs);
+      }}
+      onDragOver={(e) => {
+        if (Array.from(e.dataTransfer?.files ?? []).some(isImageFile)) e.preventDefault();
+      }}
+    >
       <div className="figside-head">
         <span className="figside-title">切换拼图模式</span>
       </div>
@@ -448,7 +470,7 @@ export default function FigureSidebar() {
 
       {cells.length === 0 ? (
         <div className="figside-empty">
-          <p>尚未载入图片。点击「选择图片…」选本地图片，或拖入 / 粘贴多张图片自动进入。</p>
+          <p>尚未载入图片。点击「选择图片…」选本地图片，或拖入 / 粘贴图片自动进入（多次粘贴可累积）。</p>
           <button type="button" className="btn" onClick={() => void pickImagesToCanvas(false)}>
             选择图片…
           </button>
