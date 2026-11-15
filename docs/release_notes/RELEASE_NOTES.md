@@ -4,6 +4,60 @@
 
 ---
 
+## Zetla 0.3.1 —— 拼图图片粘贴 / 拖入 · 图片目录与 macOS 路径修复
+
+`0.3.1` 是一个聚焦「把图片放进拼图」的补丁版本。此前在桌面端往拼图面板粘贴截图或拖入图片经常没有反应（光标有反馈、图片却不进来），本版把 Tauri v2 的窗口级拖放事件、坐标换算、面板焦点与双通道去重整条链路打通，并让侧栏与中心「拼图预览」标签页共用同一套导入逻辑；同时补齐 macOS / Linux 上 WKWebView / WebKitGTK 只提供 `items`、空文件名与 UTI 类型的兼容。附带把图片默认目录统一为 `figures`，并修掉 macOS 粘贴图片时相对路径多出 `..` 的问题。
+
+### 亮点
+
+- **拼图导入图片：粘贴、拖入、连续累积**
+  - 拼图侧栏与中心「拼图预览」标签页都能直接 `Ctrl+V` 粘贴截图，或把图片文件拖进来；画布已有图则追加（`addImages`），否则新建拼图并打开预览（`initFromImages`），适配「截图一次一张、多次粘贴凑多图」的用法
+  - 抽出共用容器 `FigureDropZone`，侧栏与预览页共用粘贴 / 聚焦 / 拖放逻辑；预览页空态与两种预览模式下都可首次新建、再次追加
+  - 拖入给的是路径而不是 `File`，直接构建 `{kind:"path"}` 来源走 `convertFileSrc` 零拷贝预览，不额外读盘
+- **桌面端拖放链路修通**
+  - Tauri v2 在 Rust 层接管窗口级文件拖放，webview 内的 HTML5 `onDrop` / `onDragOver` 不会触发；改用 `TauriEvent.DRAG_DROP`（事件名是 `tauri://drag-drop`，原先 `listen("drag-drop")` 永远收不到，正是「光标有反馈但图片不导入」的根因）
+  - 拖放坐标是物理像素，按 `devicePixelRatio` 换算后与 DOM 矩形比较；命中改用 `[data-figure-dropzone]` 几何判断，失败回落悬停区域，命中时给区域加虚线高亮明确落点
+  - 普通 `div` 不可聚焦，React `onPaste` 只在焦点位于子树内才触发；面板加 `tabIndex={-1}` 并在点击空白处 `focus()`，让 `Ctrl+V` 能路由到拼图
+  - 窗口级事件在模块级只注册一次（单例），原生通道与 HTML5 兜底通道经 `claimDrop()` 300ms 去重，一次拖放只消费一次；`onDragOver` 改用 `dataTransfer.types` 判文件（`dragover` 阶段 `files` 恒为空）
+- **macOS / Linux 兼容**
+  - 新增 `imagesFromDataTransfer`：`files` 优先、`items` 兜底，兼容 WKWebView / WebKitGTK 只给 `items`、`getAsFile()` 返回空名或 UTI（如 `public.png`）的情况，并给缺名文件补合法文件名，避免落盘失败
+  - 拼图面板与代码区四处调用统一；`isFileDrag` 兼容 macOS UTI 类型以保证 `dragover` 的 `preventDefault()` 生效；三端平台配置均未覆盖 `dragDropEnabled`
+
+### 改进 / 修复
+
+- 图片默认目录由 `figure` 统一改为 `figures`：前端默认值与回退（`importImage` / `imageStaging` / `export` / `FigureSidebar` / `figureInsert` / 项目设置）、Rust 侧注释与测试夹具、6 个 `diagram-image-*` 测试夹具同步；三端一致落在 `<项目根>/<imageDir>/`
+- **存量项目不迁移**：`.ltex/config.json` 里已写死 `imageDir: "figure"` 的项目继续沿用 `figure/`，避免已有 `figure` 环境里的图片引用失效
+- 修复 macOS 粘贴图片生成的相对路径多出 `..`：路径前缀比对做 NFC 归一 + 小写折叠（仅用于匹配，输出保留真实大小写），改用 Rust 返回的 `relRootPath` 配合前端同源 root 重建绝对路径，消除跨进程 `absPath` 在大小写 / NFD / 符号链接表示差异下的误判
+- 修复拼图第二张图片误报「请在活动的 .tex 文档中插入图片」：画布导入原本误用要求当前 buffer 为 `.tex` 的 `precheck()`，而第一张导入会把活动标签切到 `figure://preview`；新增 `canvasContext()` 只校验项目已打开，并从 `[activePath, figureStore.targetTex, buffers 路径]` 里挑首个 `.tex` 作为目标，追加图片不再改目标文档（`precheck()` 保留给主管线）
+- 非图片内容的粘贴保持放行，代码区原有的粘贴逻辑不变
+- Rust 侧本版仅同步注释、默认值说明与测试夹具，无产品逻辑改动；前端图片相关测试 **233 项全过**，`tsc --noEmit` 与 `npm run build` 通过
+
+### 安装 / 升级
+
+1. Windows：下载 `Zetla_0.3.1_x64-setup.exe` 并运行；从 `0.3.0` 及更早版本可直接覆盖安装，配置、偏好、最近项目、上次项目、自定义编译流程、语法配色与终端设置都会保留
+2. Linux：`Zetla_0.3.1_amd64.AppImage`（`chmod +x` 后运行，支持应用内原地换包自更新）、`Zetla_0.3.1_amd64.deb`、`Zetla-0.3.1-1.x86_64.rpm`（系统包安装版只提供下载引导，由系统安装器覆盖安装）
+3. macOS：`Zetla_0.3.1_universal.app.tar.gz`（通用二进制，应用内自更新换包）或 `Zetla_0.3.1_universal.dmg`（首次安装）；ad-hoc 签名，首次打开需在「系统设置 → 隐私与安全性」允许
+4. 未签名安装包在 Windows SmartScreen 提示时选「更多信息 → 仍要运行」
+5. **新项目**的图片默认落到 `figures/`；已有项目若配置了 `imageDir: "figure"`，不会自动改名，需要的话可在「项目设置」里手动调整并同步修改已有的 `\includegraphics` 路径
+
+SHA256：以 Releases 页与 `latest.json` 为准，本版清单由 `npm run release:manifest` 生成、`npm run release:sha -- -Check` 复核，sha256 与上传产物一一对应。
+
+### 已知限制
+
+- 粘贴 / 拖入仅作用于拼图区域（侧栏与预览页），代码区仍沿用原有插入图片流程；拖放到窗口其他区域不会导入
+- 系统包安装版（deb / rpm）依旧不能应用内自更新，只能下载新包后由系统安装器安装
+- `figures/` 是默认值而非强制迁移：存量项目的 `figure/` 会继续生效，混用两个目录时需自行留意引用路径
+- macOS 仍为 ad-hoc 签名、未经公证；应用内自更新会清理 quarantine，从浏览器下载的包首次打开仍需放行一次
+- 绘图模块的其余限制（引擎未覆盖的 TikZ 构造、`\includegraphics` 不吃 SVG、主文档 `tikzpicture` 不能反向载入等）沿用 `0.3.0`
+
+### 反馈
+
+问题与建议请提 Issue：https://github.com/Wastarch/Zetla/issues
+
+完整对比：https://github.com/Wastarch/Zetla/compare/v0.3.0...v0.3.1
+
+---
+
 ## Zetla 0.3.0 —— 绘图模块（TikZ）· 跨平台 TeX 安装 · Linux / macOS 自更新
 
 本版把「画图」搬进了工作台：侧栏新增「绘图」视图，**TikZ 源码是唯一真源**——在画布上拖控制点、改样式、调尺寸、排公式，每一处改动都以最小补丁写回源码，并与键盘编辑共用同一条撤销栈；画完可导出 PNG / SVG / PDF，或直接插入 `figure` 环境。同版把「装 TeX」与「升级 Zetla」两条链路铺到 Linux / macOS：TeX Live 安装器按平台分流并支持测速择优、异常自动换源，更新器新增清单协议 v2、AppImage 原地换包、deb / rpm 交系统安装器与 macOS `.app` 换包后自动重启，关于页也重做为结构化的更新说明。
