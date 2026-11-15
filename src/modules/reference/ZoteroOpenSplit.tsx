@@ -1,7 +1,7 @@
 // P3-1b · 引用条目「打开目标」分体按钮（编译按钮 ▶ | ▾ 同款）
 // 左半 = 默认动作「打开全文」，右半 = ▾ 下拉三选一。
-// 下拉由父组件统一渲染 InsertCtxMenu：点 ▾ 时右键菜单会卸载，
-// 若把菜单放在本组件内部会一起消失（TabBar.tsx 也是把 RecipeMenu 放在外层）。
+// 下拉由父组件统一渲染 InsertCtxMenu（TabBar.tsx 也是把 RecipeMenu 放在外层）：
+// 点 ▾ 时父右键菜单保持显示，下拉作为更上层的子菜单浮在其上。
 import { Icon } from "@/ui/Icon";
 import type { ZoteroOpenTarget } from "@/modules/zotero/zoteroOpenTargets";
 
@@ -44,8 +44,8 @@ export function ZoteroOpenSplit({
         title="选择打开方式：PDF 全文 / Zotero 条目 / 论文网页"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        // 与 TabBar.tsx:134 同款：菜单已开时再点 ▾ 要能收起，
-        // 否则 InsertCtxMenu 的窗口 mousedown 监听会先把它关掉
+        // 双保险：mousedown 防 InsertCtxMenu 的 outside 监听抢先关下拉；
+        // click 防父右键菜单的 window click 监听关掉父菜单（本轮要求父菜单保留）
         onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();

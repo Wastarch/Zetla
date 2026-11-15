@@ -43,6 +43,11 @@ function previewPos(rect: DOMRect): { left: number; top: number } {
   return { left, top };
 }
 
+/** P3-1b：同一条目判定（右键菜单与卡片布下拉时共用，避免串到别的条目） */
+function sameBibEntry(a: BibEntry, b: BibEntry): boolean {
+  return a.file === b.file && a.line === b.line && a.key === b.key;
+}
+
 /** P3-1b：打开目标下拉三项；primary 项 = 主按钮默认动作（打开全文） */
 function zoteroOpenActions(
   entry: BibEntry,
@@ -82,11 +87,12 @@ export default function ReferencePanel() {
   const [refreshing, setRefreshing] = useState(false);
   /** P3-1：反向跳转进行中（禁用重复点击，避免并发搜索） */
   const [zoteroBusy, setZoteroBusy] = useState(false);
-  /** P3-1b：打开目标下拉（放在菜单/卡片外部：点 ▾ 时父菜单会卸载） */
+  /** P3-1b：打开目标下拉（放在菜单/卡片外部；menu 来源可与父右键菜单共存） */
   const [openMenu, setOpenMenu] = useState<{
     x: number;
     y: number;
     entry: BibEntry;
+    source: "menu" | "card";
   } | null>(null);
   /** 右键菜单：命中的条目、屏幕坐标、以及「查看反向引用」用的浮窗锚点 */
   const [menu, setMenu] = useState<{
@@ -103,12 +109,15 @@ export default function ReferencePanel() {
     top: number;
   } | null>(null);
 
-  // 右键菜单：点击空白/滚动/Esc 关闭
+  // 右键菜单：点击空白/滚动/Esc 关闭；同时收起由它唤起的下拉（卡片下拉不受影响）
   useEffect(() => {
     if (!menu) return;
-    const close = () => setMenu(null);
+    const close = () => {
+      setMenu(null);
+      setOpenMenu((prev) => (prev?.source === "menu" ? null : prev));
+    };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMenu(null);
+      if (e.key === "Escape") close();
     };
     window.addEventListener("click", close);
     window.addEventListener("keydown", onKey);
@@ -469,15 +478,23 @@ export default function ReferencePanel() {
           <ZoteroOpenSplit
             variant="menu"
             busy={zoteroBusy}
-            menuOpen={false}
+            menuOpen={
+              !!openMenu &&
+              openMenu.source === "menu" &&
+              sameBibEntry(openMenu.entry, menu.entry)
+            }
             onRun={(target) => {
               void runZoteroOpen(menu.entry, target);
               setMenu(null);
+              setOpenMenu((prev) => (prev?.source === "menu" ? null : prev));
             }}
             onOpenMenu={(pos) => {
-              // 用户拍板：点 ▾ 时父右键菜单消失，只留下拉
-              setMenu(null);
-              setOpenMenu({ ...pos, entry: menu.entry });
+              // 用户改主意：点 ▾ 时父右键菜单保持显示，下拉作为子菜单浮在其上；再点 ▾ 只收起下拉
+              setOpenMenu((prev) =>
+                prev?.source === "menu" && sameBibEntry(prev.entry, menu.entry)
+                  ? null
+                  : { ...pos, entry: menu.entry, source: "menu" },
+              );
             }}
           />
           <button
@@ -509,32 +526,33 @@ export default function ReferencePanel() {
           }}
           onRun={(target) => void runZoteroOpen(preview.entry, target)}
           onOpenMenu={(pos) =>
-            setOpenMenu((prev) => {
-              const id = `${preview.entry.file}:${preview.entry.line}`;
-              return prev && `${prev.entry.file}:${prev.entry.line}` === id
+            setOpenMenu((prev) =>
+              prev?.source === "card" && sameBibEntry(prev.entry, preview.entry)
                 ? null
-                : { ...pos, entry: preview.entry };
-            })
+                : { ...pos, entry: preview.entry, source: "card" },
+            )
           }
           menuOpen={
             !!openMenu &&
-            `${openMenu.entry.file}:${openMenu.entry.line}` ===
-              `${preview.entry.file}:${preview.entry.line}`
+            openMenu.source === "card" &&
+            sameBibEntry(openMenu.entry, preview.entry)
           }
           busy={zoteroBusy}
         />
       )}
 
-      {/* P3-1b：打开目标下拉（编译 ▾ 同款 InsertCtxMenu；父菜单卸载后本节点仍在） */}
+      {/* P3-1b：打开目标下拉（编译 ▾ 同款 InsertCtxMenu；menu 来源时与父右键菜单共存，层级更高） */}
       {openMenu && (
         <div className="zo-menu-layer">
           <InsertCtxMenu
             x={openMenu.x}
             y={openMenu.y}
             onClose={() => setOpenMenu(null)}
-            actions={zoteroOpenActions(openMenu.entry, (t) =>
-              void runZoteroOpen(openMenu.entry, t),
-            )}
+            actions={zoteroOpenActions(openMenu.entry, (t) => {
+              setOpenMenu(null);
+              setMenu(null);
+              void runZoteroOpen(openMenu.entry, t);
+            })}
           />
         </div>
       )}
