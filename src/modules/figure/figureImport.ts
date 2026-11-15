@@ -68,3 +68,34 @@ export async function pasteImagesToCanvas(files: File[]): Promise<void> {
   void useProjectStore.getState().refresh();
   notify(`已${hadCells ? "追加" : "载入"} ${imgs.length} 张图片到拼图`, "ok");
 }
+
+/**
+ * 从 Tauri 原生拖放（`drag-drop` 事件）拿到的文件路径载入拼图画布。
+ * Tauri v2 默认 dragDropEnabled=true 会接管窗口级文件拖放，webview 内 HTML5 onDrop 收不到，
+ * 只能走 `drag-drop` 事件；本函数由 FigureSidebar 在 drop 命中面板区域时调用。
+ * 与 pickImagesToCanvas 同口径：仅记录 path 来源（零拷贝预览），落盘推迟到「生成代码」时。
+ * 画布已有图 → 追加（addImages）；否则新建（initFromImages）并打开预览。
+ */
+export async function dropPathsToCanvas(paths: string[]): Promise<void> {
+  const ctx = precheck();
+  if (!ctx) return;
+  const imgs = paths.filter((p) => EXT_IMG.has(p.split(".").pop()?.toLowerCase() ?? ""));
+  if (imgs.length === 0) return;
+
+  // 仅记录来源（path，此刻不落盘）；落盘在生成代码时进行
+  const sources: FigureCellSource[] = imgs.map((abs) => ({ kind: "path", abs }));
+  const store = useFigureStore.getState();
+  const hadCells = store.layout.cells.length > 0;
+  const targetTex = useBuffersStore.getState().activePath;
+  if (hadCells) {
+    store.addImages(sources);
+  } else {
+    store.initFromImages(sources, targetTex);
+  }
+
+  // 确保在拼图画布视图并打开中心预览 Tab（即便从别处触发也切过去）
+  useAppStore.getState().setSidebarView("figure");
+  useBuffersStore.getState().openFigure();
+  void useProjectStore.getState().refresh();
+  notify(`已${hadCells ? "追加" : "载入"} ${imgs.length} 张图片到拼图`, "ok");
+}

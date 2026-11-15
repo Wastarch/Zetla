@@ -7,7 +7,8 @@ import type { EditorView } from "@codemirror/view";
 import { useFigureStore } from "./figureStore";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { getActiveView, getEditorView } from "@/editor/activeView";
-import { pasteImagesToCanvas, pickImagesToCanvas } from "./figureImport";
+import { pasteImagesToCanvas, pickImagesToCanvas, dropPathsToCanvas } from "./figureImport";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { generateSubfigure, generateComposite } from "./figureGen";
 import { hasPackage, SUBCAPTION_SNIPPET, insertBeforeDocument } from "@/core/preamble";
 import { parentOf, notify, useProjectStore } from "@/project/useProject";
@@ -108,6 +109,11 @@ export default function FigureSidebar() {
 
   // 记录最近一次插入范围，编译失败时可高亮
   const lastInsert = useRef<{ view: EditorView; from: number; to: number } | null>(null);
+  // 拼图面板根元素（坐标命中判断用）
+  const figsideRef = useRef<HTMLDivElement | null>(null);
+  // Tauri 原生拖放监听的取消函数（dragDropEnabled=true 时窗口级拖放由 Rust 接管，
+  // webview 内 HTML5 onDrop 收不到，只能走 drag-drop 事件）
+  const dragDropUnlisten = useRef<UnlistenFn | null>(null);
 
   // 后台编译自检：失败仅 warning + 高亮插入块（不阻塞插入）
   useEffect(() => {
@@ -124,6 +130,42 @@ export default function FigureSidebar() {
       un = u;
     });
     return () => un?.();
+  }, []);
+
+  // Tauri 原生拖放：dragDropEnabled=true 时窗口级文件拖放被 Rust 接管，
+  // 仅通过 drag-drop 事件暴露（payload 含 paths 与 position）。drop 命中拼图面板区域才路由到拼图。
+  useEffect(() => {
+    let active = true;
+    listen<unknown>("drag-drop", (event) => {
+      const p = event.payload as {
+        type?: string;
+        paths?: string[];
+        position?: { x: number; y: number };
+      } | undefined;
+      if (!p) return;
+      if (typeof p.type === "string" && p.type.toLowerCase() !== "drop") return;
+      const paths = p.paths ?? [];
+      if (paths.length === 0) return;
+      const pos = p.position;
+      if (!pos) return;
+      // Tauri position 单位不定（物理/逻辑像素随版本），两种坐标都试一次，用 DOM 命中判定最稳
+      const hits = (x: number, y: number) => {
+        const el = document.elementFromPoint(x, y);
+        return !!el && !!figsideRef.current?.contains(el);
+      };
+      if (
+        hits(pos.x / window.devicePixelRatio, pos.y / window.devicePixelRatio) ||
+        hits(pos.x, pos.y)
+      ) {
+        void dropPathsToCanvas(paths);
+      }
+    }).then((u) => {
+      if (active) dragDropUnlisten.current = u;
+    });
+    return () => {
+      active = false;
+      dragDropUnlisten.current?.();
+    };
   }, []);
 
   const handleGenerate = async () => {
@@ -385,7 +427,13 @@ export default function FigureSidebar() {
 
   return (
     <div
+      ref={figsideRef}
+      tabIndex={-1}
       className="figside"
+      // 点击面板空白处让面板获得焦点，使之后在此区域内 Ctrl+V 能路由到拼图（onPaste 冒泡）
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) (e.currentTarget as HTMLDivElement).focus();
+      }}
       onPaste={(e) => {
         const dt = e.clipboardData;
         if (!dt) return;
@@ -393,17 +441,6 @@ export default function FigureSidebar() {
         if (imgs.length === 0) return; // 非图片（如行列框粘贴数字）→ 放行
         e.preventDefault();
         void pasteImagesToCanvas(imgs);
-      }}
-      onDrop={(e) => {
-        const dt = e.dataTransfer;
-        if (!dt) return;
-        const imgs = Array.from(dt.files).filter(isImageFile);
-        if (imgs.length === 0) return;
-        e.preventDefault();
-        void pasteImagesToCanvas(imgs);
-      }}
-      onDragOver={(e) => {
-        if (Array.from(e.dataTransfer?.files ?? []).some(isImageFile)) e.preventDefault();
       }}
     >
       <div className="figside-head">
