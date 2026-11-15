@@ -30,6 +30,7 @@ import type {
 import type {
   ZoteroBinding,
   ZoteroHealth,
+  ZoteroSearchResult,
   ZoteroWriteResult,
 } from "@/types/zotero";
 
@@ -209,6 +210,16 @@ export const zoteroApi = {
   /** 多路径 watcher：替换整组监听；返回实际监听的目录数 */
   watchBibs: (paths: string[]) => call<number>("zotero_watch_bibs", { paths }),
   unwatchBibs: () => call<void>("zotero_unwatch_bibs"),
+
+  // ── P2 · Citation Picker 全库搜索（只读；显式 limit/start，Total-Results 透传）──
+  search: (port: number, q: string, limit = 30, start = 0) =>
+    call<ZoteroSearchResult>("zotero_search", {
+      port,
+      q,
+      qmode: "everything",
+      limit,
+      start,
+    }),
 };
 
 // ── 绘图模块 · 图片插入 TikZ · P2 暂存图生命周期 ─────────────────────────

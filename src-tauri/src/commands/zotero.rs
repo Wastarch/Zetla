@@ -658,6 +658,110 @@ pub fn zotero_save_map(root: String, json: String) -> Result<(), String> {
     )
 }
 
+// ── P2 · 沉浸式插入（Citation Picker 的只读搜索出口） ─────────────────────
+//
+// Zotero 本地 API 不施加默认/最大 limit，省略会一次返回全库；Total-Results
+// 响应头给出匹配总数供前端分页。所有查询参数经 reqwest::Url 编码（中文/空格/&），
+// 主机仍固定 localhost；本期依旧零写请求、零 local API key。
+
+const PICKER_DEFAULT_LIMIT: u32 = 30;
+const PICKER_MAX_LIMIT: u32 = 100;
+const PICKER_MAX_START: u32 = 100_000;
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ZoteroSearchResult {
+    /// 本地 API 返回的 items JSON 原文（解析放前端 zoteroPicker.ts 纯逻辑）
+    pub items: String,
+    /// Total-Results 响应头；缺失 / 非法为 None
+    pub total: Option<u32>,
+}
+
+fn clamp_picker_limit(limit: u32) -> u32 {
+    if limit == 0 {
+        PICKER_DEFAULT_LIMIT
+    } else {
+        limit.min(PICKER_MAX_LIMIT)
+    }
+}
+
+/// qmode 只允许官方两个取值，其余回落 titleCreatorYear，避免把任意串拼进 URL
+pub fn search_url(port: u16, q: &str, qmode: &str, limit: u32, start: u32) -> String {
+    let mut url = reqwest::Url::parse(&format!(
+        "{}/api/users/0/items/top",
+        base_url(port)
+    ))
+    .expect("base_url 恒为合法 URL");
+    {
+        let mut pairs = url.query_pairs_mut();
+        pairs.append_pair("format", "json");
+        pairs.append_pair("q", q.trim());
+        pairs.append_pair(
+            "qmode",
+            if qmode.eq_ignore_ascii_case("everything") {
+                "everything"
+            } else {
+                "titleCreatorYear"
+            },
+        );
+        pairs.append_pair("limit", &clamp_picker_limit(limit).to_string());
+        pairs.append_pair("start", &start.min(PICKER_MAX_START).to_string());
+    }
+    url.to_string()
+}
+
+/// 与 fetch_text 同样的 403/400 归一，额外透传 Total-Results 头。
+async fn fetch_search(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<ZoteroSearchResult, String> {
+    let resp = client
+        .get(url)
+        .headers(local_request_headers())
+        .send()
+        .await
+        .map_err(|e| format!("搜索 Zotero 题录请求失败：{e}"))?;
+    let status = resp.status().as_u16();
+    let total = resp
+        .headers()
+        .get("total-results")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|s| s.trim().parse::<u32>().ok());
+    let items = resp
+        .text()
+        .await
+        .map_err(|e| format!("搜索 Zotero 题录读取响应失败：{e}"))?;
+    match status {
+        200..=299 => Ok(ZoteroSearchResult { items, total }),
+        403 => Err("搜索 Zotero 题录：Zotero 本地 API 未开启（403）".into()),
+        400 => Err("搜索 Zotero 题录：请求被 Zotero 拒绝（400）".into()),
+        other => Err(format!("搜索 Zotero 题录：Zotero 返回 HTTP {other}")),
+    }
+}
+
+/// P2-2：Picker 的全库搜索。离线 / 403 由前端吞掉并回落到本地 .bib 索引。
+#[tauri::command]
+pub async fn zotero_search(
+    port: u16,
+    q: String,
+    qmode: Option<String>,
+    limit: Option<u32>,
+    start: Option<u32>,
+) -> Result<ZoteroSearchResult, String> {
+    if q.trim().is_empty() {
+        return Err("搜索词为空".into());
+    }
+    let client = build_client()?;
+    let url = search_url(
+        port,
+        &q,
+        qmode.as_deref().unwrap_or("everything"),
+        limit.unwrap_or(0),
+        start.unwrap_or(0),
+    );
+    fetch_search(&client, &url).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -918,5 +1022,33 @@ mod tests {
             BIB_CHANGED_EVENT,
             crate::commands::zotero_watch::BIB_CHANGED_EVENT
         );
+    }
+
+    #[test]
+    fn picker_search_url_pins_localhost_and_encodes_query() {
+        let u = search_url(0, "深度学习 & 综述", "everything", 0, 0);
+        assert!(u.starts_with("http://localhost:23119/api/users/0/items/top?"));
+        assert!(u.contains("format=json"));
+        assert!(u.contains("qmode=everything"));
+        assert!(u.contains("limit=30"));
+        assert!(u.contains("start=0"));
+        // 中文与 & 必须被百分号编码，不能原样拼进 URL；主机绝不出现 127.0.0.1
+        assert!(!u.contains("深度学习"));
+        assert!(!u.contains("&综述"));
+        assert!(!u.contains("127.0.0.1"));
+        assert!(u.contains("%"));
+    }
+
+    #[test]
+    fn picker_search_url_clamps_limit_start_and_qmode() {
+        let u = search_url(24119, "  Doe  ", "bogus", 999, 999_999);
+        assert!(u.contains("localhost:24119"));
+        assert!(u.contains("q=Doe"));
+        assert!(u.contains("qmode=titleCreatorYear"));
+        assert!(u.contains("limit=100"));
+        assert!(u.contains("start=100000"));
+        assert_eq!(clamp_picker_limit(0), PICKER_DEFAULT_LIMIT);
+        assert_eq!(clamp_picker_limit(1), 1);
+        assert_eq!(clamp_picker_limit(101), PICKER_MAX_LIMIT);
     }
 }

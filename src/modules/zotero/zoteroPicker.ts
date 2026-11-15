@@ -1,0 +1,269 @@
+// Zotero 联动 · P2 Citation Picker 纯逻辑
+// （无 @/ 别名、无 store / Tauri 依赖，node --experimental-strip-types 可直接跑）
+//
+// 职责：引用命令格式化、模糊评分、候选合并与状态标记、citekey 三级回退、分页决策。
+// 铁律：插入的必须是 **citekey**，绝不是 Zotero 的 8 位 itemKey；
+//       候选以「项目 .bib 索引」为主源，Zotero 全库搜索只做增强。
+import {
+  ZOTERO_COMMANDS,
+  type ZoteroCommand,
+  type ZoteroItem,
+  type ZoteroKeyMap,
+} from "../../types/zotero.ts";
+import { citationKeyFromExtra, parseZoteroItems } from "./zoteroSync.ts";
+
+/** 远端搜索每页条数（与 Rust PICKER_DEFAULT_LIMIT 一致） */
+export const PICKER_PAGE_SIZE = 30;
+/** 浮层最多渲染的候选数：大库不用虚拟列表也能保持流畅 */
+export const PICKER_MAX_RESULTS = 50;
+/** 远端搜索防抖窗口 */
+export const PICKER_DEBOUNCE_MS = 250;
+/** 触发远端搜索的最小词长；主源（本地 .bib）始终即时过滤 */
+export const PICKER_MIN_QUERY = 2;
+export const PICKER_DEFAULT_COMMAND: ZoteroCommand = "cite";
+
+/** 从 BibEntry 中挑出 Picker 需要的字段（避免纯逻辑 import 编辑器/store 类型） */
+export interface BibLikeEntry {
+  key: string;
+  author?: string;
+  title?: string;
+  year?: string;
+  publication?: string;
+  doi?: string;
+}
+
+export interface ZoteroPickerCandidate {
+  citeKey: string;
+  /** Zotero 8 位 key；本地手写条目为 null */
+  itemKey: string | null;
+  title: string;
+  authors: string;
+  year: string;
+  publication: string;
+  doi: string;
+  /** 是否已存在于项目 .bib —— false 时插入会报缺失引用，UI 须警告 */
+  inBib: boolean;
+  /** 全文被引次数（citesByKey） */
+  citedCount: number;
+  source: "bib" | "zotero";
+}
+
+/** 命令白名单归一：接受 `cite` / `\cite` / 大小写混杂，其余回落默认命令 */
+export function normalizeCommand(
+  raw: string,
+  fallback: ZoteroCommand = PICKER_DEFAULT_COMMAND,
+): ZoteroCommand {
+  const v = String(raw ?? "").trim().replace(/^\\/, "").toLowerCase();
+  return (ZOTERO_COMMANDS as readonly string[]).includes(v)
+    ? (v as ZoteroCommand)
+    : fallback;
+}
+
+/** 清洗 key：去空白、LaTeX 分隔符与花括号，保序去重 */
+export function sanitizeKeys(keys: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of keys) {
+    const k = String(raw ?? "")
+      .trim()
+      .replace(/[{}\[\],]/g, "")
+      .replace(/\s+/g, "");
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(k);
+  }
+  return out;
+}
+
+/** 可选参数里不能有 `]`，否则会提前闭合 LaTeX 可选参数 */
+function optionalArg(s: string): string {
+  return String(s ?? "").trim().replace(/\]/g, ")");
+}
+
+/**
+ * 生成引用命令。两个可选参数按「所见即所得」输出：
+ * 第一个是前缀（see / cf.），第二个是页码（p.~10）。
+ * natbib / biblatex 对两参数的语义不完全一致，故不做静默换算，
+ * 由浮层实时预览最终字符串，用户看到的即插入的。
+ */
+export function formatCitation(opts: {
+  command: string;
+  keys: string[];
+  starred?: boolean;
+  prenote?: string;
+  postnote?: string;
+}): string {
+  const keys = sanitizeKeys(opts.keys);
+  if (keys.length === 0) return "";
+  const cmd = normalizeCommand(opts.command);
+  const star = opts.starred ? "*" : "";
+  const pre = optionalArg(opts.prenote ?? "");
+  const post = optionalArg(opts.postnote ?? "");
+  let args = "";
+  if (post) args = `[${pre}][${post}]`;
+  else if (pre) args = `[${pre}]`;
+  return `\\${cmd}${star}${args}{${keys.join(",")}}`;
+}
+
+/** 模糊打分：完全 > 前缀 > 子串 > 多词全含 > 字符子序列（权重最低） */
+export function fuzzyScore(query: string, text: string): number {
+  const q = String(query ?? "").trim().toLowerCase();
+  const t = String(text ?? "").toLowerCase();
+  if (!q || !t) return 0;
+  if (t === q) return 100;
+  if (t.startsWith(q)) return 80;
+  const idx = t.indexOf(q);
+  if (idx >= 0) return Math.max(40, 65 - Math.min(25, idx));
+  const parts = q.split(/\s+/).filter(Boolean);
+  if (parts.length > 1 && parts.every((p) => t.includes(p))) return 35;
+  if (q.length >= 3 && t.length <= 80) {
+    let qi = 0;
+    for (const ch of t) {
+      if (ch === q[qi]) qi++;
+      if (qi === q.length) return 12;
+    }
+  }
+  return 0;
+}
+
+/** 候选综合分：各字段最高分 + 已在 .bib / 被引次数的小加权（常用条目靠前） */
+export function scoreCandidate(query: string, c: ZoteroPickerCandidate): number {
+  const q = String(query ?? "").trim();
+  if (!q) {
+    return (c.inBib ? 10 : 0) + Math.min(c.citedCount, 10);
+  }
+  const fields: [string, number][] = [
+    [c.citeKey, 1],
+    [c.title, 0.95],
+    [c.authors, 0.9],
+    [c.year, 0.8],
+    [c.doi, 0.7],
+    [c.publication, 0.6],
+  ];
+  let best = 0;
+  for (const [v, w] of fields) best = Math.max(best, fuzzyScore(q, v) * w);
+  // 无关候选必须得 0，否则 rankCandidates 的过滤会被「已在 .bib」加权顶破
+  if (best === 0) return 0;
+  return Math.round(best + (c.inBib ? 3 : 0) + Math.min(c.citedCount, 5));
+}
+
+/**
+ * citekey 三级回退：P1 的 map.json → 题录 Extra 的 `Citation Key:` →
+ * parseZoteroItems 已归一化的 citationKey。取不到返回空串（该条目不可插入）。
+ */
+export function citationKeyFor(
+  item: ZoteroItem,
+  keyMap: ZoteroKeyMap | null,
+): string {
+  const fromMap = keyMap?.byItemKey?.[item.itemKey];
+  if (fromMap) return fromMap;
+  const fromExtra = citationKeyFromExtra(item.extra ?? "");
+  if (fromExtra) return fromExtra;
+  return item.citationKey ?? "";
+}
+
+/** Zotero 搜索结果里有多少条目无法解析出 citekey（UI 提示用） */
+export function unmappedCount(items: ZoteroItem[], keyMap: ZoteroKeyMap | null): number {
+  return items.filter((i) => !citationKeyFor(i, keyMap)).length;
+}
+
+/** 解析 Rust 拿回的 items JSON（复用 P1 的归一化，避免两套字段口径） */
+export function parseSearchItems(raw: string): ZoteroItem[] {
+  return parseZoteroItems(raw);
+}
+
+/**
+ * 合并两路候选：项目 .bib 为主源（inBib=true，离线可用），
+ * Zotero 全库搜索为增强（inBib=false）。按 citeKey 去重，bib 源优先保留。
+ */
+export function mergeCandidates(
+  bibEntries: BibLikeEntry[],
+  zoteroItems: ZoteroItem[],
+  keyMap: ZoteroKeyMap | null,
+  citedCounts: Record<string, number> = {},
+): ZoteroPickerCandidate[] {
+  const out = new Map<string, ZoteroPickerCandidate>();
+  for (const e of bibEntries) {
+    const key = String(e.key ?? "").trim();
+    if (!key) continue;
+    out.set(key, {
+      citeKey: key,
+      itemKey: keyMap?.byCiteKey?.[key] ?? null,
+      title: e.title ?? "",
+      authors: e.author ?? "",
+      year: e.year ?? "",
+      publication: e.publication ?? "",
+      doi: e.doi ?? "",
+      inBib: true,
+      citedCount: citedCounts[key] ?? 0,
+      source: "bib",
+    });
+  }
+  for (const it of zoteroItems) {
+    const key = citationKeyFor(it, keyMap);
+    if (!key) continue; // 没有 citekey 的条目无法生成 LaTeX 引用，跳过
+    const hit = out.get(key);
+    if (hit) {
+      // 已在 .bib：只补元数据，不改写 inBib / source
+      if (!hit.itemKey) hit.itemKey = it.itemKey;
+      if (!hit.doi && it.doi) hit.doi = it.doi;
+      if (!hit.title && it.title) hit.title = it.title;
+      if (!hit.authors && it.authors.length) hit.authors = it.authors.join(", ");
+      continue;
+    }
+    out.set(key, {
+      citeKey: key,
+      itemKey: it.itemKey,
+      title: it.title ?? "",
+      authors: (it.authors ?? []).join(", "),
+      year: it.year ?? "",
+      publication: it.publicationTitle ?? "",
+      doi: it.doi ?? "",
+      inBib: false,
+      citedCount: citedCounts[key] ?? 0,
+      source: "zotero",
+    });
+  }
+  return [...out.values()];
+}
+
+/** 排序 + 截断；query 为空时按「已在 .bib / 被引次数」排 */
+export function rankCandidates(
+  candidates: ZoteroPickerCandidate[],
+  query: string,
+  max: number = PICKER_MAX_RESULTS,
+): ZoteroPickerCandidate[] {
+  const scored = candidates
+    .map((c) => ({ c, s: scoreCandidate(query, c) }))
+    .filter(({ s }) => s > 0)
+    .sort((a, b) =>
+      b.s !== a.s
+        ? b.s - a.s
+        : b.c.citedCount !== a.c.citedCount
+          ? b.c.citedCount - a.c.citedCount
+          : a.c.citeKey.localeCompare(b.c.citeKey),
+    );
+  return scored.slice(0, Math.max(0, max)).map(({ c }) => c);
+}
+
+/** 选中项里不在 .bib 的 key：允许插入，但必须给出明确警告（用户决策） */
+export function pickerWarning(selected: ZoteroPickerCandidate[]): string | null {
+  const missing = selected.filter((c) => !c.inBib).map((c) => c.citeKey);
+  if (missing.length === 0) return null;
+  const head = missing.slice(0, 3).join(", ");
+  const tail = missing.length > 3 ? ` 等 ${missing.length} 个` : "";
+  return `${head}${tail} 尚未同步到项目 .bib，编译会报「引用缺失」；仍可插入，建议先点「立即同步」。`;
+}
+
+/** 是否还有下一页（total 未知时按本页是否满额判断） */
+export function nextPageStart(
+  start: number,
+  received: number,
+  total: number | null,
+  pageSize: number = PICKER_PAGE_SIZE,
+): number | null {
+  const next = start + pageSize;
+  if (total != null && next >= total) return null;
+  if (received < pageSize) return null;
+  return next;
+}

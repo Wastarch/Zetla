@@ -3,13 +3,26 @@
 import type { Text } from "@codemirror/state";
 import type { BibEntry } from "./bibParser";
 
-/** 匹配 \cite / \citep / \citet / \citeauthor / \citeyear 等，且光标处于 { 之后（仍在 key 列表内） */
-export const CITE_PREFIX_RE =
-  /\\(?:nocite|cite|citep|citet|citeauthor|citeyear|citeyearpar|citetext)(\*)?(?:\[[^\]]*\])?\{[^}]*$/;
+/**
+ * 可识别的引用命令族（与 src/types/zotero.ts 的 ZOTERO_COMMANDS、
+ * zoteroSync.ts 的 applyKeyMigration 保持一致）。
+ * P2 Citation Picker 会插入 \autocite / \parencite / \textcite，且可能带两个可选参数
+ * （`\cite[see][p.~10]{key}`），故这里的正则必须同时补命令与 `[...]*`。
+ * 否则补全 / 悬浮预览 / Ctrl+点击跳转 / lint 一致性校验都会看不见这些引用。
+ */
+const CITE_COMMANDS =
+  "autocite|parencite|textcite|citeyearpar|citetext|citeauthor|citeyear|nocite|citep|citet|cite";
 
-/** 完整 \cite[key]{k1, k2} 命令（用于悬浮定位） */
-export const CITE_FULL_RE =
-  /\\(?:nocite|cite|citep|citet|citeauthor|citeyear|citeyearpar|citetext)(\*)?(?:\[[^\]]*\])?\{([^}]*)\}/g;
+/** 匹配引用命令且光标处于 { 之后（仍在 key 列表内），支持星号与多个 [可选参数] */
+export const CITE_PREFIX_RE = new RegExp(
+  `\\\\(?:${CITE_COMMANDS})(\\*)?(?:\\[[^\\]]*\\])*\\{[^}]*$`,
+);
+
+/** 完整 \cite[key][page]{k1, k2} 命令（用于悬浮定位）；捕获组 2 = key 列表 */
+export const CITE_FULL_RE = new RegExp(
+  `\\\\(?:${CITE_COMMANDS})(\\*)?(?:\\[[^\\]]*\\])*\\{([^}]*)\\}`,
+  "g",
+);
 
 export function authorYear(e: BibEntry): string {
   const a = e.author ?? "";

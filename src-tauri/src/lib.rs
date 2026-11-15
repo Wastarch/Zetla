@@ -126,6 +126,8 @@ pub fn run() {
             commands::zotero::zotero_save_map,
             commands::zotero_watch::zotero_watch_bibs,
             commands::zotero_watch::zotero_unwatch_bibs,
+            // Zotero 联动 · P2：Citation Picker 全库搜索（只读、分页、显式 limit）
+            commands::zotero::zotero_search,
             // M1-13：自动更新（自下载安装包 + 拉起安装向导）
             // U1：清单协议 v2 —— 由 Rust 判定本机平台与能否自更新
             commands::updater::update_env_info,

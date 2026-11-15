@@ -9,11 +9,12 @@
 // 4) StrictMode 假卸载 —— 运行时做成模块级单例，只用 import.meta.hot.dispose 清理。
 import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
+import { getActiveView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { onKernelEvent, RustEvents } from "@/ipc/events";
 import { zoteroApi } from "@/ipc/invoke";
 import { useReferenceStore } from "@/modules/reference/useReferenceStore";
-import { useProjectStore } from "@/project/useProject";
+import { extOf, notify, useProjectStore } from "@/project/useProject";
 import {
   DEFAULT_ZOTERO_SETTINGS,
   type ZoteroBibChanged,
@@ -40,6 +41,7 @@ import {
   shouldPull,
   type KeyMigration,
 } from "./zoteroSync";
+import { useZoteroPicker } from "./useZoteroPicker";
 import { useZoteroStore } from "./useZoteroStore";
 
 // ── 模块级状态（单例） ────────────────────────────────────────
@@ -352,6 +354,36 @@ export async function runZoteroPreCompile(): Promise<void> {
   }
 }
 
+// ── P2 · Citation Picker 全局快捷键（Ctrl+Alt+K） ──────────────
+/**
+ * 避开已占用的 Ctrl+Shift+Z（重做）、Ctrl+Shift+Space（片段）、
+ * Ctrl+Shift+N/O/S 与 Ctrl+B chord（MenuBar.tsx:594）。
+ * capture 阶段注册：只在命中该组合时拦截，CodeMirror 默认 keymap 不会吞掉它。
+ * 联动关闭时依然可唤起 —— 主源是项目 .bib 索引，离线插入完全可用。
+ */
+function onPickerKey(e: KeyboardEvent): void {
+  if (!(e.ctrlKey || e.metaKey) || !e.altKey || e.shiftKey) return;
+  if (e.key.toLowerCase() !== "k") return;
+  e.preventDefault();
+  e.stopPropagation();
+  const st = useBuffersStore.getState();
+  const active = st.activePath
+    ? st.buffers.find((b) => b.path === st.activePath)
+    : null;
+  const ext = active ? extOf(active.name) : "";
+  if (!active || (ext !== "tex" && ext !== "ltx")) {
+    notify("请在 .tex 文件中使用引用拾取", "err");
+    return;
+  }
+  if (!getActiveView()) {
+    notify("没有活动编辑器，无法插入引用", "err");
+    return;
+  }
+  const picker = useZoteroPicker.getState();
+  if (picker.open) picker.closePicker();
+  else picker.openPicker(active.path);
+}
+
 // ── 单例安装 / 卸载 ──────────────────────────────────────────
 function onFocus(): void {
   const c = cfg();
@@ -386,6 +418,7 @@ export function startZoteroSyncRuntime(): void {
   });
 
   window.addEventListener("focus", onFocus);
+  window.addEventListener("keydown", onPickerKey, true);
   void reloadZoteroBindings(useProjectStore.getState().root);
 }
 
@@ -401,6 +434,7 @@ export function stopZoteroSyncRuntime(): void {
   unsubscribeSettings?.();
   unsubscribeSettings = null;
   window.removeEventListener("focus", onFocus);
+  window.removeEventListener("keydown", onPickerKey, true);
   void zoteroApi.unwatchBibs().catch(() => {});
   lastHandled = null;
   lastRoot = null;

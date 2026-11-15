@@ -171,6 +171,14 @@ export interface ZoteroConsistency {
   citeCount: number;
 }
 
+// ── P2 · 沉浸式插入协议 ────────────────────────────────────────
+
+/** `zotero_search` 返回：items 为本地 API 原始 JSON，total 来自 Total-Results 响应头 */
+export interface ZoteroSearchResult {
+  items: string;
+  total: number | null;
+}
+
 /** 一次同步的结果（设置页展示 + 节流依据） */
 export interface ZoteroSyncRecord {
   at: string;
