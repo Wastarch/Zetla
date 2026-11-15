@@ -7293,6 +7293,67 @@ body.row-resizing {
   color: var(--txt-1);
   margin-bottom: 7px;
 }
+/* P3-2 · 摘要 / DOI/URL 链接 / Zetla 内嵌 PDF 入口 */
+.ref-preview-abstract {
+  margin: 0 0 7px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-3);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--txt-2);
+}
+.ref-preview-abstract-label {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 10.5px;
+  color: var(--txt-4);
+}
+.ref-preview-abstract-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+.ref-preview-pdf {
+  display: block;
+  width: 100%;
+  margin: 0 0 7px;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  color: var(--accent);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  outline: none;
+}
+.ref-preview-pdf:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.ref-preview-pdf:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.ref-preview-link {
+  max-width: 100%;
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  outline: none;
+  text-align: left;
+  word-break: break-all;
+}
+.ref-preview-link:hover {
+  text-decoration: underline;
+}
 .ref-preview-fields {
   margin: 0 0 7px;
   display: flex;
@@ -7410,6 +7471,55 @@ body.row-resizing {
 /* InsertCtxMenu 的 .ctx 默认 z-index 200，会被预览卡片(3001)盖住 */
 .zo-menu-layer .ctx {
   z-index: 3500;
+}
+
+/* P3-2 · Zotero PDF 内嵌预览浮层（高于右键菜单与下拉） */
+.zo-pdf-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 3600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.48);
+}
+.zo-pdf-dialog {
+  position: relative;
+  width: min(1000px, calc(100vw - 48px));
+  height: min(760px, calc(100vh - 48px));
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.42);
+}
+.zo-pdf-dialog > .preview {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+.zo-pdf-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  width: 26px;
+  height: 26px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--txt-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+  outline: none;
+}
+.zo-pdf-close:hover {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 /* ── M1-find · 单文件查找替换浮动面板（VS Code 风格，悬浮于编辑区右上角） ── */

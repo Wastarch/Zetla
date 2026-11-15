@@ -810,6 +810,55 @@ pub async fn zotero_fetch_children(
     fetch_text(&client, &url, "读取 Zotero 附件清单").await
 }
 
+/// P3-2：`/file/view/url` 固定个人库 + 附件 key，返回 file:// URL 文本。
+fn attachment_file_url(port: u16, attachment_key: &str) -> String {
+    format!(
+        "{}/api/users/0/items/{}/file/view/url",
+        base_url(port),
+        attachment_key
+    )
+}
+
+/// 把 Zotero 返回的 file:// URL 转成 asset 协议可读取的本地路径（不做存在性检查，便于单测）。
+fn file_url_to_path(raw: &str) -> Result<String, String> {
+    let s = raw.trim().trim_matches('"').trim();
+    if s.is_empty() {
+        return Err("Zotero 附件路径为空".into());
+    }
+    let u = reqwest::Url::parse(s).map_err(|e| format!("Zotero 附件路径不是合法 URL：{e}"))?;
+    if u.scheme() != "file" {
+        return Err(format!("Zotero 附件路径不是 file:// 协议（{}）", u.scheme()));
+    }
+    let p = u
+        .to_file_path()
+        .map_err(|_| "Zotero 附件 file:// URL 无法转为本地路径".to_string())?;
+    Ok(p.to_string_lossy().to_string())
+}
+
+/// P3-2：读取附件本地路径（只读 GET + 路径归一 + 存在性检查），供前端 asset 协议内嵌预览。
+#[tauri::command]
+pub async fn zotero_attachment_path(
+    port: u16,
+    attachment_key: String,
+) -> Result<String, String> {
+    let key = attachment_key.trim();
+    if !is_item_key(key) {
+        return Err("附件 itemKey 非法（必须是 8 位字母数字）".into());
+    }
+    let client = build_client()?;
+    let raw = fetch_text(
+        &client,
+        &attachment_file_url(port, key),
+        "读取 Zotero 附件路径",
+    )
+    .await?;
+    let path = file_url_to_path(&raw)?;
+    if !Path::new(&path).is_file() {
+        return Err(format!("Zotero 附件文件不存在：{path}"));
+    }
+    Ok(path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1137,5 +1186,28 @@ mod tests {
         assert!(!is_item_key(""));
         // 命令入口用的是 trim 后的 gate：前后空白不算非法
         assert!(is_item_key("  AB12CD34  "));
+    }
+
+    #[test]
+    fn attachment_file_url_pins_localhost_and_attachment_key() {
+        assert_eq!(
+            attachment_file_url(0, "AB12CD34"),
+            "http://localhost:23119/api/users/0/items/AB12CD34/file/view/url"
+        );
+        assert_eq!(
+            attachment_file_url(24119, "EF56GH78"),
+            "http://localhost:24119/api/users/0/items/EF56GH78/file/view/url"
+        );
+    }
+
+    #[test]
+    fn file_url_to_path_decodes_and_rejects_non_file() {
+        let p = file_url_to_path("  \"file:///C:/Zotero/storage/AB12CD34/paper%20one.pdf\"  ")
+            .unwrap();
+        assert!(p.contains("paper one.pdf"), "URL 编码应还原为空格");
+        assert!(!p.contains("file://"), "返回的是本地路径而不是 URL");
+        assert!(file_url_to_path("").is_err());
+        assert!(file_url_to_path("https://example.org/x.pdf").is_err());
+        assert!(file_url_to_path("not a url").is_err());
     }
 }

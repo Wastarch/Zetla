@@ -10,12 +10,16 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { useReferenceStore } from "./useReferenceStore";
 import { useProjectStore, notify } from "@/project/useProject";
 import { projectApi } from "@/ipc/invoke";
 import { jumpToFile } from "@/editor/jump";
 import { insertSnippet } from "@/core/moduleRegistry";
-import { openZoteroItem } from "@/modules/zotero/zoteroReverseRuntime";
+import {
+  openZoteroItem,
+  resolveZoteroPdfPreview,
+} from "@/modules/zotero/zoteroReverseRuntime";
 import {
   targetDisabled,
   targetHint,
@@ -25,6 +29,7 @@ import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
 import { firstDuplicateEntry, type MissingCiteSummary } from "./lintLogic";
 import { RefPreviewCard } from "./RefPreviewCard";
 import { ZoteroOpenSplit } from "./ZoteroOpenSplit";
+import { ZoteroPdfPreviewDialog } from "./ZoteroPdfPreviewDialog";
 import type { BibEntry } from "./bibParser";
 
 /** 浮窗尺寸估算（用于定位 clamp，实际宽高由 CSS 决定） */
@@ -87,6 +92,13 @@ export default function ReferencePanel() {
   const [refreshing, setRefreshing] = useState(false);
   /** P3-1：反向跳转进行中（禁用重复点击，避免并发搜索） */
   const [zoteroBusy, setZoteroBusy] = useState(false);
+  /** P3-2：内嵌 PDF 读取中 */
+  const [pdfBusy, setPdfBusy] = useState(false);
+  /** P3-2：Zotero 附件 PDF 内嵌预览（本地路径由 Rust 只读解析） */
+  const [zoteroPdf, setZoteroPdf] = useState<{
+    path: string;
+    filename: string;
+  } | null>(null);
   /** P3-1b：打开目标下拉（放在菜单/卡片外部；menu 来源可与父右键菜单共存） */
   const [openMenu, setOpenMenu] = useState<{
     x: number;
@@ -137,7 +149,10 @@ export default function ReferencePanel() {
       // P3-1b：点打开目标下拉时不收起卡片（下拉由本组件在外层渲染）
       if (
         t &&
-        (t.closest(".ref-preview") || t.closest(".ref-entry") || t.closest(".zo-menu-layer"))
+        (t.closest(".ref-preview") ||
+          t.closest(".ref-entry") ||
+          t.closest(".zo-menu-layer") ||
+          t.closest(".zo-pdf-layer"))
       )
         return;
       setPreview(null);
@@ -201,6 +216,39 @@ export default function ReferencePanel() {
       notify(`打开失败：${String(err)}`, "err");
     } finally {
       setZoteroBusy(false);
+    }
+  }, []);
+
+  /** P3-2：安全 http(s) 链接交给 opener（非 http(s) 已在纯逻辑层被拒绝） */
+  const onOpenPreviewUrl = useCallback(async (url: string) => {
+    try {
+      await openUrl(url);
+    } catch (err) {
+      notify(`打开网页失败：${String(err)}`, "err");
+    }
+  }, []);
+
+  /** P3-2：读取 Zotero PDF 附件本地路径并打开 Zetla 内嵌预览；失败只给 toast */
+  const onPreviewZoteroPdf = useCallback(async (e: BibEntry) => {
+    setPdfBusy(true);
+    try {
+      const r = await resolveZoteroPdfPreview({
+        key: e.key,
+        title: e.title,
+        doi: e.fields?.doi,
+        author: e.author,
+        year: e.year,
+        fields: e.fields ?? null,
+      });
+      if (!r.ok || !r.path) {
+        notify(r.message, "err");
+        return;
+      }
+      setZoteroPdf({ path: r.path, filename: r.filename ?? `${e.key}.pdf` });
+    } catch (err) {
+      notify(`预览 PDF 失败：${String(err)}`, "err");
+    } finally {
+      setPdfBusy(false);
     }
   }, []);
 
@@ -525,6 +573,9 @@ export default function ReferencePanel() {
             setPreview(null);
           }}
           onRun={(target) => void runZoteroOpen(preview.entry, target)}
+          onOpenUrl={(url) => void onOpenPreviewUrl(url)}
+          onPreviewPdf={() => void onPreviewZoteroPdf(preview.entry)}
+          pdfBusy={pdfBusy}
           onOpenMenu={(pos) =>
             setOpenMenu((prev) =>
               prev?.source === "card" && sameBibEntry(prev.entry, preview.entry)
@@ -555,6 +606,15 @@ export default function ReferencePanel() {
             })}
           />
         </div>
+      )}
+
+      {/* P3-2：Zotero 附件 PDF 内嵌预览（独立于全局预览 store，不触碰编译结果） */}
+      {zoteroPdf && (
+        <ZoteroPdfPreviewDialog
+          path={zoteroPdf.path}
+          filename={zoteroPdf.filename}
+          onClose={() => setZoteroPdf(null)}
+        />
       )}
     </div>
   );

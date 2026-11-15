@@ -14,13 +14,15 @@ import {
   zoteroSelectUrl,
   type ReverseEntry,
 } from "../src/modules/zotero/zoteroReverse.ts";
-import { parseZoteroItems } from "../src/modules/zotero/zoteroSync.ts";
+import { itemsToBibtex, parseZoteroItems } from "../src/modules/zotero/zoteroSync.ts";
 import {
   DEFAULT_ZOTERO_OPEN_TARGET,
   ZOTERO_PDF_BASE,
+  bibFieldUrl,
   paperUrlFromFields,
   pickPdfAttachment,
   plainBibValue,
+  safeHttpUrl,
   targetDisabled,
   targetHint,
   zoteroPdfUrl,
@@ -432,6 +434,29 @@ eq(targetDisabled("item", {}), false, "打开条目不因字段缺失置灰");
 eq(String(targetHint("web", { doi: "10.1000/xyz" })).includes("doi.org"), true, "网页项 hint 含目标 URL");
 eq(String(targetHint("web", {})).includes("没有"), true, "网页项不可用时 hint 说明原因");
 eq(String(targetHint("pdf", {})).includes("回退"), true, "全文项 hint 说明失败自动回退");
+
+console.log("P3-2 · 摘要字段与可点链接");
+eq(
+  parseZoteroItems(
+    JSON.stringify([
+      {
+        key: "AB12CD34",
+        data: { itemType: "journalArticle", title: "T", abstractNote: "A \\emph{deep} study" },
+      },
+    ]),
+  )[0]?.abstract,
+  "A \\emph{deep} study",
+  "parseZoteroItems 读取 abstractNote",
+);
+const absBib = itemsToBibtex([zitem({ abstract: "Line one\nLine   two" })]);
+check(absBib.includes("abstract = {Line one Line two}"), "无 BBT 降级把摘要压成单行写入 .bib");
+check(!absBib.includes("Line one\nLine"), "摘要中的换行不会破坏 BibTeX 字段结构");
+eq(bibFieldUrl("doi", "\\doi{10.1000/xyz}"), "https://doi.org/10.1000/xyz", "DOI 字段可转安全链接");
+eq(bibFieldUrl("url", "\\url{https://example.org/a}"), "https://example.org/a", "URL 字段剥 \\url{} 后可点");
+eq(bibFieldUrl("url", "javascript:alert(1)"), null, "javascript: 伪协议被拒绝");
+eq(bibFieldUrl("doi", "not-a-doi"), null, "非法 DOI 不生成链接");
+eq(safeHttpUrl("file:///C:/x.pdf"), null, "file: 本地路径不作为网页打开");
+eq(safeHttpUrl("{https://example.org/path}"), "https://example.org/path", "花括号包裹的 URL 可点");
 
 console.log(`\n${total - failures}/${total} 通过`);
 if (failures > 0) process.exitCode = 1;

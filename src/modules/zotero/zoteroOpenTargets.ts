@@ -49,16 +49,29 @@ function httpUrl(v: string): string | null {
   }
 }
 
+/** 供悬浮卡片单字段链接复用：输入任意 BibTeX 值，只返回安全的 http(s) URL */
+export function safeHttpUrl(v: unknown): string | null {
+  return httpUrl(String(v ?? ""));
+}
+
+/** 单个字段的可点链接：url 字段按原值，doi 字段拼 doi.org；其余返回 null */
+export function bibFieldUrl(name: string, value: unknown): string | null {
+  if (name === "url") return safeHttpUrl(value);
+  if (name === "doi") {
+    const doi = normalizeDoi(plainBibValue(value));
+    return /^10\.\d{4,9}\/\S+$/i.test(doi) ? `https://doi.org/${doi}` : null;
+  }
+  return null;
+}
+
 /**
  * 论文网页：优先 .bib 的 url 字段，其次 doi → https://doi.org/<DOI>。
  * 拒绝 javascript: / file: / zotero: 等非 http(s) 协议，返回 null 表示该项不可用。
  */
 export function paperUrlFromFields(fields: OpenEntryFields): string | null {
-  const direct = httpUrl(String(fields?.url ?? ""));
+  const direct = bibFieldUrl("url", fields?.url);
   if (direct) return direct;
-  const doi = normalizeDoi(plainBibValue(fields?.doi ?? ""));
-  if (!/^10\.\d{4,9}\/\S+$/i.test(doi)) return null;
-  return `https://doi.org/${doi}`;
+  return bibFieldUrl("doi", fields?.doi);
 }
 
 /** open-pdf URL：这里必须是「附件」itemKey，不是父条目 itemKey */

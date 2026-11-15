@@ -101,6 +101,7 @@ export function parseZoteroItems(raw: string): ZoteroItem[] {
       publicationTitle: str(d.publicationTitle) || str(d.journal) || str(d.bookTitle) || str(d.publisher),
       doi: str(d.DOI) || str(d.doi),
       url: str(d.url),
+      abstract: str(d.abstractNote),
       extra,
       citationKey: citationKeyFromExtra(extra) || str(d.citationKey),
     });
@@ -186,6 +187,7 @@ export function itemsToBibtex(items: ZoteroItem[]): string {
     else if (type === "book" || type === "techreport") push("publisher", item.publicationTitle);
     push("doi", item.doi);
     push("url", item.url);
+    if (item.abstract) push("abstract", item.abstract.replace(/\s+/g, " "));
     if (item.itemKey) fields.push(["note", `Zotero itemKey: ${item.itemKey}`]);
     const body = fields.map(([k, v]) => `  ${k} = {${v}}`).join(",\n");
     return `@${type}{${key},\n${body}\n}`;

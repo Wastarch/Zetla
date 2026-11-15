@@ -1,9 +1,15 @@
 // M1-14g+ · 引用条目浮窗预览卡片（纯展示，无写操作）
 // 左键点条目 → info 模式展示作者/标题/字段/来源；右键「查看反向引用」→ refs 模式列引用位置。
 import type { BibEntry } from "./bibParser";
-import type { ZoteroOpenTarget } from "@/modules/zotero/zoteroOpenTargets";
+import {
+  bibFieldUrl,
+  plainBibValue,
+  type ZoteroOpenTarget,
+} from "@/modules/zotero/zoteroOpenTargets";
 import { ZoteroOpenSplit } from "./ZoteroOpenSplit";
 
+/** 摘要单独成块展示，不塞进下面的字段表 */
+const ABSTRACT_FIELD = "abstract";
 /** 预览中额外展示的字段（存在才显示） */
 const EXTRA_FIELDS = [
   "journal",
@@ -19,9 +25,9 @@ const EXTRA_FIELDS = [
   "url",
 ];
 
-/** 去掉 BibTeX 值里的花括号并压平空白，便于阅读 */
+/** 去掉 BibTeX 值里的花括号/常用命令并压平空白，便于阅读 */
 function plain(s: string): string {
-  return s.replace(/[{}]/g, "").replace(/\s+/g, " ").trim();
+  return plainBibValue(s);
 }
 
 export interface RefPreviewCardProps {
@@ -38,6 +44,11 @@ export interface RefPreviewCardProps {
   onOpenMenu?: (pos: { x: number; y: number }) => void;
   menuOpen?: boolean;
   busy?: boolean;
+  /** P3-2：安全 http(s) 链接的打开回调（父组件负责 openUrl 与错误提示） */
+  onOpenUrl?: (url: string) => void;
+  /** P3-2：在 Zetla 内嵌预览该条目的 PDF 附件 */
+  onPreviewPdf?: () => void;
+  pdfBusy?: boolean;
 }
 
 export function RefPreviewCard({
@@ -53,10 +64,14 @@ export function RefPreviewCard({
   onOpenMenu,
   menuOpen,
   busy,
+  onOpenUrl,
+  onPreviewPdf,
+  pdfBusy,
 }: RefPreviewCardProps) {
   const extras = EXTRA_FIELDS.map((name) => ({ name, value: entry.fields[name] })).filter(
     (x): x is { name: string; value: string } => !!x.value,
   );
+  const abstract = plainBibValue(entry.fields[ABSTRACT_FIELD] ?? "");
 
   return (
     <div
@@ -100,14 +115,53 @@ export function RefPreviewCard({
             </div>
           )}
           {entry.title && <div className="ref-preview-title">{plain(entry.title)}</div>}
+          {abstract && (
+            <div className="ref-preview-abstract" title={abstract}>
+              <span className="ref-preview-abstract-label">摘要</span>
+              <span className="ref-preview-abstract-text">{abstract}</span>
+            </div>
+          )}
+          {onPreviewPdf && (
+            <button
+              type="button"
+              className="ref-preview-pdf"
+              disabled={!!pdfBusy}
+              title="从 Zotero 附件读取 PDF，在 Zetla 内嵌预览（只读）"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreviewPdf();
+              }}
+            >
+              {pdfBusy ? "读取附件中…" : "在 Zetla 中预览 PDF"}
+            </button>
+          )}
           {extras.length > 0 && (
             <dl className="ref-preview-fields">
-              {extras.map((f) => (
-                <div className="ref-preview-field" key={f.name}>
-                  <dt>{f.name}</dt>
-                  <dd>{plain(f.value)}</dd>
-                </div>
-              ))}
+              {extras.map((f) => {
+                const link = bibFieldUrl(f.name, f.value);
+                return (
+                  <div className="ref-preview-field" key={f.name}>
+                    <dt>{f.name}</dt>
+                    <dd>
+                      {link && onOpenUrl ? (
+                        <button
+                          type="button"
+                          className="ref-preview-link"
+                          title={`在浏览器打开 ${link}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onOpenUrl(link);
+                          }}
+                        >
+                          {plain(f.value)}
+                        </button>
+                      ) : (
+                        plain(f.value)
+                      )}
+                    </dd>
+                  </div>
+                );
+              })}
             </dl>
           )}
           <div className="ref-preview-foot">

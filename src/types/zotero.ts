@@ -141,6 +141,8 @@ export interface ZoteroItem {
   publicationTitle: string;
   doi: string;
   url: string;
+  /** Zotero 的 abstractNote；无 BBT 时由本地 API 降级导出写入 .bib */
+  abstract?: string;
   extra: string;
   /** BBT 写在 Extra 里的稳定 citekey */
   citationKey: string;

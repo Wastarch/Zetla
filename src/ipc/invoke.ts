@@ -225,6 +225,11 @@ export const zoteroApi = {
   /** 父条目的子项原始 JSON；parentKey 必须是 8 位 itemKey */
   fetchChildren: (port: number, parentKey: string, limit = 50) =>
     call<string>("zotero_fetch_children", { port, parentKey, limit }),
+
+  // ── P3-2 · 悬浮卡片：附件本地路径（只读 /file/view/url，供 asset 协议内嵌预览）──
+  /** 附件 itemKey 必须是 8 位；返回本地绝对路径，不落盘、不缓存外泄 */
+  fetchAttachmentPath: (port: number, attachmentKey: string) =>
+    call<string>("zotero_attachment_path", { port, attachmentKey }),
 };
 
 // ── 绘图模块 · 图片插入 TikZ · P2 暂存图生命周期 ─────────────────────────

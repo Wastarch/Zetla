@@ -247,3 +247,50 @@ export async function openZoteroItem(
     url: selectUrl,
   };
 }
+
+export interface ZoteroPdfPreviewResult {
+  ok: boolean;
+  message: string;
+  /** asset 协议可直接读取的本地绝对路径 */
+  path: string | null;
+  filename: string | null;
+}
+
+function previewFail(message: string): ZoteroPdfPreviewResult {
+  return { ok: false, message, path: null, filename: null };
+}
+
+/**
+ * P3-2：解析citekey → 父条目 → PDF 附件 → 本地路径，供 Zetla 内嵌 PdfPreview 使用。
+ * 与 P3-1b 不同，这里**不做** zotero:// 回退：拿不到本地文件就明确提示，
+ * 用户仍可用分体按钮在 Zotero 阅读器里打开。永不抛异常。
+ */
+export async function resolveZoteroPdfPreview(
+  entry: ReverseEntry,
+): Promise<ZoteroPdfPreviewResult> {
+  const citeKey = String(entry.key ?? "").trim();
+  if (!citeKey) return previewFail("该条目没有 citekey，无法定位 Zotero 附件");
+  if (apiBlocked()) {
+    return previewFail("Zotero 联动未启用或本地 API 不可用，无法读取附件本地路径");
+  }
+
+  try {
+    const resolved = await resolveItemKey(entry);
+    if (!resolved) {
+      return previewFail(`「${citeKey}」无法定位到 Zotero 题录（无映射且反查失败）`);
+    }
+    const port = normalizePort(currentSettings().port);
+    const raw = await zoteroApi.fetchChildren(port, resolved.itemKey, 50);
+    const att = pickPdfAttachment(raw, plainBibValue(entry.fields?.url ?? ""));
+    if (!att) return previewFail("该条目没有可预览的 PDF 附件（链接式 / 回收站附件已排除）");
+    const path = await zoteroApi.fetchAttachmentPath(port, att.itemKey);
+    return {
+      ok: true,
+      message: `已读取 PDF 附件「${att.filename || citeKey}」`,
+      path,
+      filename: att.filename || `${citeKey}.pdf`,
+    };
+  } catch (e) {
+    return previewFail(`读取 Zotero PDF 附件失败：${String(e)}`);
+  }
+}
