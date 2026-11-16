@@ -31,12 +31,17 @@ import {
   targetHint,
   type ZoteroOpenTarget,
 } from "@/modules/zotero/zoteroOpenTargets";
+import { planStyleSwitch, type StyleSwitchPlan } from "@/modules/zotero/zoteroStyleMap";
+import { applyStyleSwitch, readTexForEdit } from "@/modules/zotero/zoteroStyleApply";
+import { ZoteroLibraryPane } from "@/modules/zotero/ZoteroLibraryPane";
+import { ZoteroIntegrityPane } from "@/modules/zotero/ZoteroIntegrityPane";
 import { useSettingsStore } from "@/core/settings";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
 import { firstDuplicateEntry, type MissingCiteSummary } from "./lintLogic";
 import { RefPreviewCard, type RefPreviewMode } from "./RefPreviewCard";
 import { ZoteroOpenSplit } from "./ZoteroOpenSplit";
 import { ZoteroPdfPreviewDialog } from "./ZoteroPdfPreviewDialog";
+import { ZoteroStyleApplyDialog } from "./ZoteroStyleApplyDialog";
 import type { BibEntry } from "./bibParser";
 
 /** 浮窗尺寸估算（用于定位 clamp，实际宽高由 CSS 决定） */
@@ -94,6 +99,8 @@ export default function ReferencePanel() {
   const citations = useReferenceStore((s) => s.citations);
 
   const [q, setQ] = useState("");
+  /** P3-5 / P3-6：面板视图（项目文献 / Zotero 文献库 / 体检） */
+  const [view, setView] = useState<"project" | "library" | "diagnostics">("project");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   /** 手动刷新中（重扫项目 + 重建索引） */
   const [refreshing, setRefreshing] = useState(false);
@@ -140,6 +147,14 @@ export default function ReferencePanel() {
     citation: string;
   }>({ loading: false, error: null, bib: "", citation: "" });
 
+  /** P3-4：导言区样式切换确认弹窗（先预览 diff，确认后才落笔） */
+  const [styleApply, setStyleApply] = useState<{
+    path: string;
+    file: string;
+    plan: StyleSwitchPlan;
+  } | null>(null);
+  const [styleBusy, setStyleBusy] = useState(false);
+
   // 右键菜单：点击空白/滚动/Esc 关闭；同时收起由它唤起的下拉（卡片下拉不受影响）
   useEffect(() => {
     if (!menu) return;
@@ -171,6 +186,7 @@ export default function ReferencePanel() {
         (t.closest(".ref-preview") ||
           t.closest(".ref-entry") ||
           t.closest(".zo-menu-layer") ||
+          t.closest(".zo-style-layer") ||
           t.closest(".zo-pdf-layer"))
       )
         return;
@@ -331,6 +347,45 @@ export default function ReferencePanel() {
     [cite, citeStyle],
   );
 
+  /** P3-4：点「应用到导言区」——先读主文档现状并算最小补丁，再弹确认窗（此时不改文件） */
+  const onApplyPreamble = useCallback(async () => {
+    const main = useProjectStore.getState().tree?.mainFile;
+    if (!main) {
+      notify("未识别主文件，无法修改导言区", "err");
+      return;
+    }
+    try {
+      const { tex } = await readTexForEdit(main);
+      const plan = planStyleSwitch(tex, citeStyle);
+      if (!plan.ok) {
+        notify(plan.message, "err");
+        return;
+      }
+      if (plan.noop) {
+        notify(plan.message);
+        return;
+      }
+      setStyleApply({ path: main, file: main.split(/[\\/]/).pop() ?? main, plan });
+    } catch (e) {
+      notify(`读取主文档失败：${String(e)}`, "err");
+    }
+  }, [citeStyle]);
+
+  /** P3-4：确认后落笔。写入前重读重算，避免预览到确认之间导言区被改导致偏移错位 */
+  const onConfirmStyleApply = useCallback(async () => {
+    if (!styleApply) return;
+    setStyleBusy(true);
+    try {
+      const r = await applyStyleSwitch(styleApply.path, citeStyle);
+      notify(r.message, r.ok ? "ok" : "err");
+      if (r.ok) setStyleApply(null);
+    } catch (e) {
+      notify(`写入导言区失败：${String(e)}`, "err");
+    } finally {
+      setStyleBusy(false);
+    }
+  }, [styleApply, citeStyle]);
+
   // 重复 key 汇总（store 直接可得，无需读盘）
   const dupSummary = useMemo(() => {
     return {
@@ -453,241 +508,278 @@ export default function ReferencePanel() {
 
   return (
     <div className="ref-panel">
-      {/* 校验汇总条（M1-14e 缓过来的项目级聚合） */}
-      <div className="ref-summary">
-        {allClear ? (
-          <div className="ref-ok">✓ 引用无误</div>
-        ) : (
-          <>
-            <button
-              type="button"
-              className="ref-pill ref-pill-warn"
-              disabled={dupSummary.count === 0}
-              title="点击跳到首个重复 key"
-              onClick={() =>
-                dupSummary.first && jumpToFile(dupSummary.first.file, dupSummary.first.line)
-              }
-            >
-              ⚠ 重复 key {dupSummary.count} 处
-            </button>
-            <button
-              type="button"
-              className="ref-pill ref-pill-err"
-              disabled={missing.count === 0}
-              title="点击跳到首个缺失引用"
-              onClick={() =>
-                missing.first && jumpToFile(missing.first.file, missing.first.line)
-              }
-            >
-              ❌ 缺失引用 {missing.count} 处
-            </button>
-          </>
-        )}
+      {/* P3-5 / P3-6：页签（项目文献 / Zotero 文献库 / 体检） */}
+      <div className="ref-tabs" role="tablist">
+        {(
+          [
+            ["project", "项目文献"],
+            ["library", "Zotero 文献库"],
+            ["diagnostics", "体检"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={view === id}
+            className={view === id ? "ref-tab ref-tab-on" : "ref-tab"}
+            onClick={() => setView(id)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
-      {/* 操作区：搜索 + 导入 */}
-      <div className="ref-actions">
-        <input
-          className="ref-search"
-          placeholder="搜索 key / 作者 / 标题"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-        />
-        <button
-          type="button"
-          className="ref-import"
-          onClick={() => void onRefresh()}
-          disabled={refreshing}
-          title="重新扫描项目内 .bib 文献"
-        >
-          {refreshing ? "刷新中…" : "↻ 刷新"}
-        </button>
-        <button type="button" className="ref-import" onClick={() => void onImport()}>
-          + 导入…
-        </button>
-      </div>
-
-      {/* 分组列表 */}
-      <div className="ref-list">
-        {filteredGroups.length === 0 ? (
-          <div className="ref-empty">
-            {entries.length === 0 ? "项目中未发现 .bib 文献" : "无匹配条目"}
-          </div>
-        ) : (
-          filteredGroups.map(([file, es]) => {
-            const isCollapsed = collapsed.has(file);
-            return (
-              <div className="ref-group" key={file}>
+      {view === "project" ? (
+        <>
+          {/* 校验汇总条（M1-14e 缓过来的项目级聚合） */}
+          <div className="ref-summary">
+            {allClear ? (
+              <div className="ref-ok">✓ 引用无误</div>
+            ) : (
+              <>
                 <button
                   type="button"
-                  className="ref-group-head"
-                  onClick={() => toggleGroup(file)}
-                  title={file}
+                  className="ref-pill ref-pill-warn"
+                  disabled={dupSummary.count === 0}
+                  title="点击跳到首个重复 key"
+                  onClick={() =>
+                    dupSummary.first && jumpToFile(dupSummary.first.file, dupSummary.first.line)
+                  }
                 >
-                  <span className={isCollapsed ? "ref-caret" : "ref-caret open"}>▾</span>
-                  <span className="ref-group-name">{file.split(/[\\/]/).pop()}</span>
-                  <span className="ref-group-count">{es.length}</span>
+                  ⚠ 重复 key {dupSummary.count} 处
                 </button>
-                {!isCollapsed &&
-                  es.map((e) => {
-                    const dup = duplicateKeys.has(e.key);
-                    const refCount = (citesByKey.get(e.key) ?? []).length;
-                    return (
-                      <div className="ref-entry-wrap" key={`${e.file}:${e.line}`}>
-                        <button
-                          type="button"
-                          className={dup ? "ref-entry ref-entry-dup" : "ref-entry"}
-                          title={`${e.key} · @${e.type} · 点击预览；右键更多`}
-                          onClick={(ev) => onRowClick(e, ev)}
-                          onContextMenu={(ev) => {
-                            ev.preventDefault();
-                            setPreview(null);
-                            setMenu({
-                              entry: e,
-                              x: ev.clientX,
-                              y: ev.clientY,
-                              pos: previewPos(ev.currentTarget.getBoundingClientRect()),
-                            });
-                          }}
-                        >
-                          {dup && (
-                            <span className="ref-dup-dot" title="重复 key">
-                              ●
-                            </span>
-                          )}
-                          <span className="ref-key">{e.key}</span>
-                          <span className="ref-meta">
-                            {(e.author ?? "—") + (e.year ? ` (${e.year})` : "")}
-                          </span>
-                          {refCount > 0 && (
-                            <span className="ref-cite-count" title={`被引用 ${refCount} 次`}>
-                              {refCount}
-                            </span>
-                          )}
-                          <span className="ref-type">@{e.type}</span>
-                        </button>
-                      </div>
-                    );
-                  })}
+                <button
+                  type="button"
+                  className="ref-pill ref-pill-err"
+                  disabled={missing.count === 0}
+                  title="点击跳到首个缺失引用"
+                  onClick={() =>
+                    missing.first && jumpToFile(missing.first.file, missing.first.line)
+                  }
+                >
+                  ❌ 缺失引用 {missing.count} 处
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* 操作区：搜索 + 导入 */}
+          <div className="ref-actions">
+            <input
+              className="ref-search"
+              placeholder="搜索 key / 作者 / 标题"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+            />
+            <button
+              type="button"
+              className="ref-import"
+              onClick={() => void onRefresh()}
+              disabled={refreshing}
+              title="重新扫描项目内 .bib 文献"
+            >
+              {refreshing ? "刷新中…" : "↻ 刷新"}
+            </button>
+            <button type="button" className="ref-import" onClick={() => void onImport()}>
+              + 导入…
+            </button>
+          </div>
+
+          {/* 分组列表 */}
+          <div className="ref-list">
+            {filteredGroups.length === 0 ? (
+              <div className="ref-empty">
+                {entries.length === 0 ? "项目中未发现 .bib 文献" : "无匹配条目"}
               </div>
-            );
-          })
-        )}
-      </div>
+            ) : (
+              filteredGroups.map(([file, es]) => {
+                const isCollapsed = collapsed.has(file);
+                return (
+                  <div className="ref-group" key={file}>
+                    <button
+                      type="button"
+                      className="ref-group-head"
+                      onClick={() => toggleGroup(file)}
+                      title={file}
+                    >
+                      <span className={isCollapsed ? "ref-caret" : "ref-caret open"}>▾</span>
+                      <span className="ref-group-name">{file.split(/[\\/]/).pop()}</span>
+                      <span className="ref-group-count">{es.length}</span>
+                    </button>
+                    {!isCollapsed &&
+                      es.map((e) => {
+                        const dup = duplicateKeys.has(e.key);
+                        const refCount = (citesByKey.get(e.key) ?? []).length;
+                        return (
+                          <div className="ref-entry-wrap" key={`${e.file}:${e.line}`}>
+                            <button
+                              type="button"
+                              className={dup ? "ref-entry ref-entry-dup" : "ref-entry"}
+                              title={`${e.key} · @${e.type} · 点击预览；右键更多`}
+                              onClick={(ev) => onRowClick(e, ev)}
+                              onContextMenu={(ev) => {
+                                ev.preventDefault();
+                                setPreview(null);
+                                setMenu({
+                                  entry: e,
+                                  x: ev.clientX,
+                                  y: ev.clientY,
+                                  pos: previewPos(ev.currentTarget.getBoundingClientRect()),
+                                });
+                              }}
+                            >
+                              {dup && (
+                                <span className="ref-dup-dot" title="重复 key">
+                                  ●
+                                </span>
+                              )}
+                              <span className="ref-key">{e.key}</span>
+                              <span className="ref-meta">
+                                {(e.author ?? "—") + (e.year ? ` (${e.year})` : "")}
+                              </span>
+                              {refCount > 0 && (
+                                <span className="ref-cite-count" title={`被引用 ${refCount} 次`}>
+                                  {refCount}
+                                </span>
+                              )}
+                              <span className="ref-type">@{e.type}</span>
+                            </button>
+                          </div>
+                        );
+                      })}
+                  </div>
+                );
+              })
+            )}
+          </div>
 
-      {/* 右键菜单：在光标处插入 / 跳到条目 / 查看反向引用 */}
-      {menu && (
-        <div
-          className="ctx-menu"
-          style={{ left: menu.x, top: menu.y }}
-          onClick={(ev) => ev.stopPropagation()}
-        >
-          <button
-            type="button"
-            className="ctx-item"
-            onClick={() => {
-              onInsert(menu.entry.key);
-              setMenu(null);
-            }}
-          >
-            {`在光标处插入 \\cite{${menu.entry.key}}`}
-          </button>
-          <button
-            type="button"
-            className="ctx-item"
-            onClick={() => {
-              jumpToFile(menu.entry.file, menu.entry.line);
-              setMenu(null);
-            }}
-          >
-            跳到条目
-          </button>
-          <ZoteroOpenSplit
-            variant="menu"
-            busy={zoteroBusy}
-            menuOpen={
-              !!openMenu &&
-              openMenu.source === "menu" &&
-              sameBibEntry(openMenu.entry, menu.entry)
-            }
-            onRun={(target) => {
-              void runZoteroOpen(menu.entry, target);
-              setMenu(null);
-              setOpenMenu((prev) => (prev?.source === "menu" ? null : prev));
-            }}
-            onOpenMenu={(pos) => {
-              // 用户改主意：点 ▾ 时父右键菜单保持显示，下拉作为子菜单浮在其上；再点 ▾ 只收起下拉
-              setOpenMenu((prev) =>
-                prev?.source === "menu" && sameBibEntry(prev.entry, menu.entry)
-                  ? null
-                  : { ...pos, entry: menu.entry, source: "menu" },
-              );
-            }}
-          />
-          <button
-            type="button"
-            className="ctx-item"
-            onClick={() => {
-              setPreview({ entry: menu.entry, mode: "refs", ...menu.pos });
-              setMenu(null);
-            }}
-          >
-            查看反向引用
-          </button>
-        </div>
-      )}
+          {/* 右键菜单：在光标处插入 / 跳到条目 / 查看反向引用 */}
+          {menu && (
+            <div
+              className="ctx-menu"
+              style={{ left: menu.x, top: menu.y }}
+              onClick={(ev) => ev.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="ctx-item"
+                onClick={() => {
+                  onInsert(menu.entry.key);
+                  setMenu(null);
+                }}
+              >
+                {`在光标处插入 \\cite{${menu.entry.key}}`}
+              </button>
+              <button
+                type="button"
+                className="ctx-item"
+                onClick={() => {
+                  jumpToFile(menu.entry.file, menu.entry.line);
+                  setMenu(null);
+                }}
+              >
+                跳到条目
+              </button>
+              <ZoteroOpenSplit
+                variant="menu"
+                busy={zoteroBusy}
+                menuOpen={
+                  !!openMenu &&
+                  openMenu.source === "menu" &&
+                  sameBibEntry(openMenu.entry, menu.entry)
+                }
+                onRun={(target) => {
+                  void runZoteroOpen(menu.entry, target);
+                  setMenu(null);
+                  setOpenMenu((prev) => (prev?.source === "menu" ? null : prev));
+                }}
+                onOpenMenu={(pos) => {
+                  // 用户改主意：点 ▾ 时父右键菜单保持显示，下拉作为子菜单浮在其上；再点 ▾ 只收起下拉
+                  setOpenMenu((prev) =>
+                    prev?.source === "menu" && sameBibEntry(prev.entry, menu.entry)
+                      ? null
+                      : { ...pos, entry: menu.entry, source: "menu" },
+                  );
+                }}
+              />
+              <button
+                type="button"
+                className="ctx-item"
+                onClick={() => {
+                  setPreview({ entry: menu.entry, mode: "refs", ...menu.pos });
+                  setMenu(null);
+                }}
+              >
+                查看反向引用
+              </button>
+            </div>
+          )}
 
-      {/* 左键浮窗：预览信息 / 反向引用 */}
-      {preview && (
-        <RefPreviewCard
-          entry={preview.entry}
-          refs={citesByKey.get(preview.entry.key) ?? []}
-          mode={preview.mode}
-          left={preview.left}
-          top={preview.top}
-          onMode={(m) => setPreview((p) => (p ? { ...p, mode: m } : p))}
-          onClose={() => setPreview(null)}
-          onJump={(file, line) => {
-            jumpToFile(file, line);
-            setPreview(null);
-          }}
-          onRun={(target) => void runZoteroOpen(preview.entry, target)}
-          onOpenUrl={(url) => void onOpenPreviewUrl(url)}
-          onPreviewPdf={() => void onPreviewZoteroPdf(preview.entry)}
-          pdfBusy={pdfBusy}
-          cite={{ ...cite, style: citeStyle }}
-          onCiteStyle={onCiteStyleChange}
-          onCopyCitation={(kind) => void onCopyCitation(kind)}
-          onOpenMenu={(pos) =>
-            setOpenMenu((prev) =>
-              prev?.source === "card" && sameBibEntry(prev.entry, preview.entry)
-                ? null
-                : { ...pos, entry: preview.entry, source: "card" },
-            )
-          }
-          menuOpen={
-            !!openMenu &&
-            openMenu.source === "card" &&
-            sameBibEntry(openMenu.entry, preview.entry)
-          }
-          busy={zoteroBusy}
+          {/* 左键浮窗：预览信息 / 反向引用 */}
+          {preview && (
+            <RefPreviewCard
+              entry={preview.entry}
+              refs={citesByKey.get(preview.entry.key) ?? []}
+              mode={preview.mode}
+              left={preview.left}
+              top={preview.top}
+              onMode={(m) => setPreview((p) => (p ? { ...p, mode: m } : p))}
+              onClose={() => setPreview(null)}
+              onJump={(file, line) => {
+                jumpToFile(file, line);
+                setPreview(null);
+              }}
+              onRun={(target) => void runZoteroOpen(preview.entry, target)}
+              onOpenUrl={(url) => void onOpenPreviewUrl(url)}
+              onPreviewPdf={() => void onPreviewZoteroPdf(preview.entry)}
+              pdfBusy={pdfBusy}
+              cite={{ ...cite, style: citeStyle }}
+              onCiteStyle={onCiteStyleChange}
+              onCopyCitation={(kind) => void onCopyCitation(kind)}
+              onApplyPreamble={() => void onApplyPreamble()}
+              onOpenMenu={(pos) =>
+                setOpenMenu((prev) =>
+                  prev?.source === "card" && sameBibEntry(prev.entry, preview.entry)
+                    ? null
+                    : { ...pos, entry: preview.entry, source: "card" },
+                )
+              }
+              menuOpen={
+                !!openMenu &&
+                openMenu.source === "card" &&
+                sameBibEntry(openMenu.entry, preview.entry)
+              }
+              busy={zoteroBusy}
+            />
+          )}
+
+          {/* P3-1b：打开目标下拉（编译 ▾ 同款 InsertCtxMenu；menu 来源时与父右键菜单共存，层级更高） */}
+          {openMenu && (
+            <div className="zo-menu-layer">
+              <InsertCtxMenu
+                x={openMenu.x}
+                y={openMenu.y}
+                onClose={() => setOpenMenu(null)}
+                actions={zoteroOpenActions(openMenu.entry, (t) => {
+                  setOpenMenu(null);
+                  setMenu(null);
+                  void runZoteroOpen(openMenu.entry, t);
+                })}
+              />
+            </div>
+          )}
+        </>
+      ) : view === "library" ? (
+        <ZoteroLibraryPane
+          onInsert={onInsert}
+          onNotice={(m, k) => notify(m, k)}
         />
-      )}
-
-      {/* P3-1b：打开目标下拉（编译 ▾ 同款 InsertCtxMenu；menu 来源时与父右键菜单共存，层级更高） */}
-      {openMenu && (
-        <div className="zo-menu-layer">
-          <InsertCtxMenu
-            x={openMenu.x}
-            y={openMenu.y}
-            onClose={() => setOpenMenu(null)}
-            actions={zoteroOpenActions(openMenu.entry, (t) => {
-              setOpenMenu(null);
-              setMenu(null);
-              void runZoteroOpen(openMenu.entry, t);
-            })}
-          />
-        </div>
+      ) : (
+        <ZoteroIntegrityPane
+          onJump={(file, line) => jumpToFile(file, line)}
+          onNotice={(m, k) => notify(m, k)}
+        />
       )}
 
       {/* P3-2：Zotero 附件 PDF 内嵌预览（独立于全局预览 store，不触碰编译结果） */}
@@ -696,6 +788,25 @@ export default function ReferencePanel() {
           path={zoteroPdf.path}
           filename={zoteroPdf.filename}
           onClose={() => setZoteroPdf(null)}
+        />
+      )}
+
+      {/* P3-4：样式映射落到导言区前的确认窗（只改一处，可撤销，不自动重编译） */}
+      {styleApply && (
+        <ZoteroStyleApplyDialog
+          fileName={styleApply.file}
+          engine={styleApply.plan.engine ?? "none"}
+          styleLabel={styleApply.plan.mapping?.label ?? citeStyle}
+          target={styleApply.plan.target ?? ""}
+          line={styleApply.plan.line}
+          before={styleApply.plan.before}
+          after={styleApply.plan.after}
+          note={styleApply.plan.mapping?.note}
+          busy={styleBusy}
+          onConfirm={() => void onConfirmStyleApply()}
+          onClose={() => {
+            if (!styleBusy) setStyleApply(null);
+          }}
         />
       )}
     </div>

@@ -65,6 +65,8 @@ export interface RefPreviewCardProps {
   cite?: CitationPaneState;
   onCiteStyle?: (id: string) => void;
   onCopyCitation?: (kind: "citation" | "bib") => void;
+  /** P3-4：把当前 CSL 样式应用到主文档导言区（父组件弹确认窗） */
+  onApplyPreamble?: () => void;
 }
 
 export function RefPreviewCard({
@@ -86,6 +88,7 @@ export function RefPreviewCard({
   cite,
   onCiteStyle,
   onCopyCitation,
+  onApplyPreamble,
 }: RefPreviewCardProps) {
   const extras = EXTRA_FIELDS.map((name) => ({ name, value: entry.fields[name] })).filter(
     (x): x is { name: string; value: string } => !!x.value,
@@ -241,6 +244,7 @@ export function RefPreviewCard({
               citation={cite.citation}
               onStyle={onCiteStyle}
               onCopy={onCopyCitation}
+              onApplyPreamble={onApplyPreamble}
             />
           ) : (
             <div className="zo-cite-empty">Zotero 联动未接入，无法预览引文</div>

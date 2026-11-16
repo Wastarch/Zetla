@@ -2,7 +2,9 @@
 //
 // 只做 CSL 预览 / 复制：Zotero 本地 API 按样式返回 bib + citation，
 // 正文最终样式仍由 .bst / biblatex 决定，这里不写 .tex、不改 preamble。
+// P3-4 起额外提供「应用到导言区」入口：点击只弹确认弹窗，落笔由父组件完成。
 import { CSL_STYLES, cslStyleLabel } from "@/modules/zotero/zoteroCitation";
+import { styleMappingFor } from "@/modules/zotero/zoteroStyleMap";
 
 export interface ZoteroCitationPaneProps {
   /** 当前样式 id（已归一） */
@@ -15,6 +17,8 @@ export interface ZoteroCitationPaneProps {
   citation: string;
   onStyle: (id: string) => void;
   onCopy: (kind: "citation" | "bib") => void;
+  /** P3-4：把当前 CSL 样式映射到导言区（未传则不显示入口） */
+  onApplyPreamble?: () => void;
 }
 
 function CopyButton({
@@ -50,9 +54,11 @@ export function ZoteroCitationPane({
   citation,
   onStyle,
   onCopy,
+  onApplyPreamble,
 }: ZoteroCitationPaneProps) {
   const hasCitation = !!citation;
   const hasBib = !!bib;
+  const mapping = styleMappingFor(style);
 
   return (
     <div className="zo-cite">
@@ -105,6 +111,34 @@ export function ZoteroCitationPane({
         CSL 只用于预览/复制（{cslStyleLabel(style)}）；正文样式仍由
         <code>\bibliographystyle</code> 或 biblatex 决定。
       </div>
+
+      {onApplyPreamble && (
+        <div className="zo-cite-apply-row">
+          <button
+            type="button"
+            className="zo-cite-apply"
+            disabled={!mapping || loading}
+            title={
+              mapping
+                ? `把导言区改为 ${mapping.bst} / style=${mapping.biblatex}（先预览再确认，可撤销）`
+                : "该样式没有对应的 LaTeX 样式映射，不会改动 .tex"
+            }
+            onClick={(e) => {
+              e.stopPropagation();
+              onApplyPreamble();
+            }}
+          >
+            应用到导言区…
+          </button>
+          {mapping ? (
+            <span className="zo-cite-apply-hint" title={mapping.note}>
+              {mapping.bst} / {mapping.biblatex}
+            </span>
+          ) : (
+            <span className="zo-cite-apply-hint">无 LaTeX 映射</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

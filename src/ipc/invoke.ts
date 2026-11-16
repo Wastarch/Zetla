@@ -191,9 +191,14 @@ export const zoteroApi = {
   // ── P1 · 自动化同步（只读 HTTP / 受管 .bib 写盘 / 绑定与映射缓存 / 多路径监听）──
   /** 分类列表原始 JSON（解析放 zoteroSync.ts 纯逻辑） */
   fetchCollections: (port: number) => call<string>("zotero_fetch_collections", { port }),
-  /** 题录原始 JSON；collectionKey 为空 = 全库 top-level */
-  fetchItems: (port: number, collectionKey: string | null, limit?: number) =>
-    call<string>("zotero_fetch_items", { port, collectionKey, limit: limit ?? null }),
+  /** 题录原始 JSON；collectionKey 为空 = 全库 top-level；start 供「加载更多」翻页 */
+  fetchItems: (port: number, collectionKey: string | null, limit?: number, start?: number) =>
+    call<string>("zotero_fetch_items", {
+      port,
+      collectionKey,
+      limit: limit ?? null,
+      start: start ?? null,
+    }),
   /** BBT pull export：直接拿 BibTeX 文本 */
   fetchBbtExport: (port: number, collectionKey: string, format: "bibtex" | "biblatex") =>
     call<string>("zotero_fetch_bbt_export", { port, collectionKey, format }),
@@ -235,6 +240,11 @@ export const zoteroApi = {
   /** 返回单条题录 JSON（含 `bib` / `citation` 两段 XHTML）；样式 id 由 Rust 再校验一次 */
   citation: (port: number, itemKey: string, style: string) =>
     call<string>("zotero_citation", { port, itemKey, style }),
+
+  // ── P3-6 · 完整性诊断：回收站清单（只读，仅用于判定映射是否失效）──
+  /** 回收站题录原始 JSON；limit 缺省 100（Rust 侧封顶 500） */
+  trashItems: (port: number, limit?: number) =>
+    call<string>("zotero_trash_items", { port, limit: limit ?? null }),
 };
 
 // ── 绘图模块 · 图片插入 TikZ · P2 暂存图生命周期 ─────────────────────────

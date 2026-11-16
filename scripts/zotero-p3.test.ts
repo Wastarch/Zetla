@@ -39,6 +39,33 @@ import {
   parseCitationResponse,
   stripCslHtml,
 } from "../src/modules/zotero/zoteroCitation.ts";
+import {
+  STYLE_MAPPINGS,
+  applyStyleEdit,
+  cslForLatexStyle,
+  detectPreambleStyle,
+  engineLabel,
+  maskTexComments,
+  planStyleSwitch,
+  styleMappingFor,
+} from "../src/modules/zotero/zoteroStyleMap.ts";
+import {
+  buildCollectionRows,
+  collectLibraryTags,
+  collectionLabel,
+  filterLibraryItems,
+  libraryItemMeta,
+  mergeLibraryItems,
+  parseItemTags,
+  parseLibraryItems,
+} from "../src/modules/zotero/zoteroLibrary.ts";
+import {
+  INTEGRITY_LABEL,
+  buildIntegrityReport,
+  integritySummary,
+  parseItemKeysFromJson,
+} from "../src/modules/zotero/zoteroIntegrity.ts";
+import { parseCollections } from "../src/modules/zotero/zoteroSync.ts";
 
 let failures = 0;
 let total = 0;
@@ -556,6 +583,332 @@ eq(citationCopyMessage("bib", "apa").includes("参考文献"), true, "复制提�
   eq(citationErrorMessage(offline), `读取格式化引文失败：${offline}`, "非样式错误原样透传");
   const noStyle = citationErrorMessage(styleFail);
   check(!noStyle.includes("样式「」"), "未传样式名时提示不出现空样式名");
+}
+
+// ── P3-4 · 样式映射：表 / 探测 / 最小补丁 ────────────────────────────
+{
+  eq(STYLE_MAPPINGS.length, CSL_STYLES.length, "映射表覆盖全部内置 CSL 样式");
+  for (const s of CSL_STYLES) {
+    check(!!styleMappingFor(s.id), `CSL ${s.id} 有 LaTeX 映射`);
+  }
+  eq(styleMappingFor("IEEE")?.bst, "IEEEtran", "映射查询大小写不敏感");
+  eq(styleMappingFor("not-a-style"), null, "未知样式返回 null");
+  eq(cslForLatexStyle("IEEEtran"), "ieee", "反查 bst 得到 CSL id");
+  eq(
+    cslForLatexStyle("gb7714-2015"),
+    "china-national-standard-gb-t-7714-2015-numeric",
+    "反查 biblatex style",
+  );
+  eq(cslForLatexStyle("plain"), null, "反查未收录样式返回 null");
+  eq(engineLabel("biblatex"), "biblatex", "引擎标签 biblatex");
+  eq(engineLabel("bibtex"), "BibTeX", "引擎标签 bibtex");
+  eq(engineLabel("none"), "未识别", "引擎标签 none");
+
+  // 注释遮罩：\% 不是注释；\\% 的 % 仍是注释
+  const masked = maskTexComments("a \\% b % c\n% d");
+  check(masked.startsWith("a \\% b"), "转义百分号不被当作注释");
+  check(!masked.includes("c"), "行内注释被遮成空格");
+  check(!masked.includes("d"), "整行注释被遮掉");
+  eq(masked.length, "a \\% b % c\n% d".length, "遮罩不改变字符偏移");
+
+  const bibtexTex = [
+    "\\documentclass{article}",
+    "\\usepackage{graphicx}",
+    "\\bibliographystyle{plain}",
+    "\\begin{document}",
+  ].join("\n");
+  const bib = detectPreambleStyle(bibtexTex);
+  eq(bib.engine, "bibtex", "识别 BibTeX 引擎");
+  eq(bib.style, "plain", "读出 bst 参数");
+  eq(bib.line, 3, "行号按 1 起算");
+  eq(bib.insertOnly, false, "bst 参数为替换而非插入");
+  eq(bibtexTex.slice(bib.from, bib.to), "plain", "样式值 span 精确");
+
+  const commented = [
+    "\\documentclass{article}",
+    "% \\bibliographystyle{plain}",
+    "\\begin{document}",
+  ].join("\n");
+  eq(detectPreambleStyle(commented).engine, "none", "注释掉的 \\bibliographystyle 不算生效");
+
+  const afterBegin = [
+    "\\documentclass{article}",
+    "\\begin{document}",
+    "\\bibliographystyle{plain}",
+  ].join("\n");
+  eq(detectPreambleStyle(afterBegin).engine, "none", "\\begin{document} 之后的样式不参与探测");
+
+  const biblatexOpts = [
+    "\\documentclass{article}",
+    "\\usepackage[backend=biber, style=apa]{biblatex}",
+    "\\begin{document}",
+  ].join("\n");
+  const bl = detectPreambleStyle(biblatexOpts);
+  eq(bl.engine, "biblatex", "识别 biblatex 引擎");
+  eq(bl.style, "apa", "读出 style 选项");
+  eq(biblatexOpts.slice(bl.from, bl.to), "apa", "style 值 span 精确");
+
+  const multiPkg = "\\usepackage{graphicx,biblatex}\n\\begin{document}";
+  eq(detectPreambleStyle(multiPkg).engine, "biblatex", "包名并列时也能识别 biblatex");
+
+  const noStyleOpts = "\\usepackage[backend=biber]{biblatex}\n\\begin{document}";
+  const ns = detectPreambleStyle(noStyleOpts);
+  eq(ns.insertOnly, true, "缺 style 选项时走插入");
+  eq(ns.optsEmpty, false, "已有其他选项时不补多余逗号");
+
+  const barePkg = "\\usepackage{biblatex}\n\\begin{document}";
+  eq(detectPreambleStyle(barePkg).insertOnly, true, "无 [] 时走整段插入");
+
+  // 计划：BibTeX 替换
+  const planBst = planStyleSwitch(bibtexTex, "ieee");
+  eq(planBst.ok, true, "bibtex 计划可用");
+  eq(planBst.target, "IEEEtran", "bibtex 目标为 bst 名");
+  eq(planBst.before, "\\bibliographystyle{plain}", "预览改前整行");
+  eq(planBst.after, "\\bibliographystyle{IEEEtran}", "预览改后整行");
+  eq(
+    planBst.edit ? applyStyleEdit(bibtexTex, planBst.edit).split("\n")[2] : "",
+    "\\bibliographystyle{IEEEtran}",
+    "补丁只改参数、不动其余行",
+  );
+
+  // 计划：已经是目标样式 → noop
+  const same = planStyleSwitch("\\bibliographystyle{apa}\n\\begin{document}", "apa");
+  eq(same.ok, true, "同一样式仍是 ok");
+  eq(same.noop, true, "同一样式标记 noop");
+  eq(same.edit, undefined, "noop 不产生补丁");
+
+  // 计划：biblatex 替换保留其他选项
+  const planBl = planStyleSwitch(biblatexOpts, "ieee");
+  eq(planBl.target, "ieee", "biblatex 目标为 style 值");
+  eq(
+    planBl.edit ? applyStyleEdit(biblatexOpts, planBl.edit).split("\n")[1] : "",
+    "\\usepackage[backend=biber, style=ieee]{biblatex}",
+    "替换 style 值且保留 backend",
+  );
+
+  // 计划：biblatex 插入
+  const planIns = planStyleSwitch(noStyleOpts, "china-national-standard-gb-t-7714-2015-numeric");
+  eq(
+    planIns.edit ? applyStyleEdit(noStyleOpts, planIns.edit).split("\n")[0] : "",
+    "\\usepackage[style=gb7714-2015,backend=biber]{biblatex}",
+    "缺 style 时插到选项首位",
+  );
+  const planIns2 = planStyleSwitch(barePkg, "ieee");
+  eq(
+    planIns2.edit ? applyStyleEdit(barePkg, planIns2.edit).split("\n")[0] : "",
+    "\\usepackage[style=ieee]{biblatex}",
+    "无选项时补整段 [style=…]",
+  );
+
+  // 计划：失败路径不得产生补丁
+  const noneTex = "\\documentclass{article}\n\\begin{document}";
+  const planNone = planStyleSwitch(noneTex, "ieee");
+  eq(planNone.ok, false, "无导言区样式时失败");
+  eq(planNone.edit, undefined, "失败不产生补丁（绝不猜行号）");
+  check(planNone.message.includes("未找到"), "失败信息说明原因");
+
+  const planUnmapped = planStyleSwitch(bibtexTex, "chicago-fullnote-bibliography");
+  eq(planUnmapped.ok, false, "未收录样式拒绝改文件");
+  eq(planUnmapped.edit, undefined, "未收录样式不产生补丁");
+
+  // applyStyleEdit 越界钳制
+  eq(applyStyleEdit("abc", { from: 99, to: 120, insert: "X" }), "abcX", "from 越界钳到末尾");
+  eq(applyStyleEdit("abc", { from: 2, to: 1, insert: "X" }), "abXc", "to < from 时按插入处理");
+}
+
+// ── P3-5 · 文献库：标签 / 合并 / 筛选 / 分类树 ───────────────────────
+{
+  const raw = JSON.stringify([
+    {
+      key: "AAAA1111",
+      data: {
+        itemType: "article-journal",
+        title: "Landau theory of phase transitions",
+        date: "1937",
+        creators: [{ lastName: "Landau", firstName: "L. D." }],
+        publicationTitle: "Zh. Eksp. Teor. Fiz.",
+        DOI: "10.1000/x",
+        tags: [{ tag: "相变" }, { tag: "统计物理" }, { tag: "相变" }],
+        extra: "Citation Key: landau1937",
+      },
+    },
+    {
+      key: "BBBB2222",
+      data: {
+        itemType: "book",
+        title: "Statistical Mechanics",
+        date: "1958",
+        creators: [{ lastName: "Landau" }, { lastName: "Lifshitz" }],
+        tags: [{ tag: "统计物理" }],
+      },
+    },
+  ]);
+  const items = parseLibraryItems(raw);
+  eq(items.length, 2, "解析两条题录");
+  eq(items[0].tags.length, 2, "标签去重");
+  eq(items[0].citationKey, "landau1937", "Extra 里的 citekey 被保留");
+  eq(items[0].itemKey, "AAAA1111", "itemKey 正确");
+
+  eq(parseItemTags("not json").size, 0, "坏 JSON 不抛异常");
+  eq(parseItemTags("[{\"key\":\"X\"}]").size, 0, "无 data.tags 时不登记");
+
+  const merged = mergeLibraryItems(items, [items[0], { ...items[1], itemKey: "CCCC3333" }]);
+  eq(merged.length, 3, "翻页合并按 itemKey 去重");
+
+  const tags = collectLibraryTags(items);
+  eq(tags[0].name, "统计物理", "标签按出现次数降序");
+  eq(tags[0].count, 2, "标签计数正确");
+
+  eq(filterLibraryItems(items, { query: "landau" }).length, 2, "作者命中");
+  eq(filterLibraryItems(items, { query: "LAND" }).length, 2, "关键词大小写不敏感");
+  eq(filterLibraryItems(items, { query: "landau1937" }).length, 1, "citekey 参与搜索");
+  eq(filterLibraryItems(items, { tag: "相变" }).length, 1, "标签精确过滤");
+  eq(filterLibraryItems(items, { tag: "不存在" }).length, 0, "未知标签返回空");
+  eq(filterLibraryItems(items, {}).length, 2, "无筛选条件原样返回");
+
+  const collections = parseCollections(
+    JSON.stringify([
+      { key: "R1", data: { name: "物理", parentCollection: false } },
+      { key: "C1", data: { name: "凝聚态", parentCollection: "R1" } },
+      { key: "C2", data: { name: "统计", parentCollection: "R1" } },
+      { key: "O1", data: { name: "孤儿", parentCollection: "MISSING" } },
+      { key: "L1", data: { name: "环A", parentCollection: "L2" } },
+      { key: "L2", data: { name: "环B", parentCollection: "L1" } },
+    ]),
+  );
+  const rows = buildCollectionRows(collections);
+  const r1 = rows.find((r) => r.key === "R1");
+  eq(r1?.depth, 0, "顶层分类 depth 0");
+  eq(r1?.hasChildren, true, "有子分类标记");
+  const c1 = rows.find((r) => r.key === "C1");
+  eq(c1?.depth, 1, "子分类 depth 1");
+  eq(rows.find((r) => r.key === "O1")?.depth, 0, "缺失父节点的分类按顶层处理");
+  eq(rows.filter((r) => r.key === "L1").length, 1, "成环分类只出现一次");
+  eq(new Set(rows.map((r) => r.key)).size, rows.length, "拍平结果无重复 key");
+
+  const collapsedRows = buildCollectionRows(collections, new Set(["R1"]));
+  check(!collapsedRows.some((r) => r.key === "C1"), "折叠后子分类不出现");
+  check(collapsedRows.some((r) => r.key === "R1"), "折叠仍保留自身");
+
+  eq(collectionLabel(rows, null), "全部文献", "空分类显示全部文献");
+  eq(collectionLabel(rows, "C1"), "凝聚态", "分类名回显");
+  eq(collectionLabel(rows, "NOPE"), "全部文献", "未知分类回退");
+
+  const meta = libraryItemMeta(items[0]);
+  check(meta.includes("Landau") && meta.includes("1937"), "摘要行含作者与年份");
+  check(meta.includes("Zh. Eksp. Teor. Fiz."), "摘要行含期刊");
+}
+
+// ── P3-6 · 完整性诊断 ──────────────────────────────────────────────
+{
+  const bib = [
+    { key: "cited", file: "a.bib", line: 3 },
+    { key: "lonely", file: "a.bib", line: 10 },
+    { key: "dup", file: "a.bib", line: 20 },
+    { key: "dup", file: "b.bib", line: 5 },
+  ];
+  const cites = [
+    { key: "cited", file: "main.tex", line: 40 },
+    { key: "ghost", file: "sec/intro.tex", line: 7 },
+    { key: "ghost", file: "sec/intro.tex", line: 9 },
+  ];
+  const keyMap: ZoteroKeyMap = {
+    serverId: "srv",
+    updatedAt: "2026-11-16T00:00:00Z",
+    byCiteKey: { cited: "AAAA1111", trashedKey: "DDDD4444", staleKey: "EEEE5555" },
+    byItemKey: { AAAA1111: "cited", DDDD4444: "trashedKey", EEEE5555: "staleKey" },
+    unmapped: [],
+  };
+  const trash = new Set(["DDDD4444"]);
+  const r = buildIntegrityReport(
+    { bibEntries: bib, citations: cites, keyMap, trashKeys: trash },
+    "2026-11-16T01:00:00Z",
+  );
+
+  eq(r.checkedAt, "2026-11-16T01:00:00Z", "体检时间可注入");
+  eq(r.trashChecked, true, "传入回收站集合时标记已检查");
+  eq(r.bibCount, 3, "bibCount 按去重 key 计");
+  eq(r.citeCount, 2, "citeCount 按去重被引 key 计");
+  eq(r.mapCount, 3, "mapCount 取 byCiteKey 条数");
+
+  eq(r.counts.orphan, 2, "孤儿引用按出现次数计");
+  const ghost = r.issues.find((i) => i.kind === "orphan");
+  eq(ghost?.file, "sec/intro.tex", "孤儿引用带跳转位置");
+  eq(ghost?.line, 7, "孤儿引用带行号");
+
+  eq(r.counts.duplicate, 1, "重复 key 每个 key 只报一条");
+  const dup = r.issues.find((i) => i.kind === "duplicate");
+  eq(dup?.file, "b.bib", "重复 key 指向第二次定义");
+  eq(dup?.line, 5, "重复 key 行号正确");
+
+  eq(r.counts.unreferenced, 2, "未引用条目：lonely + dup");
+  check(
+    r.issues.some((i) => i.kind === "unreferenced" && i.key === "lonely"),
+    "未引用条目被列出",
+  );
+
+  eq(r.counts.trashed, 1, "回收站命中一条");
+  const trashed = r.issues.find((i) => i.kind === "trashed");
+  eq(trashed?.key, "trashedKey", "回收站条目展示 citekey");
+  eq(trashed?.itemKey, "DDDD4444", "回收站条目带 itemKey");
+
+  // staleKey 不在 .bib 里 → 漂移；已在回收站的 trashedKey 不再重复报漂移
+  eq(r.counts.drift, 1, "映射漂移只报未被回收站覆盖的 key");
+  eq(r.issues.find((i) => i.kind === "drift")?.key, "staleKey", "漂移 key 正确");
+
+  // 严重度排序：孤儿在未引用之前
+  const kinds = r.issues.map((i) => i.kind);
+  check(
+    kinds.indexOf("orphan") < kinds.indexOf("unreferenced"),
+    "问题按严重度排序（缺失引用优先）",
+  );
+
+  const noTrash = buildIntegrityReport({ bibEntries: bib, citations: cites, keyMap, trashKeys: null });
+  eq(noTrash.trashChecked, false, "未检查回收站时标记 false");
+  eq(noTrash.counts.trashed, 0, "未检查时不误报回收站");
+
+  // 双向映射自相矛盾
+  const conflicted = buildIntegrityReport({
+    bibEntries: [{ key: "a", file: "x.bib", line: 1 }],
+    citations: [{ key: "a", file: "m.tex", line: 1 }],
+    keyMap: {
+      serverId: null,
+      updatedAt: "",
+      byCiteKey: { a: "AAAA1111" },
+      byItemKey: { AAAA1111: "other" },
+      unmapped: [],
+    },
+    trashKeys: null,
+  });
+  check(
+    conflicted.issues.some((i) => i.kind === "drift" && i.detail.includes("自相矛盾")),
+    "双向映射矛盾被报为漂移",
+  );
+
+  const clean = buildIntegrityReport({
+    bibEntries: [{ key: "a", file: "x.bib", line: 1 }],
+    citations: [{ key: "a", file: "m.tex", line: 2 }],
+    keyMap: null,
+    trashKeys: null,
+  });
+  eq(clean.issues.length, 0, "干净项目无问题");
+  check(integritySummary(clean).includes("引用索引正常"), "无问题时总结为正常");
+  check(integritySummary(clean).includes("回收站未检查"), "未检查回收站时总结明确说明");
+  check(
+    integritySummary(buildIntegrityReport({ bibEntries: bib, citations: cites, keyMap })).includes(
+      "未引用条目",
+    ),
+    "有问题时总结列出类别",
+  );
+  eq(INTEGRITY_LABEL.orphan, "缺失引用", "类别中文名");
+
+  eq(parseItemKeysFromJson("[{\"key\":\"AAAA1111\"},{\"key\":\"bad\"}]").length, 1, "只收 8 位 key");
+  eq(parseItemKeysFromJson("broken").length, 0, "坏 JSON 返回空数组");
+  eq(
+    parseItemKeysFromJson(JSON.stringify({ items: [{ key: "BBBB2222" }] })).length,
+    1,
+    "支持 items 包裹结构",
+  );
 }
 
 console.log(`\n${total - failures}/${total} 通过`);

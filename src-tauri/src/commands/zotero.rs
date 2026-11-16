@@ -353,6 +353,52 @@ pub fn items_url(port: u16, collection_key: Option<&str>, limit: u32) -> String 
     }
 }
 
+/// P3-5 · 分页题录：本地 API 不返回总数，只能靠 start 逐页取「加载更多」。
+/// start 上限防止前端误传天量偏移把 Zotero 卡死；0 表示首页。
+pub const MAX_ITEM_START: u32 = 100_000;
+
+pub fn items_page_url(
+    port: u16,
+    collection_key: Option<&str>,
+    limit: u32,
+    start: u32,
+) -> String {
+    let n = clamp_limit(limit);
+    let s = start.min(MAX_ITEM_START);
+    match collection_key.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(k) => format!(
+            "{}/api/users/0/collections/{}/items/top?format=json&limit={}&start={}",
+            base_url(port),
+            safe_key(k),
+            n,
+            s
+        ),
+        None => format!(
+            "{}/api/users/0/items/top?format=json&limit={}&start={}",
+            base_url(port),
+            n,
+            s
+        ),
+    }
+}
+
+/// P3-6 · 回收站清单：只用来判定「映射里的条目是否已被删除」，不做任何恢复/清空。
+const TRASH_DEFAULT_LIMIT: u32 = 100;
+const TRASH_MAX_LIMIT: u32 = 500;
+
+pub fn trash_url(port: u16, limit: u32) -> String {
+    let n = if limit == 0 {
+        TRASH_DEFAULT_LIMIT
+    } else {
+        limit.min(TRASH_MAX_LIMIT)
+    };
+    format!(
+        "{}/api/users/0/items/trash?format=json&limit={}",
+        base_url(port),
+        n
+    )
+}
+
 /// `format` 只允许 bibtex / biblatex，其余回落 bibtex
 pub fn bbt_export_url(port: u16, collection_key: &str, format: &str) -> String {
     let ext = if format.eq_ignore_ascii_case("biblatex") {
@@ -548,15 +594,34 @@ pub async fn zotero_fetch_collections(port: u16) -> Result<String, String> {
 }
 
 /// P1-6 / P1-9：拉取题录（原始 JSON 文本）。collection_key 为空 = 全库 top-level。
+/// P3-5 起支持 start，供「Zotero 文献库」视图翻页（不传 = 首页）。
 #[tauri::command]
 pub async fn zotero_fetch_items(
     port: u16,
     collection_key: Option<String>,
     limit: Option<u32>,
+    start: Option<u32>,
 ) -> Result<String, String> {
     let client = build_client()?;
-    let url = items_url(port, collection_key.as_deref(), limit.unwrap_or(0));
+    let url = items_page_url(
+        port,
+        collection_key.as_deref(),
+        limit.unwrap_or(0),
+        start.unwrap_or(0),
+    );
     fetch_text(&client, &url, "读取 Zotero 题录").await
+}
+
+/// P3-6：读取回收站题录（只读；前端只用 itemKey 判定映射是否失效）
+#[tauri::command]
+pub async fn zotero_trash_items(port: u16, limit: Option<u32>) -> Result<String, String> {
+    let client = build_client()?;
+    fetch_text(
+        &client,
+        &trash_url(port, limit.unwrap_or(0)),
+        "读取 Zotero 回收站",
+    )
+    .await
 }
 
 /// P1-8：BBT pull export 主动拉取（不依赖用户在 Zotero 侧配 Keep updated）
@@ -1087,6 +1152,33 @@ mod tests {
     }
 
     // ── P1 纯逻辑 ──────────────────────────────────────────────
+    #[test]
+    fn p3_page_and_trash_urls_stay_on_localhost() {
+        assert_eq!(
+            items_page_url(23119, None, 0, 0),
+            "http://localhost:23119/api/users/0/items/top?format=json&limit=500&start=0"
+        );
+        assert_eq!(
+            items_page_url(23119, Some("ABCD1234"), 100, 200),
+            "http://localhost:23119/api/users/0/collections/ABCD1234/items/top?format=json&limit=100&start=200"
+        );
+        assert_eq!(
+            items_page_url(23119, Some("  "), 0, 5),
+            "http://localhost:23119/api/users/0/items/top?format=json&limit=500&start=5"
+        );
+        // 偏移上限：防止前端误传天量 start
+        assert!(items_page_url(23119, None, 99999, 999_999).contains("start=100000"));
+        assert_eq!(
+            trash_url(23119, 0),
+            "http://localhost:23119/api/users/0/items/trash?format=json&limit=100"
+        );
+        assert_eq!(
+            trash_url(23119, 50),
+            "http://localhost:23119/api/users/0/items/trash?format=json&limit=50"
+        );
+        assert!(trash_url(23119, 9999).contains("limit=500"));
+    }
+
     #[test]
     fn p1_urls_pin_localhost_and_limit() {
         assert_eq!(

@@ -134,6 +134,8 @@ pub fn run() {
             commands::zotero::zotero_attachment_path,
             // Zotero 联动 · P3-3：CSL 格式化引文（只读 include=bib,citation）
             commands::zotero::zotero_citation,
+            // Zotero 联动 · P3-6：回收站清单（只读；判定映射条目是否已被删除）
+            commands::zotero::zotero_trash_items,
             // M1-13：自动更新（自下载安装包 + 拉起安装向导）
             // U1：清单协议 v2 —— 由 Rust 判定本机平台与能否自更新
             commands::updater::update_env_info,
