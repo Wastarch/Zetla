@@ -130,7 +130,11 @@ export function fuzzyScore(query: string, text: string): number {
 export function scoreCandidate(query: string, c: ZoteroPickerCandidate): number {
   const q = String(query ?? "").trim();
   if (!q) {
-    return (c.inBib ? 10 : 0) + Math.min(c.citedCount, 10);
+    // 浏览模式（分类内空查询）不能把未同步条目判成 0 分：rankCandidates 会
+    // filter(s > 0)，而 Zotero 远端分类条目通常 inBib=false 且 citedCount=0，
+    // 会被整批丢掉，表现为「切了分类列表还是只剩本地 .bib 那几条」。
+    // 基础分 1 保住它们，优先级仍是 已在 .bib > 被引次数。
+    return 1 + (c.inBib ? 10 : 0) + Math.min(c.citedCount, 10);
   }
   const fields: [string, number][] = [
     [c.citeKey, 1],
@@ -271,8 +275,10 @@ export function nextPageStart(
 // ── P5 · 分类选择（connector getSelectedCollection → 本地 API key 匹配）────────
 //
 // 实测（2026-11-16）：POST /connector/getSelectedCollection 返回
-//   { id: "C28" | null, name, targets: [{ id: "C28"|"L1", name, level, recent? }] }
-// 其中 level 是分类树深度（0 = 文库根）。**数字 id 在本地 API JSON 里不存在**，
+//   { id: 30 | null, name, targets: [{ id: "C30"|"L1", name, level, recent? }] }
+// 注意：顶层 `id` 在选中分类时是**数字**（分类数字 id），只有 targets[] 里才是
+// "C30"/"L1" 字符串；选中文库根时 id = null。解析时把数字归一成 `C<数字>`，
+// 才能与 targets / API 分类树对齐。数字 id 在本地 API JSON 里不存在，
 // 无法直接换算成 8 位 key → 用「名称 + 祖先路径」匹配 API 分类树。
 
 /** targets 里的一条目标（文库根是 "L<id>"，分类是 "C<id>"） */
@@ -283,7 +289,8 @@ export interface PickerCollectionTarget {
 }
 
 export interface PickerSelectedCollection {
-  /** 选中分类为 "C<数字id>"；文库根 / 已保存搜索等为 null 或其它前缀 */
+  /** 选中分类为 "C<数字id>"（connector 顶层 id 可能是数字，解析时补 C 前缀）；
+   *  文库根 / 已保存搜索等为 null 或其它前缀 */
   id: string | null;
   /** 选中目标名（分类名或文库名） */
   name: string;
@@ -300,9 +307,18 @@ export function parseSelectedCollection(raw: string): PickerSelectedCollection |
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
   const o = data as Record<string, unknown>;
-  // id 只接受 null（文库根）或非空字符串（"C…" / "L…"）；其它类型 / 缺失 = 结构不符
-  if (o.id !== null && (typeof o.id !== "string" || !o.id)) return null;
-  const id = o.id === null ? null : (o.id as string);
+  // 顶层 id 实测是数字（选中分类，如 30）、null（文库根），旧版也可能是 "C…"/"L…" 字符串。
+  // 数字统一补 C 前缀，与 targets[].id、matchCollectionKey 的判定口径对齐。
+  let id: string | null;
+  if (o.id === null) {
+    id = null;
+  } else if (typeof o.id === "number" && Number.isFinite(o.id) && o.id > 0) {
+    id = `C${Math.floor(o.id)}`;
+  } else if (typeof o.id === "string" && o.id) {
+    id = o.id;
+  } else {
+    return null; // 缺失 / 布尔 / 对象 / 0 / 负数 = 结构不符
+  }
   const name = typeof o.name === "string" ? o.name : "";
   const rawTargets = Array.isArray(o.targets) ? o.targets : [];
   const targets: PickerCollectionTarget[] = [];

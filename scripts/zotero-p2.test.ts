@@ -247,6 +247,20 @@ const rankedEmpty = rankCandidates(
   "",
 );
 eq(rankedEmpty[0].citeKey, "b", "空查询按被引次数降序");
+// 回归：分类浏览（空查询）时，未同步且未被引用的 Zotero 条目也必须保留，
+// 否则切换分类后列表只剩本地 .bib 条目。
+check(scoreCandidate("", cand({ inBib: false, citedCount: 0 })) > 0, "空查询未同步条目得正分");
+{
+  const browse = rankCandidates(
+    [
+      cand({ citeKey: "bib", inBib: true, citedCount: 0 }),
+      cand({ citeKey: "remote", inBib: false, citedCount: 0, source: "zotero" }),
+    ],
+    "",
+  );
+  eq(browse.length, 2, "空查询保留未同步的远端条目");
+  eq(browse[0].citeKey, "bib", "已在 .bib 的仍排在前");
+}
 eq(rankCandidates(Array.from({ length: 80 }, (_, i) => cand({ citeKey: `k${i}` })), "", 10).length, 10, "截断到指定上限");
 eq(rankCandidates([], "").length, 0, "空候选数组");
 check(PICKER_MAX_RESULTS >= 30, "渲染上限不小于一页");

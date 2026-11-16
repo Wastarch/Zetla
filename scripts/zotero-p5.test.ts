@@ -66,7 +66,11 @@ console.log("\n[parseSelectedCollection]");
 }
 eq(parseSelectedCollection("not json"), null, "坏 JSON → null");
 eq(parseSelectedCollection("[]"), null, "数组顶层 → null");
-eq(parseSelectedCollection('{"id": 5, "name": "x"}'), null, "非字符串 id → null（选中目标未识别）");
+// 实测 connector 顶层 id 是数字（如 30），旧版当成结构不符丢弃 → 默认分类永远定位失败
+eq(parseSelectedCollection('{"id": 5, "name": "x"}')?.id ?? null, "C5", "数字 id → 补 C 前缀");
+eq(parseSelectedCollection('{"id": 0, "name": "x"}'), null, "id 为 0 → null");
+eq(parseSelectedCollection('{"name": "x"}'), null, "缺 id → null");
+eq(parseSelectedCollection('{"id": true, "name": "x"}'), null, "布尔 id → null");
 
 // ── targetPaths（level 缩进 → 祖先链）────────────────────────────────────
 console.log("\n[targetPaths]");
@@ -150,6 +154,42 @@ eq(matchCollectionKey(coll("C999", "不存在的分类", 1), COLL), null, "名�
   // 重名但 targets 缺路径信息 → 取第一个同名（降级不崩溃）
   const degraded = { id: "C25", name: "同名分类", targets: [] };
   eq(matchCollectionKey(degraded, COLL), "A1", "无路径时降级取第一个同名");
+}
+{
+  // 数字 id + 重名分类仍按祖先路径区分（C25 在马良财下 → A2）
+  const sel = parseSelectedCollection(
+    JSON.stringify({ id: 25, name: "同名分类", targets: SEL_TARGETS }),
+  );
+  eq(matchCollectionKey(sel, COLL), "A2", "数字 id 重名也按路径区分");
+}
+{
+  // 真机抓包回归（2026-11-16）：Zotero 打开「宁夏大学/宇宙学/文献」时，
+  // connector 顶层 id 是数字 30；必须定位到本地 API key 6MQ8A2DD。
+  const raw = JSON.stringify({
+    libraryID: 1,
+    libraryName: "我的文库",
+    editable: true,
+    id: 30,
+    name: "文献",
+    targets: [
+      { id: "L1", name: "我的文库", level: 0, recent: true },
+      { id: "C13", name: "宁夏大学", level: 1 },
+      { id: "C21", name: "马良财", level: 2 },
+      { id: "C27", name: "宇宙学", level: 2, recent: true },
+      { id: "C30", name: "文献", level: 3, recent: true },
+    ],
+  });
+  const realColls: ZoteroCollection[] = [
+    { key: "9I44WK79", name: "宁夏大学", parentCollection: false },
+    { key: "KQPZ2DH4", name: "马良财", parentCollection: "9I44WK79" },
+    { key: "C62CLFVJ", name: "宇宙学", parentCollection: "9I44WK79" },
+    { key: "6MQ8A2DD", name: "文献", parentCollection: "C62CLFVJ" },
+    { key: "9YUZBA6Z", name: "学习教材", parentCollection: "C62CLFVJ" },
+  ];
+  const sel = parseSelectedCollection(raw);
+  eq(sel?.id ?? null, "C30", "真机数据数字 id 30 → C30");
+  eq(sel?.name ?? "", "文献", "真机数据 name 保留");
+  eq(matchCollectionKey(sel, realColls), "6MQ8A2DD", "真机数据定位到「文献」分类 key");
 }
 
 // ── buildCollectionRows（picker 下拉直接复用）─────────────────────────────
