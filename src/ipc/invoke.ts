@@ -217,7 +217,7 @@ export const zoteroApi = {
     call<string>("zotero_fetch_item", { port, itemKey }),
   /** P4：on-demand 幂等追加条目块（Rust 侧按 key 去重，只追加缺失部分） */
   appendBib: (root: string, bibPath: string, content: string) =>
-    call<ZoteroWriteResult>("zotero_append_entries", { root, bibPath, content }),
+    call<ZoteroWriteResult>("zotero_append_entries", { root, bibPath, text: content }),
   /** 项目级绑定读写（.ltex/config.json 的 zoteroBindings） */
   getBindings: (root: string) => call<ZoteroBinding[]>("zotero_get_bindings", { root }),
   setBindings: (root: string, bindings: ZoteroBinding[]) =>
