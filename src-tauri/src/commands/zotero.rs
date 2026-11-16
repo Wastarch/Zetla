@@ -369,7 +369,28 @@ pub fn bbt_export_url(port: u16, collection_key: &str, format: &str) -> String {
     )
 }
 
-/// GET 纯文本；403/400 单独给出可读提示，其余非 2xx 带状态码。
+/// 从错误响应体提取单行可读摘要（纯函数，可单测）。
+///
+/// Zotero 的 400 响应体常带真实原因，例如：
+/// `Invalid style: gb-t-... (HTTP GET https://www.zotero.org/styles/... failed with status code 404:Style not found)`
+/// 以前丢掉 body 只剩「请求被拒绝（400）」，用户无法自助排查首次加载 CSL 失败。
+/// 这里压平空白并限长，避免把整段 HTML / JSON 塞进 toast。
+pub fn error_detail(body: &str) -> String {
+    let flat = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    if flat.is_empty() {
+        return String::new();
+    }
+    const MAX: usize = 240;
+    let chars: Vec<char> = flat.chars().collect();
+    if chars.len() <= MAX {
+        format!("：{flat}")
+    } else {
+        let head: String = chars[..MAX].iter().collect();
+        format!("：{head}…")
+    }
+}
+
+/// GET 纯文本；403/400 带状态码并保留响应体摘要，其余非 2xx 带状态码。
 /// 前端拿到 Err 只写诊断卡/日志，**不阻断编译**。
 async fn fetch_text(
     client: &reqwest::Client,
@@ -389,9 +410,18 @@ async fn fetch_text(
         .map_err(|e| format!("{what}读取响应失败：{e}"))?;
     match status {
         200..=299 => Ok(body),
-        403 => Err(format!("{what}：Zotero 本地 API 未开启（403）")),
-        400 => Err(format!("{what}：请求被 Zotero 拒绝（400）")),
-        other => Err(format!("{what}：Zotero 返回 HTTP {other}")),
+        403 => Err(format!(
+            "{what}：Zotero 本地 API 未开启（403）{}",
+            error_detail(&body)
+        )),
+        400 => Err(format!(
+            "{what}：请求被 Zotero 拒绝（400）{}",
+            error_detail(&body)
+        )),
+        other => Err(format!(
+            "{what}：Zotero 返回 HTTP {other}{}",
+            error_detail(&body)
+        )),
     }
 }
 
@@ -1285,5 +1315,24 @@ mod tests {
         assert!(!is_csl_style("apa style"));
         assert!(!is_csl_style("-apa"));
         assert!(!is_csl_style(&"a".repeat(CSL_STYLE_MAX_LEN + 1)));
+    }
+
+    #[test]
+    fn error_detail_keeps_zotero_failure_reason_and_bounds_length() {
+        // 400 响应体里的真实原因是用户自助排查的关键，不能丢
+        let raw = "Invalid style: gb-t-x (HTTP GET https://www.zotero.org/styles/gb-t-x failed with status code 404:Style not found)";
+        let detail = error_detail(raw);
+        assert!(detail.starts_with('：'));
+        assert!(detail.contains("Invalid style"));
+        assert!(detail.contains("404:Style not found"));
+        // 压平换行与多余空白
+        assert_eq!(error_detail("  line one\n\nline  two \t"), "：line one line two");
+        // 空响应体不加冒号
+        assert_eq!(error_detail("   \n "), "");
+        // 超长截断并带省略号，字符数受控
+        let long = "x".repeat(1000);
+        let cut = error_detail(&long);
+        assert!(cut.ends_with('…'));
+        assert!(cut.chars().count() <= 242, "限长 240 + 冒号 + 省略号");
     }
 }

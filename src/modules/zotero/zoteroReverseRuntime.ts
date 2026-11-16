@@ -30,7 +30,12 @@ import {
   zoteroPdfUrl,
   type ZoteroOpenTarget,
 } from "./zoteroOpenTargets";
-import { cslStyleLabel, normalizeCslStyle, parseCitationResponse } from "./zoteroCitation";
+import {
+  cslStyleLabel,
+  citationErrorMessage,
+  normalizeCslStyle,
+  parseCitationResponse,
+} from "./zoteroCitation";
 
 export interface ZoteroOpenResult {
   ok: boolean;
@@ -384,6 +389,6 @@ export async function resolveZoteroCitation(
       ...payload,
     };
   } catch (e) {
-    return fail(`读取格式化引文失败：${String(e)}`);
+    return fail(citationErrorMessage(e, s));
   }
 }

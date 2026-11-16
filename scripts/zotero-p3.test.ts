@@ -32,6 +32,7 @@ import {
   DEFAULT_CSL_STYLE_ID,
   citationCopyMessage,
   citationCopyText,
+  citationErrorMessage,
   cslStyleLabel,
   decodeCslEntities,
   normalizeCslStyle,
@@ -540,6 +541,22 @@ eq(
 eq(citationCopyText("  (Doe,\n 2020) "), "(Doe, 2020)", "复制文本压平空白");
 eq(citationCopyMessage("citation", "apa").includes("APA"), true, "复制提示带样式名");
 eq(citationCopyMessage("bib", "apa").includes("参考文献"), true, "复制提示区分参考文献");
+
+// ── P3-3 修复：400 响应体保留 + CSL 加载失败的可操作提示 ──
+{
+  const gb = "china-national-standard-gb-t-7714-2015-numeric";
+  const styleFail = `读取 Zotero 格式化引文：请求被 Zotero 拒绝（400）：Invalid style: ${gb} (HTTP GET https://www.zotero.org/styles/${gb} failed with status code 404:Style not found)`;
+  const hint = citationErrorMessage(styleFail, gb);
+  check(hint.includes("未能加载 CSL 样式"), "Invalid style 被识别为样式加载失败");
+  check(hint.includes("检查网络"), "给出检查网络的明确指引");
+  check(hint.includes("GB/T"), "提示里带当前样式展示名");
+  check(hint.includes("APA"), "引导切换到已缓存样式");
+  check(!hint.includes("Style not found"), "对用户隐藏冗长的原始响应体");
+  const offline = "读取 Zotero 格式化引文请求失败：error sending request";
+  eq(citationErrorMessage(offline), `读取格式化引文失败：${offline}`, "非样式错误原样透传");
+  const noStyle = citationErrorMessage(styleFail);
+  check(!noStyle.includes("样式「」"), "未传样式名时提示不出现空样式名");
+}
 
 console.log(`\n${total - failures}/${total} 通过`);
 if (failures > 0) process.exitCode = 1;

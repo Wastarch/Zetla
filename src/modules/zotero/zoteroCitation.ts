@@ -147,3 +147,30 @@ export function citationCopyMessage(kind: "citation" | "bib", style: unknown): s
     ? `已复制引文（${cslStyleLabel(style)}）`
     : `已复制参考文献（${cslStyleLabel(style)}）`;
 }
+
+/**
+ * 把底层错误转成用户可自助处理的提示。
+ *
+ * Zotero 首次使用某个 CSL 样式时若本地未缓存，会去 zotero.org 下载；
+ * 此时网络不通会返回 400，响应体形如
+ *   `Invalid style: ... (HTTP GET https://www.zotero.org/styles/... failed with status code 404:Style not found)`
+ * 以前只剩「请求被拒绝（400）」，无法判断是网络还是样式 id 的问题。
+ * 这里识别该特征并给出「检查网络 / 换已内置样式 / 稍后重试」的明确指引，
+ * 其余错误原样透传（Rust 侧已保留响应体摘要）。
+ */
+export function citationErrorMessage(err: unknown, style?: unknown): string {
+  const raw = String(err ?? "");
+  const isStyleLoad =
+    /Invalid style/i.test(raw) ||
+    /Style not found/i.test(raw) ||
+    /zotero\.org\/styles/i.test(raw);
+  const label = style === undefined ? "" : cslStyleLabel(style);
+  if (isStyleLoad) {
+    return (
+      `读取格式化引文失败：Zotero 未能加载 CSL 样式${label ? `「${label}」` : ""}。` +
+      "首次使用需从 zotero.org 下载，请检查网络后重试，" +
+      "或临时切换到「APA 7th」等已缓存样式。"
+    );
+  }
+  return `读取格式化引文失败：${raw}`;
+}
