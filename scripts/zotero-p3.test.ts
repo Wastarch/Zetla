@@ -59,12 +59,6 @@ import {
   parseItemTags,
   parseLibraryItems,
 } from "../src/modules/zotero/zoteroLibrary.ts";
-import {
-  INTEGRITY_LABEL,
-  buildIntegrityReport,
-  integritySummary,
-  parseItemKeysFromJson,
-} from "../src/modules/zotero/zoteroIntegrity.ts";
 import { parseCollections } from "../src/modules/zotero/zoteroSync.ts";
 
 let failures = 0;
@@ -799,117 +793,6 @@ eq(citationCopyMessage("bib", "apa").includes("参考文献"), true, "复制提�
   check(meta.includes("Zh. Eksp. Teor. Fiz."), "摘要行含期刊");
 }
 
-// ── P3-6 · 完整性诊断 ──────────────────────────────────────────────
-{
-  const bib = [
-    { key: "cited", file: "a.bib", line: 3 },
-    { key: "lonely", file: "a.bib", line: 10 },
-    { key: "dup", file: "a.bib", line: 20 },
-    { key: "dup", file: "b.bib", line: 5 },
-  ];
-  const cites = [
-    { key: "cited", file: "main.tex", line: 40 },
-    { key: "ghost", file: "sec/intro.tex", line: 7 },
-    { key: "ghost", file: "sec/intro.tex", line: 9 },
-  ];
-  const keyMap: ZoteroKeyMap = {
-    serverId: "srv",
-    updatedAt: "2026-11-16T00:00:00Z",
-    byCiteKey: { cited: "AAAA1111", trashedKey: "DDDD4444", staleKey: "EEEE5555" },
-    byItemKey: { AAAA1111: "cited", DDDD4444: "trashedKey", EEEE5555: "staleKey" },
-    unmapped: [],
-  };
-  const trash = new Set(["DDDD4444"]);
-  const r = buildIntegrityReport(
-    { bibEntries: bib, citations: cites, keyMap, trashKeys: trash },
-    "2026-11-16T01:00:00Z",
-  );
-
-  eq(r.checkedAt, "2026-11-16T01:00:00Z", "体检时间可注入");
-  eq(r.trashChecked, true, "传入回收站集合时标记已检查");
-  eq(r.bibCount, 3, "bibCount 按去重 key 计");
-  eq(r.citeCount, 2, "citeCount 按去重被引 key 计");
-  eq(r.mapCount, 3, "mapCount 取 byCiteKey 条数");
-
-  eq(r.counts.orphan, 2, "孤儿引用按出现次数计");
-  const ghost = r.issues.find((i) => i.kind === "orphan");
-  eq(ghost?.file, "sec/intro.tex", "孤儿引用带跳转位置");
-  eq(ghost?.line, 7, "孤儿引用带行号");
-
-  eq(r.counts.duplicate, 1, "重复 key 每个 key 只报一条");
-  const dup = r.issues.find((i) => i.kind === "duplicate");
-  eq(dup?.file, "b.bib", "重复 key 指向第二次定义");
-  eq(dup?.line, 5, "重复 key 行号正确");
-
-  eq(r.counts.unreferenced, 2, "未引用条目：lonely + dup");
-  check(
-    r.issues.some((i) => i.kind === "unreferenced" && i.key === "lonely"),
-    "未引用条目被列出",
-  );
-
-  eq(r.counts.trashed, 1, "回收站命中一条");
-  const trashed = r.issues.find((i) => i.kind === "trashed");
-  eq(trashed?.key, "trashedKey", "回收站条目展示 citekey");
-  eq(trashed?.itemKey, "DDDD4444", "回收站条目带 itemKey");
-
-  // staleKey 不在 .bib 里 → 漂移；已在回收站的 trashedKey 不再重复报漂移
-  eq(r.counts.drift, 1, "映射漂移只报未被回收站覆盖的 key");
-  eq(r.issues.find((i) => i.kind === "drift")?.key, "staleKey", "漂移 key 正确");
-
-  // 严重度排序：孤儿在未引用之前
-  const kinds = r.issues.map((i) => i.kind);
-  check(
-    kinds.indexOf("orphan") < kinds.indexOf("unreferenced"),
-    "问题按严重度排序（缺失引用优先）",
-  );
-
-  const noTrash = buildIntegrityReport({ bibEntries: bib, citations: cites, keyMap, trashKeys: null });
-  eq(noTrash.trashChecked, false, "未检查回收站时标记 false");
-  eq(noTrash.counts.trashed, 0, "未检查时不误报回收站");
-
-  // 双向映射自相矛盾
-  const conflicted = buildIntegrityReport({
-    bibEntries: [{ key: "a", file: "x.bib", line: 1 }],
-    citations: [{ key: "a", file: "m.tex", line: 1 }],
-    keyMap: {
-      serverId: null,
-      updatedAt: "",
-      byCiteKey: { a: "AAAA1111" },
-      byItemKey: { AAAA1111: "other" },
-      unmapped: [],
-    },
-    trashKeys: null,
-  });
-  check(
-    conflicted.issues.some((i) => i.kind === "drift" && i.detail.includes("自相矛盾")),
-    "双向映射矛盾被报为漂移",
-  );
-
-  const clean = buildIntegrityReport({
-    bibEntries: [{ key: "a", file: "x.bib", line: 1 }],
-    citations: [{ key: "a", file: "m.tex", line: 2 }],
-    keyMap: null,
-    trashKeys: null,
-  });
-  eq(clean.issues.length, 0, "干净项目无问题");
-  check(integritySummary(clean).includes("引用索引正常"), "无问题时总结为正常");
-  check(integritySummary(clean).includes("回收站未检查"), "未检查回收站时总结明确说明");
-  check(
-    integritySummary(buildIntegrityReport({ bibEntries: bib, citations: cites, keyMap })).includes(
-      "未引用条目",
-    ),
-    "有问题时总结列出类别",
-  );
-  eq(INTEGRITY_LABEL.orphan, "缺失引用", "类别中文名");
-
-  eq(parseItemKeysFromJson("[{\"key\":\"AAAA1111\"},{\"key\":\"bad\"}]").length, 1, "只收 8 位 key");
-  eq(parseItemKeysFromJson("broken").length, 0, "坏 JSON 返回空数组");
-  eq(
-    parseItemKeysFromJson(JSON.stringify({ items: [{ key: "BBBB2222" }] })).length,
-    1,
-    "支持 items 包裹结构",
-  );
-}
 
 console.log(`\n${total - failures}/${total} 通过`);
 if (failures > 0) process.exitCode = 1;

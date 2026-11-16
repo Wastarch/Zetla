@@ -36,7 +36,6 @@ import {
 import { planStyleSwitch, type StyleSwitchPlan } from "@/modules/zotero/zoteroStyleMap";
 import { applyStyleSwitch, readTexForEdit } from "@/modules/zotero/zoteroStyleApply";
 import { ZoteroLibraryPane } from "@/modules/zotero/ZoteroLibraryPane";
-import { ZoteroIntegrityPane } from "@/modules/zotero/ZoteroIntegrityPane";
 import { useSettingsStore } from "@/core/settings";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
 import { firstDuplicateEntry, type MissingCiteSummary } from "./lintLogic";
@@ -101,8 +100,8 @@ export default function ReferencePanel() {
   const citations = useReferenceStore((s) => s.citations);
 
   const [q, setQ] = useState("");
-  /** P3-5 / P3-6：面板视图（项目文献 / Zotero 文献库 / 体检） */
-  const [view, setView] = useState<"project" | "library" | "diagnostics">("project");
+  /** P3-5：面板视图（项目文献 / Zotero 文献库） */
+  const [view, setView] = useState<"project" | "library">("project");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   /** 手动刷新中（重扫项目 + 重建索引） */
   const [refreshing, setRefreshing] = useState(false);
@@ -519,13 +518,12 @@ export default function ReferencePanel() {
 
   return (
     <div className="ref-panel">
-      {/* P3-5 / P3-6：页签（项目文献 / Zotero 文献库 / 体检） */}
+      {/* P3-5：页签（项目文献 / Zotero 文献库） */}
       <div className="ref-tabs" role="tablist">
         {(
           [
             ["project", "项目文献"],
             ["library", "Zotero 文献库"],
-            ["diagnostics", "体检"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -781,14 +779,9 @@ export default function ReferencePanel() {
             </div>
           )}
         </>
-      ) : view === "library" ? (
+      ) : (
         <ZoteroLibraryPane
           onInsert={onInsert}
-          onNotice={(m, k) => notify(m, k)}
-        />
-      ) : (
-        <ZoteroIntegrityPane
-          onJump={(file, line) => jumpToFile(file, line)}
           onNotice={(m, k) => notify(m, k)}
         />
       )}
