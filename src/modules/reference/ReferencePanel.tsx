@@ -21,6 +21,8 @@ import {
   resolveZoteroCitation,
   resolveZoteroPdfPreview,
 } from "@/modules/zotero/zoteroReverseRuntime";
+import { ensureBibEntries } from "@/modules/zotero/zoteroRuntime";
+import type { ZoteroItem } from "@/types/zotero";
 import {
   citationCopyMessage,
   citationCopyText,
@@ -224,8 +226,17 @@ export default function ReferencePanel() {
     });
   }, []);
 
-  /** 右键：菜单「在光标处插入 \\cite{key}」 */
-  const onInsert = useCallback((key: string) => {
+  /** 右键/文献库：在光标处插入 \cite{key}；P4 按需绑定先补缺失条目（插一篇写一篇） */
+  const onInsert = useCallback(async (key: string, item?: ZoteroItem) => {
+    if (item) {
+      try {
+        const r = await ensureBibEntries([{ citeKey: key, item }]);
+        if (r.written > 0) notify(r.message, "ok");
+        else if (r.unknown.length > 0) notify(`${r.unknown[0]} 未能写入：${r.message}`, "err");
+      } catch {
+        /* 写入失败不阻断插入 */
+      }
+    }
     if (!insertSnippet(`\\cite{${key}}`)) {
       notify("请先打开一个 .tex 编辑器并定位光标", "err");
     }
@@ -665,7 +676,7 @@ export default function ReferencePanel() {
                 type="button"
                 className="ctx-item"
                 onClick={() => {
-                  onInsert(menu.entry.key);
+                  void onInsert(menu.entry.key);
                   setMenu(null);
                 }}
               >

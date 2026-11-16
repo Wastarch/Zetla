@@ -20,6 +20,16 @@ export type ZoteroCommand = (typeof ZOTERO_COMMANDS)[number];
 export const ZOTERO_KEY_STRATEGIES = ["bbt-first", "zetla"] as const;
 export type ZoteroKeyStrategy = (typeof ZOTERO_KEY_STRATEGIES)[number];
 
+/**
+ * P4 绑定同步模式：
+ * - `on-demand`（新绑定默认）：同步只重建键映射不写 .bib；
+ *   插入引用 / 编译前校验时「插一篇写一篇」，幂等追加缺失条目。
+ * - `full`：整分类全量覆盖写 .bib（P1 原行为）。
+ * 存量配置缺该字段 → Rust serde default / 前端归一化都回落 `full`，行为不变。
+ */
+export const ZOTERO_SYNC_MODES = ["on-demand", "full"] as const;
+export type ZoteroSyncMode = (typeof ZOTERO_SYNC_MODES)[number];
+
 /** 应用级偏好（AppSettings.zotero；Rust ZoteroConfig） */
 export interface ZoteroSettings {
   /** 总开关：关闭时不自动发请求、状态栏不显示连接灯（设置页仍可手动自检） */
@@ -104,6 +114,8 @@ export interface ZoteroBinding {
   /** BBT pull export 格式 */
   format: "bibtex" | "biblatex";
   enabled: boolean;
+  /** P4：on-demand = 插一篇写一篇（默认） / full = 整分类覆盖（P1 原行为） */
+  syncMode: ZoteroSyncMode;
 }
 
 export const DEFAULT_ZOTERO_BINDING: ZoteroBinding = {
@@ -112,15 +124,18 @@ export const DEFAULT_ZOTERO_BINDING: ZoteroBinding = {
   bibPath: "references.bib",
   format: "bibtex",
   enabled: true,
+  syncMode: "on-demand",
 };
 
-/** `zotero_write_bib` 返回 */
+/** `zotero_write_bib` / `zotero_append_entries` 返回 */
 export interface ZoteroWriteResult {
   path: string;
   hash: string;
   written: boolean;
   bytes: number;
   message: string;
+  /** 仅 append 返回：实际追加的条目 key（有序；writeBib 无此字段） */
+  appendedKeys?: string[];
 }
 
 /** `zotero:bib-changed` 事件负载 */

@@ -31,7 +31,7 @@ import {
   rankCandidates,
   type BibLikeEntry,
 } from "./zoteroPicker";
-import { syncAllZoteroBindings } from "./zoteroRuntime";
+import { ensureBibEntries, syncAllZoteroBindings } from "./zoteroRuntime";
 import { useZoteroPicker } from "./useZoteroPicker";
 import { useZoteroStore } from "./useZoteroStore";
 
@@ -204,7 +204,7 @@ export function CitationPicker() {
     void st.persist({ zotero: next });
   }, []);
 
-  const doInsert = useCallback(() => {
+  const doInsert = useCallback(async () => {
     if (activeKeys.length === 0) {
       setNote("请至少选择一条文献");
       return;
@@ -214,15 +214,27 @@ export function CitationPicker() {
       setNote("引用命令为空，无法插入");
       return;
     }
+    // P4：按需绑定先补缺失条目（插一篇写一篇）；失败不阻断插入，由警告兜底
+    const selected = shown.filter((c) => activeKeys.includes(c.citeKey));
+    let missingNote: string | null = warning;
+    try {
+      const r = await ensureBibEntries(
+        selected.map((c) => ({ citeKey: c.citeKey, itemKey: c.itemKey })),
+      );
+      if (r.written > 0) notify(r.message, "ok");
+      if (r.unknown.length === 0) missingNote = null;
+    } catch {
+      /* 保持原警告提示 */
+    }
     if (!insertSnippet(text)) {
       notify("没有活动编辑器，无法插入引用", "err");
       return;
     }
     rememberCommand(command);
-    // 用户决策：未同步条目允许插入，但必须给出明确警告
-    if (warning) notify(warning, "err");
+    // 用户决策：仍未写入的条目允许插入，但必须给出明确警告
+    if (missingNote) notify(missingNote, "err");
     closeAndFocus();
-  }, [activeKeys, preview, command, warning, rememberCommand, closeAndFocus]);
+  }, [activeKeys, preview, shown, command, warning, rememberCommand, closeAndFocus]);
 
   const cycleCommand = useCallback((delta: number) => {
     setCommand((cur) => {
@@ -247,9 +259,9 @@ export function CitationPicker() {
         e.preventDefault();
         const c = shown[highlight];
         if (c) toggleSelect(c.citeKey);
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        doInsert();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      void doInsert();
       } else if (e.altKey && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
         e.preventDefault();
         cycleCommand(e.key === "ArrowRight" ? 1 : -1);

@@ -399,6 +399,15 @@ pub fn trash_url(port: u16, limit: u32) -> String {
     )
 }
 
+/// P4 · 按需写 bib：按 itemKey 取单条题录（format=json 返回单个对象，不是数组）。
+pub fn item_url(port: u16, item_key: &str) -> String {
+    format!(
+        "{}/api/users/0/items/{}?format=json",
+        base_url(port),
+        safe_key(item_key)
+    )
+}
+
 /// `format` 只允许 bibtex / biblatex，其余回落 bibtex
 pub fn bbt_export_url(port: u16, collection_key: &str, format: &str) -> String {
     let ext = if format.eq_ignore_ascii_case("biblatex") {
@@ -482,6 +491,9 @@ pub struct ZoteroBinding {
     /// "bibtex" | "biblatex"（仅 BBT pull export 用）
     pub format: String,
     pub enabled: bool,
+    /// P4："on-demand"（插一篇写一篇）| "full"（整分类覆盖）。
+    /// 缺省回落 "full"：存量项目升级后行为不变。
+    pub sync_mode: String,
 }
 
 impl Default for ZoteroBinding {
@@ -492,6 +504,7 @@ impl Default for ZoteroBinding {
             bib_path: "references.bib".into(),
             format: "bibtex".into(),
             enabled: true,
+            sync_mode: "full".into(),
         }
     }
 }
@@ -507,6 +520,9 @@ pub struct ZoteroWriteResult {
     pub written: bool,
     pub bytes: usize,
     pub message: String,
+    /// 仅 `zotero_append_entries` 返回：实际追加的条目 key（有序）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appended_keys: Option<Vec<String>>,
 }
 
 pub fn content_hash(text: &str) -> String {
@@ -624,6 +640,17 @@ pub async fn zotero_trash_items(port: u16, limit: Option<u32>) -> Result<String,
     .await
 }
 
+/// P4：按 itemKey 读取单条题录（只读；on-demand 模式生成单条 BibTeX 用）
+#[tauri::command]
+pub async fn zotero_fetch_item(port: u16, item_key: String) -> Result<String, String> {
+    let key = safe_key(&item_key);
+    if key.is_empty() {
+        return Err("itemKey 为空".into());
+    }
+    let client = build_client()?;
+    fetch_text(&client, &item_url(port, &key), "读取 Zotero 条目").await
+}
+
 /// P1-8：BBT pull export 主动拉取（不依赖用户在 Zotero 侧配 Keep updated）
 #[tauri::command]
 pub async fn zotero_fetch_bbt_export(
@@ -688,6 +715,179 @@ pub fn zotero_write_bib(
         } else {
             "内容未变化，未写盘".into()
         },
+        appended_keys: None,
+    })
+}
+
+// ── P4 · on-demand「插一篇写一篇」──────────────────────────────
+
+/// 纯函数：把 BibTeX 文本切成 (key, block) 条目块（保序）。
+/// 起点为 `@type{key,`（兼容 `(`），key 取到首个逗号/闭括号；
+/// 不做括号配平 —— 与前端 `bibKeysFromText` 同口径，块尾到下一个起点或 EOF。
+fn bib_entry_blocks(text: &str) -> Vec<(String, String)> {
+    let b = text.as_bytes();
+    let mut starts: Vec<(usize, String)> = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'@' {
+            let mut j = i + 1;
+            while j < b.len() && b[j].is_ascii_alphabetic() {
+                j += 1;
+            }
+            if j > i + 1 {
+                let mut k = j;
+                while k < b.len() && (b[k] as char).is_whitespace() {
+                    k += 1;
+                }
+                if k < b.len() && (b[k] == b'{' || b[k] == b'(') {
+                    let mut m = k + 1;
+                    while m < b.len() && (b[m] as char).is_whitespace() {
+                        m += 1;
+                    }
+                    let key_start = m;
+                    while m < b.len()
+                        && b[m] != b','
+                        && b[m] != b'}'
+                        && b[m] != b')'
+                        && !(b[m] as char).is_whitespace()
+                    {
+                        m += 1;
+                    }
+                    let key = text[key_start..m].trim().to_string();
+                    if !key.is_empty() {
+                        starts.push((i, key));
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    let mut out = Vec::with_capacity(starts.len());
+    for (idx, (off, key)) in starts.iter().enumerate() {
+        let end = if idx + 1 < starts.len() {
+            starts[idx + 1].0
+        } else {
+            text.len()
+        };
+        out.push((key.clone(), text[*off..end].trim_end().to_string()));
+    }
+    out
+}
+
+/// 纯函数：从 incoming 里挑出 existing 没有的条目块。
+/// 已存在 / incoming 内部重复的 key 跳过并记录；结果按出现顺序用空行连接。
+pub struct BibAppendPlan {
+    pub appended: String,
+    pub skipped: Vec<String>,
+    /// 实际会被追加的 key（前端据此做精确的键映射增量更新）
+    pub appended_keys: Vec<String>,
+    pub count: usize,
+}
+
+pub fn plan_bib_append(existing: &str, incoming: &str) -> BibAppendPlan {
+    let have: std::collections::HashSet<String> =
+        bib_entry_blocks(existing).into_iter().map(|(k, _)| k).collect();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut parts: Vec<String> = Vec::new();
+    let mut skipped: Vec<String> = Vec::new();
+    let mut keys: Vec<String> = Vec::new();
+    for (k, block) in bib_entry_blocks(incoming) {
+        if !seen.insert(k.clone()) {
+            continue;
+        }
+        if have.contains(&k) {
+            skipped.push(k);
+            continue;
+        }
+        keys.push(k);
+        parts.push(block);
+    }
+    let count = parts.len();
+    BibAppendPlan {
+        appended: parts.join("\n\n"),
+        skipped,
+        appended_keys: keys,
+        count,
+    }
+}
+
+/// P4：on-demand「插一篇写一篇」——把缺失条目幂等追加到绑定 .bib。
+/// 只追加 plan 里确实新增的块，原有字节不动；写盘后与 `zotero_write_bib` 相同地
+/// 登记 hash、发 `zotero:bib-changed`（reason="sync"）。
+#[tauri::command]
+pub fn zotero_append_entries(
+    app: AppHandle,
+    state: State<'_, Arc<ZoteroWatchState>>,
+    root: String,
+    bib_path: String,
+    text: String,
+) -> Result<ZoteroWriteResult, String> {
+    let root_p = Path::new(&root);
+    if !root_p.is_dir() {
+        return Err(format!("项目根不存在：{root}"));
+    }
+    let target = resolve_bib_path(root_p, &bib_path)?;
+    let old = std::fs::read_to_string(&target).unwrap_or_default();
+    let plan = plan_bib_append(&old, &text);
+    if plan.count == 0 {
+        let skipped = plan.skipped.join(", ");
+        return Ok(ZoteroWriteResult {
+            path: target.to_string_lossy().into_owned(),
+            hash: content_hash(&old),
+            written: false,
+            bytes: old.len(),
+            message: if skipped.is_empty() {
+                "没有可追加的条目".into()
+            } else {
+                format!("条目已存在，未追加：{skipped}")
+            },
+            appended_keys: None,
+        });
+    }
+    let mut content = String::with_capacity(old.len() + plan.appended.len() + 4);
+    if !old.is_empty() {
+        content.push_str(&old);
+        if !old.ends_with('\n') {
+            content.push('\n');
+        }
+        if !old.ends_with("\n\n") {
+            content.push('\n');
+        }
+    }
+    content.push_str(&plan.appended);
+    content.push('\n');
+    let hash = content_hash(&content);
+    state.note_self_write(&hash);
+    state.set_last_hash(&target, &hash);
+    write_file(
+        target.to_string_lossy().into_owned(),
+        content.clone(),
+        Some(WriteOptions {
+            encoding: Some("utf-8".into()),
+            eol: Some("\n".into()),
+        }),
+    )?;
+    let payload = BibChanged {
+        path: target.to_string_lossy().into_owned(),
+        hash: hash.clone(),
+        reason: "sync".into(),
+    };
+    let _ = app.emit(BIB_CHANGED_EVENT, &payload);
+    Ok(ZoteroWriteResult {
+        path: target.to_string_lossy().into_owned(),
+        hash,
+        written: true,
+        bytes: content.len(),
+        message: format!(
+            "已追加 {} 条到 {}（跳过已存在 {} 条）",
+            plan.count,
+            target
+                .file_name()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default(),
+            plan.skipped.len()
+        ),
+        appended_keys: Some(plan.appended_keys),
     })
 }
 
@@ -1426,5 +1626,70 @@ mod tests {
         let cut = error_detail(&long);
         assert!(cut.ends_with('…'));
         assert!(cut.chars().count() <= 242, "限长 240 + 冒号 + 省略号");
+    }
+
+    #[test]
+    fn item_url_pins_localhost_and_validates_key() {
+        assert_eq!(
+            item_url(23119, "AB12CD34"),
+            "http://localhost:23119/api/users/0/items/AB12CD34?format=json"
+        );
+        assert!(item_url(24119, "EF56GH78").starts_with("http://localhost:24119/"));
+        // 非法 key 走 safe_key 兜底（清洗后为空时命令层已拒绝）
+        assert!(!item_url(23119, "../escape").contains(".."));
+    }
+
+    #[test]
+    fn bib_entry_blocks_splits_and_keeps_order() {
+        let text = "@article{a1,\n  title = {T}\n}\n@book{b2,\n  title = {U}\n}";
+        let blocks = bib_entry_blocks(text);
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0].0, "a1");
+        assert!(blocks[0].1.starts_with("@article{a1,"));
+        assert_eq!(blocks[1].0, "b2");
+        // 无尾随内容时块到 EOF
+        assert!(blocks[1].1.ends_with('}'));
+        // 空文本 / 非 BibTeX 文本 → 空列表
+        assert!(bib_entry_blocks("").is_empty());
+        assert!(bib_entry_blocks("plain text without entries").is_empty());
+    }
+
+    #[test]
+    fn plan_bib_append_is_idempotent_and_preserves_order() {
+        let incoming = "@article{k1,\n  title = {One}\n}\n@book{k2,\n  title = {Two}\n}";
+        // 空文件：全部追加
+        let plan = plan_bib_append("", incoming);
+        assert_eq!(plan.count, 2);
+        assert!(plan.skipped.is_empty());
+        assert!(plan.appended.contains("@article{k1,"));
+        assert!(plan.appended.contains("@book{k2,"));
+        assert_eq!(plan.appended_keys, vec!["k1".to_string(), "k2".to_string()]);
+        // 再跑一遍：全部已存在 → 幂等，count 0
+        let again = plan_bib_append(&plan.appended, incoming);
+        assert_eq!(again.count, 0);
+        assert_eq!(again.skipped.len(), 2);
+        // 部分存在：只追加缺失的那个，顺序保持
+        let partial = plan_bib_append("@misc{k1,\n  note = {x}\n}", incoming);
+        assert_eq!(partial.count, 1);
+        assert_eq!(partial.skipped, vec!["k1".to_string()]);
+        assert_eq!(partial.appended_keys, vec!["k2".to_string()]);
+        assert!(partial.appended.contains("@book{k2,"));
+        assert!(!partial.appended.contains("@article{k1,"));
+    }
+
+    #[test]
+    fn binding_defaults_to_full_sync_mode_for_legacy_configs() {
+        // 存量配置缺 syncMode 字段 → serde 容器 default → "full"（行为不变）
+        let legacy: ZoteroBinding =
+            serde_json::from_str(r#"{"collectionKey":"K","collectionName":"N","bibPath":"r.bib","format":"bibtex","enabled":true}"#)
+                .unwrap();
+        assert_eq!(legacy.sync_mode, "full");
+        // 前端新绑定显式带 on-demand
+        let modern: ZoteroBinding =
+            serde_json::from_str(r#"{"collectionKey":"K","collectionName":"N","bibPath":"r.bib","format":"bibtex","enabled":true,"syncMode":"on-demand"}"#)
+                .unwrap();
+        assert_eq!(modern.sync_mode, "on-demand");
+        // 默认值本身是 full（Rust 侧兜底口径与前端 DEFAULT 不同：前端新建绑定才用 on-demand）
+        assert_eq!(ZoteroBinding::default().sync_mode, "full");
     }
 }

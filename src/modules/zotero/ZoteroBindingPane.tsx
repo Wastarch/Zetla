@@ -8,6 +8,7 @@ import {
   DEFAULT_ZOTERO_SETTINGS,
   type ZoteroBinding,
   type ZoteroCollection,
+  type ZoteroSyncMode,
 } from "@/types/zotero";
 import {
   fetchZoteroCollections,
@@ -33,6 +34,8 @@ export function ZoteroBindingPane() {
   const [draftKey, setDraftKey] = useState("");
   const [draftPath, setDraftPath] = useState(DEFAULT_ZOTERO_BINDING.bibPath);
   const [draftFormat, setDraftFormat] = useState<"bibtex" | "biblatex">("bibtex");
+  /** P4：新绑定默认「插一篇写一篇」；存量绑定迁移为全量（行为不变） */
+  const [draftMode, setDraftMode] = useState<ZoteroSyncMode>("on-demand");
   const [collectionsBusy, setCollectionsBusy] = useState(false);
   const [formBusy, setFormBusy] = useState(false);
   const [note, setNote] = useState("");
@@ -77,6 +80,7 @@ export function ZoteroBindingPane() {
       bibPath,
       format: draftFormat,
       enabled: true,
+      syncMode: draftMode,
     };
     const abs = normalizeBibPath(root, bibPath);
     const dedup = bindings.filter((b) => pathKey(normalizeBibPath(root, b.bibPath)) !== pathKey(abs));
@@ -101,6 +105,23 @@ export function ZoteroBindingPane() {
       setNote(`已移除绑定 ${b.collectionName}`);
     } catch (e) {
       setNote(`移除失败：${String(e)}`);
+    } finally {
+      setFormBusy(false);
+    }
+  };
+
+  const toggleMode = async (b: ZoteroBinding) => {
+    const nextMode: ZoteroSyncMode = b.syncMode === "on-demand" ? "full" : "on-demand";
+    setFormBusy(true);
+    try {
+      await persistZoteroBindings(
+        bindings.map((x) => (x === b ? { ...x, syncMode: nextMode } : x)),
+      );
+      setNote(
+        `已把 ${b.collectionName} 切换为「${nextMode === "on-demand" ? "按需写入（插一篇写一篇）" : "全量同步"}」模式`,
+      );
+    } catch (e) {
+      setNote(`切换失败：${String(e)}`);
     } finally {
       setFormBusy(false);
     }
@@ -169,6 +190,15 @@ export function ZoteroBindingPane() {
                 <option value="bibtex">bibtex</option>
                 <option value="biblatex">biblatex</option>
               </select>
+              <select
+                className="txt-in zotero-bind-format"
+                value={draftMode}
+                title="on-demand：插入引用时逐条写入 .bib；full：同步时整分类覆盖 .bib"
+                onChange={(e) => setDraftMode(e.target.value as ZoteroSyncMode)}
+              >
+                <option value="on-demand">按需写入</option>
+                <option value="full">全量同步</option>
+              </select>
               <button type="button" className="btn primary sm" disabled={formBusy} onClick={() => void addBinding()}>
                 保存绑定
               </button>
@@ -189,10 +219,22 @@ export function ZoteroBindingPane() {
                   <div className="zotero-bind-row" key={`${b.collectionKey}-${b.bibPath}-${i}`}>
                     <div className="zotero-bind-meta">
                       <b>{b.collectionName || "全库"}</b>
-                      <span>{b.bibPath}{b.collectionKey ? ` · ${b.collectionKey}` : ""} · {b.format}</span>
+                      <span>
+                        {b.bibPath}{b.collectionKey ? ` · ${b.collectionKey}` : ""} · {b.format} ·{" "}
+                        {b.syncMode === "on-demand" ? "按需写入" : "全量同步"}
+                      </span>
                       <em>{inside ? "项目内（可主动同步）" : "项目外（仅监听与索引）"}</em>
                     </div>
                     <div className="zotero-bind-ops">
+                      <button
+                        type="button"
+                        className="btn sm"
+                        disabled={formBusy}
+                        title="on-demand：插入引用时逐条写入 .bib；full：同步时整分类覆盖 .bib"
+                        onClick={() => void toggleMode(b)}
+                      >
+                        {b.syncMode === "on-demand" ? "切为全量" : "切为按需"}
+                      </button>
                       <button type="button" className="btn sm" disabled={syncBusy} onClick={() => void syncOne(b)}>
                         立即同步
                       </button>

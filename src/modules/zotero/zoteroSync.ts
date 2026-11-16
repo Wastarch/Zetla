@@ -9,6 +9,7 @@ import type {
   ZoteroConsistency,
   ZoteroItem,
   ZoteroKeyMap,
+  ZoteroSyncMode,
   ZoteroSyncRecord,
 } from "../../types/zotero.ts";
 
@@ -167,30 +168,37 @@ const BIB_TYPES: Record<string, string> = {
 export const BIB_GENERATED_HEADER =
   "% Zetla · Zotero managed .bib — 自动同步生成，请勿手工编辑（会被下次同步覆盖）";
 
+/** 无 BBT 降级：本地 API 题录 → BibTeX 条目块（不带文件头；P4 单条写入也用它） */
+export function bibtexEntryBlock(item: ZoteroItem, forcedKey?: string): string {
+  const type = BIB_TYPES[item.itemType] ?? "misc";
+  const key = forcedKey || item.citationKey || makeCiteKey(item);
+  const fields: [string, string][] = [];
+  const push = (name: string, value: string) => {
+    const v = escapeBibValue(value);
+    if (v) fields.push([name, v]);
+  };
+  push("title", item.title);
+  push("author", item.authors.join(" and "));
+  push("year", item.year);
+  if (type === "article") push("journal", item.publicationTitle);
+  else if (type === "inproceedings" || type === "incollection") push("booktitle", item.publicationTitle);
+  else if (type === "book" || type === "techreport") push("publisher", item.publicationTitle);
+  push("doi", item.doi);
+  push("url", item.url);
+  if (item.abstract) push("abstract", item.abstract.replace(/\s+/g, " "));
+  if (item.itemKey) fields.push(["note", `Zotero itemKey: ${item.itemKey}`]);
+  const body = fields.map(([k, v]) => `  ${k} = {${v}}`).join(",\n");
+  return `@${type}{${key},\n${body}\n}`;
+}
+
 /** 无 BBT 降级：本地 API 题录 → BibTeX 文本（note 里带 itemKey，便于精确键映射） */
 export function itemsToBibtex(items: ZoteroItem[]): string {
   const taken = new Set<string>();
   const blocks = items.map((item) => {
-    const type = BIB_TYPES[item.itemType] ?? "misc";
+    // 整批生成时保持既有冲突后缀口径：key 冲突按顺序追加 a/b/c
     const key = item.citationKey || makeCiteKey(item, taken);
     taken.add(key);
-    const fields: [string, string][] = [];
-    const push = (name: string, value: string) => {
-      const v = escapeBibValue(value);
-      if (v) fields.push([name, v]);
-    };
-    push("title", item.title);
-    push("author", item.authors.join(" and "));
-    push("year", item.year);
-    if (type === "article") push("journal", item.publicationTitle);
-    else if (type === "inproceedings" || type === "incollection") push("booktitle", item.publicationTitle);
-    else if (type === "book" || type === "techreport") push("publisher", item.publicationTitle);
-    push("doi", item.doi);
-    push("url", item.url);
-    if (item.abstract) push("abstract", item.abstract.replace(/\s+/g, " "));
-    if (item.itemKey) fields.push(["note", `Zotero itemKey: ${item.itemKey}`]);
-    const body = fields.map(([k, v]) => `  ${k} = {${v}}`).join(",\n");
-    return `@${type}{${key},\n${body}\n}`;
+    return bibtexEntryBlock(item, key);
   });
   return [BIB_GENERATED_HEADER, "", ...blocks, ""].join("\n");
 }
@@ -263,6 +271,80 @@ export interface KeyMigration {
   from: string;
   to: string;
   itemKey: string;
+}
+
+// ── P4 · on-demand「插一篇写一篇」纯逻辑 ───────────────────────
+
+/** 绑定同步模式归一：未知 / 缺失 / 旧配置一律回落 "full"（保持 P1 行为） */
+export function normalizeSyncMode(v: unknown): ZoteroSyncMode {
+  return v === "on-demand" ? "on-demand" : "full";
+}
+
+/**
+ * wanted 里不在 bibKeys 的 key（保序、去重）。
+ * 只是快速预判：真正的去重由 Rust `plan_bib_append` 按目标文件判定。
+ */
+export function missingCiteKeys(wanted: string[], bibKeys: string[]): string[] {
+  const have = new Set(bibKeys);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of wanted) {
+    const k = String(raw ?? "").trim();
+    if (!k || seen.has(k) || have.has(k)) continue;
+    seen.add(k);
+    out.push(k);
+  }
+  return out;
+}
+
+/**
+ * `zotero_fetch_item` 返回单对象 JSON（不是数组）；坏 JSON / 非题录返回 null。
+ */
+export function parseSingleItem(raw: string): ZoteroItem | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  const items = parseZoteroItems(JSON.stringify(Array.isArray(data) ? data : [data]));
+  return items.length > 0 ? items[0] : null;
+}
+
+export interface KeyMapEntry {
+  citeKey: string;
+  itemKey: string;
+}
+
+/**
+ * 增量并入键映射（on-demand 单条写入后同步 map.json，不等下一轮全量同步）：
+ * - 已有的 citeKey / itemKey 不覆盖（冲突保留旧指向）；
+ * - 新增的 key 从 unmapped 里移除；
+ * - serverId 沿用旧的（同一代际）。
+ */
+export function appendKeyMap(
+  prev: ZoteroKeyMap | null,
+  entries: KeyMapEntry[],
+  now: string = new Date().toISOString(),
+): ZoteroKeyMap {
+  const byCiteKey: Record<string, string> = { ...(prev?.byCiteKey ?? {}) };
+  const byItemKey: Record<string, string> = { ...(prev?.byItemKey ?? {}) };
+  for (const { citeKey, itemKey } of entries) {
+    if (!citeKey || !itemKey) continue;
+    if (byItemKey[itemKey] && byItemKey[itemKey] !== citeKey) continue; // 同条目换 key：交给漂移检测
+    if (byCiteKey[citeKey] && byCiteKey[citeKey] !== itemKey) continue; // 同 key 指向另一条：不覆盖
+    byCiteKey[citeKey] = itemKey;
+    byItemKey[itemKey] = citeKey;
+  }
+  const unmapped = new Set(prev?.unmapped ?? []);
+  for (const { citeKey } of entries) unmapped.delete(citeKey);
+  return {
+    serverId: prev?.serverId ?? null,
+    updatedAt: now,
+    byCiteKey,
+    byItemKey,
+    unmapped: [...unmapped].sort(),
+  };
 }
 
 /** 键漂移计划：同一 itemKey 的 citekey 变了、且旧 key 仍被 \cite 引用 */

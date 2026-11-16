@@ -26,8 +26,11 @@ import {
 const PAGE_SIZE = 100;
 
 export interface ZoteroLibraryPaneProps {
-  /** 插入引用（父组件负责 insertSnippet 与无编辑器提示） */
-  onInsert: (key: string) => void;
+  /**
+   * 插入引用（父组件负责 insertSnippet 与无编辑器提示）。
+   * P4：item 让父组件在按需绑定下先补写缺失条目（插一篇写一篇）。
+   */
+  onInsert: (key: string, item?: LibraryItem) => void;
   /** 轻提示（无 citekey 等） */
   onNotice: (msg: string, kind?: "ok" | "err") => void;
 }
@@ -125,7 +128,8 @@ export function ZoteroLibraryPane({ onInsert, onNotice }: ZoteroLibraryPaneProps
         onNotice("该条目还没有 citekey：请先把所在分类同步到项目 .bib", "err");
         return;
       }
-      onInsert(key);
+      // P4：带上完整题录，按需绑定可在插入前补写缺失条目（插一篇写一篇）
+      onInsert(key, item);
     },
     [keyMap, onInsert, onNotice],
   );

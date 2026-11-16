@@ -205,6 +205,12 @@ export const zoteroApi = {
   /** 原子写项目内 .bib（UTF-8 + LF，内容未变则不写盘；返回 hash） */
   writeBib: (root: string, bibPath: string, content: string) =>
     call<ZoteroWriteResult>("zotero_write_bib", { root, bibPath, content }),
+  /** P4：按 itemKey 读单条题录（原始 JSON，单对象） */
+  fetchItem: (port: number, itemKey: string) =>
+    call<string>("zotero_fetch_item", { port, itemKey }),
+  /** P4：on-demand 幂等追加条目块（Rust 侧按 key 去重，只追加缺失部分） */
+  appendBib: (root: string, bibPath: string, content: string) =>
+    call<ZoteroWriteResult>("zotero_append_entries", { root, bibPath, content }),
   /** 项目级绑定读写（.ltex/config.json 的 zoteroBindings） */
   getBindings: (root: string) => call<ZoteroBinding[]>("zotero_get_bindings", { root }),
   setBindings: (root: string, bindings: ZoteroBinding[]) =>
