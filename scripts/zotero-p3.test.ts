@@ -27,6 +27,17 @@ import {
   targetHint,
   zoteroPdfUrl,
 } from "../src/modules/zotero/zoteroOpenTargets.ts";
+import {
+  CSL_STYLES,
+  DEFAULT_CSL_STYLE_ID,
+  citationCopyMessage,
+  citationCopyText,
+  cslStyleLabel,
+  decodeCslEntities,
+  normalizeCslStyle,
+  parseCitationResponse,
+  stripCslHtml,
+} from "../src/modules/zotero/zoteroCitation.ts";
 
 let failures = 0;
 let total = 0;
@@ -457,6 +468,78 @@ eq(bibFieldUrl("url", "javascript:alert(1)"), null, "javascript: 伪协议被拒
 eq(bibFieldUrl("doi", "not-a-doi"), null, "非法 DOI 不生成链接");
 eq(safeHttpUrl("file:///C:/x.pdf"), null, "file: 本地路径不作为网页打开");
 eq(safeHttpUrl("{https://example.org/path}"), "https://example.org/path", "花括号包裹的 URL 可点");
+
+console.log("P3-3 · CSL 样式白名单");
+eq(normalizeCslStyle("apa"), "apa", "内置样式保留原值");
+eq(normalizeCslStyle(" IEEE "), DEFAULT_CSL_STYLE_ID, "大小写/空白不匹配白名单时回落默认");
+eq(normalizeCslStyle("https://example.org/apa.csl"), DEFAULT_CSL_STYLE_ID, "URL 不作为样式 id");
+eq(normalizeCslStyle("apa&linkwrap=1"), DEFAULT_CSL_STYLE_ID, "查询串注入被拒");
+eq(normalizeCslStyle(undefined), DEFAULT_CSL_STYLE_ID, "空值回落默认样式");
+eq(normalizeCslStyle("nature"), "nature", "nature 在白名单内");
+check(CSL_STYLES.length >= 5, `内置样式至少 5 种（当前 ${CSL_STYLES.length}）`);
+eq(CSL_STYLES[0].id, DEFAULT_CSL_STYLE_ID, "首项与默认样式一致");
+eq(cslStyleLabel("apa"), "APA 7th（作者-年）", "样式显示名可查");
+eq(cslStyleLabel("unknown-style"), "unknown-style", "未知 id 原样显示便于排障");
+eq(
+  CSL_STYLES.every((s) => /^[a-z0-9][a-z0-9-]{0,63}$/i.test(s.id)),
+  true,
+  "所有内置 id 通过 Rust 同口径闸门",
+);
+
+console.log("P3-3 · XHTML 剥除与实体解码");
+eq(stripCslHtml("<i>Nature</i> 2020"), "Nature 2020", "标签剥除保留文本");
+eq(
+  stripCslHtml('<span class="csl-left-margin">1. </span><span>Doe A.</span>'),
+  "1. Doe A.",
+  "CSL span 结构被剥成纯文本",
+);
+eq(stripCslHtml("A<br/>B"), "A B", "br 转为空格");
+eq(stripCslHtml("<p>One</p><p>Two</p>"), "One Two", "块级标签之间保留分隔");
+eq(stripCslHtml("Smith &amp; Jones"), "Smith & Jones", "命名实体解码");
+eq(stripCslHtml("pp. 1&#8211;10"), "pp. 1\u201310", "十进制实体解码为短横");
+eq(stripCslHtml("A&#x2013;B"), "A\u2013B", "十六进制实体解码");
+eq(stripCslHtml("  a\n\n  b  "), "a b", "空白压平");
+eq(stripCslHtml(""), "", "空串返回空串");
+eq(decodeCslEntities("&unknown;"), "&unknown;", "未知实体原样保留");
+eq(stripCslHtml("<script>alert(1)</script>x"), "alert(1)x", "无标签执行：脚本只当文本（不渲染 HTML）");
+
+console.log("P3-3 · 响应解析");
+const singleItem = JSON.stringify({
+  key: "AB12CD34",
+  version: 120,
+  data: { key: "AB12CD34", itemType: "journalArticle", title: "Deep Learning" },
+  bib: "Doe, A. <i>Deep Learning</i>. Nature, 2020.",
+  citation: "(Doe, 2020)",
+});
+const parsedOk = parseCitationResponse(singleItem);
+eq(parsedOk?.itemKey, "AB12CD34", "解析出 8 位 itemKey");
+eq(parsedOk?.citation, "(Doe, 2020)", "文内引文取 citation 字段");
+eq(
+  parsedOk?.bib,
+  "Doe, A. Deep Learning. Nature, 2020.",
+  "参考文献去掉斜体标签但保留文字",
+);
+eq(parseCitationResponse("not json"), null, "非 JSON 返回 null");
+eq(parseCitationResponse("[]"), null, "数组响应返回 null");
+eq(parseCitationResponse("{}"), null, "两段都为空返回 null");
+eq(
+  parseCitationResponse(JSON.stringify({ key: "AB12CD34", bib: "", citation: "" })),
+  null,
+  "空 bib/citation 视为无可用引文",
+);
+eq(
+  parseCitationResponse(JSON.stringify({ key: "doe2020", citation: "(Doe, 2020)" }))?.itemKey,
+  "",
+  "非 8 位 key 不写入 itemKey（只用于展示，不拼 URL）",
+);
+eq(
+  parseCitationResponse(JSON.stringify({ data: { key: "EF56GH78" }, bib: "B." }))?.itemKey,
+  "EF56GH78",
+  "顶层无 key 时回落 data.key",
+);
+eq(citationCopyText("  (Doe,\n 2020) "), "(Doe, 2020)", "复制文本压平空白");
+eq(citationCopyMessage("citation", "apa").includes("APA"), true, "复制提示带样式名");
+eq(citationCopyMessage("bib", "apa").includes("参考文献"), true, "复制提示区分参考文献");
 
 console.log(`\n${total - failures}/${total} 通过`);
 if (failures > 0) process.exitCode = 1;

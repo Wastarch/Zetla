@@ -7522,6 +7522,102 @@ body.row-resizing {
   border-color: var(--accent);
 }
 
+/* P3-3 · 引用卡片「引文」页签（CSL 预览与复制，只读） */
+.zo-cite {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.zo-cite-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.zo-cite-style {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--txt-1);
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  outline: none;
+}
+.zo-cite-style:focus {
+  border-color: var(--accent);
+}
+.zo-cite-badge {
+  flex: none;
+  padding: 1px 5px;
+  font-size: 10px;
+  color: var(--txt-4);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.zo-cite-block {
+  padding: 6px 8px;
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.zo-cite-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 3px;
+  font-size: 10.5px;
+  color: var(--txt-4);
+}
+.zo-cite-text {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--txt-1);
+  word-break: break-word;
+}
+.zo-cite-copy {
+  flex: none;
+  padding: 1px 6px;
+  font: inherit;
+  font-size: 10.5px;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+  outline: none;
+}
+.zo-cite-copy:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.zo-cite-copy:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.zo-cite-empty,
+.zo-cite-error {
+  padding: 8px;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--txt-3);
+  background: var(--bg-3);
+  border-radius: 6px;
+}
+.zo-cite-error {
+  color: var(--warn);
+}
+.zo-cite-foot {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--txt-4);
+}
+.zo-cite-foot code {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+}
+
 /* ── M1-find · 单文件查找替换浮动面板（VS Code 风格，悬浮于编辑区右上角） ── */
 .find-panel {
   position: absolute;

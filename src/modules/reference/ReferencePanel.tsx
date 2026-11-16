@@ -18,16 +18,23 @@ import { jumpToFile } from "@/editor/jump";
 import { insertSnippet } from "@/core/moduleRegistry";
 import {
   openZoteroItem,
+  resolveZoteroCitation,
   resolveZoteroPdfPreview,
 } from "@/modules/zotero/zoteroReverseRuntime";
+import {
+  citationCopyMessage,
+  citationCopyText,
+  normalizeCslStyle,
+} from "@/modules/zotero/zoteroCitation";
 import {
   targetDisabled,
   targetHint,
   type ZoteroOpenTarget,
 } from "@/modules/zotero/zoteroOpenTargets";
+import { useSettingsStore } from "@/core/settings";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
 import { firstDuplicateEntry, type MissingCiteSummary } from "./lintLogic";
-import { RefPreviewCard } from "./RefPreviewCard";
+import { RefPreviewCard, type RefPreviewMode } from "./RefPreviewCard";
 import { ZoteroOpenSplit } from "./ZoteroOpenSplit";
 import { ZoteroPdfPreviewDialog } from "./ZoteroPdfPreviewDialog";
 import type { BibEntry } from "./bibParser";
@@ -113,13 +120,25 @@ export default function ReferencePanel() {
     y: number;
     pos: { left: number; top: number };
   } | null>(null);
-  /** 左键浮窗预览（info 预览 / refs 反向引用） */
+  /** 左键浮窗预览（info 预览 / refs 反向引用 / cite CSL 引文） */
   const [preview, setPreview] = useState<{
     entry: BibEntry;
-    mode: "info" | "refs";
+    mode: RefPreviewMode;
     left: number;
     top: number;
   } | null>(null);
+
+  /** P3-3：CSL 样式（初值取设置里的 zotero.cslStyle，切换后旁路落盘记住） */
+  const [citeStyle, setCiteStyle] = useState(() =>
+    normalizeCslStyle(useSettingsStore.getState().settings.zotero?.cslStyle),
+  );
+  /** P3-3：引文预览状态（只放内存；失败只提示，不阻断编辑与编译） */
+  const [cite, setCite] = useState<{
+    loading: boolean;
+    error: string | null;
+    bib: string;
+    citation: string;
+  }>({ loading: false, error: null, bib: "", citation: "" });
 
   // 右键菜单：点击空白/滚动/Esc 关闭；同时收起由它唤起的下拉（卡片下拉不受影响）
   useEffect(() => {
@@ -251,6 +270,66 @@ export default function ReferencePanel() {
       setPdfBusy(false);
     }
   }, []);
+
+  /** P3-3：切到「引文」页签 / 换样式时拉取 CSL 引文（只读；离开页签即作废，避免串条目） */
+  useEffect(() => {
+    if (!preview || preview.mode !== "cite") return;
+    const entry = preview.entry;
+    let alive = true;
+    setCite((c) => ({ ...c, loading: true, error: null }));
+    void resolveZoteroCitation(
+      {
+        key: entry.key,
+        title: entry.title,
+        doi: entry.fields?.doi,
+        author: entry.author,
+        year: entry.year,
+        fields: entry.fields ?? null,
+      },
+      citeStyle,
+    ).then((r) => {
+      if (!alive) return;
+      setCite({
+        loading: false,
+        error: r.ok ? null : r.message,
+        bib: r.bib,
+        citation: r.citation,
+      });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [preview, citeStyle]);
+
+  /** P3-3：切换 CSL 样式；运行时立即生效并旁路落盘（只写 Zetla 自己的配置） */
+  const onCiteStyleChange = useCallback((id: string) => {
+    const next = normalizeCslStyle(id);
+    setCiteStyle(next);
+    const st = useSettingsStore.getState();
+    const cur = st.settings.zotero;
+    if (!cur || cur.cslStyle === next) return;
+    const zotero = { ...cur, cslStyle: next };
+    st.setSettings({ ...st.settings, zotero });
+    void st.persist({ zotero });
+  }, []);
+
+  /** P3-3：复制引文 / 参考文献（只写系统剪贴板，不碰任何文件） */
+  const onCopyCitation = useCallback(
+    async (kind: "citation" | "bib") => {
+      const text = citationCopyText(kind === "citation" ? cite.citation : cite.bib);
+      if (!text) {
+        notify("暂无可复制的引文，请等待加载完成或换一个样式", "err");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        notify(citationCopyMessage(kind, citeStyle), "ok");
+      } catch (e) {
+        notify(`复制失败：${String(e)}`, "err");
+      }
+    },
+    [cite, citeStyle],
+  );
 
   // 重复 key 汇总（store 直接可得，无需读盘）
   const dupSummary = useMemo(() => {
@@ -576,6 +655,9 @@ export default function ReferencePanel() {
           onOpenUrl={(url) => void onOpenPreviewUrl(url)}
           onPreviewPdf={() => void onPreviewZoteroPdf(preview.entry)}
           pdfBusy={pdfBusy}
+          cite={{ ...cite, style: citeStyle }}
+          onCiteStyle={onCiteStyleChange}
+          onCopyCitation={(kind) => void onCopyCitation(kind)}
           onOpenMenu={(pos) =>
             setOpenMenu((prev) =>
               prev?.source === "card" && sameBibEntry(prev.entry, preview.entry)

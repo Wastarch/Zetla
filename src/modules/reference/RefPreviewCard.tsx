@@ -7,6 +7,18 @@ import {
   type ZoteroOpenTarget,
 } from "@/modules/zotero/zoteroOpenTargets";
 import { ZoteroOpenSplit } from "./ZoteroOpenSplit";
+import { ZoteroCitationPane } from "./ZoteroCitationPane";
+
+export type RefPreviewMode = "info" | "refs" | "cite";
+
+/** P3-3：CSL 引文预览状态（父组件持有，卡片只渲染） */
+export interface CitationPaneState {
+  style: string;
+  loading: boolean;
+  error: string | null;
+  bib: string;
+  citation: string;
+}
 
 /** 摘要单独成块展示，不塞进下面的字段表 */
 const ABSTRACT_FIELD = "abstract";
@@ -33,10 +45,10 @@ function plain(s: string): string {
 export interface RefPreviewCardProps {
   entry: BibEntry;
   refs: { file: string; line: number }[];
-  mode: "info" | "refs";
+  mode: RefPreviewMode;
   left: number;
   top: number;
-  onMode: (m: "info" | "refs") => void;
+  onMode: (m: RefPreviewMode) => void;
   onClose: () => void;
   onJump: (file: string, line: number) => void;
   /** P3-1b：可选的「打开目标」分体按钮（由父组件注入，卡片保持纯展示） */
@@ -49,6 +61,10 @@ export interface RefPreviewCardProps {
   /** P3-2：在 Zetla 内嵌预览该条目的 PDF 附件 */
   onPreviewPdf?: () => void;
   pdfBusy?: boolean;
+  /** P3-3：CSL 引文预览（切换到「引文」页签时由父组件拉取） */
+  cite?: CitationPaneState;
+  onCiteStyle?: (id: string) => void;
+  onCopyCitation?: (kind: "citation" | "bib") => void;
 }
 
 export function RefPreviewCard({
@@ -67,6 +83,9 @@ export function RefPreviewCard({
   onOpenUrl,
   onPreviewPdf,
   pdfBusy,
+  cite,
+  onCiteStyle,
+  onCopyCitation,
 }: RefPreviewCardProps) {
   const extras = EXTRA_FIELDS.map((name) => ({ name, value: entry.fields[name] })).filter(
     (x): x is { name: string; value: string } => !!x.value,
@@ -103,6 +122,14 @@ export function RefPreviewCard({
           onClick={() => onMode("refs")}
         >
           反向引用{refs.length > 0 ? ` ${refs.length}` : ""}
+        </button>
+        <button
+          type="button"
+          className={mode === "cite" ? "ref-preview-tab active" : "ref-preview-tab"}
+          title="按 CSL 样式预览引文与参考文献（不改变正文 LaTeX 样式）"
+          onClick={() => onMode("cite")}
+        >
+          引文
         </button>
       </div>
 
@@ -182,7 +209,7 @@ export function RefPreviewCard({
             </span>
           </div>
         </div>
-      ) : (
+      ) : mode === "refs" ? (
         <div className="ref-preview-body">
           {refs.length === 0 ? (
             <div className="ref-rev-empty">未被任何 .tex 引用</div>
@@ -201,6 +228,22 @@ export function RefPreviewCard({
                 </button>
               ))}
             </div>
+          )}
+        </div>
+      ) : (
+        <div className="ref-preview-body">
+          {cite && onCiteStyle && onCopyCitation ? (
+            <ZoteroCitationPane
+              style={cite.style}
+              loading={cite.loading}
+              error={cite.error}
+              bib={cite.bib}
+              citation={cite.citation}
+              onStyle={onCiteStyle}
+              onCopy={onCopyCitation}
+            />
+          ) : (
+            <div className="zo-cite-empty">Zotero 联动未接入，无法预览引文</div>
           )}
         </div>
       )}

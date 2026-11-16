@@ -132,6 +132,8 @@ pub fn run() {
             commands::zotero::zotero_fetch_children,
             // Zotero 联动 · P3-2：附件本地路径（只读 /file/view/url → file:// 转路径）
             commands::zotero::zotero_attachment_path,
+            // Zotero 联动 · P3-3：CSL 格式化引文（只读 include=bib,citation）
+            commands::zotero::zotero_citation,
             // M1-13：自动更新（自下载安装包 + 拉起安装向导）
             // U1：清单协议 v2 —— 由 Rust 判定本机平台与能否自更新
             commands::updater::update_env_info,

@@ -835,6 +835,56 @@ fn file_url_to_path(raw: &str) -> Result<String, String> {
     Ok(p.to_string_lossy().to_string())
 }
 
+// ── P3-3 · CSL 格式化引文（只读，include=bib,citation） ─────────────────────
+//
+// 本地 API 支持单条题录的 `format=json&include=bib,citation&style=<id>`，
+// 返回 JSON 内含 `bib`（参考文献条目）与 `citation`（文内引文）两段 XHTML。
+// 样式 id 只允许 CSL Style Repository 的文件名（如 apa），**不接受 URL**：
+// 既避免把任意字符串拼进查询串，也保证不会因 csL 远程加载拖慢本地请求。
+pub const DEFAULT_CSL_STYLE: &str = "china-national-standard-gb-t-7714-2015-numeric";
+const CSL_STYLE_MAX_LEN: usize = 64;
+
+/// CSL 样式 id 闸门：字母数字与连字符，1..=64 位（apa / ieee / gb-t-7714-2015-numeric）
+pub fn is_csl_style(raw: &str) -> bool {
+    let s = raw.trim();
+    !s.is_empty()
+        && s.len() <= CSL_STYLE_MAX_LEN
+        && s.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+        && !s.starts_with('-')
+}
+
+/// 单条题录的格式化引文 URL：固定个人库 + 显式 include，style 已过闸
+pub fn citation_url(port: u16, item_key: &str, style: &str) -> String {
+    format!(
+        "{}/api/users/0/items/{}?format=json&include=bib,citation&style={}",
+        base_url(port),
+        safe_key(item_key),
+        style
+    )
+}
+
+/// P3-3：读取单条题录的 CSL 引文 + 参考文献（只读；前端只展示/复制，不驱动 LaTeX 样式）。
+#[tauri::command]
+pub async fn zotero_citation(
+    port: u16,
+    item_key: String,
+    style: Option<String>,
+) -> Result<String, String> {
+    let key = item_key.trim();
+    if !is_item_key(key) {
+        return Err("题录 itemKey 非法（必须是 8 位字母数字）".into());
+    }
+    let style = style.unwrap_or_else(|| DEFAULT_CSL_STYLE.to_string());
+    let style = style.trim();
+    if !is_csl_style(style) {
+        return Err(format!("CSL 样式 id 非法：{style}"));
+    }
+    let client = build_client()?;
+    let url = citation_url(port, key, style);
+    fetch_text(&client, &url, "读取 Zotero 格式化引文").await
+}
+
 /// P3-2：读取附件本地路径（只读 GET + 路径归一 + 存在性检查），供前端 asset 协议内嵌预览。
 #[tauri::command]
 pub async fn zotero_attachment_path(
@@ -1209,5 +1259,31 @@ mod tests {
         assert!(file_url_to_path("").is_err());
         assert!(file_url_to_path("https://example.org/x.pdf").is_err());
         assert!(file_url_to_path("not a url").is_err());
+    }
+
+    #[test]
+    fn citation_url_pins_localhost_and_includes_csl_blocks() {
+        assert_eq!(
+            citation_url(0, "AB12CD34", "apa"),
+            "http://localhost:23119/api/users/0/items/AB12CD34?format=json&include=bib,citation&style=apa"
+        );
+        assert!(citation_url(24119, "EF56GH78", DEFAULT_CSL_STYLE).contains("localhost:24119"));
+        assert!(citation_url(23119, "EF56GH78", DEFAULT_CSL_STYLE)
+            .contains("style=china-national-standard-gb-t-7714-2015-numeric"));
+    }
+
+    #[test]
+    fn csl_style_gate_rejects_urls_and_injection() {
+        assert!(is_csl_style("apa"));
+        assert!(is_csl_style("china-national-standard-gb-t-7714-2015-numeric"));
+        assert!(is_csl_style(" ieee "));
+        assert!(!is_csl_style(""));
+        assert!(!is_csl_style("   "));
+        // 只接受 Style Repository 的文件名，URL 与非字符一律拒绝
+        assert!(!is_csl_style("https://example.org/style.csl"));
+        assert!(!is_csl_style("apa&linkwrap=1"));
+        assert!(!is_csl_style("apa style"));
+        assert!(!is_csl_style("-apa"));
+        assert!(!is_csl_style(&"a".repeat(CSL_STYLE_MAX_LEN + 1)));
     }
 }

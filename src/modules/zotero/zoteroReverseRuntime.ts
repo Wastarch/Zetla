@@ -30,6 +30,7 @@ import {
   zoteroPdfUrl,
   type ZoteroOpenTarget,
 } from "./zoteroOpenTargets";
+import { cslStyleLabel, normalizeCslStyle, parseCitationResponse } from "./zoteroCitation";
 
 export interface ZoteroOpenResult {
   ok: boolean;
@@ -292,5 +293,97 @@ export async function resolveZoteroPdfPreview(
     };
   } catch (e) {
     return previewFail(`读取 Zotero PDF 附件失败：${String(e)}`);
+  }
+}
+
+// ── P3-3 · CSL 格式化引文（只读 include=bib,citation） ─────────────────────
+
+export interface ZoteroCitationResult {
+  ok: boolean;
+  message: string;
+  itemKey: string | null;
+  /** 本次实际请求的样式 id（已归一） */
+  style: string;
+  /** 参考文献条目（纯文本） */
+  bib: string;
+  /** 文内引文（纯文本） */
+  citation: string;
+}
+
+/** 引文缓存：key = itemKey + style；只放内存，不回写 map.json、不落盘 */
+const citationCache = new Map<string, { bib: string; citation: string }>();
+const CITATION_CACHE_MAX = 40;
+
+/** 换项目 / HMR / 测试时清空引文缓存 */
+export function clearCitationCache(): void {
+  citationCache.clear();
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(clearCitationCache);
+}
+
+/**
+ * P3-3：citekey → itemKey → CSL 引文 + 参考文献。
+ * 只读、永不抛异常；失败给结构化 message，由 UI 提示（不阻断编辑/编译）。
+ * 风格：样式切换会走缓存，避免反复点下拉时重复打本地 API。
+ */
+export async function resolveZoteroCitation(
+  entry: ReverseEntry,
+  style: unknown,
+): Promise<ZoteroCitationResult> {
+  const s = normalizeCslStyle(style);
+  const citeKey = String(entry.key ?? "").trim();
+  const fail = (message: string): ZoteroCitationResult => ({
+    ok: false,
+    message,
+    itemKey: null,
+    style: s,
+    bib: "",
+    citation: "",
+  });
+
+  if (!citeKey) return fail("该条目没有 citekey，无法定位 Zotero 题录");
+  if (apiBlocked()) {
+    return fail("Zotero 联动未启用或本地 API 不可用，无法格式化引文");
+  }
+
+  try {
+    const resolved = await resolveItemKey(entry);
+    if (!resolved) {
+      return fail(`「${citeKey}」无法定位到 Zotero 题录（无映射且反查失败）`);
+    }
+    const hitKey = `${resolved.itemKey}\u0000${s}`;
+    const cached = citationCache.get(hitKey);
+    if (cached) {
+      return {
+        ok: true,
+        message: `引文已就绪（${cslStyleLabel(s)}）`,
+        itemKey: resolved.itemKey,
+        style: s,
+        ...cached,
+      };
+    }
+    const port = normalizePort(currentSettings().port);
+    const raw = await zoteroApi.citation(port, resolved.itemKey, s);
+    const parsed = parseCitationResponse(raw);
+    if (!parsed) {
+      return fail("Zotero 未返回可用引文（样式 id 可能不被识别）");
+    }
+    const payload = { bib: parsed.bib, citation: parsed.citation };
+    citationCache.set(hitKey, payload);
+    if (citationCache.size > CITATION_CACHE_MAX) {
+      const oldest = citationCache.keys().next().value;
+      if (oldest) citationCache.delete(oldest);
+    }
+    return {
+      ok: true,
+      message: `引文已就绪（${cslStyleLabel(s)}）`,
+      itemKey: resolved.itemKey,
+      style: s,
+      ...payload,
+    };
+  } catch (e) {
+    return fail(`读取格式化引文失败：${String(e)}`);
   }
 }

@@ -230,6 +230,11 @@ export const zoteroApi = {
   /** 附件 itemKey 必须是 8 位；返回本地绝对路径，不落盘、不缓存外泄 */
   fetchAttachmentPath: (port: number, attachmentKey: string) =>
     call<string>("zotero_attachment_path", { port, attachmentKey }),
+
+  // ── P3-3 · 悬浮卡片：CSL 格式化引文（只读 include=bib,citation）──
+  /** 返回单条题录 JSON（含 `bib` / `citation` 两段 XHTML）；样式 id 由 Rust 再校验一次 */
+  citation: (port: number, itemKey: string, style: string) =>
+    call<string>("zotero_citation", { port, itemKey, style }),
 };
 
 // ── 绘图模块 · 图片插入 TikZ · P2 暂存图生命周期 ─────────────────────────
