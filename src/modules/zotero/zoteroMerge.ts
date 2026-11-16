@@ -20,6 +20,25 @@ export const ZOTERO_MANAGED_FIELDS = [
   "doi", "url", "abstract",
 ] as const;
 export type ZoteroManagedField = (typeof ZOTERO_MANAGED_FIELDS)[number];
+// 放宽为 string：P9 按目标格式可产出 date / journaltitle（别名见下）。
+export type BibManagedField = (typeof ZOTERO_MANAGED_FIELDS)[number] | "date" | "journaltitle";
+
+/**
+ * P9：BibTeX ↔ biblatex 字段别名（含义相同、名字不同的一小撮）。
+ * 放在本模块（zoteroFormat 的上游）避免循环依赖；zoteroFormat re-export 给 UI/测试。
+ */
+export const FIELD_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ["journal", "journaltitle"],
+  ["year", "date"],
+] as const;
+const TO_BIBLATEX = new Map(FIELD_ALIASES.map(([b, l]) => [b.toLowerCase(), l]));
+const TO_BIBTEX = new Map(FIELD_ALIASES.map(([b, l]) => [l.toLowerCase(), b]));
+
+/** 把字段名按目标格式映射；不在别名表 / 已是目标名 → 原样返回 */
+export function mapFieldName(name: string, target: "bibtex" | "biblatex"): string {
+  const map = target === "biblatex" ? TO_BIBLATEX : TO_BIBTEX;
+  return map.get(name.toLowerCase()) ?? name;
+}
 
 export interface BibFieldRaw {
   /** 字段名（小写） */
@@ -233,12 +252,18 @@ export function mergeBibFields(text: string, patches: MergePatch[]): BibMergeRes
   return { text: merged, changedKeys, missingKeys, addedFields };
 }
 
-/** Zotero 题录 → 托管字段表（值与 `bibtexEntryBlock` 同口径；note 刻意不产出） */
-export function zoteroFieldsFromItem(item: ZoteroItem): Record<string, string> {
+/**
+ * Zotero 题录 → 托管字段表（值与 `bibtexEntryBlock` 同口径；note 刻意不产出）。
+ * P9：format 决定字段别名（mapFieldName），默认 "bibtex" 保持既有行为。
+ */
+export function zoteroFieldsFromItem(
+  item: ZoteroItem,
+  format: "bibtex" | "biblatex" = "bibtex",
+): Record<string, string> {
   const out: Record<string, string> = {};
-  const push = (name: ZoteroManagedField, value: string) => {
+  const push = (name: BibManagedField, value: string) => {
     const v = escapeBibValue(value);
-    if (v) out[name] = v;
+    if (v) out[mapFieldName(name, format)] = v;
   };
   push("title", item.title);
   push("author", item.authors.join(" and "));

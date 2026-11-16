@@ -14,7 +14,13 @@ import {
   normalizePort,
 } from "./zoteroDiagnostics";
 import { useZoteroStore } from "./useZoteroStore";
+import { engineLabel } from "./zoteroStyleMap";
 import { ZoteroBindingPane } from "./ZoteroBindingPane";
+import { previewBibFormatSwitch, reloadBibFormat, switchBibFormat } from "./zoteroRuntime";
+import { useProjectStore } from "@/project/useProject";
+import type { BibFormatSwitchPreview } from "./zoteroRuntime";
+import type { ConcreteBibFormat } from "./zoteroFormat";
+import { BibFormatSwitchDialog } from "@/modules/reference/BibFormatSwitchDialog";
 
 function Row({
   label,
@@ -68,6 +74,11 @@ export function ZoteroPane() {
   const [portText, setPortText] = useState(() => String(z.port));
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeNote, setProbeNote] = useState("");
+  // P9：参考文献格式切换（预览 + 确认窗）
+  const bibFormat = useZoteroStore((s) => s.bibFormat);
+  const [fmtPreview, setFmtPreview] = useState<BibFormatSwitchPreview | null>(null);
+  const [fmtBusy, setFmtBusy] = useState(false);
+  const [fmtNote, setFmtNote] = useState("");
 
   const update = (fn: (cur: ZoteroSettings) => ZoteroSettings) => {
     const cur = useSettingsStore.getState().settings;
@@ -88,6 +99,49 @@ export function ZoteroPane() {
   const diag = diagnose(health, z.enabled, checking);
   const lines = z.enabled && health ? capabilityLines(health) : [];
   const port = normalizePort(portText);
+
+  // P9：选择参考文献格式。auto 直接锁定跟随；具体值弹确认窗预览后再落笔
+  const chooseBibFormat = (value: string) => {
+    setFmtNote("");
+    if (value === "auto" || value === bibFormat.effective) {
+      // 跟随项目 / 与当前相同：只改配置，不动文件
+      const projectRoot = useProjectStore.getState().root;
+      if (!projectRoot) return;
+      void (async () => {
+        try {
+          await zoteroApi.setBibFormat(projectRoot, value);
+          await reloadBibFormat(projectRoot);
+          setFmtNote(value === "auto" ? "已改为跟随主 .tex 检测" : "格式未变化");
+        } catch (e) {
+          setFmtNote(`保存失败：${String(e)}`);
+        }
+      })();
+      return;
+    }
+    void (async () => {
+      setFmtBusy(true);
+      try {
+        const p = await previewBibFormatSwitch(value as ConcreteBibFormat);
+        setFmtPreview(p);
+      } catch (e) {
+        setFmtNote(`生成预览失败：${String(e)}`);
+      } finally {
+        setFmtBusy(false);
+      }
+    })();
+  };
+
+  const confirmBibFormat = () => {
+    if (!fmtPreview) return;
+    setFmtBusy(true);
+    void switchBibFormat(fmtPreview.target)
+      .then((r) => setFmtNote(r.message))
+      .catch((e) => setFmtNote(`切换失败：${String(e)}`))
+      .finally(() => {
+        setFmtBusy(false);
+        setFmtPreview(null);
+      });
+  };
 
   const runProbe = async () => {
     setProbeBusy(true);
@@ -181,6 +235,38 @@ export function ZoteroPane() {
         </select>
       </Row>
 
+      <h4>参考文献格式</h4>
+      <Row
+        label="Bib 条目格式"
+        hint="导出的 Zotero 条目跟随主 .tex 使用的引擎；切换时原地转换已有字段并改导言区（citekey 不变）"
+      >
+        <select
+          className="zotero-port"
+          value={bibFormat.configured}
+          disabled={fmtBusy}
+          onChange={(e) => chooseBibFormat(e.target.value)}
+        >
+          <option value="auto">跟随项目</option>
+          <option value="bibtex">BibTeX</option>
+          <option value="biblatex">biblatex</option>
+        </select>
+      </Row>
+      <div className="zo-fmt-status">
+        当前引擎：
+        {bibFormat.effective ? (
+          <b>{engineLabel(bibFormat.effective)}</b>
+        ) : (
+          <b className="zo-fmt-need-choice">未识别</b>
+        )}
+        {bibFormat.configured === "auto" && bibFormat.detected !== "none" && (
+          <span>（从主 .tex 检测到 {engineLabel(bibFormat.detected)}）</span>
+        )}
+        {bibFormat.needsChoice && (
+          <span className="zo-fmt-need-choice">— 未能检测，请在上方选一次 BibTeX 或 biblatex</span>
+        )}
+      </div>
+      {fmtNote && <div className="zo-fmt-note">{fmtNote}</div>}
+
       <h4>连接自检</h4>
       <div className="zotero-actions">
         <button
@@ -231,6 +317,15 @@ export function ZoteroPane() {
         本期也不申请 Zotero 10+ 的写授权。Zotero 未启动或本地 API 未开启时按离线降级，
         项目内 .bib 与缓存照常使用，编译不受影响。
       </p>
+
+      {fmtPreview && (
+        <BibFormatSwitchDialog
+          preview={fmtPreview}
+          busy={fmtBusy}
+          onConfirm={confirmBibFormat}
+          onClose={() => setFmtPreview(null)}
+        />
+      )}
     </div>
   );
 }

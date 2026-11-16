@@ -8856,6 +8856,53 @@ body.row-resizing {
   border-color: var(--accent);
 }
 
+/* ── P9 · 参考文献格式（设置页状态 + 切换确认窗） ────── */
+.zo-fmt-status {
+  margin: -2px 0 6px;
+  font-size: 11px;
+  color: var(--txt-3);
+}
+.zo-fmt-status b { color: var(--txt-1); }
+.zo-fmt-status span { margin-left: 6px; }
+.zo-fmt-need-choice { color: var(--warn) !important; }
+.zo-fmt-note {
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--txt-2);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.zo-fmt-block {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.zo-fmt-block > b { font-size: 12px; color: var(--txt-1); }
+.zo-fmt-block > span:not(.zo-style-hint) {
+  margin-left: 6px;
+  font-family: "JetBrains Mono", Consolas, monospace;
+  font-size: 11px;
+  color: var(--txt-3);
+}
+.zo-fmt-changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 8px 0 2px;
+}
+.zo-fmt-changes code {
+  padding: 1px 5px;
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--bg-3);
+  border-radius: 3px;
+}
+
 /* ── P3-5 · 引用面板页签（项目文献 / Zotero 文献库） ────── */
 .ref-tabs {
   display: flex;

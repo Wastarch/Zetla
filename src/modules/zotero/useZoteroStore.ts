@@ -26,6 +26,7 @@ import {
   shouldPoll,
   type ZoteroPollSettings,
 } from "./zoteroDiagnostics";
+import type { EffectiveFormat } from "./zoteroFormat";
 
 export interface ZoteroStoreState {
   /** 最近一次自检结果（关闭联动时也可能保留历史值） */
@@ -52,6 +53,9 @@ export interface ZoteroStoreState {
   consistency: ZoteroConsistency | null;
   /** 最近一次受管 .bib 变更事件 */
   bibChange: { path: string; hash: string; reason: string; at: string } | null;
+  /** P9：项目参考文献格式（配置 + 主 .tex 检测 + 生效值），换项目时由 runtime 重算 */
+  bibFormat: EffectiveFormat;
+  setBibFormat: (f: EffectiveFormat) => void;
   setBindings: (b: ZoteroBinding[]) => void;
   setKeyMap: (m: ZoteroKeyMap | null) => void;
   setLastSync: (r: ZoteroSyncRecord | null) => void;
@@ -92,6 +96,8 @@ export const useZoteroStore = create<ZoteroStoreState>((set, get) => ({
   syncError: null,
   consistency: null,
   bibChange: null,
+  bibFormat: { configured: "auto", detected: "none", effective: null, needsChoice: false },
+  setBibFormat: (bibFormat) => set({ bibFormat }),
   setBindings: (bindings) => set({ bindings }),
   setKeyMap: (keyMap) => set({ keyMap }),
   setLastSync: (lastSync) => set({ lastSync }),

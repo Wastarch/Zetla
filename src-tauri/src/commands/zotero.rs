@@ -994,6 +994,35 @@ pub fn zotero_set_bindings(root: String, bindings: Vec<ZoteroBinding>) -> Result
     write_project_obj(root_p, &obj)
 }
 
+/// P9：读项目级参考文献格式（.ltex/config.json 的 zoteroBibFormat）。
+/// 合法值 "auto" | "bibtex" | "biblatex"；缺失 / 非法一律回落 "auto"。
+#[tauri::command]
+pub fn zotero_get_bib_format(root: String) -> Result<String, String> {
+    let obj = read_project_obj(Path::new(&root));
+    let v = obj.get("zoteroBibFormat").and_then(|x| x.as_str()).unwrap_or("auto");
+    Ok(match v {
+        "bibtex" | "biblatex" => v.to_string(),
+        _ => "auto".to_string(),
+    })
+}
+
+/// P9：写项目级参考文献格式（读改写，保留 engine / bindings 等其它键）。
+/// 只接受 "auto" | "bibtex" | "biblatex"，其它值一律拒绝。
+#[tauri::command]
+pub fn zotero_set_bib_format(root: String, value: String) -> Result<(), String> {
+    let root_p = Path::new(&root);
+    if !root_p.is_dir() {
+        return Err(format!("项目根不存在：{root}"));
+    }
+    let v = value.trim();
+    if !matches!(v, "auto" | "bibtex" | "biblatex") {
+        return Err(format!("非法的参考文献格式：{value}"));
+    }
+    let mut obj = read_project_obj(root_p);
+    obj.insert("zoteroBibFormat".into(), Value::String(v.to_string()));
+    write_project_obj(root_p, &obj)
+}
+
 /// P1-6：读 citekey ↔ itemKey 映射缓存（.ltex/zotero/map.json）
 #[tauri::command]
 pub fn zotero_load_map(root: String) -> Result<Option<String>, String> {
@@ -1565,6 +1594,38 @@ mod tests {
         );
         // 越界路径 → Err
         assert!(zotero_read_bib(root, "../escape.bib".into()).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn bib_format_defaults_auto_roundtrips_and_rejects_invalid() {
+        let dir = std::env::temp_dir().join(format!(
+            "zetla_zotero_fmt_{}_{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        // 缺失 → auto
+        assert_eq!(zotero_get_bib_format(root.clone()).unwrap(), "auto");
+        // 合法值回读 + 保留其它键
+        std::fs::create_dir_all(dir.join(".ltex")).unwrap();
+        std::fs::write(
+            dir.join(".ltex").join("config.json"),
+            r#"{"engine":"pdflatex"}"#,
+        )
+        .unwrap();
+        zotero_set_bib_format(root.clone(), "biblatex".into()).unwrap();
+        assert_eq!(zotero_get_bib_format(root.clone()).unwrap(), "biblatex");
+        let obj = read_project_obj(&dir);
+        assert_eq!(obj["zoteroBibFormat"], "biblatex");
+        assert_eq!(obj["engine"], "pdflatex"); // 其它键保留
+        // auto 可写回
+        zotero_set_bib_format(root.clone(), "auto".into()).unwrap();
+        assert_eq!(zotero_get_bib_format(root.clone()).unwrap(), "auto");
+        // 非法值拒绝且不改盘
+        assert!(zotero_set_bib_format(root.clone(), "natbib".into()).is_err());
+        assert_eq!(zotero_get_bib_format(root).unwrap(), "auto");
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -123,6 +123,8 @@ pub fn run() {
             commands::zotero::zotero_write_bib,
             commands::zotero::zotero_get_bindings,
             commands::zotero::zotero_set_bindings,
+            commands::zotero::zotero_get_bib_format,
+            commands::zotero::zotero_set_bib_format,
             commands::zotero::zotero_load_map,
             commands::zotero::zotero_save_map,
             commands::zotero_watch::zotero_watch_bibs,

@@ -222,6 +222,10 @@ export const zoteroApi = {
   getBindings: (root: string) => call<ZoteroBinding[]>("zotero_get_bindings", { root }),
   setBindings: (root: string, bindings: ZoteroBinding[]) =>
     call<void>("zotero_set_bindings", { root, bindings }),
+  /** P9：项目级参考文献格式（.ltex/config.json 的 zoteroBibFormat） */
+  getBibFormat: (root: string) => call<string>("zotero_get_bib_format", { root }),
+  setBibFormat: (root: string, value: string) =>
+    call<void>("zotero_set_bib_format", { root, value }),
   /** citekey ↔ itemKey 映射缓存（.ltex/zotero/map.json） */
   loadMap: (root: string) => call<string | null>("zotero_load_map", { root }),
   saveMap: (root: string, json: string) => call<void>("zotero_save_map", { root, json }),

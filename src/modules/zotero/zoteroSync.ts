@@ -167,14 +167,26 @@ const BIB_TYPES: Record<string, string> = {
 export const BIB_GENERATED_HEADER =
   "% Zetla · Zotero managed .bib — 自动同步生成，请勿手工编辑（会被下次同步覆盖）";
 
-/** 无 BBT 降级：本地 API 题录 → BibTeX 条目块（不带文件头；P4 单条写入也用它） */
-export function bibtexEntryBlock(item: ZoteroItem, forcedKey?: string): string {
+/**
+ * 无 BBT 降级：本地 API 题录 → BibTeX 条目块（不带文件头；P4 单条写入也用它）。
+ * P9：format 决定字段别名（year↔date / journal↔journaltitle），默认 "bibtex" 保持既有行为。
+ * 这里内联别名映射（不 import zoteroMerge 以免反向依赖），与 FIELD_ALIASES 同口径。
+ */
+export function bibtexEntryBlock(
+  item: ZoteroItem,
+  forcedKey?: string,
+  format: "bibtex" | "biblatex" = "bibtex",
+): string {
   const type = BIB_TYPES[item.itemType] ?? "misc";
   const key = forcedKey || item.citationKey || makeCiteKey(item);
+  const alias = (name: string) =>
+    format === "biblatex" && name === "year" ? "date"
+    : format === "biblatex" && name === "journal" ? "journaltitle"
+    : name;
   const fields: [string, string][] = [];
   const push = (name: string, value: string) => {
     const v = escapeBibValue(value);
-    if (v) fields.push([name, v]);
+    if (v) fields.push([alias(name), v]);
   };
   push("title", item.title);
   push("author", item.authors.join(" and "));
@@ -191,13 +203,13 @@ export function bibtexEntryBlock(item: ZoteroItem, forcedKey?: string): string {
 }
 
 /** 无 BBT 降级：本地 API 题录 → BibTeX 文本（note 里带 itemKey，便于精确键映射） */
-export function itemsToBibtex(items: ZoteroItem[]): string {
+export function itemsToBibtex(items: ZoteroItem[], format: "bibtex" | "biblatex" = "bibtex"): string {
   const taken = new Set<string>();
   const blocks = items.map((item) => {
     // 整批生成时保持既有冲突后缀口径：key 冲突按顺序追加 a/b/c
     const key = item.citationKey || makeCiteKey(item, taken);
     taken.add(key);
-    return bibtexEntryBlock(item, key);
+    return bibtexEntryBlock(item, key, format);
   });
   return [BIB_GENERATED_HEADER, "", ...blocks, ""].join("\n");
 }

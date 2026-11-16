@@ -14,6 +14,12 @@ import {
   planStyleSwitch,
   type StyleEdit,
 } from "./zoteroStyleMap";
+import {
+  applyEngineSwitch,
+  planEngineSwitch,
+  type ConcreteBibFormat,
+} from "./zoteroFormat";
+import { detectPreambleStyle } from "./zoteroStyleMap";
 
 export interface TexSource {
   tex: string;
@@ -114,4 +120,48 @@ export async function applyStyleSwitch(
 /** 仅供单测/预览：把补丁套在给定文本上（不碰任何文件） */
 export function previewStyleEdit(tex: string, edit: StyleEdit): string {
   return applyStyleEdit(tex, edit);
+}
+
+/**
+ * P9：把导言区引擎切到目标格式（bibtex ↔ biblatex）。
+ * 写入前重新读取并重新规划（预览到确认之间用户可能改了导言区）；
+ * 有多个 span 补丁时一次性 view.dispatch（保撤销栈），无视图时退到缓冲。
+ */
+export async function applyEngineSwitchToTex(
+  path: string,
+  target: ConcreteBibFormat,
+): Promise<StyleApplyResult> {
+  const { tex, source } = await readTexForEdit(path);
+  const from = detectPreambleStyle(tex).engine;
+  const plan = planEngineSwitch(tex, from, target);
+  if (!plan.ok) return { ok: false, changed: false, undoable: false, message: plan.message };
+  if (plan.noop || plan.edits.length === 0) {
+    return { ok: true, changed: false, undoable: false, message: plan.message };
+  }
+
+  let view = getEditorView(path);
+  if (!view && source === "disk") {
+    await useBuffersStore.getState().openFiles([path]);
+    view = await waitForView(path);
+  }
+  if (view) {
+    view.dispatch({
+      changes: plan.edits.map((e) => ({ from: e.from, to: e.to, insert: e.insert })),
+      scrollIntoView: true,
+    });
+    return {
+      ok: true, changed: true, undoable: true,
+      message: `${plan.message}（Ctrl+Z 可撤销，未自动重新编译）`,
+    };
+  }
+
+  const buf = useBuffersStore.getState().buffers.find((b) => b.path === path);
+  if (!buf) {
+    return { ok: false, changed: false, undoable: false, message: "未找到目标文件缓冲，导言区未修改" };
+  }
+  useBuffersStore.getState().updateContent(path, applyEngineSwitch(buf.content, plan));
+  return {
+    ok: true, changed: true, undoable: false,
+    message: `${plan.message}（已写入缓冲，未自动重新编译）`,
+  };
 }

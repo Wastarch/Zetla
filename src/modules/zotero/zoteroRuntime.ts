@@ -51,6 +51,21 @@ import {
   type BibWriteCandidate,
   zoteroFieldsFromItem,
 } from "./zoteroMerge";
+import {
+  applyEngineSwitchToTex,
+  readTexForEdit,
+} from "./zoteroStyleApply";
+import { detectPreambleStyle } from "./zoteroStyleMap";
+import {
+  convertBibFormat,
+  detectEffectiveFormat,
+  normalizeBibFormat,
+  planEngineSwitch,
+  type BibConvertResult,
+  type BibFormatConfig,
+  type ConcreteBibFormat,
+  type EngineSwitchPlan,
+} from "./zoteroFormat";
 import { useZoteroPicker } from "./useZoteroPicker";
 import { useZoteroStore } from "./useZoteroStore";
 
@@ -98,6 +113,203 @@ async function reindexNow(): Promise<void> {
   await st.reindex();
 }
 
+// ── P9 · 参考文献格式（配置 + 主 .tex 检测） ──────────────────
+
+/** 主 .tex：当前打开的 .tex 优先，否则项目 mainFile；都没有返回 null */
+export function mainTexPath(): string | null {
+  const active = useBuffersStore.getState().activePath;
+  if (active && /\.(tex|ltx)$/i.test(active)) return active;
+  const main = useProjectStore.getState().tree?.mainFile;
+  return main && /\.(tex|ltx)$/i.test(main) ? main : null;
+}
+
+/** 当前生效格式（导出 / 字段同步用）；needsChoice 时为 null */
+export function effectiveBibFormat(): ConcreteBibFormat | null {
+  return zstore().bibFormat.effective;
+}
+
+/**
+ * P9 兜底：needsChoice（auto + 检测不到）时，按当前 .bib 里已有字段名推断格式，
+ * 避免静默产出错误格式。统计 journaltitle/date（biblatex）vs journal/year（bibtex），
+ * 平手或无字段 → 回落 "bibtex"（与历史行为一致，但 UI 会同时提示用户选一次）。
+ */
+function inferFormatFromBib(): ConcreteBibFormat {
+  try {
+    const hit = onDemandBinding();
+    const root = useProjectStore.getState().root;
+    if (!hit || !root) return "bibtex";
+    const text = useBuffersStore.getState().buffers
+      .find((b) => pathKey(b.path) === pathKey(hit.abs) && b.kind === "text")?.content
+      ?? "";
+    const bib = text || "";
+    const count = (re: RegExp) => (bib.match(re) ?? []).length;
+    const biblatex = count(/\bjournaltitle\s*=/g) + count(/\bdate\s*=/g);
+    const bibtex = count(/\bjournal\s*=/g) + count(/\byear\s*=/g);
+    return biblatex > bibtex ? "biblatex" : "bibtex";
+  } catch {
+    return "bibtex";
+  }
+}
+
+/**
+ * 重新计算项目参考文献格式：读 config.zoteroBibFormat + 扫主 .tex 导言区，
+ * 算出 effective 写回 store。全程吞异常（读文件失败按检测不到处理）。
+ */
+export async function reloadBibFormat(root: string | null): Promise<void> {
+  const st = zstore();
+  if (!root) {
+    st.setBibFormat({ configured: "auto", detected: "none", effective: null, needsChoice: false });
+    return;
+  }
+  let configured: BibFormatConfig = "auto";
+  try {
+    configured = normalizeBibFormat(await zoteroApi.getBibFormat(root));
+  } catch {
+    /* 旧项目 / 命令不可用 → auto */
+  }
+  let engine = detectPreambleStyle("").engine; // "none"
+  const texPath = mainTexPath();
+  if (texPath) {
+    try {
+      const { tex } = await readTexForEdit(texPath);
+      engine = detectPreambleStyle(tex).engine;
+    } catch {
+      /* 读主 .tex 失败 → 检测不到，按 auto 处理 */
+    }
+  }
+  st.setBibFormat(detectEffectiveFormat(configured, engine));
+}
+
+/**
+ * P9 切换格式总入口（由确认窗调用）：
+ * 1) 写 config.zoteroBibFormat（锁定用户选择）；
+ * 2) 受管/推断 .bib 原地转换字段（BibTeX ↔ biblatex）；
+ * 3) 主 .tex 导言区引擎互转（view.dispatch 保撤销）；
+ * 4) 刷新格式状态 + 重建索引。
+ * 任何一步失败都不阻断：先把成功的部分落盘，错误汇总返回给 UI。
+ */
+export interface BibFormatSwitchResult {
+  ok: boolean;
+  bibChanged: boolean;
+  texChanged: boolean;
+  renamedKeys: number;
+  conflicts: number;
+  message: string;
+}
+
+/** 切换预览：只读，给确认窗展示字段改名与导言区 before/after */
+export interface BibFormatSwitchPreview {
+  bibPath: string | null;
+  texPath: string | null;
+  bib: BibConvertResult | null;
+  engine: EngineSwitchPlan | null;
+  from: ConcreteBibFormat | null;
+  target: ConcreteBibFormat;
+}
+
+export async function previewBibFormatSwitch(target: ConcreteBibFormat): Promise<BibFormatSwitchPreview> {
+  const root = useProjectStore.getState().root;
+  const from = effectiveBibFormat();
+  const out: BibFormatSwitchPreview = {
+    bibPath: null, texPath: null, bib: null, engine: null, from, target,
+  };
+  if (!root) return out;
+
+  const hit = onDemandBinding();
+  if (hit) {
+    out.bibPath = hit.binding.bibPath;
+    try {
+      const text = await zoteroApi.readBib(root, hit.binding.bibPath);
+      out.bib = convertBibFormat(text, target);
+    } catch {
+      /* 读不到 .bib → 预览为空，切换时再报错 */
+    }
+  }
+  const texPath = mainTexPath();
+  if (texPath) {
+    out.texPath = texPath;
+    try {
+      const { tex } = await readTexForEdit(texPath);
+      out.engine = planEngineSwitch(tex, detectPreambleStyle(tex).engine, target);
+    } catch {
+      /* 读不到 .tex → 导言区预览为空 */
+    }
+  }
+  return out;
+}
+
+export async function switchBibFormat(target: ConcreteBibFormat): Promise<BibFormatSwitchResult> {
+  const root = useProjectStore.getState().root;
+  if (!root) {
+    return { ok: false, bibChanged: false, texChanged: false, renamedKeys: 0, conflicts: 0, message: "未打开项目" };
+  }
+  const st = zstore();
+  if (st.syncBusy) {
+    return { ok: false, bibChanged: false, texChanged: false, renamedKeys: 0, conflicts: 0, message: "同步进行中，请稍后再试" };
+  }
+
+  const messages: string[] = [];
+  let bibChanged = false;
+  let texChanged = false;
+  let renamedKeys = 0;
+  let conflicts = 0;
+
+  // 1) 锁定配置（先写，保证即便后续文件步骤失败，下次也按目标格式导出）
+  try {
+    await zoteroApi.setBibFormat(root, target);
+  } catch (e) {
+    return {
+      ok: false, bibChanged, texChanged, renamedKeys, conflicts,
+      message: `保存格式设置失败：${String(e)}`,
+    };
+  }
+
+  st.setSyncBusy(true);
+  try {
+    // 2) .bib 原地转换字段
+    const hit = onDemandBinding();
+    if (hit && !isDirtyBib(hit.abs)) {
+      try {
+        const existing = await zoteroApi.readBib(root, hit.binding.bibPath);
+        const conv = convertBibFormat(existing, target);
+        renamedKeys = Object.keys(conv.renamed).length;
+        conflicts = Object.values(conv.conflicts).reduce((n, a) => n + a.length, 0);
+        if (renamedKeys > 0) {
+          const r = await zoteroApi.writeBib(root, hit.binding.bibPath, conv.text);
+          bibChanged = r.written;
+          messages.push(`已转换 ${renamedKeys} 条条目字段`);
+          if (conflicts > 0) messages.push(`${conflicts} 处目标字段已存在，已保留未覆盖`);
+        } else {
+          messages.push(".bib 字段已是目标格式");
+        }
+      } catch (e) {
+        messages.push(`.bib 转换失败：${String(e)}`);
+      }
+    } else if (hit && isDirtyBib(hit.abs)) {
+      messages.push(".bib 有未保存改动，字段未转换（保存后可再切一次）");
+    }
+
+    // 3) 导言区引擎互转
+    const texPath = mainTexPath();
+    if (texPath) {
+      const r = await applyEngineSwitchToTex(texPath, target);
+      texChanged = r.changed;
+      messages.push(r.message);
+    } else {
+      messages.push("未找到主 .tex，导言区未改（请手动调整 \\bibliographystyle / biblatex）");
+    }
+  } finally {
+    st.setSyncBusy(false);
+  }
+
+  await reloadBibFormat(root);
+  await reindexNow();
+  return {
+    ok: true, bibChanged, texChanged, renamedKeys, conflicts,
+    message: messages.join("；"),
+  };
+}
+
 // ── 绑定 / 映射 / watcher 生命周期 ────────────────────────────
 export async function reloadZoteroBindings(root: string | null): Promise<void> {
   lastRoot = root;
@@ -108,8 +320,11 @@ export async function reloadZoteroBindings(root: string | null): Promise<void> {
     st.setConsistency(null);
     useReferenceStore.getState().setExternalBibPaths([]);
     await zoteroApi.unwatchBibs().catch(() => {});
+    await reloadBibFormat(null);
     return;
   }
+  // P9：格式与绑定一起重算（读 config + 扫主 .tex）
+  await reloadBibFormat(root);
   let bindings: ZoteroBinding[] = [];
   try {
     // P6：只读 bibPath + enabled；Rust 侧旧字段（collection/syncMode）由 serde 吞掉，
@@ -292,17 +507,19 @@ export async function syncZoteroBinding(binding: ZoteroBinding): Promise<ZoteroS
     }
     // 只处理确实在 .bib 里的条目
     const present = new Set(bibKeys.length ? bibKeys : Object.keys(citeToItem));
+    // P9：字段同步按生效格式产出（BibTeX year/journal ↔ biblatex date/journaltitle）
+    const fmt = effectiveBibFormat() ?? "bibtex";
     const patchMap = new Map<string, ReturnType<typeof zoteroFieldsFromItem>>();
     for (const [ck, ik] of Object.entries(citeToItem)) {
       if (present.has(ck) && byItemKey.has(ik)) {
-        patchMap.set(ck, zoteroFieldsFromItem(byItemKey.get(ik)!));
+        patchMap.set(ck, zoteroFieldsFromItem(byItemKey.get(ik)!, fmt));
       }
     }
     // BBT 风格 .bib 兜底：题录 Extra 里的 Citation Key 直接命中 .bib 的 citekey（无 itemKey note 时）
     for (const it of items) {
       const ck = it.citationKey?.trim();
       if (ck && present.has(ck) && !patchMap.has(ck) && !citeToItem[ck]) {
-        patchMap.set(ck, zoteroFieldsFromItem(it));
+        patchMap.set(ck, zoteroFieldsFromItem(it, fmt));
       }
     }
     const patches = [...patchMap.entries()].map(([citeKey, fields]) => ({ citeKey, fields }));
@@ -495,8 +712,10 @@ export async function ensureBibEntries(
       };
     }
     // citekey 强制为用户选中的那个 —— 插入的 \cite 必须与 .bib 条目 key 一致
+    // P9：按生效格式产出字段（needsChoice 时按当前 .bib 多数字段名兜底，见 effectiveBibFormat）
+    const fmt = effectiveBibFormat() ?? inferFormatFromBib();
     const text = items
-      .map(({ item, key }) => bibtexEntryBlock(item, key))
+      .map(({ item, key }) => bibtexEntryBlock(item, key, fmt))
       .join("\n\n");
     st.setSyncBusy(true);
     try {
