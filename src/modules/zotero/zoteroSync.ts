@@ -9,7 +9,6 @@ import type {
   ZoteroConsistency,
   ZoteroItem,
   ZoteroKeyMap,
-  ZoteroSyncMode,
   ZoteroSyncRecord,
 } from "../../types/zotero.ts";
 
@@ -274,11 +273,6 @@ export interface KeyMigration {
 }
 
 // ── P4 · on-demand「插一篇写一篇」纯逻辑 ───────────────────────
-
-/** 绑定同步模式归一：未知 / 缺失 / 旧配置一律回落 "full"（保持 P1 行为） */
-export function normalizeSyncMode(v: unknown): ZoteroSyncMode {
-  return v === "on-demand" ? "on-demand" : "full";
-}
 
 /**
  * wanted 里不在 bibKeys 的 key（保序、去重）。

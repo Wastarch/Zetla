@@ -9,7 +9,6 @@ import {
   buildKeyMap,
   makeCiteKey,
   missingCiteKeys,
-  normalizeSyncMode,
   parseSingleItem,
   type KeyMapEntry,
 } from "../src/modules/zotero/zoteroSync.ts";
@@ -44,14 +43,7 @@ function zitem(over: Partial<ZoteroItem> = {}): ZoteroItem {
   };
 }
 
-// ── normalizeSyncMode ─────────────────────────────────────────
-console.log("\n[1] normalizeSyncMode");
-eq(normalizeSyncMode("on-demand"), "on-demand", "合法值原样返回");
-eq(normalizeSyncMode("full"), "full", "full 原样返回");
-eq(normalizeSyncMode(undefined), "full", "旧配置缺失回落 full");
-eq(normalizeSyncMode(null), "full", "null 回落 full");
-eq(normalizeSyncMode("ON-DEMAND"), "full", "大小写敏感：未知值回落 full");
-eq(normalizeSyncMode(42), "full", "非字符串回落 full");
+// P6 起 full / on-demand 模式概念已移除；模式归一断言随 P4 废弃，见 zotero-p6。
 
 // ── missingCiteKeys ───────────────────────────────────────────
 console.log("\n[2] missingCiteKeys");

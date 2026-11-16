@@ -725,6 +725,22 @@ pub async fn zotero_fetch_bbt_export(
     fetch_text(&client, &url, "BBT 导出").await
 }
 
+/// P6：读取受管 .bib 原文（字段级同步的前提）。只读；路径同样校验必须位于项目内。
+/// 文件不存在返回空串（首次同步时新建），其它 IO 错误才返回 Err。
+#[tauri::command]
+pub fn zotero_read_bib(root: String, bib_path: String) -> Result<String, String> {
+    let root_p = Path::new(&root);
+    if !root_p.is_dir() {
+        return Err(format!("项目根不存在：{root}"));
+    }
+    let target = resolve_bib_path(root_p, &bib_path)?;
+    match std::fs::read_to_string(&target) {
+        Ok(s) => Ok(s),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(String::new()),
+        Err(e) => Err(format!("读取受管 .bib 失败：{e}")),
+    }
+}
+
 /// P1-3/4：把同步得到的 BibTeX 原子写入项目内 .bib。
 /// 内容未变则不写盘（避免无谓 reindex）；写盘前登记 selfWrite，watcher 收到的回显会被抑制。
 #[tauri::command]
@@ -1528,6 +1544,28 @@ mod tests {
         assert_eq!(v["format"], "bibtex");
         assert_eq!(v["enabled"], true);
         assert!(v.get("collection_key").is_none());
+    }
+
+    #[test]
+    fn read_bib_returns_empty_when_missing_and_text_when_present() {
+        let dir = std::env::temp_dir().join(format!(
+            "zetla_zotero_readbib_{}_{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let root = dir.to_string_lossy().into_owned();
+        // 不存在 → 空串（首次同步新建）
+        assert_eq!(zotero_read_bib(root.clone(), "missing.bib".into()).unwrap(), "");
+        // 存在 → 原文
+        std::fs::write(dir.join("refs.bib"), "@article{k, title = {T}}").unwrap();
+        assert_eq!(
+            zotero_read_bib(root.clone(), "refs.bib".into()).unwrap(),
+            "@article{k, title = {T}}"
+        );
+        // 越界路径 → Err
+        assert!(zotero_read_bib(root, "../escape.bib".into()).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

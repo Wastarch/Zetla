@@ -135,6 +135,8 @@ pub struct ZoteroConfig {
     pub auto_sync: bool,
     /// P1：编译前校验 .bib 与 \cite 一致性
     pub sync_on_compile: bool,
+    /// P6：定时轮询 Zotero 元数据变更并字段级同步到受管 .bib（默认关，用户手动开启）
+    pub metadata_poll_enabled: bool,
     /// P2：Citation Picker 默认引用命令
     pub default_command: String,
     /// P3：CSL 引文预览样式 id（仅预览/复制，不驱动 LaTeX 输出）
@@ -152,6 +154,7 @@ impl Default for ZoteroConfig {
             port: ZOTERO_DEFAULT_PORT,
             auto_sync: true,
             sync_on_compile: true,
+            metadata_poll_enabled: false,
             default_command: "cite".to_string(),
             csl_style: ZOTERO_DEFAULT_CSL_STYLE.to_string(),
             key_strategy: "bbt-first".to_string(),
@@ -2042,11 +2045,15 @@ mod tests {
         cfg.zotero.enabled = true;
         cfg.zotero.port = 24119;
         cfg.zotero.default_command = "parencite".to_string();
+        cfg.zotero.metadata_poll_enabled = true;
         write_config(&p, &cfg).unwrap();
         let back = read_config(&p);
         assert!(back.zotero.enabled);
         assert_eq!(back.zotero.port, 24119);
         assert_eq!(back.zotero.default_command, "parencite");
+        assert!(back.zotero.metadata_poll_enabled);
+        // 默认关闭：新字段不影响存量配置行为
+        assert!(!ZoteroConfig::default().metadata_poll_enabled);
     }
 
     #[test]
@@ -2056,6 +2063,7 @@ mod tests {
             port: 0,
             auto_sync: false,
             sync_on_compile: false,
+            metadata_poll_enabled: true,
             default_command: "rm -rf".to_string(),
             csl_style: "  apa; DROP TABLE  ".to_string(),
             key_strategy: "random".to_string(),

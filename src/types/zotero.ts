@@ -20,15 +20,9 @@ export type ZoteroCommand = (typeof ZOTERO_COMMANDS)[number];
 export const ZOTERO_KEY_STRATEGIES = ["bbt-first", "zetla"] as const;
 export type ZoteroKeyStrategy = (typeof ZOTERO_KEY_STRATEGIES)[number];
 
-/**
- * P4 绑定同步模式：
- * - `on-demand`（新绑定默认）：同步只重建键映射不写 .bib；
- *   插入引用 / 编译前校验时「插一篇写一篇」，幂等追加缺失条目。
- * - `full`：整分类全量覆盖写 .bib（P1 原行为）。
- * 存量配置缺该字段 → Rust serde default / 前端归一化都回落 `full`，行为不变。
- */
-export const ZOTERO_SYNC_MODES = ["on-demand", "full"] as const;
-export type ZoteroSyncMode = (typeof ZOTERO_SYNC_MODES)[number];
+// P6：full 模式已移除。存量配置里的 syncMode / collectionKey / collectionName
+// 由 Rust serde default 吞掉；前端只看 bibPath + enabled，语义统一为：
+// 「缺一条插一条（ensureBibEntries）」+「Zotero 字段变更时字段级合并（syncZoteroBinding）」。
 
 /** 应用级偏好（AppSettings.zotero；Rust ZoteroConfig） */
 export interface ZoteroSettings {
@@ -40,6 +34,8 @@ export interface ZoteroSettings {
   autoSync: boolean;
   /** P1：编译前校验 .bib 与 \cite 一致性 */
   syncOnCompile: boolean;
+  /** P6：定时轮询 Zotero 元数据并字段级同步到受管 .bib（默认关，用户手动开启） */
+  metadataPollEnabled: boolean;
   /** P2：默认引用命令 */
   defaultCommand: ZoteroCommand;
   /** P3：CSL 预览样式 id（仅预览/复制，不驱动 LaTeX 输出） */
@@ -56,6 +52,7 @@ export const DEFAULT_ZOTERO_SETTINGS: ZoteroSettings = {
   port: ZOTERO_DEFAULT_PORT,
   autoSync: true,
   syncOnCompile: true,
+  metadataPollEnabled: false,
   defaultCommand: "cite",
   cslStyle: "china-national-standard-gb-t-7714-2015-numeric",
   keyStrategy: "bbt-first",
@@ -105,26 +102,21 @@ export interface ZoteroCollection {
   parentCollection: string | false;
 }
 
-/** 项目级绑定：collection → 项目内 .bib（`.ltex/config.json` 的 zoteroBindings） */
+/**
+ * P6：项目级「受管 .bib」配置（`.ltex/config.json` 的 zoteroBindings）。
+ * 只保留一个路径 + 开关；不再有 collection / 全量模式概念。
+ * 兼容：Rust 侧 serde 仍接受旧字段（collectionKey/collectionName/syncMode），
+ * 前端忽略它们；读回写回时这些字段会被 Rust default 抹平。
+ */
 export interface ZoteroBinding {
-  collectionKey: string;
-  collectionName: string;
   /** 相对项目根（推荐）或项目内绝对路径；Rust 写盘时校验不越界 */
   bibPath: string;
-  /** BBT pull export 格式 */
-  format: "bibtex" | "biblatex";
   enabled: boolean;
-  /** P4：on-demand = 插一篇写一篇（默认） / full = 整分类覆盖（P1 原行为） */
-  syncMode: ZoteroSyncMode;
 }
 
 export const DEFAULT_ZOTERO_BINDING: ZoteroBinding = {
-  collectionKey: "",
-  collectionName: "",
   bibPath: "references.bib",
-  format: "bibtex",
   enabled: true,
-  syncMode: "on-demand",
 };
 
 /** `zotero_write_bib` / `zotero_append_entries` 返回 */

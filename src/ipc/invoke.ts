@@ -206,6 +206,9 @@ export const zoteroApi = {
   /** BBT pull export：直接拿 BibTeX 文本 */
   fetchBbtExport: (port: number, collectionKey: string, format: "bibtex" | "biblatex") =>
     call<string>("zotero_fetch_bbt_export", { port, collectionKey, format }),
+  /** P6：读受管 .bib 原文（字段级合并前提；文件不存在返回空串） */
+  readBib: (root: string, bibPath: string) =>
+    call<string>("zotero_read_bib", { root, bibPath }),
   /** 原子写项目内 .bib（UTF-8 + LF，内容未变则不写盘；返回 hash） */
   writeBib: (root: string, bibPath: string, content: string) =>
     call<ZoteroWriteResult>("zotero_write_bib", { root, bibPath, content }),

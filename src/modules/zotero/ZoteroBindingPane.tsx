@@ -1,27 +1,23 @@
-// Zotero 联动 · P1 设置页「项目绑定与自动同步」
+// Zotero 联动 · P6 设置页「受管 .bib + 字段级同步」
 // 只读 Zotero：所有 HTTP 由 Rust 发出；本组件只做表单与状态展示。
+// P6 起不再有「分类绑定 / 全量模式」概念：只有一个受管 .bib 路径 + 启用开关。
+// - 缺一条引用 → ensureBibEntries 幂等追加（插一篇写一篇）；
+// - Zotero 题录字段变化 → syncZoteroBinding 字段级合并到同 citekey 条目。
 import { useEffect, useState } from "react";
-import { useSettingsStore } from "@/core/settings";
 import { useProjectStore } from "@/project/useProject";
 import {
   DEFAULT_ZOTERO_BINDING,
-  DEFAULT_ZOTERO_SETTINGS,
   type ZoteroBinding,
-  type ZoteroCollection,
-  type ZoteroSyncMode,
 } from "@/types/zotero";
 import {
-  fetchZoteroCollections,
   persistZoteroBindings,
-  syncAllZoteroBindings,
   syncZoteroBinding,
 } from "./zoteroRuntime";
-import { isPathInsideRoot, normalizeBibPath, pathKey, syncSummary } from "./zoteroSync";
+import { isPathInsideRoot, normalizeBibPath, syncSummary } from "./zoteroSync";
 import { useZoteroStore } from "./useZoteroStore";
 
 export function ZoteroBindingPane() {
   const root = useProjectStore((s) => s.root);
-  const z = useSettingsStore((s) => s.settings.zotero ?? DEFAULT_ZOTERO_SETTINGS);
   const bindings = useZoteroStore((s) => s.bindings);
   const keyMap = useZoteroStore((s) => s.keyMap);
   const lastSync = useZoteroStore((s) => s.lastSync);
@@ -30,96 +26,47 @@ export function ZoteroBindingPane() {
   const consistency = useZoteroStore((s) => s.consistency);
   const bibChange = useZoteroStore((s) => s.bibChange);
 
-  const [collections, setCollections] = useState<ZoteroCollection[]>([]);
-  const [draftKey, setDraftKey] = useState("");
-  const [draftPath, setDraftPath] = useState(DEFAULT_ZOTERO_BINDING.bibPath);
-  const [draftFormat, setDraftFormat] = useState<"bibtex" | "biblatex">("bibtex");
-  /** P4：新绑定默认「插一篇写一篇」；存量绑定迁移为全量（行为不变） */
-  const [draftMode, setDraftMode] = useState<ZoteroSyncMode>("on-demand");
-  const [collectionsBusy, setCollectionsBusy] = useState(false);
+  // 单个受管绑定：取第一个；存量多绑定取第一个启用者，保存时收敛为一个
+  const binding = bindings.find((b) => b.enabled) ?? bindings[0] ?? null;
+  const [draftPath, setDraftPath] = useState(binding?.bibPath ?? DEFAULT_ZOTERO_BINDING.bibPath);
   const [formBusy, setFormBusy] = useState(false);
   const [note, setNote] = useState("");
 
+  // 绑定是异步从 .ltex/config.json 载入的；载入后同步输入框草稿
   useEffect(() => {
-    if (!z.enabled || !root) return;
-    void (async () => {
-      setCollectionsBusy(true);
-      try {
-        setCollections(await fetchZoteroCollections(z.port));
-      } catch {
-        setCollections([]);
-      } finally {
-        setCollectionsBusy(false);
-      }
-    })();
-  }, [z.enabled, z.port, root]);
+    if (binding) setDraftPath(binding.bibPath);
+  }, [binding?.bibPath]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadCollections = async () => {
-    setCollectionsBusy(true);
-    setNote("");
-    try {
-      const list = await fetchZoteroCollections(z.port);
-      setCollections(list);
-      setNote(list.length ? `已读取 ${list.length} 个 Zotero 分类` : "本地 API 未返回分类（库可能为空）");
-    } catch (e) {
-      setNote(`读取分类失败：${String(e)}`);
-    } finally {
-      setCollectionsBusy(false);
-    }
-  };
-
-  const addBinding = async () => {
+  const save = async () => {
     if (!root) return;
     const bibPath = draftPath.trim() || DEFAULT_ZOTERO_BINDING.bibPath;
-    const name = draftKey
-      ? collections.find((c) => c.key === draftKey)?.name ?? draftKey
-      : "全库（不按分类）";
-    const next: ZoteroBinding = {
-      collectionKey: draftKey,
-      collectionName: name,
-      bibPath,
-      format: draftFormat,
-      enabled: true,
-      syncMode: draftMode,
-    };
+    const next: ZoteroBinding = { bibPath, enabled: true };
     const abs = normalizeBibPath(root, bibPath);
-    const dedup = bindings.filter((b) => pathKey(normalizeBibPath(root, b.bibPath)) !== pathKey(abs));
     setFormBusy(true);
     setNote("");
     try {
-      await persistZoteroBindings([...dedup, next]);
+      await persistZoteroBindings([next]);
       setNote(isPathInsideRoot(root, abs)
-        ? `已绑定 ${name} → ${bibPath}（可主动同步 + 自动监听）`
-        : `已绑定 ${name} → ${bibPath}（项目外：仅监听与索引，写盘由 BBT 负责）`);
+        ? `已设置受管 .bib：${bibPath}（缺条目自动补写，Zotero 字段变化可同步）`
+        : `路径 ${bibPath} 不在项目内：只索引与监听，不会写盘`);
     } catch (e) {
-      setNote(`保存绑定失败：${String(e)}`);
+      setNote(`保存失败：${String(e)}`);
     } finally {
       setFormBusy(false);
     }
   };
 
-  const removeBinding = async (b: ZoteroBinding) => {
-    setFormBusy(true);
-    try {
-      await persistZoteroBindings(bindings.filter((x) => x !== b));
-      setNote(`已移除绑定 ${b.collectionName}`);
-    } catch (e) {
-      setNote(`移除失败：${String(e)}`);
-    } finally {
-      setFormBusy(false);
+  const toggleEnabled = async () => {
+    if (!binding) {
+      await save();
+      return;
     }
-  };
-
-  const toggleMode = async (b: ZoteroBinding) => {
-    const nextMode: ZoteroSyncMode = b.syncMode === "on-demand" ? "full" : "on-demand";
     setFormBusy(true);
     try {
-      await persistZoteroBindings(
-        bindings.map((x) => (x === b ? { ...x, syncMode: nextMode } : x)),
-      );
-      setNote(
-        `已把 ${b.collectionName} 切换为「${nextMode === "on-demand" ? "按需写入（插一篇写一篇）" : "全量同步"}」模式`,
-      );
+      const enabled = !binding.enabled;
+      await persistZoteroBindings(enabled ? [{ bibPath: binding.bibPath, enabled: true }] : []);
+      setDraftPath(binding.bibPath);
+      setNote(enabled ? "已启用受管 .bib 同步" : "已停用；项目内 .bib 仍可正常索引与编译");
     } catch (e) {
       setNote(`切换失败：${String(e)}`);
     } finally {
@@ -127,53 +74,43 @@ export function ZoteroBindingPane() {
     }
   };
 
-  const syncOne = async (b: ZoteroBinding) => {
+  const remove = async () => {
+    setFormBusy(true);
+    try {
+      await persistZoteroBindings([]);
+      setDraftPath(DEFAULT_ZOTERO_BINDING.bibPath);
+      setNote("已移除受管 .bib 设置");
+    } catch (e) {
+      setNote(`移除失败：${String(e)}`);
+    } finally {
+      setFormBusy(false);
+    }
+  };
+
+  const syncNow = async () => {
+    if (!binding) {
+      setNote("请先设置受管 .bib 路径并保存");
+      return;
+    }
     setNote("同步中…");
-    const r = await syncZoteroBinding(b);
+    const r = await syncZoteroBinding(binding);
     setNote(syncSummary(r));
   };
 
-  const syncAll = async () => {
-    setNote("同步中…");
-    const rs = await syncAllZoteroBindings();
-    setNote(rs.length ? rs.map(syncSummary).join(" ｜ ") : "没有启用的绑定");
-  };
+  const abs = root && binding ? normalizeBibPath(root, binding.bibPath) : "";
+  const inside = root && abs ? isPathInsideRoot(root, abs) : false;
 
   return (
     <div className="zotero-bind-pane">
-      <h4>项目绑定（Phase 1）</h4>
+      <h4>受管 .bib</h4>
       {!root ? (
-        <p className="set-note">请先打开一个项目；绑定保存在项目的 <code>.ltex/config.json</code>。</p>
+        <p className="set-note">请先打开一个项目；设置在项目的 <code>.ltex/config.json</code>。</p>
       ) : (
         <>
           <div className="fld">
             <div className="lbl">
-              <b>Zotero 分类</b>
-              <span>选择要同步的 collection；「全库」表示所有顶层题录</span>
-            </div>
-            <div className="zotero-bind-line">
-              <select
-                className="txt-in zotero-bind-select"
-                value={draftKey}
-                onChange={(e) => setDraftKey(e.target.value)}
-              >
-                <option value="">全库（不按分类）</option>
-                {collections.map((c) => (
-                  <option key={c.key} value={c.key}>
-                    {c.name}{c.parentCollection ? ` · 子分类` : ""}（{c.key}）
-                  </option>
-                ))}
-              </select>
-              <button type="button" className="btn sm" disabled={collectionsBusy} onClick={() => void loadCollections()}>
-                {collectionsBusy ? "读取中…" : "↻ 读取分类"}
-              </button>
-            </div>
-          </div>
-
-          <div className="fld">
-            <div className="lbl">
-              <b>受管 .bib 路径</b>
-              <span>相对项目根（推荐）；项目外绝对路径只监听与索引，写入交给 BBT Keep updated</span>
+              <b>.bib 路径</b>
+              <span>相对项目根；Zotero 字段变化会同步到这里的对应条目（citekey 不变）</span>
             </div>
             <div className="zotero-bind-line">
               <input
@@ -182,76 +119,38 @@ export function ZoteroBindingPane() {
                 onChange={(e) => setDraftPath(e.target.value)}
                 placeholder="references.bib"
               />
-              <select
-                className="txt-in zotero-bind-format"
-                value={draftFormat}
-                onChange={(e) => setDraftFormat(e.target.value as "bibtex" | "biblatex")}
-              >
-                <option value="bibtex">bibtex</option>
-                <option value="biblatex">biblatex</option>
-              </select>
-              <select
-                className="txt-in zotero-bind-format"
-                value={draftMode}
-                title="on-demand：插入引用时逐条写入 .bib；full：同步时整分类覆盖 .bib"
-                onChange={(e) => setDraftMode(e.target.value as ZoteroSyncMode)}
-              >
-                <option value="on-demand">按需写入</option>
-                <option value="full">全量同步</option>
-              </select>
-              <button type="button" className="btn primary sm" disabled={formBusy} onClick={() => void addBinding()}>
-                保存绑定
+              <button type="button" className="btn primary sm" disabled={formBusy} onClick={() => void save()}>
+                保存
               </button>
             </div>
           </div>
 
           <div className="zotero-bind-list">
-            {bindings.length === 0 ? (
-              <p className="set-note">
-                尚未绑定。装了 Better BibTeX 可在 Zotero 里对该 collection 选「自动导出」并勾选
-                <b> Keep updated</b>，导出路径填上面的 .bib；Zetla 会自动监听并重建引用索引。
-              </p>
+            {!binding ? (
+              <p className="set-note">尚未设置受管 .bib。保存后：插入引用时缺一条补一条；Zotero 里改了题录字段可在下方「立即同步字段」写回项目 .bib。</p>
             ) : (
-              bindings.map((b, i) => {
-                const abs = normalizeBibPath(root, b.bibPath);
-                const inside = isPathInsideRoot(root, abs);
-                return (
-                  <div className="zotero-bind-row" key={`${b.collectionKey}-${b.bibPath}-${i}`}>
-                    <div className="zotero-bind-meta">
-                      <b>{b.collectionName || "全库"}</b>
-                      <span>
-                        {b.bibPath}{b.collectionKey ? ` · ${b.collectionKey}` : ""} · {b.format} ·{" "}
-                        {b.syncMode === "on-demand" ? "按需写入" : "全量同步"}
-                      </span>
-                      <em>{inside ? "项目内（可主动同步）" : "项目外（仅监听与索引）"}</em>
-                    </div>
-                    <div className="zotero-bind-ops">
-                      <button
-                        type="button"
-                        className="btn sm"
-                        disabled={formBusy}
-                        title="on-demand：插入引用时逐条写入 .bib；full：同步时整分类覆盖 .bib"
-                        onClick={() => void toggleMode(b)}
-                      >
-                        {b.syncMode === "on-demand" ? "切为全量" : "切为按需"}
-                      </button>
-                      <button type="button" className="btn sm" disabled={syncBusy} onClick={() => void syncOne(b)}>
-                        立即同步
-                      </button>
-                      <button type="button" className="btn sm" disabled={formBusy} onClick={() => void removeBinding(b)}>
-                        移除
-                      </button>
-                    </div>
-                  </div>
-                );
-              })
+              <div className="zotero-bind-row">
+                <div className="zotero-bind-meta">
+                  <b>{binding.bibPath}</b>
+                  <span>{binding.enabled ? "已启用" : "已停用"} · {inside ? "项目内（可写盘）" : "项目外（仅索引）"}</span>
+                  <em>{binding.enabled ? "Zotero 字段变化 → 同 citekey 条目字段级合并" : "停用期间不写盘、不同步字段"}</em>
+                </div>
+                <div className="zotero-bind-ops">
+                  <button type="button" className="btn sm" disabled={formBusy} onClick={() => void toggleEnabled()}>
+                    {binding.enabled ? "停用" : "启用"}
+                  </button>
+                  <button type="button" className="btn sm" disabled={syncBusy || !binding.enabled} onClick={() => void syncNow()}>
+                    {syncBusy ? "同步中…" : "立即同步字段"}
+                  </button>
+                  <button type="button" className="btn sm" disabled={formBusy} onClick={() => void remove()}>
+                    移除
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 
           <div className="zotero-actions">
-            <button type="button" className="btn sm" disabled={syncBusy || bindings.length === 0} onClick={() => void syncAll()}>
-              {syncBusy ? "同步中…" : "立即同步全部"}
-            </button>
             <span className="zotero-last">{syncSummary(lastSync)}</span>
           </div>
           {note && <div className="zotero-diag zotero-muted"><b>操作结果</b><p>{note}</p></div>}
@@ -261,7 +160,7 @@ export function ZoteroBindingPane() {
 
       <h4>同步状态</h4>
       <div className="zotero-bind-stats">
-        <span>绑定 {bindings.length} 个</span>
+        <span>受管 .bib {binding ? 1 : 0} 个</span>
         <span>键映射 {keyMap ? Object.keys(keyMap.byCiteKey).length : 0} 条</span>
         <span>未映射 {keyMap?.unmapped.length ?? 0} 个（多为用户手写条目）</span>
         <span>最近变更 {bibChange ? `${bibChange.reason} · ${bibChange.at.slice(11, 19)}` : "无"}</span>
@@ -281,10 +180,9 @@ export function ZoteroBindingPane() {
       )}
 
       <p className="set-note">
-        自动同步链路：Zotero / BBT 改写 .bib → Rust notify 多路径监听（300ms 防抖 + hash 去重）→
-        <code> zotero:bib-changed</code> → 重建引用索引（补全 / 跳转 / 悬浮 / 校验 / 面板）。
-        已打开且未保存的 .bib 不会被覆盖。离线或 403 时直接使用磁盘缓存，编译不受影响；
-        本期不写回 Zotero 文献库。
+        同步规则：Zotero 题录的非空字段（标题 / 作者 / 年份 / 期刊 / DOI / URL / 摘要）覆盖项目 .bib 中同 citekey 条目的同名字段；
+        .bib 独有字段（手写 note / eprint 等）与 citekey 保持不动。缺条目时在插入引用或编译前幂等补写。
+        已打开且未保存的 .bib 不写盘；离线或 403 时编译照常。
       </p>
     </div>
   );

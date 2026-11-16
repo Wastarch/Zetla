@@ -153,6 +153,15 @@ export function ZoteroPane() {
           onChange={(v) => update((cur) => ({ ...cur, syncOnCompile: v }))}
         />
       </Row>
+      <Row
+        label="定时同步字段"
+        hint="P6：默认关闭；开启后每 2 分钟拉取 Zotero 题录，把变化字段写回受管 .bib（citekey 不变）"
+      >
+        <Toggle
+          checked={z.metadataPollEnabled}
+          onChange={(v) => update((cur) => ({ ...cur, metadataPollEnabled: v }))}
+        />
+      </Row>
       <Row label="自检间隔" hint="10–300 秒；离线时也会按此间隔自动重试恢复">
         <select
           className="zotero-port"

@@ -119,6 +119,7 @@ pub fn run() {
             commands::zotero::zotero_fetch_collections,
             commands::zotero::zotero_fetch_items,
             commands::zotero::zotero_fetch_bbt_export,
+            commands::zotero::zotero_read_bib,
             commands::zotero::zotero_write_bib,
             commands::zotero::zotero_get_bindings,
             commands::zotero::zotero_set_bindings,

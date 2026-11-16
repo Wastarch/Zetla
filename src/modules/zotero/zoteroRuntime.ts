@@ -27,17 +27,14 @@ import {
 import {
   BIB_DEBOUNCE_MS,
   appendKeyMap,
-  bibKeysFromText,
   bibtexEntryBlock,
   buildKeyMap,
   checkBibConsistency,
   consistencySummary,
   isNewChange,
   isPathInsideRoot,
-  itemsToBibtex,
   missingCiteKeys,
   normalizeBibPath,
-  normalizeSyncMode,
   parseCollections,
   parseItemKeyNotes,
   parseSingleItem,
@@ -47,6 +44,11 @@ import {
   shouldPull,
   type KeyMigration,
 } from "./zoteroSync";
+import {
+  itemKeyNotesFromBib,
+  mergeBibFields,
+  zoteroFieldsFromItem,
+} from "./zoteroMerge";
 import { useZoteroPicker } from "./useZoteroPicker";
 import { useZoteroStore } from "./useZoteroStore";
 
@@ -56,8 +58,12 @@ let unlistenBib: (() => void) | null = null;
 let unsubscribeProject: (() => void) | null = null;
 let unsubscribeSettings: (() => void) | null = null;
 let reindexTimer: number | undefined;
+let metadataPollTimer: number | undefined;
 let lastHandled: Pick<ZoteroBibChanged, "path" | "hash"> | null = null;
 let lastRoot: string | null = null;
+
+/** P6：元数据轮询固定间隔（毫秒）；只在设置里显式开启后启动，未开启时零请求 */
+const METADATA_POLL_MS = 120_000;
 
 function cfg() {
   return useSettingsStore.getState().settings.zotero ?? DEFAULT_ZOTERO_SETTINGS;
@@ -104,11 +110,11 @@ export async function reloadZoteroBindings(root: string | null): Promise<void> {
   }
   let bindings: ZoteroBinding[] = [];
   try {
-    bindings = (await zoteroApi.getBindings(root)).map((b) => ({
-      ...b,
-      // P4：旧配置缺 syncMode / 值非法 → "full"（保持 P1 行为不变）
-      syncMode: normalizeSyncMode(b.syncMode),
-    }));
+    // P6：只读 bibPath + enabled；Rust 侧旧字段（collection/syncMode）由 serde 吞掉，
+    // 这里再显式收敛一次，避免前端拿到历史脏字段。
+    bindings = (await zoteroApi.getBindings(root))
+      .filter((b) => !!b.bibPath?.trim())
+      .map((b) => ({ bibPath: b.bibPath, enabled: b.enabled !== false }));
   } catch {
     // 旧项目 / 配置损坏按「无绑定」处理，不报错
   }
@@ -208,7 +214,7 @@ function handleBibChanged(e: ZoteroBibChanged): void {
   }, BIB_DEBOUNCE_MS);
 }
 
-// ── 主动同步（P1-8 BBT pull export / P1-9 无 BBT 降级） ────────
+// ── 主动同步（P6 · Zotero 字段变更 → .bib 字段级合并） ─────────
 function skipped(message: string, bibPath: string): ZoteroSyncRecord {
   return {
     at: new Date().toISOString(),
@@ -231,11 +237,15 @@ function skip(message: string, bibPath: string): ZoteroSyncRecord {
 }
 
 /**
- * 同步一条绑定。三条降级路径：
- * - 离线 / 关闭联动 → 跳过，磁盘缓存 .bib 照常可用（编译不阻断）；
- * - BBT 在线 → pull export 拿 BibTeX；同时拉 items JSON 建键映射；
- * - 无 BBT → 本地 API items JSON → Zetla 生成稳定 citekey 的 BibTeX。
- * 外部 .bib（项目根外）只监听不写盘，交由 BBT Keep updated 维护。
+ * P6 同步一条受管 .bib（字段级增量）：
+ * 读现有 .bib → 拉 Zotero 全库题录 → 对「已在 .bib 且能映射到 itemKey」的条目
+ * 生成字段补丁 → `mergeBibFields` 只替换变化条目（Zotero 非空字段覆盖同名字段、
+ * .bib 独有字段保留、citekey 不变）→ 原子写盘。
+ *
+ * 三个出口全部吞异常 / 返回 skipped 记录，绝不阻断编译：
+ * - 离线 / 关闭联动 → 跳过，磁盘缓存 .bib 照常可用；
+ * - .bib 脏 / 项目外 → 跳过，交给用户或 BBT；
+ * - 没变化 → 不写盘，仅刷新键映射。
  */
 export async function syncZoteroBinding(binding: ZoteroBinding): Promise<ZoteroSyncRecord> {
   const root = useProjectStore.getState().root;
@@ -255,92 +265,89 @@ export async function syncZoteroBinding(binding: ZoteroBinding): Promise<ZoteroS
   st.setSyncError(null);
   try {
     const port = c.port || 23119;
-    const collectionKey = binding.collectionKey.trim();
+    const existing = await zoteroApi.readBib(root, binding.bibPath);
 
-    // P4 按需模式：同步只重建键映射，不写 .bib ——「插一篇写一篇」由 ensureBibEntries 负责
-    if (binding.syncMode === "on-demand") {
-      let itemsJson = "";
-      try {
-        itemsJson = await zoteroApi.fetchItems(port, collectionKey || null);
-      } catch {
-        // 键映射失败不致命
-      }
-      const items = itemsJson ? parseZoteroItems(itemsJson) : [];
-      const ref = useReferenceStore.getState();
-      // 不用 bibKeys 过滤候选：按需模式要让「还没写入 .bib」的题录也能解析出 citekey
-      const map = buildKeyMap(items, [], health.serverId ?? null, now, {});
-      map.unmapped = ref.entries.map((e) => e.key).filter((k) => !map.byCiteKey[k]).sort();
-      const migrations = planKeyMigration(st.keyMap, map, ref.citations.map((x) => x.key));
-      await zoteroApi.saveMap(root, JSON.stringify({ ...map, migrations }, null, 2));
-      st.setKeyMap(map);
-      await reindexNow();
-      const record: ZoteroSyncRecord = {
-        at: now,
-        ok: true,
-        source: "local-api",
-        written: false,
-        hash: "",
-        entryCount: 0,
-        mappedCount: Object.keys(map.byCiteKey).length,
-        message: items.length
-          ? `按需模式：已更新键映射（${items.length} 条题录），.bib 待「插一篇写一篇」`
-          : "按需模式：Zotero 题录为空或请求失败，键映射未更新",
-        bibPath: abs,
-      };
-      st.setLastSync(record);
-      return record;
-    }
-
+    // 1) 拉全库 top-level 题录（只读；一次请求，按 itemKey 索引）
     let itemsJson = "";
     try {
-      itemsJson = await zoteroApi.fetchItems(port, collectionKey || null);
+      itemsJson = await zoteroApi.fetchItems(port, null);
     } catch {
-      // 键映射失败不致命：.bib 仍可同步
+      // 题录拉取失败不致命：下面映射为空，至多不更新字段
     }
     const items = itemsJson ? parseZoteroItems(itemsJson) : [];
+    const byItemKey = new Map(items.map((it) => [it.itemKey, it]));
 
-    let text = "";
-    let source: "bbt" | "local-api" = "local-api";
-    if (health.bbtAvailable && collectionKey) {
-      try {
-        text = await zoteroApi.fetchBbtExport(port, collectionKey, binding.format);
-        source = "bbt";
-      } catch {
-        // pull export 失败（集合未配置自动导出等）→ 回落本地 API 生成
+    // 2) 解析现有 .bib 的 citeKey → itemKey 映射：优先 map.json，缺失时从 note 兜底
+    const ref = useReferenceStore.getState();
+    const bibKeys = ref.entries
+      .filter((e) => pathKey(e.file) === pathKey(abs))
+      .map((e) => e.key);
+    const noted = itemKeyNotesFromBib(existing); // itemKey → citeKey
+    const prior = st.keyMap;
+    const citeToItem: Record<string, string> = { ...(prior?.byCiteKey ?? {}) };
+    for (const [ik, ck] of Object.entries(noted)) {
+      if (!citeToItem[ck]) citeToItem[ck] = ik;
+    }
+    // 只处理确实在 .bib 里的条目
+    const present = new Set(bibKeys.length ? bibKeys : Object.keys(citeToItem));
+    const patchMap = new Map<string, ReturnType<typeof zoteroFieldsFromItem>>();
+    for (const [ck, ik] of Object.entries(citeToItem)) {
+      if (present.has(ck) && byItemKey.has(ik)) {
+        patchMap.set(ck, zoteroFieldsFromItem(byItemKey.get(ik)!));
       }
     }
-    if (!text.trim()) {
-      if (items.length === 0) throw new Error("本地 API 未返回题录（分类可能为空或请求被拒绝）");
-      text = itemsToBibtex(items);
-      source = "local-api";
+    // BBT 风格 .bib 兜底：题录 Extra 里的 Citation Key 直接命中 .bib 的 citekey（无 itemKey note 时）
+    for (const it of items) {
+      const ck = it.citationKey?.trim();
+      if (ck && present.has(ck) && !patchMap.has(ck) && !citeToItem[ck]) {
+        patchMap.set(ck, zoteroFieldsFromItem(it));
+      }
+    }
+    const patches = [...patchMap.entries()].map(([citeKey, fields]) => ({ citeKey, fields }));
+
+    // 3) 字段级合并 + 原子写（没变化不写盘）
+    const merged = mergeBibFields(existing, patches);
+    let written = false;
+    let hash = "";
+    let message = "";
+    if (merged.changedKeys.length > 0) {
+      const r = await zoteroApi.writeBib(root, binding.bibPath, merged.text);
+      written = r.written;
+      hash = r.hash;
+      const sample = merged.changedKeys.slice(0, 4).join(", ");
+      message = `已同步 ${merged.changedKeys.length} 条题录字段（${sample}${merged.changedKeys.length > 4 ? "…" : ""}）`;
+    } else {
+      message = patches.length
+        ? `字段无变化（已检查 ${patches.length} 条映射）`
+        : "没有可同步的映射条目（可先插入引用或用「补写条目」建立映射）";
     }
 
-    const written = await zoteroApi.writeBib(root, binding.bibPath, text);
-    const bibKeys = bibKeysFromText(text);
-    const notes = parseItemKeyNotes(text);
-    const map = buildKeyMap(items, bibKeys, health.serverId ?? null, now, notes);
-    const cited = useReferenceStore.getState().citations.map((x) => x.key);
-    const migrations: KeyMigration[] = planKeyMigration(st.keyMap, map, cited);
-    // 键漂移只生成计划、不自动改 .tex（避免静默改写用户正文）
-    await zoteroApi.saveMap(
-      root,
-      JSON.stringify({ ...map, migrations }, null, 2),
+    // 4) 刷新键映射（citekey 不变；只为映射条目补全，不覆盖用户手写条目的指向）
+    const notes = parseItemKeyNotes(merged.changedKeys.length ? merged.text : existing);
+    const map = buildKeyMap(
+      items,
+      bibKeys.length ? bibKeys : Object.keys(citeToItem),
+      health.serverId ?? null,
+      now,
+      { ...noted, ...notes },
     );
+    const cited = ref.citations.map((x) => x.key);
+    const migrations: KeyMigration[] = planKeyMigration(prior, map, cited);
+    // 键漂移只记录计划，不自动改写 .tex 正文
+    await zoteroApi.saveMap(root, JSON.stringify({ ...map, migrations }, null, 2));
     st.setKeyMap(map);
     await reindexNow();
 
     const record: ZoteroSyncRecord = {
       at: now,
       ok: true,
-      source,
-      written: written.written,
-      hash: written.hash,
+      source: "local-api",
+      written,
+      hash,
       entryCount: bibKeys.length,
       mappedCount: Object.keys(map.byCiteKey).length,
-      message: migrations.length
-        ? `${migrations.length} 个 citekey 已变化（未自动改写正文）`
-        : written.message,
-      bibPath: written.path,
+      message: migrations.length ? `${message}；${migrations.length} 个 citekey 漂移（未改正文）` : message,
+      bibPath: abs,
     };
     st.setLastSync(record);
     return record;
@@ -388,13 +395,11 @@ export interface BibEnsureResult {
   message: string;
 }
 
-/** 第一个启用且指向项目内 .bib 的按需绑定（on-demand 写入目标） */
+/** 第一个启用且指向项目内 .bib 的受管绑定（缺一条写一条 / 字段同步共用） */
 function onDemandBinding(): { binding: ZoteroBinding; root: string; abs: string } | null {
   const root = useProjectStore.getState().root;
   if (!root) return null;
-  const b = zstore().bindings.find(
-    (x) => x.enabled && x.syncMode === "on-demand" && x.bibPath.trim(),
-  );
+  const b = zstore().bindings.find((x) => x.enabled && x.bibPath.trim());
   if (!b) return null;
   const abs = normalizeBibPath(root, b.bibPath);
   // 项目外 .bib 由 BBT Keep updated 维护，Zetla 不写盘
@@ -533,18 +538,18 @@ export async function runZoteroPreCompile(): Promise<void> {
     const line = consistencySummary(report);
     if (line) useAppStore.getState().appendLog([line]);
 
-    // P4 按需补齐：编译前把「被引但缺失」的条目写进按需绑定 .bib（失败只记日志，不阻断）
-    const odBinding = st.bindings.find((b) => b.enabled && b.syncMode === "on-demand");
+    // P6 按需补齐：编译前把「被引但缺失」的条目写进受管 .bib（失败只记日志，不阻断）
+    const odBinding = st.bindings.find((b) => b.enabled);
     if (odBinding && report.missing.length > 0) {
       const r = await ensureBibEntries(report.missing.map((k) => ({ citeKey: k })));
       if (r.written > 0) {
         useAppStore.getState().appendLog([
-          `Zotero 按需同步：编译前已补写 ${r.written} 条到 ${odBinding.bibPath}` +
+          `Zotero 按需补写：编译前已补写 ${r.written} 条到 ${odBinding.bibPath}` +
             (r.unknown.length ? `；另有 ${r.unknown.length} 条无法生成` : ""),
         ]);
       } else if (r.unknown.length > 0) {
         useAppStore.getState().appendLog([
-          `Zotero 按需同步：${r.unknown.length} 条被引条目无法生成（${r.message}）`,
+          `Zotero 按需补写：${r.unknown.length} 条被引条目无法生成（${r.message}）`,
         ]);
       }
     }
@@ -594,6 +599,25 @@ function onFocus(): void {
   if (b) void syncZoteroBinding(b);
 }
 
+/** P6：按设置启停元数据轮询（默认关闭；开后每 120s 且距上次同步 ≥60s 才拉一次） */
+function restartMetadataPoll(): void {
+  if (metadataPollTimer !== undefined) {
+    window.clearInterval(metadataPollTimer);
+    metadataPollTimer = undefined;
+  }
+  const c = cfg();
+  if (!c.enabled || !c.metadataPollEnabled) return;
+  metadataPollTimer = window.setInterval(() => {
+    const cfgNow = cfg();
+    const st = zstore();
+    if (!cfgNow.enabled || !cfgNow.metadataPollEnabled || st.syncBusy) return;
+    if (st.health?.state !== "connected") return;
+    if (!shouldPull(st.lastSync?.at ?? null, Date.now())) return;
+    const b = st.bindings.find((x) => x.enabled);
+    if (b) void syncZoteroBinding(b);
+  }, METADATA_POLL_MS);
+}
+
 export function startZoteroSyncRuntime(): void {
   if (installed) return;
   installed = true;
@@ -612,12 +636,14 @@ export function startZoteroSyncRuntime(): void {
     const a = s.settings.zotero;
     const b = prev.settings.zotero;
     if (!a || !b) return;
-    if (a.enabled === b.enabled && a.autoSync === b.autoSync) return;
+    if (a.enabled === b.enabled && a.autoSync === b.autoSync && a.metadataPollEnabled === b.metadataPollEnabled) return;
     void restartBibWatcher();
+    restartMetadataPoll();
   });
 
   window.addEventListener("focus", onFocus);
   window.addEventListener("keydown", onPickerKey, true);
+  restartMetadataPoll();
   void reloadZoteroBindings(useProjectStore.getState().root);
 }
 
@@ -625,6 +651,10 @@ export function stopZoteroSyncRuntime(): void {
   if (reindexTimer !== undefined) {
     window.clearTimeout(reindexTimer);
     reindexTimer = undefined;
+  }
+  if (metadataPollTimer !== undefined) {
+    window.clearInterval(metadataPollTimer);
+    metadataPollTimer = undefined;
   }
   unlistenBib?.();
   unlistenBib = null;
