@@ -1,19 +1,23 @@
-// P3-5 · 「Zotero 文献库」页签（只读浏览：分类 / 标签 / 搜索 / 分页）
+// P3-5 · 「Zotero 文献库」页签（只读浏览：分类 / 搜索 / 分页）
 //
 // 数据全部来自 Rust 的只读命令（fetchCollections / fetchItems 带 start）；
 // 前端不做任何写请求，也不在本地重建 Zotero 的层级逻辑——分类树由纯逻辑拍平。
 // 条目操作只有两个：插入 \cite（需 citekey）与在 Zotero 中定位（本地协议）。
+// P8：去掉标签筛选区（用户要求）；分类下拉默认定位到 Zotero 当前打开的分类（复用 P5 链路）。
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { zoteroApi } from "@/ipc/invoke";
 import { useSettingsStore } from "@/core/settings";
 import { useZoteroStore } from "@/modules/zotero/useZoteroStore";
 import { parseCollections } from "@/modules/zotero/zoteroSync";
-import { citationKeyFor } from "@/modules/zotero/zoteroPicker";
+import {
+  citationKeyFor,
+  matchCollectionKey,
+  parseSelectedCollection,
+} from "@/modules/zotero/zoteroPicker";
 import { zoteroSelectUrl } from "@/modules/zotero/zoteroReverse";
 import {
   buildCollectionRows,
-  collectLibraryTags,
   collectionLabel,
   filterLibraryItems,
   libraryItemMeta,
@@ -50,26 +54,43 @@ export function ZoteroLibraryPane({ onInsert, onNotice }: ZoteroLibraryPaneProps
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [q, setQ] = useState("");
-  const [tag, setTag] = useState<string | null>(null);
+  /** P8：分类下拉是否由「Zotero 当前打开的分类」自动定位（用户手动切换后取消标记） */
+  const [collAuto, setCollAuto] = useState(false);
+  /** P8：分类定位完成前不拉条目，避免先闪一帧「全部文献」再跳转 */
+  const [collReady, setCollReady] = useState(false);
   /** 请求序号：切分类/翻页时旧响应直接丢弃，避免串库 */
   const seq = useRef(0);
 
   const rows = useMemo(() => buildCollectionRows(collections), [collections]);
-  const tags = useMemo(() => collectLibraryTags(items), [items]);
-  const filtered = useMemo(() => filterLibraryItems(items, { query: q, tag }), [items, q, tag]);
+  const filtered = useMemo(() => filterLibraryItems(items, { query: q }), [items, q]);
 
-  // 分类列表：连接可用时加载一次（失败只提示，不影响项目文献页签）
+  // 分类列表：连接可用时加载一次，并默认定位到 Zotero 主窗口当前打开的分类
+  // （复用 P5 引用浮层链路：selectedCollection → parseSelectedCollection → matchCollectionKey）
+  // 失败静默降级为「全部文献」；用户手动切换分类后不再被自动定位覆盖。
   useEffect(() => {
     if (!enabled || !connected) return;
     let alive = true;
-    zoteroApi
-      .fetchCollections(port)
-      .then((raw) => {
-        if (alive) setCollections(parseCollections(raw));
-      })
-      .catch((e) => {
+    setCollReady(false);
+    void (async () => {
+      try {
+        const [rawColls, rawSel] = await Promise.all([
+          zoteroApi.fetchCollections(port),
+          zoteroApi.selectedCollection(port).catch(() => ""),
+        ]);
+        if (!alive) return;
+        const colls = parseCollections(rawColls);
+        setCollections(colls);
+        const key = matchCollectionKey(rawSel ? parseSelectedCollection(rawSel) : null, colls);
+        if (key) {
+          setActive(key);
+          setCollAuto(true);
+        }
+      } catch (e) {
         if (alive) setError(`读取 Zotero 分类失败：${String(e)}`);
-      });
+      } finally {
+        if (alive) setCollReady(true);
+      }
+    })();
     return () => {
       alive = false;
     };
@@ -95,15 +116,14 @@ export function ZoteroLibraryPane({ onInsert, onNotice }: ZoteroLibraryPaneProps
     [port, active],
   );
 
-  // 切分类 / 连接恢复：重置列表并取首页
+  // 切分类 / 连接恢复：重置列表并取首页（等分类定位完成，避免先闪一帧全库列表）
   useEffect(() => {
-    if (!enabled || !connected) return;
+    if (!enabled || !connected || !collReady) return;
     setItems([]);
-    setTag(null);
     setError(null);
     setHasMore(false);
     void loadPage(0, true);
-  }, [enabled, connected, loadPage]);
+  }, [enabled, connected, collReady, loadPage]);
 
   const onOpenInZotero = useCallback(
     async (item: LibraryItem) => {
@@ -153,7 +173,10 @@ export function ZoteroLibraryPane({ onInsert, onNotice }: ZoteroLibraryPaneProps
           className="zo-lib-collection"
           value={active ?? ""}
           title={collectionLabel(rows, active)}
-          onChange={(e) => setActive(e.target.value || null)}
+          onChange={(e) => {
+            setActive(e.target.value || null);
+            setCollAuto(false);
+          }}
         >
           <option value="">全部文献</option>
           {rows.map((r) => (
@@ -169,32 +192,12 @@ export function ZoteroLibraryPane({ onInsert, onNotice }: ZoteroLibraryPaneProps
           onChange={(e) => setQ(e.target.value)}
           title="只在已加载的条目里筛选；全库搜索请用 Ctrl+Alt+K"
         />
+        {collAuto && active && (
+          <div className="zo-lib-coll-hint" title="每次打开文献库都会重新定位 Zotero 当前分类">
+            已定位 Zotero 当前分类
+          </div>
+        )}
       </div>
-
-      {tags.length > 0 && (
-        <div className="zo-lib-tags">
-          {tag && (
-            <button type="button" className="zo-lib-tag zo-lib-tag-on" onClick={() => setTag(null)}>
-              {tag} ×
-            </button>
-          )}
-          {tags
-            .filter((t) => t.name !== tag)
-            .slice(0, 12)
-            .map((t) => (
-              <button
-                key={t.name}
-                type="button"
-                className="zo-lib-tag"
-                title={`按标签 ${t.name} 过滤（${t.count} 条）`}
-                onClick={() => setTag(t.name)}
-              >
-                {t.name}
-                <span className="zo-lib-tag-count">{t.count}</span>
-              </button>
-            ))}
-        </div>
-      )}
 
       {error && <div className="zo-lib-error">{error}</div>}
 

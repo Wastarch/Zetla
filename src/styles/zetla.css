@@ -8920,32 +8920,13 @@ body.row-resizing {
   outline: none;
 }
 .zo-lib-search:focus { border-color: var(--accent); }
-.zo-lib-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--line-soft);
-  flex: none;
-  max-height: 92px;
-  overflow: auto;
-}
-.zo-lib-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  height: 20px;
-  padding: 0 6px;
+.zo-lib-coll-hint {
+  flex: 1 1 100%;
   font-size: 10.5px;
-  color: var(--txt-3);
-  background: var(--bg-3);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  cursor: pointer;
+  font-style: normal;
+  color: var(--accent);
+  margin-top: -2px;
 }
-.zo-lib-tag:hover { color: var(--accent); border-color: var(--accent); }
-.zo-lib-tag-on { color: var(--paper); background: var(--accent); border-color: var(--accent); }
-.zo-lib-tag-count { opacity: 0.7; }
 .zo-lib-error {
   padding: 6px 10px;
   font-size: 11px;
