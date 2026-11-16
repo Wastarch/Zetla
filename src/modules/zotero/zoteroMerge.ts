@@ -7,7 +7,12 @@
 // 设计与 Rust `bib_entry_blocks` 同口径：自己做括号匹配（不依赖正则贪婪），
 // 兼容 `{...}` / `(...)` 两种条目定界与嵌套花括号 / 引号值。
 import type { ZoteroItem } from "../../types/zotero.ts";
-import { escapeBibValue } from "./zoteroSync.ts";
+import {
+  escapeBibValue,
+  isPathInsideRoot,
+  normalizeBibPath,
+  pathKey,
+} from "./zoteroSync.ts";
 
 /** 由 Zotero 托管、允许覆盖 .bib 同名字段的字段集（note 刻意排除：常为用户手写） */
 export const ZOTERO_MANAGED_FIELDS = [
@@ -266,4 +271,46 @@ export function itemKeyNotesFromBib(text: string): Record<string, string> {
     }
   }
   return out;
+}
+
+// ── 「插入即写入」目标 .bib 自动推断 ─────────────────────────────
+// 用户决策：不要求先配置受管绑定 —— 插入浮层里点一条尚未进 .bib 的 Zotero 条目时，
+// 自动写进项目内最合适的 .bib。优先级：
+//   1) 已启用的受管绑定且在项目内 → 用它（用户显式指定最高优先）；
+//   2) 否则从项目内候选 .bib 里挑「主库」：Zotero 映射条目多 > 总条目多 > 路径升序；
+//   3) 没有任何候选 → null（调用方只提示、不阻断插入）。
+
+/** 项目内一个候选 .bib 的画像（由调用方从 reference store 汇总） */
+export interface BibWriteCandidate {
+  /** 项目内 .bib 绝对路径（写法任意，内部用 pathKey 归一比较） */
+  file: string;
+  /** 该文件里带 `Zotero itemKey:` note 的条目数（Zotero 托管程度信号） */
+  zoteroCount: number;
+  /** 该文件里的条目总数 */
+  entryCount: number;
+}
+
+/**
+ * 推断「插入即写入」的目标 .bib 绝对路径。
+ * @param root 项目根
+ * @param managed 受管绑定（enabled + bibPath）；为空/未启用/越界时走自动推断
+ * @param candidates 项目内候选 .bib 画像
+ */
+export function pickInsertBibPath(
+  root: string,
+  managed: { enabled: boolean; bibPath: string } | null,
+  candidates: BibWriteCandidate[],
+): string | null {
+  if (managed?.enabled && managed.bibPath.trim()) {
+    const abs = normalizeBibPath(root, managed.bibPath);
+    if (isPathInsideRoot(root, abs)) return abs;
+  }
+  const inside = candidates.filter((c) => c.file && isPathInsideRoot(root, c.file));
+  if (inside.length === 0) return null;
+  const sorted = [...inside].sort((a, b) => {
+    if (b.zoteroCount !== a.zoteroCount) return b.zoteroCount - a.zoteroCount;
+    if (b.entryCount !== a.entryCount) return b.entryCount - a.entryCount;
+    return pathKey(a.file).localeCompare(pathKey(b.file));
+  });
+  return normalizeBibPath(root, sorted[0].file);
 }

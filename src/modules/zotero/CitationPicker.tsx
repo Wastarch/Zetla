@@ -29,13 +29,12 @@ import {
   normalizeCommand,
   parseSearchItems,
   parseSelectedCollection,
-  pickerWarning,
   rankCandidates,
   type BibLikeEntry,
 } from "./zoteroPicker";
 import { buildCollectionRows } from "./zoteroLibrary";
 import { parseCollections, parseZoteroItems } from "./zoteroSync";
-import { ensureBibEntries, syncAllZoteroBindings } from "./zoteroRuntime";
+import { ensureBibEntries } from "./zoteroRuntime";
 import { useZoteroPicker } from "./useZoteroPicker";
 import { useZoteroStore } from "./useZoteroStore";
 
@@ -62,7 +61,6 @@ export function CitationPicker() {
   const [lastReceived, setLastReceived] = useState(0);
   const [searching, setSearching] = useState(false);
   const [note, setNote] = useState("");
-  const [syncing, setSyncing] = useState(false);
   // P5：分类下拉（"" = 全部文献）；默认定位到 Zotero 主窗口当前打开的分类
   const [collections, setCollections] = useState<ZoteroCollection[]>([]);
   const [collectionKey, setCollectionKey] = useState("");
@@ -259,10 +257,6 @@ export function CitationPicker() {
       }),
     [command, activeKeys, starred, prenote, postnote],
   );
-  const warning = useMemo(
-    () => pickerWarning(shown.filter((c) => activeKeys.includes(c.citeKey))),
-    [shown, activeKeys],
-  );
   // P5：分类树下拉行（复用 P3-5 拍平逻辑：DFS + 全角缩进）
   const collRows = useMemo(() => buildCollectionRows(collections), [collections]);
   const collectionName = useMemo(
@@ -301,27 +295,24 @@ export function CitationPicker() {
       setNote("引用命令为空，无法插入");
       return;
     }
-    // P4：按需绑定先补缺失条目（插一篇写一篇）；失败不阻断插入，由警告兜底
+    // 插入即写入：未进 .bib 的条目自动补写（无绑定时自动推断项目内主库）。
+    // 写入成功不打扰用户；失败才用一条简短提示，且绝不阻断插入。
     const selected = shown.filter((c) => activeKeys.includes(c.citeKey));
-    let missingNote: string | null = warning;
     try {
       const r = await ensureBibEntries(
         selected.map((c) => ({ citeKey: c.citeKey, itemKey: c.itemKey })),
       );
-      if (r.written > 0) notify(r.message, "ok");
-      if (r.unknown.length === 0) missingNote = null;
+      if (!r.ok && r.message) notify(r.message, "err");
     } catch {
-      /* 保持原警告提示 */
+      /* 写入失败不阻断插入 */
     }
     if (!insertSnippet(text)) {
       notify("没有活动编辑器，无法插入引用", "err");
       return;
     }
     rememberCommand(command);
-    // 用户决策：仍未写入的条目允许插入，但必须给出明确警告
-    if (missingNote) notify(missingNote, "err");
     closeAndFocus();
-  }, [activeKeys, preview, shown, command, warning, rememberCommand, closeAndFocus]);
+  }, [activeKeys, preview, shown, command, rememberCommand, closeAndFocus]);
 
   const cycleCommand = useCallback((delta: number) => {
     setCommand((cur) => {
@@ -356,23 +347,6 @@ export function CitationPicker() {
     },
     [shown, highlight, doInsert, toggleSelect, cycleCommand, closeAndFocus],
   );
-
-  const doSync = useCallback(async () => {
-    setSyncing(true);
-    try {
-      const recs = await syncAllZoteroBindings();
-      const ok = recs.filter((r) => r.ok).length;
-      setNote(
-        recs.length === 0
-          ? "当前项目没有启用中的 Zotero 绑定"
-          : `已同步 ${ok}/${recs.length} 条绑定，索引已刷新`,
-      );
-    } catch {
-      setNote("同步失败，请检查 Zotero 连接");
-    } finally {
-      setSyncing(false);
-    }
-  }, []);
 
   if (!open) return null;
 
@@ -536,7 +510,6 @@ export function CitationPicker() {
 
         <div className="zotero-picker-preview">
           <code>{preview || "（未选择条目）"}</code>
-          {warning && <p className="zotero-picker-warn">{warning}</p>}
           {note && <p className="zotero-picker-note">{note}</p>}
         </div>
 
@@ -545,9 +518,6 @@ export function CitationPicker() {
             ↑↓ 选择 · Shift+Enter 多选 · Alt+←/→ 换命令 · Enter 插入 · Esc 取消
           </span>
           <div className="zotero-picker-ops">
-            <button type="button" onClick={() => void doSync()} disabled={syncing}>
-              {syncing ? "同步中…" : "立即同步"}
-            </button>
             <button type="button" className="primary" onClick={doInsert}>
               插入
             </button>

@@ -47,6 +47,8 @@ import {
 import {
   itemKeyNotesFromBib,
   mergeBibFields,
+  pickInsertBibPath,
+  type BibWriteCandidate,
   zoteroFieldsFromItem,
 } from "./zoteroMerge";
 import { useZoteroPicker } from "./useZoteroPicker";
@@ -395,16 +397,37 @@ export interface BibEnsureResult {
   message: string;
 }
 
-/** 第一个启用且指向项目内 .bib 的受管绑定（缺一条写一条 / 字段同步共用） */
+/**
+ * 推断「插入即写入」的目标 .bib（缺一条写一条 / 字段同步共用）。
+ * 用户决策：不要求先配置受管绑定 —— 优先显式受管绑定，否则从项目内已索引的
+ * .bib 里自动挑「主库」（Zotero 映射条目多 > 总条目多 > 路径升序）。
+ * 项目外 .bib 由 BBT Keep updated 维护，Zetla 只监听不写盘。
+ */
 function onDemandBinding(): { binding: ZoteroBinding; root: string; abs: string } | null {
   const root = useProjectStore.getState().root;
   if (!root) return null;
-  const b = zstore().bindings.find((x) => x.enabled && x.bibPath.trim());
-  if (!b) return null;
-  const abs = normalizeBibPath(root, b.bibPath);
-  // 项目外 .bib 由 BBT Keep updated 维护，Zetla 不写盘
-  if (!isPathInsideRoot(root, abs)) return null;
-  return { binding: b, root, abs };
+  const managed = zstore().bindings.find((x) => x.enabled && x.bibPath.trim()) ?? null;
+
+  // 汇总项目内候选 .bib 画像：引用索引里每个条目的 file + note 里的 itemKey 信号
+  const candidates: BibWriteCandidate[] = [];
+  const byFile = new Map<string, BibWriteCandidate>();
+  for (const e of useReferenceStore.getState().entries) {
+    if (!e.file) continue;
+    let c = byFile.get(e.file);
+    if (!c) {
+      c = { file: e.file, zoteroCount: 0, entryCount: 0 };
+      byFile.set(e.file, c);
+      candidates.push(c);
+    }
+    c.entryCount += 1;
+    if (/Zotero\s+itemKey:/i.test(e.fields.note ?? "")) c.zoteroCount += 1;
+  }
+
+  const abs = pickInsertBibPath(root, managed, candidates);
+  if (!abs || !isPathInsideRoot(root, abs)) return null;
+  // 合成绑定：显式绑定原样透传；自动推断则把路径回填，写失败提示也能显示具体文件
+  const binding: ZoteroBinding = managed ?? { bibPath: abs.replace(/\\/g, "/"), enabled: true };
+  return { binding, root, abs };
 }
 
 /**
@@ -420,7 +443,7 @@ export async function ensureBibEntries(
   };
   try {
     const hit = onDemandBinding();
-    if (!hit) return { ...empty, ok: false, message: "没有启用「按需写入」的项目内绑定" };
+    if (!hit) return { ...empty, ok: false, message: "项目内没有可写入的 .bib（请先新建一个）" };
     const { binding, root, abs } = hit;
     const c = cfg();
     if (!c.enabled) return { ...empty, ok: false, message: "Zotero 联动未启用" };

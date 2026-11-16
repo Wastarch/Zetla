@@ -8701,12 +8701,10 @@ body.row-resizing {
   font-size: 12px; color: var(--txt);
   word-break: break-all;
 }
-.zotero-picker-warn,
 .zotero-picker-note {
   margin: 6px 0 0; font-size: 11px; line-height: 1.5;
+  color: var(--txt-3);
 }
-.zotero-picker-warn { color: var(--warn); }
-.zotero-picker-note { color: var(--txt-3); }
 .zotero-picker-foot {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 9px 16px;

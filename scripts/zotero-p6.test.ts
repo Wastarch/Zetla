@@ -7,6 +7,7 @@ import {
   itemKeyNotesFromBib,
   mergeBibFields,
   parseBibEntries,
+  pickInsertBibPath,
   unwrapBibValue,
   zoteroFieldsFromItem,
 } from "../src/modules/zotero/zoteroMerge.ts";
@@ -204,6 +205,56 @@ console.log("\n[itemKeyNotesFromBib]");
   const notes = itemKeyNotesFromBib(SAMPLE);
   eq(notes["AB12CD34"], "roe2021", "从 note 抽出 itemKey → citekey");
   eq(notes["NOPE"], undefined, "不存在的 key 返回 undefined");
+}
+
+// ── pickInsertBibPath（插入即写入目标推断） ────────────────────
+console.log("\n[pickInsertBibPath]");
+{
+  const root = "E:/Project/Demo";
+  const cands = [
+    { file: "E:\\Project\\Demo\\refs.bib", zoteroCount: 0, entryCount: 2 },
+    { file: "E:/Project/Demo/figures/zotero.bib", zoteroCount: 5, entryCount: 9 },
+    { file: "E:/Project/Demo/other.bib", zoteroCount: 0, entryCount: 20 },
+  ];
+  eq(
+    pickInsertBibPath(root, null, cands),
+    "E:/Project/Demo/figures/zotero.bib",
+    "无绑定：Zotero 条目多的主库优先",
+  );
+  eq(
+    pickInsertBibPath(root, null, cands.slice(0, 1).concat(cands.slice(2))),
+    "E:/Project/Demo/other.bib",
+    "Zotero 条目数打平：总条目多者优先",
+  );
+  eq(
+    pickInsertBibPath(root, null, [
+      { file: "E:/Project/Demo/b.bib", zoteroCount: 1, entryCount: 1 },
+      { file: "E:/Project/Demo/a.bib", zoteroCount: 1, entryCount: 1 },
+    ]),
+    "E:/Project/Demo/a.bib",
+    "完全打平：路径升序稳定",
+  );
+  eq(
+    pickInsertBibPath(root, { enabled: true, bibPath: "refs.bib" }, cands),
+    "E:/Project/Demo/refs.bib",
+    "受管绑定优先且相对路径归一为绝对",
+  );
+  eq(
+    pickInsertBibPath(root, { enabled: false, bibPath: "refs.bib" }, cands),
+    "E:/Project/Demo/figures/zotero.bib",
+    "未启用的绑定忽略，回落自动推断",
+  );
+  eq(
+    pickInsertBibPath(root, { enabled: true, bibPath: "../outside.bib" }, cands),
+    "E:/Project/Demo/figures/zotero.bib",
+    "越界绑定忽略，回落项目内推断",
+  );
+  eq(pickInsertBibPath(root, null, []), null, "无任何候选 → null");
+  eq(
+    pickInsertBibPath(root, null, [{ file: "E:/Elsewhere/x.bib", zoteroCount: 9, entryCount: 9 }]),
+    null,
+    "项目外候选不计入",
+  );
 }
 
 console.log(`\n${total - failures}/${total} 通过`);
