@@ -362,24 +362,28 @@ pub fn items_page_url(
     collection_key: Option<&str>,
     limit: u32,
     start: u32,
+    q: &str,
 ) -> String {
     let n = clamp_limit(limit);
     let s = start.min(MAX_ITEM_START);
-    match collection_key.map(str::trim).filter(|s| !s.is_empty()) {
-        Some(k) => format!(
-            "{}/api/users/0/collections/{}/items/top?format=json&limit={}&start={}",
-            base_url(port),
-            safe_key(k),
-            n,
-            s
-        ),
-        None => format!(
-            "{}/api/users/0/items/top?format=json&limit={}&start={}",
-            base_url(port),
-            n,
-            s
-        ),
+    let path = match collection_key.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(k) => format!("/api/users/0/collections/{}/items/top", safe_key(k)),
+        None => "/api/users/0/items/top".into(),
+    };
+    let mut url = reqwest::Url::parse(&format!("{}{}", base_url(port), path))
+        .expect("base_url 恒为合法 URL");
+    {
+        let mut pairs = url.query_pairs_mut();
+        pairs.append_pair("format", "json");
+        pairs.append_pair("limit", &n.to_string());
+        pairs.append_pair("start", &s.to_string());
+        // P5：分类内关键词搜索；空串省略（浏览模式）
+        let t = q.trim();
+        if !t.is_empty() {
+            pairs.append_pair("q", t);
+        }
     }
+    url.to_string()
 }
 
 /// P3-6 · 回收站清单：只用来判定「映射里的条目是否已被删除」，不做任何恢复/清空。
@@ -617,6 +621,7 @@ pub async fn zotero_fetch_items(
     collection_key: Option<String>,
     limit: Option<u32>,
     start: Option<u32>,
+    q: Option<String>,
 ) -> Result<String, String> {
     let client = build_client()?;
     let url = items_page_url(
@@ -624,6 +629,7 @@ pub async fn zotero_fetch_items(
         collection_key.as_deref(),
         limit.unwrap_or(0),
         start.unwrap_or(0),
+        q.as_deref().unwrap_or(""),
     );
     fetch_text(&client, &url, "读取 Zotero 题录").await
 }
@@ -636,6 +642,58 @@ pub async fn zotero_trash_items(port: u16, limit: Option<u32>) -> Result<String,
         &client,
         &trash_url(port, limit.unwrap_or(0)),
         "读取 Zotero 回收站",
+    )
+    .await
+}
+
+/// P5：connector 端点返回当前 UI 选中目标 + 全部分类树（含 level 缩进与数字 id）。
+/// 本地 API `/api/...` 没有该信息；POST + 空 JSON 体，实测无需 Origin / API key。
+pub fn selected_collection_url(port: u16) -> String {
+    format!("{}/connector/getSelectedCollection", base_url(port))
+}
+
+/// POST JSON 并返回原始文本；错误归一与 `fetch_text` 一致（403/400 附响应体摘要）。
+async fn post_text(
+    client: &reqwest::Client,
+    url: &str,
+    what: &str,
+) -> Result<String, String> {
+    let resp = client
+        .post(url)
+        .headers(local_request_headers())
+        .header(reqwest::header::CONTENT_TYPE, "application/json")
+        .body("{}")
+        .send()
+        .await
+        .map_err(|e| format!("{what}请求失败：{e}"))?;
+    let status = resp.status().as_u16();
+    let body = resp
+        .text()
+        .await
+        .map_err(|e| format!("{what}读取响应失败：{e}"))?;
+    match status {
+        200..=299 => Ok(body),
+        403 => Err(format!(
+            "{what}：Zotero 本地 API 未开启（403）{}",
+            error_detail(&body)
+        )),
+        400 => Err(format!(
+            "{what}：请求被 Zotero 拒绝（400）{}",
+            error_detail(&body)
+        )),
+        other => Err(format!("{what}：Zotero 返回 HTTP {other}{}", error_detail(&body))),
+    }
+}
+
+/// P5：读取 Zotero 主窗口当前选中的目标（文库根 / 分类）与分类树（只读）。
+/// 返回原始 JSON（`id` / `name` / `targets[]`），前端纯函数解析与匹配 key。
+#[tauri::command]
+pub async fn zotero_selected_collection(port: u16) -> Result<String, String> {
+    let client = build_client()?;
+    post_text(
+        &client,
+        &selected_collection_url(port),
+        "读取 Zotero 当前分类",
     )
     .await
 }
@@ -1355,19 +1413,32 @@ mod tests {
     #[test]
     fn p3_page_and_trash_urls_stay_on_localhost() {
         assert_eq!(
-            items_page_url(23119, None, 0, 0),
+            items_page_url(23119, None, 0, 0, ""),
             "http://localhost:23119/api/users/0/items/top?format=json&limit=500&start=0"
         );
         assert_eq!(
-            items_page_url(23119, Some("ABCD1234"), 100, 200),
+            items_page_url(23119, Some("ABCD1234"), 100, 200, ""),
             "http://localhost:23119/api/users/0/collections/ABCD1234/items/top?format=json&limit=100&start=200"
         );
         assert_eq!(
-            items_page_url(23119, Some("  "), 0, 5),
+            items_page_url(23119, Some("  "), 0, 5, ""),
             "http://localhost:23119/api/users/0/items/top?format=json&limit=500&start=5"
         );
+        // P5：q 追加在末尾且被 URL 编码（中文）
+        assert_eq!(
+            items_page_url(23119, Some("ABCD1234"), 0, 0, "石墨烯 "),
+            "http://localhost:23119/api/users/0/collections/ABCD1234/items/top?format=json&limit=500&start=0&q=%E7%9F%B3%E5%A2%A8%E7%83%AF"
+        );
+        assert_eq!(
+            items_page_url(23119, None, 0, 0, "the"),
+            "http://localhost:23119/api/users/0/items/top?format=json&limit=500&start=0&q=the"
+        );
         // 偏移上限：防止前端误传天量 start
-        assert!(items_page_url(23119, None, 99999, 999_999).contains("start=100000"));
+        assert!(items_page_url(23119, None, 99999, 999_999, "").contains("start=100000"));
+        assert_eq!(
+            selected_collection_url(23119),
+            "http://localhost:23119/connector/getSelectedCollection"
+        );
         assert_eq!(
             trash_url(23119, 0),
             "http://localhost:23119/api/users/0/items/trash?format=json&limit=100"

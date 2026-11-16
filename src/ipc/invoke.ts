@@ -191,14 +191,18 @@ export const zoteroApi = {
   // ── P1 · 自动化同步（只读 HTTP / 受管 .bib 写盘 / 绑定与映射缓存 / 多路径监听）──
   /** 分类列表原始 JSON（解析放 zoteroSync.ts 纯逻辑） */
   fetchCollections: (port: number) => call<string>("zotero_fetch_collections", { port }),
-  /** 题录原始 JSON；collectionKey 为空 = 全库 top-level；start 供「加载更多」翻页 */
-  fetchItems: (port: number, collectionKey: string | null, limit?: number, start?: number) =>
+  /** 题录原始 JSON；collectionKey 为空 = 全库 top-level；start 供「加载更多」翻页；q 供分类内搜索 */
+  fetchItems: (port: number, collectionKey: string | null, limit?: number, start?: number, q?: string) =>
     call<string>("zotero_fetch_items", {
       port,
       collectionKey,
       limit: limit ?? null,
       start: start ?? null,
+      q: q ?? null,
     }),
+  /** P5：Zotero 主窗口当前选中目标 + 分类树（connector 端点，原始 JSON） */
+  selectedCollection: (port: number) =>
+    call<string>("zotero_selected_collection", { port }),
   /** BBT pull export：直接拿 BibTeX 文本 */
   fetchBbtExport: (port: number, collectionKey: string, format: "bibtex" | "biblatex") =>
     call<string>("zotero_fetch_bbt_export", { port, collectionKey, format }),

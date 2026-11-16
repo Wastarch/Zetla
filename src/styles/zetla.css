@@ -8595,6 +8595,30 @@ body.row-resizing {
   outline: none;
 }
 .zotero-picker-search:focus { border-color: var(--accent); }
+/* P5 · picker 分类下拉（树形缩进 + 默认定位 Zotero 当前分类） */
+.zotero-picker-coll {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 16px 8px;
+}
+.zotero-picker-coll label {
+  display: flex; align-items: center; gap: 6px;
+  flex: 1 1 auto; min-width: 0;
+  font-size: 11px; color: var(--txt-3);
+}
+.zotero-picker-coll select {
+  flex: 1 1 auto; min-width: 0;
+  height: 26px; padding: 0 6px;
+  font-size: 12px; color: var(--txt);
+  background: var(--bg-3);
+  border: 1px solid var(--line); border-radius: 6px;
+  outline: none;
+}
+.zotero-picker-coll select:focus { border-color: var(--accent); }
+.zotero-picker-coll em {
+  flex: none;
+  font-style: normal; font-size: 10.5px; color: var(--accent);
+  white-space: nowrap;
+}
 .zotero-picker-tools {
   display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px;
   padding: 0 16px 10px;

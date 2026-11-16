@@ -139,6 +139,8 @@ pub fn run() {
             // Zotero 联动 · P4：单条题录（只读）+ on-demand 幂等追加受管 .bib
             commands::zotero::zotero_fetch_item,
             commands::zotero::zotero_append_entries,
+            // Zotero 联动 · P5：主窗口当前选中目标 + 分类树（connector 端点，只读）
+            commands::zotero::zotero_selected_collection,
             // M1-13：自动更新（自下载安装包 + 拉起安装向导）
             // U1：清单协议 v2 —— 由 Rust 判定本机平台与能否自更新
             commands::updater::update_env_info,

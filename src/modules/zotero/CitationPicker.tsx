@@ -16,21 +16,25 @@ import { useSettingsStore } from "@/core/settings";
 import { getActiveView } from "@/editor/activeView";
 import { zoteroApi } from "@/ipc/invoke";
 import { notify } from "@/project/useProject";
-import { ZOTERO_COMMANDS, type ZoteroCommand, type ZoteroItem } from "@/types/zotero";
+import { ZOTERO_COMMANDS, type ZoteroCollection, type ZoteroCommand, type ZoteroItem } from "@/types/zotero";
 import { useReferenceStore } from "@/modules/reference/useReferenceStore";
 import {
   PICKER_DEBOUNCE_MS,
   PICKER_MIN_QUERY,
   PICKER_PAGE_SIZE,
   formatCitation,
+  matchCollectionKey,
   mergeCandidates,
   nextPageStart,
   normalizeCommand,
   parseSearchItems,
+  parseSelectedCollection,
   pickerWarning,
   rankCandidates,
   type BibLikeEntry,
 } from "./zoteroPicker";
+import { buildCollectionRows } from "./zoteroLibrary";
+import { parseCollections, parseZoteroItems } from "./zoteroSync";
 import { ensureBibEntries, syncAllZoteroBindings } from "./zoteroRuntime";
 import { useZoteroPicker } from "./useZoteroPicker";
 import { useZoteroStore } from "./useZoteroStore";
@@ -59,6 +63,10 @@ export function CitationPicker() {
   const [searching, setSearching] = useState(false);
   const [note, setNote] = useState("");
   const [syncing, setSyncing] = useState(false);
+  // P5：分类下拉（"" = 全部文献）；默认定位到 Zotero 主窗口当前打开的分类
+  const [collections, setCollections] = useState<ZoteroCollection[]>([]);
+  const [collectionKey, setCollectionKey] = useState("");
+  const [collAuto, setCollAuto] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const closeAndFocus = useCallback(() => {
@@ -81,6 +89,9 @@ export function CitationPicker() {
     setPrenote("");
     setPostnote("");
     setNote("");
+    setCollections([]);
+    setCollectionKey("");
+    setCollAuto(null);
     setCommand(
       normalizeCommand(useSettingsStore.getState().settings.zotero?.defaultCommand ?? "cite"),
     );
@@ -118,10 +129,57 @@ export function CitationPicker() {
 
   const connected = health?.state === "connected" && !!zoteroSettings?.enabled;
   const q = query.trim();
+  const inCollection = collectionKey !== "";
 
-  // 远端搜索：250ms 防抖 + 显式 limit/start；离线 / 403 / 短词一律回落本地索引
+  // P5：打开时拉分类树 + 定位 Zotero 当前打开的分类（失败静默降级为「全部文献」）
   useEffect(() => {
-    if (!open || !connected || q.length < PICKER_MIN_QUERY) {
+    if (!open || !connected) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const port = zoteroSettings?.port || 23119;
+        const [rawColls, rawSel] = await Promise.all([
+          zoteroApi.fetchCollections(port),
+          zoteroApi.selectedCollection(port).catch(() => ""),
+        ]);
+        if (cancelled) return;
+        const colls = parseCollections(rawColls);
+        setCollections(colls);
+        const key = matchCollectionKey(rawSel ? parseSelectedCollection(rawSel) : null, colls);
+        if (key) {
+          setCollectionKey(key);
+          setCollAuto(colls.find((c) => c.key === key)?.name ?? null);
+        }
+      } catch {
+        /* 离线降级：保持「全部文献」 */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, connected, zoteroSettings?.port]);
+
+  // P5：切换分类时重置分页与已加载条目
+  useEffect(() => {
+    setPage(0);
+    setRemoteItems([]);
+    setTotal(null);
+    setLastReceived(0);
+    setHighlight(0);
+  }, [collectionKey]);
+
+  // 远端数据：分类选中 = 分类条目（空查询浏览 / 关键词分类内搜索）；
+  // 全部文献 = 全库搜索。250ms 防抖 + 显式 limit/start；离线回落本地索引。
+  useEffect(() => {
+    if (!open || !connected) {
+      setRemoteItems([]);
+      setTotal(null);
+      setLastReceived(0);
+      setSearching(false);
+      return;
+    }
+    const browse = inCollection && q.length < PICKER_MIN_QUERY;
+    if (!inCollection && q.length < PICKER_MIN_QUERY) {
       setRemoteItems([]);
       setTotal(null);
       setLastReceived(0);
@@ -130,34 +188,56 @@ export function CitationPicker() {
     }
     let cancelled = false;
     setSearching(true);
-    const timer = window.setTimeout(async () => {
-      try {
-        const r = await zoteroApi.search(
-          zoteroSettings?.port || 23119,
-          q,
-          PICKER_PAGE_SIZE,
-          page * PICKER_PAGE_SIZE,
-        );
-        if (cancelled) return;
-        const parsed = parseSearchItems(r.items);
-        setRemoteItems((prev) => (page === 0 ? parsed : [...prev, ...parsed]));
-        setLastReceived(parsed.length);
-        setTotal(r.total);
-        setNote("");
-      } catch {
-        if (cancelled) return;
-        setRemoteItems([]);
-        setLastReceived(0);
-        setNote("Zotero 搜索不可用，已回落到项目 .bib 索引");
-      } finally {
-        if (!cancelled) setSearching(false);
-      }
-    }, PICKER_DEBOUNCE_MS);
+    const timer = window.setTimeout(
+      async () => {
+        try {
+          const port = zoteroSettings?.port || 23119;
+          if (inCollection) {
+            // 分类端点支持 q 服务端过滤（实测 Total-Results 正常）；
+            // 原始 JSON 不带总数头 → 用「本页不足一页即到底」翻页判定
+            const raw = await zoteroApi.fetchItems(
+              port,
+              collectionKey,
+              PICKER_PAGE_SIZE,
+              page * PICKER_PAGE_SIZE,
+              browse ? "" : q,
+            );
+            if (cancelled) return;
+            const parsed = parseZoteroItems(raw);
+            setRemoteItems((prev) => (page === 0 ? parsed : [...prev, ...parsed]));
+            setLastReceived(parsed.length);
+            setTotal(null);
+            setNote("");
+          } else {
+            const r = await zoteroApi.search(
+              port,
+              q,
+              PICKER_PAGE_SIZE,
+              page * PICKER_PAGE_SIZE,
+            );
+            if (cancelled) return;
+            const parsed = parseSearchItems(r.items);
+            setRemoteItems((prev) => (page === 0 ? parsed : [...prev, ...parsed]));
+            setLastReceived(parsed.length);
+            setTotal(r.total);
+            setNote("");
+          }
+        } catch {
+          if (cancelled) return;
+          setRemoteItems([]);
+          setLastReceived(0);
+          setNote(inCollection ? "Zotero 分类条目读取失败，已回落到项目 .bib 索引" : "Zotero 搜索不可用，已回落到项目 .bib 索引");
+        } finally {
+          if (!cancelled) setSearching(false);
+        }
+      },
+      browse ? 0 : PICKER_DEBOUNCE_MS,
+    );
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [open, connected, q, page, zoteroSettings?.port]);
+  }, [open, connected, q, page, collectionKey, inCollection, zoteroSettings?.port]);
 
   const activeKeys = useMemo(
     () =>
@@ -183,9 +263,16 @@ export function CitationPicker() {
     () => pickerWarning(shown.filter((c) => activeKeys.includes(c.citeKey))),
     [shown, activeKeys],
   );
+  // P5：分类树下拉行（复用 P3-5 拍平逻辑：DFS + 全角缩进）
+  const collRows = useMemo(() => buildCollectionRows(collections), [collections]);
+  const collectionName = useMemo(
+    () => collections.find((c) => c.key === collectionKey)?.name ?? "",
+    [collections, collectionKey],
+  );
+  const canLoadRemote = connected && (inCollection || q.length >= PICKER_MIN_QUERY);
   const hasMore =
     connected &&
-    q.length >= PICKER_MIN_QUERY &&
+    canLoadRemote &&
     nextPageStart(page * PICKER_PAGE_SIZE, lastReceived, total) !== null;
 
   const toggleSelect = useCallback((key: string) => {
@@ -303,10 +390,40 @@ export function CitationPicker() {
           <span>
             项目 .bib {bibEntries.length} 条
             {connected
-              ? ` · Zotero ${searching ? "搜索中…" : total != null ? `命中 ${total}` : "已连接"}`
+              ? inCollection
+                ? ` · 分类「${collectionName}」${searching ? "读取中…" : ""}`
+                : ` · Zotero 全库 ${searching ? "搜索中…" : total != null ? `命中 ${total}` : "已连接"}`
               : " · Zotero 离线（仅本地索引）"}
           </span>
         </div>
+
+        {connected && (
+          <div className="zotero-picker-coll">
+            <label>
+              分类
+              <select
+                value={collectionKey}
+                onChange={(e) => {
+                  setCollectionKey(e.target.value);
+                  setCollAuto(null);
+                  window.setTimeout(() => inputRef.current?.focus(), 0);
+                }}
+              >
+                <option value="">全部文献（全库搜索）</option>
+                {collRows.map((r) => (
+                  <option key={r.key} value={r.key}>
+                    {`${"\u3000".repeat(r.depth)}${r.name}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {collAuto && collectionKey && (
+              <em title="每次打开都会重新定位 Zotero 当前分类">
+                已定位 Zotero 当前分类
+              </em>
+            )}
+          </div>
+        )}
 
         <input
           ref={inputRef}
@@ -366,7 +483,12 @@ export function CitationPicker() {
         <div className="zotero-picker-list">
           {shown.length === 0 && (
             <p className="zotero-picker-empty">
-              没有匹配条目{connected && q.length < PICKER_MIN_QUERY ? "（输入 2 个字以上可搜 Zotero 全库）" : ""}
+              没有匹配条目
+              {connected && q.length < PICKER_MIN_QUERY
+                ? inCollection
+                  ? `（已在分类内浏览；输入 2 个字以上可在分类内搜索）`
+                  : "（输入 2 个字以上可搜 Zotero 全库）"
+                : ""}
             </p>
           )}
           {shown.map((c, i) => (

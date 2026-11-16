@@ -267,3 +267,128 @@ export function nextPageStart(
   if (received < pageSize) return null;
   return next;
 }
+
+// ── P5 · 分类选择（connector getSelectedCollection → 本地 API key 匹配）────────
+//
+// 实测（2026-11-16）：POST /connector/getSelectedCollection 返回
+//   { id: "C28" | null, name, targets: [{ id: "C28"|"L1", name, level, recent? }] }
+// 其中 level 是分类树深度（0 = 文库根）。**数字 id 在本地 API JSON 里不存在**，
+// 无法直接换算成 8 位 key → 用「名称 + 祖先路径」匹配 API 分类树。
+
+/** targets 里的一条目标（文库根是 "L<id>"，分类是 "C<id>"） */
+export interface PickerCollectionTarget {
+  id: string;
+  name: string;
+  level: number;
+}
+
+export interface PickerSelectedCollection {
+  /** 选中分类为 "C<数字id>"；文库根 / 已保存搜索等为 null 或其它前缀 */
+  id: string | null;
+  /** 选中目标名（分类名或文库名） */
+  name: string;
+  targets: PickerCollectionTarget[];
+}
+
+/** 解析 getSelectedCollection 原始 JSON；坏 JSON / 结构不符返回 null（离线降级用） */
+export function parseSelectedCollection(raw: string): PickerSelectedCollection | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof data !== "object" || data === null || Array.isArray(data)) return null;
+  const o = data as Record<string, unknown>;
+  // id 只接受 null（文库根）或非空字符串（"C…" / "L…"）；其它类型 / 缺失 = 结构不符
+  if (o.id !== null && (typeof o.id !== "string" || !o.id)) return null;
+  const id = o.id === null ? null : (o.id as string);
+  const name = typeof o.name === "string" ? o.name : "";
+  const rawTargets = Array.isArray(o.targets) ? o.targets : [];
+  const targets: PickerCollectionTarget[] = [];
+  for (const t of rawTargets) {
+    if (typeof t !== "object" || t === null) continue;
+    const r = t as Record<string, unknown>;
+    if (typeof r.id !== "string" || !r.id) continue;
+    if (typeof r.name !== "string" || !r.name) continue;
+    const level = typeof r.level === "number" && Number.isFinite(r.level) && r.level >= 0
+      ? Math.floor(r.level)
+      : 0;
+    targets.push({ id: r.id, name: r.name, level });
+  }
+  return { id, name, targets };
+}
+
+/** 由 targets 的 level 序列重建每个目标的祖先名链（DFS 缩进 → 路径） */
+export function targetPaths(targets: PickerCollectionTarget[]): string[][] {
+  const stack: string[] = [];
+  const out: string[][] = [];
+  for (const t of targets) {
+    if (t.id.startsWith("L")) {
+      // 文库根：清空路径（它只是树的顶点，不参与分类路径匹配）
+      stack.length = 0;
+      out.push([]);
+      continue;
+    }
+    // level = 1 起步（0 是文库根）；回退到 level-1 层的父级
+    stack.length = Math.max(0, t.level - 1);
+    const path = [...stack, t.name];
+    stack.push(t.name);
+    out.push(path);
+  }
+  return out;
+}
+
+/** API 分类树：key → 祖先名链（含自身）；父分类成环时环内节点返回到环入口为止的路径 */
+export function apiCollectionPaths(
+  collections: { key: string; name: string; parentCollection: string | false }[],
+): Map<string, string[]> {
+  const byKey = new Map(collections.map((c) => [c.key, c]));
+  const cache = new Map<string, string[]>();
+  const pathOf = (key: string, visiting: Set<string>): string[] => {
+    const cached = cache.get(key);
+    if (cached) return cached;
+    if (visiting.has(key)) return []; // 环：断开，不继续向上
+    const c = byKey.get(key);
+    if (!c) return [];
+    visiting.add(key);
+    const parent = typeof c.parentCollection === "string" && c.parentCollection
+      ? pathOf(c.parentCollection, visiting)
+      : [];
+    visiting.delete(key);
+    const path = [...parent, c.name];
+    cache.set(key, path);
+    return path;
+  };
+  for (const c of collections) pathOf(c.key, new Set());
+  return cache;
+}
+
+/**
+ * 匹配「Zotero 当前打开的分类」→ 本地 API key。
+ * - `sel.id` 不以 "C" 开头（文库根等）→ null（默认「全部文献」）；
+ * - 名称唯一命中 → 直接用；重名时用完整祖先路径区分；路径也判不出 → 取第一个同名（可接受降级）。
+ */
+export function matchCollectionKey(
+  sel: PickerSelectedCollection | null,
+  collections: { key: string; name: string; parentCollection: string | false }[],
+): string | null {
+  if (!sel || !sel.id || !sel.id.startsWith("C") || !sel.name.trim()) return null;
+  const want = sel.name.trim();
+  const hits = collections.filter((c) => c.name.trim() === want);
+  if (hits.length === 0) return null;
+  if (hits.length === 1) return hits[0].key;
+  // 重名：用祖先路径区分；路径取 sel.id 对应的 target（而非第一个同名）
+  const paths = targetPaths(sel.targets);
+  const selfIdx = sel.targets.findIndex((t) => t.id === sel.id);
+  const selPath = selfIdx >= 0 ? paths[selfIdx] : undefined;
+  const apiPaths = apiCollectionPaths(collections);
+  if (selPath) {
+    const exact = hits.find((c) => {
+      const p = apiPaths.get(c.key) ?? [];
+      return p.length === selPath.length && p.every((seg, i) => seg === selPath[i]);
+    });
+    if (exact) return exact.key;
+  }
+  return hits[0].key;
+}
