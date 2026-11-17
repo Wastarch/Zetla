@@ -17,6 +17,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import { APP_VERSION } from "@/version";
 import { useAppStore, type SettingsPane } from "@/core/store";
 import { cloneSettings, useSettingsStore } from "@/core/settings";
+import { useBuffersStore, SETTINGS_BUFFER_PATH } from "@/editor/useBuffers";
 import { notify } from "@/project/useProject";
 import { useModuleList } from "@/modules/useModuleList";
 import { openEnvGuide } from "@/env/useEnvCheck";
@@ -54,18 +55,25 @@ import type { PreviewMode } from "@/types/diagram";
 // Zotero 联动 · P0：偏好设置页签（独立组件，自带自检副作用）
 import { ZoteroPane } from "@/modules/zotero/ZoteroPane";
 
-const PANES: { id: SettingsPane; icon: string; label: string }[] = [
-  { id: "general", icon: "layout", label: "通用" },
-  { id: "build", icon: "play", label: "编译设置" },
-  { id: "editor", icon: "edit", label: "编辑器" },
-  { id: "pdf", icon: "pdf", label: "PDF 预览" },
-  { id: "look", icon: "sun", label: "外观与保存" },
-  { id: "snippets", icon: "list", label: "代码片段" },
-  { id: "modules", icon: "wand", label: "模块" },
-  { id: "diagram", icon: "image", label: "绘图" },
-  { id: "zotero", icon: "bib", label: "Zotero 联动" },
-  { id: "about", icon: "book", label: "关于 Zetla" },
+/** 设置导航分组（视觉优化：把 10 个平铺页签收拢为三组，降低扫视成本） */
+const PANE_GROUPS = [
+  { label: "工作区", ids: ["general", "build", "editor", "pdf"] as SettingsPane[] },
+  { label: "偏好", ids: ["look", "snippets", "modules", "diagram"] as SettingsPane[] },
+  { label: "系统与关于", ids: ["zotero", "about"] as SettingsPane[] },
 ];
+
+const PANE_META: Record<SettingsPane, { icon: string; label: string }> = {
+  general: { icon: "layout", label: "通用" },
+  build: { icon: "play", label: "编译设置" },
+  editor: { icon: "edit", label: "编辑器" },
+  pdf: { icon: "pdf", label: "PDF 预览" },
+  look: { icon: "sun", label: "外观与保存" },
+  snippets: { icon: "list", label: "代码片段" },
+  modules: { icon: "wand", label: "模块" },
+  diagram: { icon: "image", label: "绘图" },
+  zotero: { icon: "bib", label: "Zotero 联动" },
+  about: { icon: "book", label: "关于 Zetla" },
+};
 
 /** 字体建议列表（M1-22 起字体族为任意字符串，datalist 供快捷选择亦可自由输入） */
 const FONT_OPTIONS = SUGGESTED_FONTS;
@@ -157,9 +165,33 @@ function blockedTip(reason: string | null, names: Record<string, string>): strin
   return reason;
 }
 
-export function SettingsDialog() {
-  const pane = useAppStore((s) => s.settingsDialog);
+/** 偏好设置宿主形态：弹窗（App 中条件渲染） / 编辑区 Tab（settings://preferences 伪 buffer） */
+export type SettingsHost = "modal" | "tab";
+
+interface SettingsHostProps {
+  host?: SettingsHost;
+  /** tab 形态下由 buffer 记住的停留页签 */
+  tabPane?: SettingsPane;
+}
+
+export function SettingsDialog({ host = "modal", tabPane }: SettingsHostProps) {
+  const isTab = host === "tab";
+  const storePane = useAppStore((s) => s.settingsDialog);
   const closeSettings = useAppStore((s) => s.closeSettings);
+  // tab 形态：页签为组件本地状态（初始取 buffer 记录），与弹窗的 store 位置互不干扰。
+  // map 后列表稳定（单例 buffer 常驻），故用 effect 同步外部传入的页签跳转。
+  const [localPane, setLocalPane] = useState<SettingsPane>(tabPane ?? "build");
+  useEffect(() => {
+    if (tabPane) setLocalPane(tabPane);
+  }, [tabPane]);
+  const pane = isTab ? localPane : storePane;
+  const setPane = useCallback(
+    (p: SettingsPane) => {
+      if (isTab) setLocalPane(p);
+      else useAppStore.getState().openSettings(p);
+    },
+    [isTab],
+  );
   const setSettings = useSettingsStore((s) => s.setSettings);
   const draft = useSettingsStore((s) => s.settings);
   const env = useAppStore((s) => s.env);
@@ -234,24 +266,24 @@ export function SettingsDialog() {
       build: { ...d.build, cleanAuxExtensions: [...DEFAULT_AUX_EXTENSIONS] },
     }));
 
+  /** 取消（弹窗）= 回滚并关闭弹窗；Tab 形态下 = 回滚但保留 Tab（无宿主可关） */
   const cancel = useCallback(() => {
+    const rollbackAndDismiss = () => {
+      resetSnippetsDraft();
+      setSettings(cloneSettings(snapshotRef.current));
+      if (!isTab) closeSettings();
+    };
     // M2-5c：「代码片段」页有未保存草稿时先确认（片段独立落盘，不受下面的回滚影响）
     if (hasDirtySnippets()) {
-      void confirm("「代码片段」有未保存的改动，确定放弃并关闭？", {
+      void confirm(`「代码片段」有未保存的改动，确定放弃${isTab ? "" : "并关闭"}？`, {
         title: "放弃片段改动",
       }).then((ok) => {
-        if (!ok) return;
-        resetSnippetsDraft();
-        setSettings(cloneSettings(snapshotRef.current));
-        closeSettings();
+        if (ok) rollbackAndDismiss();
       });
       return;
     }
-    // 未保存的预览改动回滚到打开时快照
-    resetSnippetsDraft();
-    setSettings(cloneSettings(snapshotRef.current));
-    closeSettings();
-  }, [setSettings, closeSettings]);
+    rollbackAndDismiss();
+  }, [setSettings, closeSettings, isTab]);
 
   // M1-1：模块开关（写设置页草稿；经 useModuleRuntime 订阅即时启停，保存后落盘）
   const modules = useModuleList();
@@ -292,44 +324,88 @@ export function SettingsDialog() {
       // M2-5c：片段页草稿先落盘（独立 snippets.json），再保存 AppSettings
       await flushSnippets();
       await useSettingsStore.getState().save(useSettingsStore.getState().settings);
-      closeSettings();
+      // Tab 常驻：保存后把快照推进到当前值，下次「取消」回到本次保存态而非最初打开态
+      snapshotRef.current = cloneSettings(useSettingsStore.getState().settings);
+      // Tab 无「关闭即反馈」的动作，需显式提示；弹窗关闭本身就是反馈
+      if (isTab) notify("设置已保存到 config.json", "ok");
+      else closeSettings();
     } catch (e) {
       notify(String(e), "err");
     }
+  }, [closeSettings, isTab]);
+
+  /** 弹窗 → Tab：不回滚、不落盘，把当前预览草稿连同停留页签一起带进常驻 Tab */
+  const openAsTab = useCallback(() => {
+    const current = useAppStore.getState().settingsDialog ?? "build";
+    closeSettings();
+    useBuffersStore.getState().openSettingsTab(current);
   }, [closeSettings]);
 
-  // Esc / 点遮罩 = 取消（环境引导面板打开时只由它自己接管 Esc）
+  /** Tab → 弹窗：关掉常驻 Tab，以当前停留页签重开弹窗 */
+  const openAsModal = useCallback(() => {
+    void useBuffersStore.getState().closeBuffer(SETTINGS_BUFFER_PATH);
+    useAppStore.getState().openSettings(localPane);
+  }, [localPane]);
+
+  // Esc / 点遮罩 = 取消，仅弹窗形态；Tab 是常驻面板，Esc 归编辑器/查找等占用
   useEffect(() => {
-    if (pane === null) return;
+    if (isTab || pane === null) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !useAppStore.getState().envGuideOpen) cancel();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pane, cancel]);
+  }, [pane, cancel, isTab]);
 
-  if (pane === null) return null;
+  if (!isTab && pane === null) return null;
 
   return (
     <>
       <div
-        className="modal-layer"
-        role="dialog"
-        aria-label="偏好设置"
-        onMouseDown={cancel}
+        className={isTab ? "set-tab-shell" : "modal-layer"}
+        role={isTab ? undefined : "dialog"}
+        aria-label={isTab ? undefined : "偏好设置"}
+        onMouseDown={isTab ? undefined : cancel}
       >
       <div
-        className="modal settings"
-        style={{ width: "min(820px, 92vw)" }}
-        onMouseDown={(e) => e.stopPropagation()}
+        className={isTab ? "set-tab-panel" : "modal settings"}
+        style={isTab ? undefined : { width: "min(820px, 92vw)" }}
+        onMouseDown={isTab ? undefined : (e) => e.stopPropagation()}
       >
-        <div className="modal-head">
+        <div className="modal-head set-head">
           <Icon name="sliders" size={18} style={{ color: "var(--accent)" }} />
-          <div>
+          <div className="set-head-title">
             <h2>偏好设置</h2>
             <div className="sub">Zetla Preferences</div>
           </div>
-          <button type="button" className="ibtn x" title="关闭" onClick={cancel}>
+          {/* 弹窗 ⇄ Tab 形态互切：让设置既能临时弹窗改，也能常驻标签页对照编辑 */}
+          {isTab ? (
+            <button
+              type="button"
+              className="mini-btn set-host-toggle"
+              title="改为弹窗显示（关闭当前标签页）"
+              onClick={openAsModal}
+            >
+              <Icon name="panel-left" size={13} />
+              弹窗显示
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="mini-btn set-host-toggle"
+              title="作为标签页固定在编辑区，可边改设置边看效果"
+              onClick={openAsTab}
+            >
+              <Icon name="layout" size={13} />
+              标签页显示
+            </button>
+          )}
+          <button
+            type="button"
+            className="ibtn x"
+            title={isTab ? "关闭设置标签页" : "关闭"}
+            onClick={isTab ? () => void useBuffersStore.getState().closeBuffer(SETTINGS_BUFFER_PATH) : cancel}
+          >
             <Icon name="x" />
           </button>
         </div>
@@ -340,20 +416,31 @@ export function SettingsDialog() {
               <option key={f} value={f} />
             ))}
           </datalist>
-          <div className="set-nav" role="tablist">
-            {PANES.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="tab"
-                className={pane === p.id ? "on" : ""}
-                onClick={() => useAppStore.getState().openSettings(p.id)}
-              >
-                <Icon name={p.icon} />
-                {p.label}
-              </button>
+          <nav className="set-nav" role="tablist" aria-label="设置分类">
+            {PANE_GROUPS.map((g) => (
+              <div className="set-nav-group" key={g.label}>
+                <div className="set-nav-group-label" aria-hidden="true">
+                  {g.label}
+                </div>
+                {g.ids.map((id) => {
+                  const meta = PANE_META[id];
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="tab"
+                      aria-selected={pane === id}
+                      className={pane === id ? "on" : ""}
+                      onClick={() => setPane(id)}
+                    >
+                      <Icon name={meta.icon} />
+                      <span>{meta.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
             ))}
-          </div>
+          </nav>
           <div className="set-panes">
             {pane === "zotero" && <ZoteroPane />}
             {pane === "general" && (
@@ -1216,6 +1303,14 @@ export function SettingsDialog() {
     {showHighlight && <SyntaxHighlightDialog onClose={() => setShowHighlight(false)} />}
     </>
   );
+}
+
+/**
+ * 编辑区 Tab 形态的偏好设置（挂在 `settings://preferences` 伪 buffer 上）。
+ * 与弹窗复用同一个组件主体，差别仅在宿主外壳与 Esc/遮罩行为，见 SettingsHost。
+ */
+export function SettingsTab({ pane }: { pane?: SettingsPane }) {
+  return <SettingsDialog host="tab" tabPane={pane} />;
 }
 
 export default SettingsDialog;

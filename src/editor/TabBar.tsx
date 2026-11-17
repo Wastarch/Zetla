@@ -55,13 +55,20 @@ export function TabBar({ onFind }: TabBarProps) {
               : b.kind === "pdf" ? "pdf"
                 : b.kind === "figure" ? "image"
                   : b.kind === "diagram" ? "draw"
-                    : "tex";
+                    : b.kind === "settings" ? "sliders"
+                      : "tex";
           return (
             <div
               key={b.path}
               role="tab"
               aria-selected={active}
-              title={b.kind === "diagram" ? "绘图工作台（TikZ）" : b.path}
+              title={
+                b.kind === "diagram"
+                  ? "绘图工作台（TikZ）"
+                  : b.kind === "settings"
+                    ? "偏好设置（可在设置页头切回弹窗）"
+                    : b.path
+              }
               className={active ? "tab active" : "tab"}
               onClick={() => setActive(b.path)}
               onAuxClick={(e) => {
@@ -73,7 +80,10 @@ export function TabBar({ onFind }: TabBarProps) {
                 size={13}
                 style={{
                   color:
-                    b.kind === "text" || b.kind === "figure" || b.kind === "diagram"
+                    b.kind === "text" ||
+                    b.kind === "figure" ||
+                    b.kind === "diagram" ||
+                    b.kind === "settings"
                       ? "var(--accent)"
                       : "var(--txt-3)",
                   opacity: 0.75,

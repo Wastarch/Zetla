@@ -3859,18 +3859,63 @@ body.row-resizing {
   overflow: hidden;
 }
 
+/* 设置页头：标题区 + 形态切换按钮 + 关闭；切换按钮贴右，与关闭成组 */
+.set-head .set-head-title {
+  min-width: 0;
+}
+.set-head .set-host-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  white-space: nowrap;
+  color: var(--txt-2);
+}
+.set-head .set-host-toggle:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+/* .modal-head .x 自带 margin-left:auto；此处由切换按钮承担推右，关闭紧随其后 */
+.set-head .x {
+  margin-left: 0;
+}
+
 .set-nav {
   width: 194px;
   flex: none;
   overflow-y: auto;
   border-right: 1px solid var(--line);
-  padding: 11px 9px;
+  padding: 12px 9px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 分组小标题：把平铺页签收拢成三组，扫视成本更低 */
+.set-nav-group {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+.set-nav-group + .set-nav-group {
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
+}
+.set-nav-group-label {
+  padding: 0 11px 4px;
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--txt-3);
+  user-select: none;
+}
 
 .set-nav button {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
@@ -3884,6 +3929,7 @@ body.row-resizing {
   border-radius: var(--r-sm);
   cursor: pointer;
   text-align: left;
+  transition: background 0.14s, color 0.14s;
 }
 
 .set-nav button:hover {
@@ -3896,26 +3942,52 @@ body.row-resizing {
   color: var(--accent);
   font-weight: 500;
 }
+/* 选中态左侧色条：不占布局，仅作视觉锚点 */
+.set-nav button.on::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
 
 .set-panes {
   flex: 1;
   min-width: 0;
   min-height: 0;
   overflow: auto;
-  padding: 20px 23px 26px;
+  padding: 22px 26px 30px;
 }
 
 .set-pane {
   display: flex;
   flex-direction: column;
-  gap: 19px;
+  /* 行 hover 有上下 3px padding，gap 相应收窄，整体行距与优化前持平 */
+  gap: 13px;
 }
 
 .set-pane h4 {
+  position: relative;
   font-family: var(--font-serif);
   font-size: 14.5px;
   font-weight: 600;
-  margin-bottom: -6px;
+  margin-bottom: -4px;
+  padding-left: 11px;
+}
+/* 小节标题左侧竖条，给长设置页建立层次 */
+.set-pane h4::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 2px;
+  bottom: 2px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  opacity: 0.75;
 }
 
 /* 通栏设置行：左 label+说明，右侧控件 */
@@ -3968,6 +4040,46 @@ body.row-resizing {
 .fld .txt-in:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* 设置行 hover 反馈：control 与说明同处一条可扫视的带内（负 margin 抵消 padding，不撑宽行） */
+.fld {
+  padding: 3px 8px;
+  margin: 0 -8px;
+  border-radius: var(--r-sm);
+  transition: background 0.14s;
+}
+.fld:hover {
+  background: var(--line-hl);
+}
+
+/* ── 偏好设置 · 编辑区 Tab 常驻形态 ──────────────────────────────
+   与弹窗共用 .modal-head / .modal-body / .modal-foot 及全部 pane 样式；
+   外壳铺满 buffer-pane（absolute inset:0），不再居中、无遮罩。 */
+.set-tab-shell {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.set-tab-panel {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  overflow: hidden;
+}
+/* 复用 .modal.settings .modal-body 的左右分栏；Tab 面板不带 .modal.settings 类 */
+.set-tab-panel .modal-body {
+  display: flex;
+  padding: 0;
+  overflow: hidden;
+}
+.set-tab-panel .set-head {
+  background: var(--bg);
 }
 
 /* M1-17：语法高亮配色对话框（设置页「外观与保存 → 语法高亮」） */

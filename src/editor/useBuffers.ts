@@ -7,6 +7,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "@/ipc/invoke";
 import { useSettingsStore } from "@/core/settings";
 import { startCompile } from "@/compile/useCompile";
+import type { SettingsPane } from "@/core/store";
 import type { FileDoc } from "@/types";
 
 /** 正在写盘的缓冲路径（防止手动保存与自动保存并发互踩） */
@@ -50,9 +51,12 @@ function scheduleLivePreview(path: string): void {
   }, delay);
 }
 
+/** 偏好设置伪 buffer 路径（单例；设置页可「作为标签页显示」常驻编辑区） */
+export const SETTINGS_BUFFER_PATH = "settings://preferences";
+
 /** 缓冲类型：`text`=普通文本文档（LaTeX 等，可编辑/可保存）；`image`/`pdf`=只读查看器，不持有文本；
- *  `figure`/`diagram`=模块单例伪 buffer（画布 Tab，content/savedContent 恒为 ""，不脏、不落盘） */
-export type BufferKind = "text" | "image" | "pdf" | "figure" | "diagram";
+ *  `figure`/`diagram`/`settings`=单例伪 buffer（content/savedContent 恒为 ""，不脏、不落盘） */
+export type BufferKind = "text" | "image" | "pdf" | "figure" | "diagram" | "settings";
 
 /** 一个打开的文档（标签页） */
 export interface EditorBuffer {
@@ -72,6 +76,8 @@ export interface EditorBuffer {
   mounted: boolean;
   /** 缓冲类型（决定渲染方式与是否可保存） */
   kind: BufferKind;
+  /** 仅 settings 伪 buffer 使用：该 Tab 停留的设置页签（与弹窗位置互不干扰） */
+  pane?: SettingsPane;
 }
 
 /** 轻量反馈（toast） */
@@ -125,6 +131,9 @@ export interface BuffersState {
   openFigure: () => void;
   /** 打开绘图工作台 Tab（单例伪 buffer `diagram://editor`；永不脏、不落盘）；M2·F1-1 */
   openDiagram: () => void;
+  /** 打开偏好设置 Tab（单例伪 buffer `settings://preferences`；永不脏、不落盘）。
+   *  可指定进入的页签；已存在则仅激活（并更新停留页签）。 */
+  openSettingsTab: (pane?: SettingsPane) => void;
   /** 关闭缓冲；脏文件先经原生确认，取消返回 false */
   closeBuffer: (path: string, force?: boolean) => Promise<boolean>;
   /** 编辑器内容变更 */
@@ -262,6 +271,33 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
       kind: "diagram",
     };
     set((s) => ({ buffers: [...s.buffers, buf], activePath: path }));
+  },
+
+  // 偏好设置 Tab：与 openDiagram 同构的单例伪 buffer。
+  // 已存在则激活并同步停留页签；content/savedContent 恒为 ""，不脏、不落盘。
+  openSettingsTab: (pane) => {
+    const existing = get().buffers.find((b) => b.kind === "settings");
+    if (existing) {
+      set((s) => ({
+        activePath: existing.path,
+        buffers: pane
+          ? s.buffers.map((b) => (b.kind === "settings" ? { ...b, pane } : b))
+          : s.buffers,
+      }));
+      return;
+    }
+    const buf: EditorBuffer = {
+      path: SETTINGS_BUFFER_PATH,
+      name: "偏好设置",
+      content: "",
+      savedContent: "",
+      encoding: "utf-8",
+      eol: "lf",
+      mounted: false,
+      kind: "settings",
+      pane: pane ?? "build",
+    };
+    set((s) => ({ buffers: [...s.buffers, buf], activePath: buf.path }));
   },
 
   closeBuffer: async (path, force) => {

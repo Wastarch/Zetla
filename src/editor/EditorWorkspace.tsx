@@ -5,6 +5,7 @@
 import { lazy, Suspense, useCallback, useEffect, useRef } from "react";
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { TabBar } from "./TabBar";
+import { SettingsTab } from "@/ui/SettingsDialog";
 import { LaTeXEditor, type LaTeXEditorHandle } from "./LaTeXEditor";
 import { EditorToolbar } from "./EditorToolbar";
 import { FindReplacePanel } from "./FindReplacePanel";
@@ -210,6 +211,8 @@ export function EditorWorkspace() {
                   >
                     <DiagramTab />
                   </Suspense>
+                ) : b.kind === "settings" ? (
+                  <SettingsTab pane={b.pane} />
                 ) : (
                   <LaTeXEditor
                     ref={setHandle(b.path)}
