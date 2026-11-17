@@ -9,6 +9,9 @@ pub mod image;
 // M2 · 图片插入 TikZ · P2：暂存图 manifest / 转正 / 安静清理
 pub mod image_staging;
 pub mod logparse;
+// macOS 原生菜单栏（M-macos-menu）：模块内全部代码 cfg(target_os="macos") 隔离
+#[cfg(target_os = "macos")]
+pub mod native_menu;
 pub mod perl;
 pub mod project_mgmt;
 pub mod project;

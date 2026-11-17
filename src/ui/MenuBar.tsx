@@ -1,57 +1,31 @@
 // 顶部菜单栏（M0-13 前移）—— 对齐 docs/UI/code.html .menubar/.drop/.mi
-// 只接通已有能力；未到切片的功能置灰并在 tooltip 标注接通切片（编译 M0-9 已接、
-// 日志解析 M0-11、PDF M0-10、设置/偏好 M0-14a 已接、明暗主题 M1-2 已接、
-// Synctex 双向跳转 M1-4 已接）。撤销/重做/注释经
-// 命令桥 src/editor/activeView.ts 派发 CM6 命令（复制/粘贴为 WebView 原生键盘能力）。
+// Windows/Linux：自绘菜单，条目与动作来自共享动作表 src/ui/menuActions.ts。
+// macOS（M-macos-menu）：菜单全部迁移到系统原生菜单栏（Rust native_menu.rs），
+// 动作经 nativeMenuBridge.ts 事件桥分发到同一份动作表；顶条精简为
+// 「交通灯留位 + 居中项目名」（tauri.macos.conf.json 的 Overlay + hiddenTitle）。
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { redo, toggleComment, undo } from "@codemirror/commands";
-import { startCompletion } from "@codemirror/autocomplete";
-import { getActiveView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
-import { EXT_IMG, useProjectStore, notify } from "@/project/useProject";
-import { cancelCompile, startCompile } from "@/compile/useCompile";
-import { openEnvGuide } from "@/env/useEnvCheck";
-import { jumpToPdfFromSource } from "@/preview/syncTex";
+import { useProjectStore } from "@/project/useProject";
+import { startCompile } from "@/compile/useCompile";
 import { useUpdateStore, selectHasUpdate } from "@/modules/updater/updateStore";
 import { useModuleViews } from "@/modules/useModuleList";
 import { moduleRegistry } from "@/core/moduleRegistry";
-import { importImageFromPaths } from "@/editor/image/importImage";
-import { projectApi } from "@/ipc/invoke";
-
-/** 菜单项：enabled=false 置灰并在 hover 时以 title 提示 */
-interface MenuItemDef {
-  label: string;
-  /** 快捷键提示（仅真实已绑定/本切片新绑定的键才显示） */
-  sc?: string;
-  enabled?: boolean;
-  /** 置灰原因（title 提示） */
-  hint?: string;
-  onClick?: () => void;
-  sep?: boolean;
-}
+import { MENU_GROUPS, toBarItem, type BarItem } from "./menuActions";
+import { startNativeMenuBridge } from "./nativeMenuBridge";
 
 interface MenuDef {
   label: string;
-  items: MenuItemDef[];
+  items: BarItem[];
   /** 菜单按钮右上角红点（如：有可用更新） */
   dot?: boolean;
 }
 
 /** 自定义标题栏边缘缩放方向（Tauri startResizeDragging 的子集） */
 type ResizeDir = "East" | "West" | "South" | "SouthEast" | "SouthWest";
-
-/** 有活动编辑器时才可执行编辑类命令 */
-function withView(
-  fn: (view: NonNullable<ReturnType<typeof getActiveView>>) => void,
-) {
-  const v = getActiveView();
-  if (v) fn(v);
-}
 
 /** 原生关闭确认放行标记：确认后再次 close 时不重复弹窗。 */
 let closeApproved = false;
@@ -65,27 +39,8 @@ export function MenuBar() {
   const [openIdx, setOpenIdx] = useState<number | null>(null);
   const barRef = useRef<HTMLDivElement>(null);
 
-  // 状态驱动菜单可用性（re-render 由 zustand 订阅触发）
-  const activePath = useBuffersStore((s) => s.activePath);
-  const sidebarVisible = useAppStore((s) => s.sidebarVisible);
-  // M1-5a：侧栏视图（驱动菜单勾选与切换项）
-  const sidebarView = useAppStore((s) => s.sidebarView);
-  const logVisible = useAppStore((s) => s.logVisible);
-  const previewVisible = useAppStore((s) => s.previewVisible);
-  const running = useAppStore((s) => s.compileStatus === "running");
-  const logPath = useAppStore((s) => s.lastResult?.logPath);
-  const hasMain = useProjectStore((s) => !!s.tree?.mainFile);
-  const hasProject = useProjectStore((s) => !!s.root);
-  // M1-2b：主题设置值（是否 auto）与生效主题（驱动菜单标签/勾选）
-  const themeSetting = useSettingsStore((s) => s.settings.general.theme);
-  const effectiveTheme = useSettingsStore((s) => s.effectiveTheme);
-
-  const canEdit = activePath !== null;
-  // 当前活动标签是否为可编辑文本（图片/PDF 查看器时禁用编辑类命令，但「关闭标签」仍可用）
-  const activeKind = useBuffersStore(
-    (s) => s.buffers.find((b) => b.path === s.activePath)?.kind ?? null,
-  );
-  const canEditText = activeKind === "text";
+  // ── 状态订阅：驱动菜单置灰/动态标签重渲染（动作表用 getState() 取快照，
+  //    这些订阅保证状态变化时组件重渲染、菜单求值刷新）。 ──
   // M1-13：有可用更新时，帮助菜单按钮显示红点
   const hasUpdate = useUpdateStore(selectHasUpdate);
   // M1-8：模块自带视图（视图菜单动态项，Ctrl+B 5/6/7… 与其顺序对应）
@@ -94,6 +49,29 @@ export function MenuBar() {
   const [maximized, setMaximized] = useState(false);
   // macOS 进入系统全屏后原生交通灯会隐藏，此时菜单无需继续预留左侧空间。
   const [fullscreen, setFullscreen] = useState(false);
+
+  // 纯驱动重渲染的订阅（不再直接读取值；见 menuActions.ts 置灰/标签求值）
+  useBuffersStore((s) => s.activePath);
+  useBuffersStore((s) => s.buffers.find((b) => b.path === s.activePath)?.kind ?? null);
+  useAppStore((s) => s.sidebarVisible);
+  useAppStore((s) => s.sidebarView);
+  useAppStore((s) => s.logVisible);
+  useAppStore((s) => s.previewVisible);
+  useAppStore((s) => s.compileStatus);
+  useAppStore((s) => s.lastResult?.logPath);
+  useProjectStore((s) => !!s.tree?.mainFile);
+  const root = useProjectStore((s) => s.root);
+  useSettingsStore((s) => s.settings.general.theme);
+  useSettingsStore((s) => s.effectiveTheme);
+  // 模块视图变化（useModuleViews 内部订阅注册表）
+  const sidebarVisible = useAppStore.getState().sidebarVisible;
+  const sidebarView = useAppStore.getState().sidebarView;
+
+  // M-macos-menu：macOS 顶条精简形态（交通灯留位 + 居中项目名；菜单在系统菜单栏）
+  const isMac = __TAURI_PLATFORM__ === "darwin";
+  const projectName = root
+    ? (root.replace(/[\\/]+$/, "").split(/[\\/]/).pop() ?? null)
+    : null;
 
   // 统一接管窗口关闭请求：macOS 原生红色按钮、系统快捷键和自绘关闭键均走同一保护。
   useEffect(() => {
@@ -160,409 +138,50 @@ export function MenuBar() {
     };
   }, []);
 
-  const menus: MenuDef[] = [
-    {
-      label: "文件",
-      items: [
-        {
-          label: "新建项目…",
-          sc: "Ctrl+Shift+N",
-          onClick: () => useProjectStore.getState().openWizard(),
-        },
-        {
-          label: "打开项目…",
-          sc: "Ctrl+Shift+O",
-          onClick: () => void useProjectStore.getState().openProjectDialog(),
-        },
-        {
-          label: "切换项目…",
-          sc: "Ctrl+R",
-          onClick: () => useProjectStore.getState().openSwitcher(),
-        },
-        {
-          label: "打开图片 / PDF…",
-          onClick: async () => {
-            const picked = await openFileDialog({
-              multiple: true,
-              filters: [
-                { name: "图片与 PDF", extensions: [...EXT_IMG, "pdf"] },
-                { name: "图片", extensions: [...EXT_IMG] },
-                { name: "PDF", extensions: ["pdf"] },
-              ],
-            });
-            if (!picked) return;
-            const paths = typeof picked === "string" ? [picked] : picked;
-            // 图片/PDF 进入代码标签页查看器（不抢占右侧预览）
-            await useBuffersStore.getState().openFiles(paths);
-          },
-        },
-        {
-          label: "关闭项目",
-          enabled: hasProject,
-          hint: "未打开项目",
-          onClick: () => void useProjectStore.getState().closeProject(),
-        },
-        {
-          label: "导出当前项目为 zip…",
-          enabled: hasProject,
-          hint: "未打开项目",
-          onClick: () => {
-            const r = useProjectStore.getState().root;
-            if (r) void useProjectStore.getState().exportProject(r);
-          },
-        },
-        { sep: true, label: "" },
-        {
-          label: "保存",
-          sc: "Ctrl+S",
-          enabled: canEditText,
-          hint: canEdit ? "当前标签为查看器，不可保存" : "未打开文档",
-          onClick: () => {
-            const p = useBuffersStore.getState().activePath;
-            if (p) void useBuffersStore.getState().saveBuffer(p);
-          },
-        },
-        {
-          label: "全部保存",
-          sc: "Ctrl+Shift+S",
-          onClick: () => void useBuffersStore.getState().saveAllBuffers(),
-        },
-        { sep: true, label: "" },
-        {
-          label: "关闭标签",
-          sc: "Ctrl+W",
-          enabled: canEdit,
-          hint: "未打开文档",
-          onClick: () => {
-            const p = useBuffersStore.getState().activePath;
-            if (p) void useBuffersStore.getState().closeBuffer(p);
-          },
-        },
-        { label: "退出", sc: "Alt+F4", onClick: () => void quitApp() },
-      ],
-    },
-    {
-      label: "编辑",
-      items: [
-        {
-          label: "撤销",
-          sc: "Ctrl+Z",
-          enabled: canEditText,
-          hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
-          onClick: () => withView((v) => undo(v)),
-        },
-        {
-          label: "重做",
-          sc: "Ctrl+Y",
-          enabled: canEditText,
-          hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
-          onClick: () => withView((v) => redo(v)),
-        },
-        { sep: true, label: "" },
-        {
-          label: "复制",
-          sc: "Ctrl+C",
-          enabled: false,
-          hint: "编辑区内已由键盘接管",
-        },
-        {
-          label: "粘贴",
-          sc: "Ctrl+V",
-          enabled: false,
-          hint: "编辑区内已由键盘接管",
-        },
-        { sep: true, label: "" },
-        {
-          label: "查找",
-          sc: "Ctrl+F",
-          enabled: false,
-          hint: "查找面板另做（M1）",
-        },
-        {
-          label: "替换",
-          sc: "Ctrl+H",
-          enabled: false,
-          hint: "查找面板另做（M1）",
-        },
-        {
-          label: "切换注释",
-          sc: "Ctrl+/",
-          enabled: canEditText,
-          hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
-          onClick: () => withView((v) => toggleComment(v)),
-        },
-        { sep: true, label: "" },
-        {
-          // M2-5b：片段列表入口（键盘 Ctrl+Shift+Space 被中文输入法抢占时的兜底）
-          label: "插入代码片段…",
-          sc: "Ctrl+Shift+Space",
-          enabled: canEditText,
-          hint: canEdit ? "当前标签为查看器，不可编辑" : "未打开文档",
-          onClick: () =>
-            withView((v) => {
-              v.focus();
-              startCompletion(v);
-            }),
-        },
-      ],
-    },
-    {
-      label: "插入",
-      items: [
-        {
-          label: "插入图片…",
-          enabled: canEditText,
-          hint: canEdit ? "当前标签为查看器，无法插入" : "未打开文档",
-          onClick: async () => {
-            const picked = await openFileDialog({
-              multiple: true,
-              filters: [{ name: "图片", extensions: [...EXT_IMG] }],
-            });
-            if (!picked) return;
-            const paths = typeof picked === "string" ? [picked] : picked;
-            await importImageFromPaths(paths);
-          },
-        },
-        {
-          // M1-8：表格编辑器（打开侧栏「表格」视图；模块停用时置灰）
-          label: "表格编辑器…",
-          sc: "Ctrl+B 5",
-          enabled: moduleViews.some((mv) => mv.view.id === "table"),
-          hint: "表格模块已停用（设置 → 模块）",
-          onClick: () => useAppStore.getState().setSidebarView("table"),
-        },
-      ],
-    },
-    {
-      label: "构建",
-      items: [
-        {
-          label: "开始编译",
-          sc: "Ctrl+B",
-          enabled: hasMain && !running,
-          hint: running
-            ? "编译进行中"
-            : "未打开项目或未识别主文件（.ltex/config.json）",
-          onClick: () => void startCompile(),
-        },
-        {
-          label: "终止编译",
-          enabled: running,
-          hint: "当前没有编译任务",
-          onClick: () => void cancelCompile(),
-        },
-        { sep: true, label: "" },
-        {
-          // M1-9：清理 LaTeX 辅助文件（.aux/.log/.bbl/.blg/.toc/.out/.synctex.gz 等）
-          label: "清理辅助文件",
-          enabled: hasProject,
-          hint: "未打开项目",
-          onClick: async () => {
-            const root = useProjectStore.getState().root;
-            if (!root) return;
-            try {
-              const res = await projectApi.cleanAux(
-                root,
-                useSettingsStore.getState().settings.build.cleanAuxExtensions,
-              );
-              // 清理绕过 store，notify 刷新有时序延迟/编译态丢弃风险 → 先主动刷新资源树
-              if (res.removed > 0) {
-                await useProjectStore.getState().refresh(true);
-              }
-              notify(
-                res.removed > 0
-                  ? `已清理 ${res.removed} 个辅助文件`
-                  : "没有需要清理的辅助文件",
-                "ok",
-              );
-            } catch (e) {
-              notify(String(e), "err");
-            }
-          },
-        },
-        {
-          label: "编译并查看 PDF",
-          enabled: hasMain && !running,
-          hint: running ? "编译进行中" : "未打开项目或未识别主文件",
-          onClick: () => {
-            // 与「开始编译」的区别：先展开预览，编译成功后自动加载
-            useAppStore.setState({ previewVisible: true });
-            void startCompile();
-          },
-        },
-      ],
-    },
-    {
-      label: "查看",
-      items: [
-        {
-          label: `${sidebarVisible ? "隐藏" : "显示"}侧栏`,
-          sc: "Ctrl+B 0",
-          onClick: () => useAppStore.getState().toggleSidebar(),
-        },
-        {
-          // M1-5a：活动栏视图切换（等同点击左侧图标，但不会折叠）
-          label: `${sidebarVisible && sidebarView === "explorer" ? "✓ " : ""}资源管理器`,
-          sc: "Ctrl+B 1",
-          onClick: () => useAppStore.getState().setSidebarView("explorer"),
-        },
-        {
-          label: `${sidebarVisible && sidebarView === "outline" ? "✓ " : ""}大纲`,
-          sc: "Ctrl+B 2",
-          onClick: () => useAppStore.getState().setSidebarView("outline"),
-        },
-        {
-          // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库 两页签）
-          label: `${sidebarVisible && sidebarView === "math" ? "✓ " : ""}公式`,
-          sc: "Ctrl+B 3",
-          onClick: () => useAppStore.getState().setSidebarView("math"),
-        },
-        {
-          // M1-14f：引用管理面板
-          label: `${sidebarVisible && sidebarView === "references" ? "✓ " : ""}引用`,
-          sc: "Ctrl+B 4",
-          onClick: () => useAppStore.getState().setSidebarView("references"),
-        },
-        // M1-8：模块自带视图动态项（表格等）；编号 5 起与 Ctrl+B 5/6/7… 顺序一致
-        ...moduleViews.map((mv, i) => ({
-          label: `${sidebarVisible && sidebarView === mv.view.id ? "✓ " : ""}${mv.view.label}`,
-          sc: `Ctrl+B ${5 + i}`,
-          onClick: () => useAppStore.getState().setSidebarView(mv.view.id),
-        })),
-        {
-          label: `${previewVisible ? "隐藏" : "显示"} PDF 预览`,
-          onClick: () => useAppStore.getState().togglePreview(),
-        },
-        {
-          label: `${logVisible ? "隐藏" : "显示"}日志面板`,
-          onClick: () => useAppStore.getState().toggleLog(),
-        },
-        { sep: true, label: "" },
-        {
-          // M1-4：synctex 正向跳转（也可在编辑器里 Ctrl/⌘+点击源码行）
-          label: "跳到 PDF 中的位置",
-          sc: "Ctrl+点击源码",
-          enabled: hasMain,
-          hint: "未打开项目或未识别主文件",
-          onClick: () => {
-            const bs = useBuffersStore.getState();
-            if (!bs.activePath) return;
-            void jumpToPdfFromSource(
-              bs.activePath,
-              bs.cursor.line,
-              bs.cursor.col,
-            );
-          },
-        },
-        { sep: true, label: "" },
-        { label: "放大", enabled: false, hint: "缩放 M1" },
-        { label: "缩小", enabled: false, hint: "缩放 M1" },
-        { sep: true, label: "" },
-        {
-          // M1-2b：跟随系统（✓ 标记当前是否为 auto；点击从固定亮/暗切回跟随）
-          label: `${themeSetting === "auto" ? "✓ " : ""}主题跟随系统`,
-          hint:
-            themeSetting === "auto"
-              ? "当前跟随系统明暗，点击无变化"
-              : "点击后跟随系统明暗（prefers-color-scheme）",
-          onClick: () => useSettingsStore.getState().setTheme("auto"),
-        },
-        {
-          // 切换项按生效主题取反：auto 时点击 = 固定为当前外观（退出跟随）
-          label:
-            effectiveTheme === "dark" ? "切换到亮色主题" : "切换到暗色主题",
-          hint:
-            themeSetting === "auto"
-              ? "当前跟随系统，点击后固定外观"
-              : undefined,
-          onClick: () =>
-            useSettingsStore
-              .getState()
-              .setTheme(effectiveTheme === "dark" ? "light" : "dark"),
-        },
-      ],
-    },
-    {
-      label: "模板",
-      items: [
-        // {
-        //   label: "从模板新建…",
-        //   onClick: () => useProjectStore.getState().openWizard(),
-        // },
-        {
-          label: "模板库",
-          onClick: () => useProjectStore.getState().openLibrary(),
-          },
-        { sep: true, label: "" },
-        {
-          label: "另存当前项目为模板…",
-          enabled: hasProject,
-          hint: "未打开项目",
-          onClick: () => useProjectStore.getState().openLibrary(true),
-        },
-      ],
-    },
-    {
-      label: "设置",
-      items: [
-        {
-          label: "偏好设置",
-          sc: "Ctrl+,",
-          onClick: () => useAppStore.getState().openSettings("build"),
-        },
-        {
-          label: "项目设置…",
-          enabled: hasProject,
-          hint: "未打开项目",
-          onClick: () => useProjectStore.getState().openProjectSettings(),
-        },
-      ],
-    },
-    {
-      label: "帮助",
-      dot: hasUpdate,
-      items: [
-        {
-          label: "检查更新",
-          hint: "检测 GitHub / Gitee 上的新版本",
-          onClick: () => {
-            const st = useUpdateStore.getState();
-            if (
-              st.status === "update" ||
-              st.status === "downloading" ||
-              st.status === "downloaded"
-            ) {
-              useAppStore.getState().openSettings("about");
-            } else {
-              void st.check();
-            }
-          },
-        },
-        {
-          label: "TeX 环境检测…",
-          hint: "检测 TeX 发行版 / 打开环境引导",
-          onClick: () => void openEnvGuide(),
-        },
-        { label: "编译快捷键速查", enabled: false, hint: "M1" },
-        {
-          label: "查看日志文件",
-          enabled: !!logPath,
-          hint: logPath
-            ? "用默认程序打开本次编译的 .log"
-            : "尚无编译日志（先编译一次）",
-          onClick: () => {
-            if (!logPath) return;
-            void openPath(logPath).catch((e) => notify(String(e), "err"));
-          },
-        },
-        { sep: true, label: "" },
-        {
-          label: "关于 Zetla",
-          onClick: () => useAppStore.getState().openSettings("about"),
-        },
-      ],
-    },
-  ];
+  // M-macos-menu：macOS 专属 —— 原生菜单事件桥 + 系统级窗口标题（Mission Control /
+  // 窗口列表显示「项目名 — Zetla」；顶条内可见的项目名由 darwin-title 自绘）
+  useEffect(() => {
+    if (__TAURI_PLATFORM__ !== "darwin") return;
+    startNativeMenuBridge();
+    const w = getCurrentWindow();
+    const syncTitle = () => {
+      const root = useProjectStore.getState().root;
+      const name = root
+        ? root.replace(/[\\/]+$/, "").split(/[\\/]/).pop()
+        : null;
+      void w.setTitle(name ? `${name} — Zetla` : "Zetla");
+    };
+    syncTitle();
+    let prevRoot: string | null = useProjectStore.getState().root;
+    return useProjectStore.subscribe((s) => {
+      if (s.root !== prevRoot) {
+        prevRoot = s.root;
+        syncTitle();
+      }
+    });
+  }, []);
+
+
+  // M-macos-menu：菜单结构来自共享动作表（menuActions.ts，与 macOS 原生菜单同源）
+  const menus: MenuDef[] = MENU_GROUPS.map((g) => ({
+    label: g.label,
+    dot: g.id === "help" && hasUpdate,
+    items: [
+      ...g.items.map((e) =>
+        e === "sep" ? { sep: true, label: "" } : toBarItem(e),
+      ),
+      // M1-8：查看菜单追加模块自带视图动态项（编号 5 起与 Ctrl+B 5/6/7… 一致）
+      ...(g.id === "view"
+        ? moduleViews.map((mv, i) => ({
+            label: `${
+              sidebarVisible && sidebarView === mv.view.id ? "✓ " : ""
+            }${mv.view.label}`,
+            sc: `Ctrl+B ${5 + i}`,
+            onClick: () => useAppStore.getState().setSidebarView(mv.view.id),
+          }))
+        : []),
+    ],
+  }));
 
   // 点击栏外 / Esc 关闭
   useEffect(() => {
@@ -687,7 +306,7 @@ export function MenuBar() {
     };
   }, []);
 
-  function runItem(it: MenuItemDef) {
+  function runItem(it: BarItem) {
     setOpenIdx(null);
     if (it.enabled === false) return;
     it.onClick?.();
@@ -740,57 +359,76 @@ export function MenuBar() {
       <div
         className={fullscreen ? "menubar is-fullscreen" : "menubar"}
         ref={barRef}
-        role="menubar"
+        role={isMac ? undefined : "menubar"}
       >
-        {/* 左区：logo + 菜单 */}
-        <img className="nav-logo" src="/logo.svg" alt="Zetla" draggable={false} />
-        {menus.map((m, i) => (
-          <div
-            key={m.label}
-            className={openIdx === i ? "menu open" : "menu"}
-            onMouseEnter={() => {
-              if (openIdx !== null) setOpenIdx(i); // 已展开时 hover 切换
-            }}
-          >
-            <button
-              type="button"
-              aria-haspopup="menu"
-              aria-expanded={openIdx === i}
-              onClick={() => setOpenIdx(openIdx === i ? null : i)}
+        {isMac ? (
+          <>
+            {/* 左区：交通灯留位（Overlay 交通灯由系统绘制在 (14,16)） */}
+            <div className="darwin-tl-spacer" aria-hidden="true" />
+            {/* 中区：项目名居中（hiddenTitle:true，系统不绘制原生标题） */}
+            <div
+              className="darwin-title"
+              onMouseDown={onSpacerMouseDown}
+              onDoubleClick={toggleMaximizeWindow}
+              title={projectName ?? "Zetla"}
             >
-              {m.label}
-              {m.dot && <span className="menu-dot" aria-label="有可用更新" />}
-            </button>
-            <div className="drop" role="menu">
-              {m.items.map((it, j) =>
-                it.sep ? (
-                  <div key={j} className="msep" />
-                ) : (
-                  <button
-                    key={j}
-                    type="button"
-                    role="menuitem"
-                    className={it.enabled === false ? "mi off" : "mi"}
-                    title={it.enabled === false ? it.hint : undefined}
-                    onClick={() => runItem(it)}
-                  >
-                    <span>{it.label}</span>
-                    {it.sc && <span className="sc">{it.sc}</span>}
-                  </button>
-                ),
-              )}
+              {projectName ?? "Zetla"}
             </div>
-          </div>
-        ))}
+          </>
+        ) : (
+          <>
+            {/* 左区：logo + 菜单 */}
+            <img className="nav-logo" src="/logo.svg" alt="Zetla" draggable={false} />
+            {menus.map((m, i) => (
+              <div
+                key={m.label}
+                className={openIdx === i ? "menu open" : "menu"}
+                onMouseEnter={() => {
+                  if (openIdx !== null) setOpenIdx(i); // 已展开时 hover 切换
+                }}
+              >
+                <button
+                  type="button"
+                  aria-haspopup="menu"
+                  aria-expanded={openIdx === i}
+                  onClick={() => setOpenIdx(openIdx === i ? null : i)}
+                >
+                  {m.label}
+                  {m.dot && <span className="menu-dot" aria-label="有可用更新" />}
+                </button>
+                <div className="drop" role="menu">
+                  {m.items.map((it, j) =>
+                    it.sep ? (
+                      <div key={j} className="msep" />
+                    ) : (
+                      <button
+                        key={j}
+                        type="button"
+                        role="menuitem"
+                        className={it.enabled === false ? "mi off" : "mi"}
+                        title={it.enabled === false ? it.hint : undefined}
+                        onClick={() => runItem(it)}
+                      >
+                        <span>{it.label}</span>
+                        {it.sc && <span className="sc">{it.sc}</span>}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
+            ))}
+          </>
+        )}
         {/* 中区：空白拖拽区（仅此区可拖动窗口，避免误触按钮；双击切换最大化） */}
         <div
           className="nav-spacer"
           onMouseDown={onSpacerMouseDown}
           onDoubleClick={toggleMaximizeWindow}
-          title="拖动移动窗口 · 双击最大化 / 还原"
+          title={isMac ? undefined : "拖动移动窗口 · 双击最大化 / 还原"}
         />
-        {/* 右区：金刚键（最小化 / 最大化·还原 / 关闭） */}
-        <div className="win-ctl-group">
+        {/* 右区：金刚键（macOS 用原生交通灯，不渲染） */}
+        {!isMac && (
+          <div className="win-ctl-group">
           <button
             type="button"
             className="win-ctl"
@@ -831,7 +469,8 @@ export function MenuBar() {
               <path d="M2 2 L8 8 M8 2 L2 8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
             </svg>
           </button>
-        </div>
+          </div>
+        )}
       </div>
       {/* 自定义窗口缩放边（decorations:false 后系统边缘缩放失效，用 Tauri 原生拖拽缩放补足） */}
       <div className="resize-frame" aria-hidden="true">

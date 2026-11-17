@@ -324,23 +324,37 @@ body {
   color: #fff;
 }
 
-/* macOS：窗口装饰由 tauri.macos.conf.json 恢复，使用原生红黄绿按钮。 */
+/* macOS（M-macos-menu）：tauri.macos.conf.json 已是 decorations:true +
+   titleBarStyle:Overlay + hiddenTitle（原生红黄绿按钮悬浮在顶条上，
+   trafficLightPosition 14,16 恰在 32px 顶条内垂直居中）。
+   全部菜单迁移到系统菜单栏（Rust native_menu.rs → menu-action 事件桥）；
+   窗口内自绘菜单隐藏，顶条仅保留 交通灯留位 + 居中项目名。 */
 html[data-platform="darwin"] .win-ctl-group,
 html[data-platform="darwin"] .resize-frame {
   display: none;
 }
 
-html[data-platform="darwin"] .menubar {
-  padding-left: 78px;
+/* 交通灯留位：与 trafficLightPosition(14,16) 对齐（系统按钮占用的左端宽度） */
+html[data-platform="darwin"] .darwin-tl-spacer {
+  flex: none;
+  width: 78px;
 }
 
-/* 系统全屏时交通灯隐藏，撤销为它预留的左侧空间。 */
-html[data-platform="darwin"] .menubar.is-fullscreen {
-  padding-left: 8px;
-}
-
-html[data-platform="darwin"] .nav-logo {
-  display: none;
+/* 居中项目名（hiddenTitle:true，系统不画原生标题 → 前端自绘） */
+html[data-platform="darwin"] .darwin-title {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  max-width: 50%;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--txt);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
 }
 
 /* ── 自定义窗口缩放边（decorations:false 后补足系统边缘缩放） ── */

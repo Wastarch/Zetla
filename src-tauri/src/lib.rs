@@ -33,7 +33,14 @@ pub fn run() {
         .manage(std::sync::Arc::new(
             commands::terminal::TerminalState::default(),
         ))
-        .invoke_handler(tauri::generate_handler![
+    // M-macos-menu：macOS 原生菜单栏（中文菜单镜像自绘菜单，事件桥到前端 menuActions）
+    .setup(|app| {
+        // 语句级 #[cfg]（稳定）；非 macOS 平台此语句整体不编译
+        #[cfg(target_os = "macos")]
+        commands::native_menu::install(app.handle())?;
+        Ok(())
+    })
+    .invoke_handler(tauri::generate_handler![
             // 基础设施（M0-1）
             commands::core::ping,
             // 应用配置/偏好设置（M0-14a）
