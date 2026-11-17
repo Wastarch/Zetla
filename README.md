@@ -4,12 +4,12 @@
 
 ### 跨平台的桌面 LaTeX 工作台
 
-> Windows 已发布 · Linux / macOS 首次提供安装包与自更新（适配阶段，欢迎反馈）
+> Windows 已发布 · Linux / macOS 安装包与自更新均可用（适配阶段，欢迎反馈）
 
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?logo=windows&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-Preview-FCC624?logo=linux&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-Preview-000000?logo=apple&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
-[![Version](https://img.shields.io/badge/Version-v0.3.1-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v0.4.0-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-0E4C92)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
 [![Language](https://img.shields.io/badge/Language-Rust%20%2F%20TS-DEA584)](https://www.rust-lang.org)
@@ -29,7 +29,7 @@
 
 ## 快速上手 🚀
 
-只需 7 步，立刻开始写 LaTeX：
+只需 8 步，立刻开始写 LaTeX：
 
 1. **安装 Zetla** 💾：从 [Releases](https://github.com/Wastarch/Zetla/releases/latest) 下载对应平台的安装包 —— Windows `.exe`、Linux `.AppImage` / `.deb` / `.rpm`、macOS `.dmg`（详见[使用指南 · 安装](docs/使用指南.md#安装)）。
 2. **准备 TeX 环境** 🧰：首次启动自动检测；未安装可在引导面板一键安装 TeX Live，或接管已有安装（见[使用指南 · 首次启动](docs/使用指南.md#首次启动准备-tex-环境)）。
@@ -38,21 +38,22 @@
 5. **一键编译** ⚡：`Ctrl+B` 或点 ▶ 编译，内置 `latexmk` / `engine-direct`。
 6. **查看 PDF** 👁️：编译后右侧自动预览，支持源码 ↔ PDF 双向跳转。
 7. **插图与画图** 📐：拖入图片自动生成 `figure` 环境；需要示意图时切到侧栏「绘图」，在 TikZ 画布上拖图元、调样式，导出 PNG / SVG / PDF 或直接插入正文（见[使用指南 · 绘图](docs/使用指南.md#绘图tikz)）。
+8. **管文献** 📚：有 Zotero 的话在设置里开启联动，题录自动同步进项目 `.bib`；`Ctrl+Alt+K` 唤起引用浮层搜索、多选、插入，没进 `.bib` 的条目自动补写（见[使用指南 · Zotero 联动](docs/使用指南.md#zotero-联动)）。
 
 > [!TIP]
 > 需要执行 `latexmk`、`tlmgr` 或 git 时，打开底部日志面板的「终端」页签即可；终端 PATH 与编译引擎同源，支持多会话与独立终端设置。
 
 ## 功能 ✨
 
-Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编辑器、可编排编译、绘图（TikZ）、公式 / 表格 / 图片 / 拼图、内置终端、参考文献与 PDF 预览。
+Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编辑器、可编排编译、绘图（TikZ）、公式 / 表格 / 图片 / 拼图、内置终端、参考文献（含 Zotero 联动）与 PDF 预览。
 
 | 🗂️ 项目管理 | ✍️ 编辑器 | ⚙️ 可编排编译 |
 | :---: | :---: | :---: |
 | 最近项目 · 置顶归档 · 项目设置 · 新建任意后缀 | 语法高亮 · 代码片段 · 查找替换 · 全项目搜索 | Tool/Recipe · 实时预览 · 双向跳转 |
 | 🧮 公式表格 | 🖼️ 图片拼图 | 📐 绘图（TikZ） |
 | 公式/符号面板 · 表格编辑 | 图片附件 · 拼图布局 | 画布 ↔ 源码双向 · 控制点编辑 · 导出插入 |
-| 📚 参考文献 | 💻 内置终端 | 🧩 模板库 |
-| BibTeX 引用管理 | 多会话 · 终端设置 · 复用编译环境 | 6 套内置 · 变量表单 · 导入导出 |
+| 📚 Zotero / 参考文献 | 💻 内置终端 | 🧩 模板库 |
+| Zotero 联动 · 插入即写 · BibTeX 管理 | 多会话 · 终端设置 · 复用编译环境 | 6 套内置 · 变量表单 · 导入导出 |
 | 🔄 自动更新 | 🎨 主题外观 | 🖥️ 跨平台 |
 | 三平台自更新 · 双源回退 · TeX 环境引导 | 亮暗主题 · 自定义标题栏 | Windows · Linux · macOS |
 
@@ -67,6 +68,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 | :--- | :---: | :---: | :---: | :---: |
 | 内置终端（多会话、复用 TeX 环境） | ✅ 内置 | ❌ | ⚠️ 需另开窗口 | ✅ |
 | 拼图 · 多图论文插图可视化排版 | ✅ 专属面板 | ❌ | ❌ | ⚠️ 需手写 |
+| Zotero 联动（题录自动同步 · 插入即写 `.bib` · 反查跳转） | ✅ 内置 | ⚠️ 需付费订阅 | ❌ 手动导出 | ⚠️ 需配插件 |
 | 绘图（TikZ 画布编辑 ↔ 源码双向写回） | ✅ 画布 + 源码 | ❌ 只能手写 | ⚠️ 需手写代码 | ⚠️ 需手写代码 |
 | 首次启动 TeX 环境引导（一键装 / 接管 TeX Live） | ✅ 引导 | ✅ 云端内置 | ❌ 需自备 | ❌ 需自备 |
 | 可编排编译流程（Tool / Recipe 可视化） | ✅ 可视化 | ⚠️ 仅云端 | ⚠️ 单命令 | ⚠️ 需配置 |
@@ -76,7 +78,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 | 代码片段面板（可复用块管理） | ✅ 内置 | ⚠️ | ✅ | ✅ snippets |
 
 > [!TIP]
-> Zetla 的核心差异：**把公式、符号、拼图、绘图、编译、参考文献都做成开箱即用的面板**，加上首次启动自动引导 TeX 环境、中文 / GBK 零乱码——专为"不想折腾环境、又要桌面级体验"的中文 LaTeX 用户设计。绘图模块的 TikZ 源码始终是唯一真源：画布上的每一次拖拽都以最小补丁写回源码，与键盘编辑共用同一条撤销栈。
+> Zetla 的核心差异：**把公式、符号、拼图、绘图、编译、参考文献都做成开箱即用的面板**，加上首次启动自动引导 TeX 环境、中文 / GBK 零乱码——专为"不想折腾环境、又要桌面级体验"的中文 LaTeX 用户设计。绘图模块的 TikZ 源码始终是唯一真源：画布上的每一次拖拽都以最小补丁写回源码，与键盘编辑共用同一条撤销栈。文献侧则直接读 Zotero 本地 API（只读，不写回你的文献库）：题录改了 `.bib` 跟着变，插入引用时缺条目自动补写，`\cite` 还能反查回 Zotero。
 
 ## 详细文档 📚
 
@@ -85,9 +87,9 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 | 文档 | 内容 |
 | :--- | :--- |
 | [更新日志](docs/release_notes/RELEASE_NOTES.md) | 各版本亮点、改进修复、安装升级与已知限制 |
-| [功能介绍（完整）](docs/功能介绍.md) | 全部功能逐项说明 |
-| [使用指南（完整）](docs/使用指南.md) | 安装（三平台）、环境准备、编辑、编译、终端、绘图、公式、表格、拼图、PDF 等全部用法与快捷键 |
-| [常见问题](docs/常见问题.md) | 安装与更新、编译、绘图、模板、拼图等高频疑问 |
+| [功能介绍（完整）](docs/功能介绍.md) | 全部功能逐项说明（含 Zotero 联动、绘图、拼图、可编排编译） |
+| [使用指南（完整）](docs/使用指南.md) | 安装（三平台）、环境准备、编辑、编译、终端、绘图、公式、表格、拼图、Zotero 联动、PDF 等全部用法与快捷键 |
+| [常见问题](docs/常见问题.md) | 安装与更新、编译、绘图、模板、拼图、Zotero 联动等高频疑问 |
 | [从源码运行](docs/从源码运行.md) | 构建环境、打包、发版与更新清单、版本号与测试、目录结构 |
 
 > [!TIP]
