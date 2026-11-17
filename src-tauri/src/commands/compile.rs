@@ -72,6 +72,9 @@ pub(crate) fn find_engine(name: &str, search_dirs: &[std::path::PathBuf]) -> Opt
 }
 
 /// 分隔 PATH 文本（Windows `;`）为目录列表（去引号/空白/重复）
+/// 仅 Windows 运行时（registry_path_dirs）与单测使用；非 Windows 正式构建不编译，
+/// 避免 dead_code 警告。
+#[cfg(any(windows, test))]
 pub(crate) fn split_path_list(s: &str) -> Vec<std::path::PathBuf> {
     let sep = if cfg!(windows) { ';' } else { ':' };
     let mut out: Vec<std::path::PathBuf> = Vec::new();
