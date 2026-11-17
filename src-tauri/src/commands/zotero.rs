@@ -336,6 +336,8 @@ pub fn collections_url(port: u16, limit: u32) -> String {
     )
 }
 
+/// 仅供单测锚定「无分页」旧 URL 规则；运行时一律走 `items_page_url`。
+#[cfg(test)]
 pub fn items_url(port: u16, collection_key: Option<&str>, limit: u32) -> String {
     let n = clamp_limit(limit);
     match collection_key.map(str::trim).filter(|s| !s.is_empty()) {
