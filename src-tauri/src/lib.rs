@@ -34,10 +34,11 @@ pub fn run() {
             commands::terminal::TerminalState::default(),
         ))
     // M-macos-menu：macOS 原生菜单栏（中文菜单镜像自绘菜单，事件桥到前端 menuActions）
-    .setup(|app| {
-        // 语句级 #[cfg]（稳定）；非 macOS 平台此语句整体不编译
+    .setup(|_app| {
+        // 语句级 #[cfg]（稳定）；非 macOS 平台此语句整体不编译，
+        // 故参数用下划线前缀，避免 Windows/Linux 下 unused_variables 警告。
         #[cfg(target_os = "macos")]
-        commands::native_menu::install(app.handle())?;
+        commands::native_menu::install(_app.handle())?;
         Ok(())
     })
     .invoke_handler(tauri::generate_handler![
