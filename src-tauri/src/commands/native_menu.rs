@@ -106,13 +106,6 @@ pub fn install(app: &App) -> tauri::Result<()> {
     let e_select_all = PredefinedMenuItem::select_all(app, Some("全选"))?;
     let e_sep2 = sep(app)?;
     let e_comment = mi(app, "edit.toggle_comment", "切换注释", Some("CmdOrCtrl+/"))?;
-    let e_sep3 = sep(app)?;
-    let e_snippet = mi(
-        app,
-        "edit.insert_snippet",
-        "插入代码片段…",
-        Some("CmdOrCtrl+Shift+Space"),
-    )?;
     let edit_menu = Submenu::with_items(
         app,
         "编辑",
@@ -127,15 +120,25 @@ pub fn install(app: &App) -> tauri::Result<()> {
             &e_select_all,
             &e_sep2,
             &e_comment,
-            &e_sep3,
-            &e_snippet,
         ],
     )?;
 
     // ── 插入 ──
+    // M2-5b：快捷输入片段浮层入口（id 与 menuActions.ts 一致，走事件桥打开前端浮层）。
+    let ins_snippet = mi(
+        app,
+        "insert.snippet",
+        "插入代码片段…",
+        Some("CmdOrCtrl+Shift+Space"),
+    )?;
     let ins_image = mi(app, "insert.image", "插入图片…", None)?;
     let ins_table = mi(app, "insert.table_editor", "表格编辑器…", None)?;
-    let insert_menu = Submenu::with_items(app, "插入", true, &[&ins_image, &ins_table])?;
+    let insert_menu = Submenu::with_items(
+        app,
+        "插入",
+        true,
+        &[&ins_snippet, &ins_image, &ins_table],
+    )?;
 
     // ── 构建 ──
     let b_start = mi(app, "build.start", "开始编译", Some("CmdOrCtrl+B"))?;

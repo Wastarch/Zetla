@@ -264,8 +264,8 @@ export function SnippetsPane() {
     <div className="set-pane snip-pane" role="tabpanel">
       <h4>代码片段</h4>
       <div className="set-note">
-        在 <code>.tex</code> 中键入触发词后按 <kbd>Tab</kbd> 展开；选中文字后经「编辑 → 插入代码片段…」
-        可包裹（如 <code>bf</code> → <code>\textbf{"{选中文字}"}</code>）。模板支持{" "}
+        在 <code>.tex</code> 中键入触发词后按 <kbd>Tab</kbd> 展开；也可经「插入 → 插入代码片段…」打开浮层挑选，
+        选中文字后选含 <code>$SELECTION</code> 的片段可包裹（如 <code>bf</code> → <code>\textbf{"{选中文字}"}</code>）。模板支持{" "}
         <code>{"${1:占位}"}</code> 占位符与 <code>$SELECTION</code> 选中包裹。片段独立保存，
         改完点「保存片段」立即生效。
       </div>

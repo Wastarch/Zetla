@@ -33,6 +33,8 @@ import { useUpdateCheck } from "@/modules/updater/useUpdateCheck";
 import { startReferenceWatcher } from "@/modules/reference/useReferenceStore";
 // Zotero 联动 · P2：沉浸式引用插入浮层（Ctrl+Alt+K；状态由模块级 store 驱动）
 import { CitationPicker } from "@/modules/zotero/CitationPicker";
+// M2-5b：快捷输入代码片段浮层（插入菜单唤起；store 驱动开关）
+import { SnippetPicker } from "@/ui/SnippetPicker";
 import { refreshUserSnippets } from "@/editor/snippetsSupport";
 import { useAutosave } from "@/editor/useAutosave";
 import { useWindowMemory } from "@/window/useWindowMemory";
@@ -219,6 +221,7 @@ function App() {
       </div>
       <StatusBar />
       <CitationPicker />
+      <SnippetPicker />
       <ToastHost />
       <CtxMenu />
       <EntryDialog />

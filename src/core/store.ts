@@ -109,6 +109,11 @@ export interface AppState {
   appendLog: (lines: string[]) => void;
   clearLog: () => void;
 
+  // ── 快捷插入片段浮层（M2-5b：菜单「插入 → 插入代码片段…」唤起） ──
+  /** 浮层开关；插入动作直接展开选中片段（不依赖补全扩展，空前缀可用） */
+  snippetPickerOpen: boolean;
+  setSnippetPickerOpen: (open: boolean) => void;
+
   // ── TeX 环境（M0-15a）──
   /** 最近一次发行版检测结果（null=尚未检测） */
   env: TexDistInfo | null;
@@ -239,6 +244,10 @@ export const useAppStore = create<AppState>((set) => ({
       return { compileLog: next.length > LOG_LIMIT ? next.slice(-LOG_LIMIT) : next };
     }),
   clearLog: () => set({ compileLog: [] }),
+
+  // ── 快捷插入片段浮层 ──
+  snippetPickerOpen: false,
+  setSnippetPickerOpen: (open) => set({ snippetPickerOpen: open }),
 
   // ── TeX 环境（M0-15a）──
   env: null,

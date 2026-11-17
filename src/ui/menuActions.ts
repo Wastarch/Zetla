@@ -9,7 +9,6 @@
 import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { redo, toggleComment, undo } from "@codemirror/commands";
-import { startCompletion } from "@codemirror/autocomplete";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getActiveView } from "@/editor/activeView";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -220,17 +219,13 @@ export const menuActions: Record<string, MenuActionDef> = {
     hint: viewerHint("编辑"),
     run: () => withView((v) => toggleComment(v)),
   },
-  "edit.insert_snippet": {
-    // M2-5b：片段列表入口（键盘 Ctrl+Shift+Space 被中文输入法抢占时的兜底）
+  "insert.snippet": {
+    // M2-5b：快捷输入片段浮层入口（不依赖补全扩展；空前缀/非 latex 档位也能插入）
     label: "插入代码片段…",
     sc: "Ctrl+Shift+Space",
     enabled: canEditText,
-    hint: viewerHint("编辑"),
-    run: () =>
-      withView((v) => {
-        v.focus();
-        startCompletion(v);
-      }),
+    hint: viewerHint("插入"),
+    run: () => useAppStore.getState().setSnippetPickerOpen(true),
   },
 
   // ── 插入 ──
@@ -523,11 +518,13 @@ export const MENU_GROUPS: MenuGroupSpec[] = [
       "edit.find",
       "edit.replace",
       "edit.toggle_comment",
-      "sep",
-      "edit.insert_snippet",
     ],
   },
-  { id: "insert", label: "插入", items: ["insert.image", "insert.table_editor"] },
+  {
+    id: "insert",
+    label: "插入",
+    items: ["insert.snippet", "insert.image", "insert.table_editor"],
+  },
   {
     id: "build",
     label: "构建",
