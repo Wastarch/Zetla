@@ -16,10 +16,7 @@ import {
 import { useZoteroStore } from "./useZoteroStore";
 import { engineLabel } from "./zoteroStyleMap";
 import { ZoteroBindingPane } from "./ZoteroBindingPane";
-import { previewBibFormatSwitch, reloadBibFormat, switchBibFormat } from "./zoteroRuntime";
-import { useProjectStore } from "@/project/useProject";
-import type { BibFormatSwitchPreview } from "./zoteroRuntime";
-import type { ConcreteBibFormat } from "./zoteroFormat";
+import { useBibFormatControl } from "./useBibFormatControl";
 import { BibFormatSwitchDialog } from "@/modules/reference/BibFormatSwitchDialog";
 
 function Row({
@@ -74,11 +71,9 @@ export function ZoteroPane() {
   const [portText, setPortText] = useState(() => String(z.port));
   const [probeBusy, setProbeBusy] = useState(false);
   const [probeNote, setProbeNote] = useState("");
-  // P9：参考文献格式切换（预览 + 确认窗）
-  const bibFormat = useZoteroStore((s) => s.bibFormat);
-  const [fmtPreview, setFmtPreview] = useState<BibFormatSwitchPreview | null>(null);
-  const [fmtBusy, setFmtBusy] = useState(false);
-  const [fmtNote, setFmtNote] = useState("");
+  // P9/P11：参考文献格式切换（预览 + 确认窗，底层与引用侧栏共用同一 hook）
+  const fmt = useBibFormatControl();
+  const { bibFormat } = fmt;
 
   const update = (fn: (cur: ZoteroSettings) => ZoteroSettings) => {
     const cur = useSettingsStore.getState().settings;
@@ -99,49 +94,6 @@ export function ZoteroPane() {
   const diag = diagnose(health, z.enabled, checking);
   const lines = z.enabled && health ? capabilityLines(health) : [];
   const port = normalizePort(portText);
-
-  // P9：选择参考文献格式。auto 直接锁定跟随；具体值弹确认窗预览后再落笔
-  const chooseBibFormat = (value: string) => {
-    setFmtNote("");
-    if (value === "auto" || value === bibFormat.effective) {
-      // 跟随项目 / 与当前相同：只改配置，不动文件
-      const projectRoot = useProjectStore.getState().root;
-      if (!projectRoot) return;
-      void (async () => {
-        try {
-          await zoteroApi.setBibFormat(projectRoot, value);
-          await reloadBibFormat(projectRoot);
-          setFmtNote(value === "auto" ? "已改为跟随主 .tex 检测" : "格式未变化");
-        } catch (e) {
-          setFmtNote(`保存失败：${String(e)}`);
-        }
-      })();
-      return;
-    }
-    void (async () => {
-      setFmtBusy(true);
-      try {
-        const p = await previewBibFormatSwitch(value as ConcreteBibFormat);
-        setFmtPreview(p);
-      } catch (e) {
-        setFmtNote(`生成预览失败：${String(e)}`);
-      } finally {
-        setFmtBusy(false);
-      }
-    })();
-  };
-
-  const confirmBibFormat = () => {
-    if (!fmtPreview) return;
-    setFmtBusy(true);
-    void switchBibFormat(fmtPreview.target)
-      .then((r) => setFmtNote(r.message))
-      .catch((e) => setFmtNote(`切换失败：${String(e)}`))
-      .finally(() => {
-        setFmtBusy(false);
-        setFmtPreview(null);
-      });
-  };
 
   const runProbe = async () => {
     setProbeBusy(true);
@@ -243,8 +195,8 @@ export function ZoteroPane() {
         <select
           className="zotero-port"
           value={bibFormat.configured}
-          disabled={fmtBusy}
-          onChange={(e) => chooseBibFormat(e.target.value)}
+          disabled={fmt.busy}
+          onChange={(e) => fmt.choose(e.target.value)}
         >
           <option value="auto">跟随项目</option>
           <option value="bibtex">BibTeX</option>
@@ -265,7 +217,7 @@ export function ZoteroPane() {
           <span className="zo-fmt-need-choice">— 未能检测，请在上方选一次 BibTeX 或 biblatex</span>
         )}
       </div>
-      {fmtNote && <div className="zo-fmt-note">{fmtNote}</div>}
+      {fmt.note && <div className="zo-fmt-note">{fmt.note}</div>}
 
       <h4>连接自检</h4>
       <div className="zotero-actions">
@@ -318,12 +270,14 @@ export function ZoteroPane() {
         项目内 .bib 与缓存照常使用，编译不受影响。
       </p>
 
-      {fmtPreview && (
+      {fmt.preview && (
         <BibFormatSwitchDialog
-          preview={fmtPreview}
-          busy={fmtBusy}
-          onConfirm={confirmBibFormat}
-          onClose={() => setFmtPreview(null)}
+          preview={fmt.preview}
+          busy={fmt.busy}
+          applyEngine={fmt.applyEngine}
+          onApplyEngine={fmt.setApplyEngine}
+          onConfirm={fmt.confirm}
+          onClose={fmt.close}
         />
       )}
     </div>

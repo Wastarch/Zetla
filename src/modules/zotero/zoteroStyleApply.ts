@@ -16,7 +16,9 @@ import {
 } from "./zoteroStyleMap";
 import {
   applyEngineSwitch,
+  planBibliographySetup,
   planEngineSwitch,
+  type BibliographySetupPlan,
   type ConcreteBibFormat,
 } from "./zoteroFormat";
 import { detectPreambleStyle } from "./zoteroStyleMap";
@@ -160,6 +162,68 @@ export async function applyEngineSwitchToTex(
     return { ok: false, changed: false, undoable: false, message: "未找到目标文件缓冲，导言区未修改" };
   }
   useBuffersStore.getState().updateContent(path, applyEngineSwitch(buf.content, plan));
+  return {
+    ok: true, changed: true, undoable: false,
+    message: `${plan.message}（已写入缓冲，未自动重新编译）`,
+  };
+}
+
+/**
+ * P11：预览「补齐引用环境」补丁（只读，供新建 .bib 后的确认窗展示）。
+ * 从 .bib 相对路径取库名（去 .bib、去目录），引擎用当前导言区检测结果与目标格式的组合。
+ */
+export async function previewBibliographySetup(
+  texPath: string,
+  bibPath: string,
+  target: ConcreteBibFormat,
+): Promise<{ path: string; plan: BibliographySetupPlan }> {
+  const { tex } = await readTexForEdit(texPath);
+  const name = bibPath.split(/[\\/]/).pop() ?? bibPath;
+  const plan = planBibliographySetup(tex, name, detectPreambleStyle(tex).engine, target);
+  return { path: texPath, plan };
+}
+
+/**
+ * P11：把「补齐引用环境」补丁落笔到主 .tex。写入前重读重算（避免预览到确认之间偏移失效），
+ * 有编辑器视图走 view.dispatch 保撤销栈，无视图退到缓冲。
+ */
+export async function applyBibliographySetup(
+  texPath: string,
+  bibPath: string,
+  target: ConcreteBibFormat,
+): Promise<StyleApplyResult> {
+  const { tex, source } = await readTexForEdit(texPath);
+  const name = bibPath.split(/[\\/]/).pop() ?? bibPath;
+  const plan = planBibliographySetup(tex, name, detectPreambleStyle(tex).engine, target);
+  if (!plan.ok) return { ok: false, changed: false, undoable: false, message: plan.message };
+  if (plan.noop || plan.edits.length === 0) {
+    return { ok: true, changed: false, undoable: false, message: plan.message };
+  }
+
+  let view = getEditorView(texPath);
+  if (!view && source === "disk") {
+    await useBuffersStore.getState().openFiles([texPath]);
+    view = await waitForView(texPath);
+  }
+  if (view) {
+    view.dispatch({
+      changes: plan.edits.map((e) => ({ from: e.from, to: e.to, insert: e.insert })),
+      scrollIntoView: true,
+    });
+    return {
+      ok: true, changed: true, undoable: true,
+      message: `${plan.message}（Ctrl+Z 可撤销，未自动重新编译）`,
+    };
+  }
+  const buf = useBuffersStore.getState().buffers.find((b) => b.path === texPath);
+  if (!buf) {
+    return { ok: false, changed: false, undoable: false, message: "未找到目标文件缓冲，导言区未修改" };
+  }
+  let out = buf.content;
+  for (const ed of [...plan.edits].sort((a, b) => b.from - a.from)) {
+    out = out.slice(0, ed.from) + ed.insert + out.slice(ed.to);
+  }
+  useBuffersStore.getState().updateContent(texPath, out);
   return {
     ok: true, changed: true, undoable: false,
     message: `${plan.message}（已写入缓冲，未自动重新编译）`,

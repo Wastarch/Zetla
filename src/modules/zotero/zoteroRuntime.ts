@@ -268,7 +268,10 @@ export async function previewBibFormatSwitch(target: ConcreteBibFormat): Promise
   return out;
 }
 
-export async function switchBibFormat(target: ConcreteBibFormat): Promise<BibFormatSwitchResult> {
+export async function switchBibFormat(
+  target: ConcreteBibFormat,
+  applyEngine = true,
+): Promise<BibFormatSwitchResult> {
   const root = useProjectStore.getState().root;
   if (!root) {
     return { ok: false, bibChanged: false, texChanged: false, renamedKeys: 0, conflicts: 0, message: "未打开项目" };
@@ -319,14 +322,18 @@ export async function switchBibFormat(target: ConcreteBibFormat): Promise<BibFor
       messages.push(".bib 有未保存改动，字段未转换（保存后可再切一次）");
     }
 
-    // 3) 导言区引擎互转
-    const texPath = mainTexPath();
-    if (texPath) {
-      const r = await applyEngineSwitchToTex(texPath, target);
-      texChanged = r.changed;
-      messages.push(r.message);
+    // 3) 导言区引擎互转（P11：用户可取消，只做 .bib 字段转换）
+    if (applyEngine) {
+      const texPath = mainTexPath();
+      if (texPath) {
+        const r = await applyEngineSwitchToTex(texPath, target);
+        texChanged = r.changed;
+        messages.push(r.message);
+      } else {
+        messages.push("未找到主 .tex，导言区未改（请手动调整 \\bibliographystyle / biblatex）");
+      }
     } else {
-      messages.push("未找到主 .tex，导言区未改（请手动调整 \\bibliographystyle / biblatex）");
+      messages.push("导言区未改（已取消同步修改）");
     }
   } finally {
     st.setSyncBusy(false);
@@ -684,6 +691,8 @@ function onDemandBinding(): { binding: ZoteroBinding; root: string; abs: string 
  */
 export async function ensureBibEntries(
   wanted: BibEntryRequest[],
+  /** 编译前补齐等非交互场景传 true：只补写文件，不弹「补引用环境」窗 */
+  suppressPrompt = false,
 ): Promise<BibEnsureResult> {
   const empty: BibEnsureResult = {
     ok: true, written: 0, skipped: [], unknown: [], message: "",
@@ -747,6 +756,13 @@ export async function ensureBibEntries(
     const text = items
       .map(({ item, key }) => bibtexEntryBlock(item, key, fmt))
       .join("\n\n");
+    // P11：写入前判断目标库是否为空/不存在（空库 = 刚新建），决定写入后是否提示补引用环境
+    let bibWasEmpty = false;
+    try {
+      bibWasEmpty = !(await zoteroApi.readBib(root, binding.bibPath)).trim();
+    } catch {
+      bibWasEmpty = true;
+    }
     st.setSyncBusy(true);
     try {
       const r = await zoteroApi.appendBib(root, binding.bibPath, text);
@@ -764,6 +780,14 @@ export async function ensureBibEntries(
         st.setKeyMap(map);
         // 新建的默认库尚未进入项目树：先静默重扫，再重建索引，让新条目可被补全/跳转命中
         await reindexNewBib(abs);
+        // P11：空库首次写入 → 弹窗询问是否在导言区补 \bibliography / biblatex 环境，
+        // 消除「\cite used but no \bibliography」诊断。提示只负责设置状态，不自动改文件。
+        if (bibWasEmpty && !suppressPrompt) {
+          const texPath = mainTexPath();
+          if (texPath) {
+            st.setBibSetupPrompt({ bibPath: binding.bibPath, texPath, format: fmt });
+          }
+        }
       }
       return {
         ok: true,
@@ -814,7 +838,7 @@ export async function runZoteroPreCompile(): Promise<void> {
     // P6 按需补齐：编译前把「被引但缺失」的条目写进按需推断的 .bib
     // （无受管绑定也能补写——复用 ensureBibEntries 的路径推断，含无库时自动新建；失败只记日志，不阻断）
     if (report.missing.length > 0) {
-      const r = await ensureBibEntries(report.missing.map((k) => ({ citeKey: k })));
+      const r = await ensureBibEntries(report.missing.map((k) => ({ citeKey: k })), true);
       if (r.written > 0) {
         useAppStore.getState().appendLog([
           `Zotero 按需补写：编译前已补写 ${r.written} 条` +

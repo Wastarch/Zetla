@@ -22,6 +22,9 @@ import {
   resolveZoteroPdfPreview,
 } from "@/modules/zotero/zoteroReverseRuntime";
 import { ensureBibEntries } from "@/modules/zotero/zoteroRuntime";
+import { useBibFormatControl } from "@/modules/zotero/useBibFormatControl";
+import { BibFormatSwitchDialog } from "./BibFormatSwitchDialog";
+import { engineLabel } from "@/modules/zotero/zoteroStyleMap";
 import type { ZoteroItem } from "@/types/zotero";
 import {
   citationCopyMessage,
@@ -155,6 +158,8 @@ export default function ReferencePanel() {
     plan: StyleSwitchPlan;
   } | null>(null);
   const [styleBusy, setStyleBusy] = useState(false);
+  /** P9/P11：Bib 条目格式切换（与偏好设置共用同一底层 hook） */
+  const fmt = useBibFormatControl();
 
   // 右键菜单：点击空白/滚动/Esc 关闭；同时收起由它唤起的下拉（卡片下拉不受影响）
   useEffect(() => {
@@ -539,6 +544,25 @@ export default function ReferencePanel() {
         ))}
       </div>
 
+      {/* P9/P11：Bib 条目格式（与偏好设置共用配置键与切换逻辑） */}
+      <div className="ref-fmt-bar" title="导出的 Zotero 条目跟随主 .tex 使用的引擎；切换时原地转换已有字段，可选择是否同步改导言区（citekey 不变）">
+        <span>Bib 条目格式</span>
+        <select
+          className="ref-fmt-select"
+          value={fmt.bibFormat.configured}
+          disabled={fmt.busy}
+          onChange={(e) => fmt.choose(e.target.value)}
+        >
+          <option value="auto">跟随项目</option>
+          <option value="bibtex">BibTeX</option>
+          <option value="biblatex">biblatex</option>
+        </select>
+        <span className="ref-fmt-effective">
+          当前：{fmt.bibFormat.effective ? engineLabel(fmt.bibFormat.effective) : "未识别"}
+        </span>
+      </div>
+      {fmt.note && <div className="ref-fmt-note">{fmt.note}</div>}
+
       {view === "project" ? (
         <>
           {/* 校验汇总条（M1-14e 缓过来的项目级聚合） */}
@@ -792,6 +816,18 @@ export default function ReferencePanel() {
           path={zoteroPdf.path}
           filename={zoteroPdf.filename}
           onClose={() => setZoteroPdf(null)}
+        />
+      )}
+
+      {/* P9/P11：Bib 条目格式切换确认窗（字段转换 + 可选的导言区改动） */}
+      {fmt.preview && (
+        <BibFormatSwitchDialog
+          preview={fmt.preview}
+          busy={fmt.busy}
+          applyEngine={fmt.applyEngine}
+          onApplyEngine={fmt.setApplyEngine}
+          onConfirm={fmt.confirm}
+          onClose={fmt.close}
         />
       )}
 

@@ -9,6 +9,9 @@ import { engineLabel } from "@/modules/zotero/zoteroStyleMap";
 export interface BibFormatSwitchDialogProps {
   preview: BibFormatSwitchPreview;
   busy: boolean;
+  /** P11：是否同步修改主 .tex 导言区引擎配置（用户勾选） */
+  applyEngine: boolean;
+  onApplyEngine: (v: boolean) => void;
   onConfirm: () => void;
   onClose: () => void;
 }
@@ -21,6 +24,8 @@ function baseName(p: string | null): string {
 export function BibFormatSwitchDialog({
   preview,
   busy,
+  applyEngine,
+  onApplyEngine,
   onConfirm,
   onClose,
 }: BibFormatSwitchDialogProps) {
@@ -79,31 +84,40 @@ export function BibFormatSwitchDialog({
           )}
         </div>
 
-        {engine && !engine.noop && engine.edits.length > 0 ? (
-          <div className="zo-fmt-block">
-            <b>导言区</b>
-            <span title={texPath ?? ""}>{baseName(texPath)}</span>
-            <pre className="zo-style-diff">
-              {engine.before.map((s, i) => (
-                <span className="zo-style-old" key={`b${i}`}>{`- ${s}`}</span>
-              ))}
-              {engine.before.length > 0 && engine.after.length > 0 && "\n"}
-              {engine.after.map((s, i) => (
-                <span className="zo-style-new" key={`a${i}`}>{`+ ${s}`}</span>
-              ))}
-            </pre>
-          </div>
-        ) : (
-          <div className="zo-fmt-block">
-            <b>导言区</b>
-            <span className="zo-style-hint">
-              {engine?.noop ? "已是目标引擎，无需改动。" : "未找到可替换的声明（请手动调整导言区）。"}
-            </span>
-          </div>
-        )}
+        <div className="zo-fmt-block">
+          <label className="zo-fmt-toggle" title="取消后只转换 .bib 字段，不动主 .tex 导言区">
+            <input
+              type="checkbox"
+              checked={applyEngine}
+              disabled={busy}
+              onChange={(e) => onApplyEngine(e.target.checked)}
+            />
+            <b>同步修改导言区引擎配置</b>
+          </label>
+          <span title={texPath ?? ""}>{baseName(texPath)}</span>
+          {applyEngine ? (
+            engine && !engine.noop && engine.edits.length > 0 ? (
+              <pre className="zo-style-diff">
+                {engine.before.map((s, i) => (
+                  <span className="zo-style-old" key={`b${i}`}>{`- ${s}`}</span>
+                ))}
+                {engine.before.length > 0 && engine.after.length > 0 && "\n"}
+                {engine.after.map((s, i) => (
+                  <span className="zo-style-new" key={`a${i}`}>{`+ ${s}`}</span>
+                ))}
+              </pre>
+            ) : (
+              <div className="zo-style-hint">
+                {engine?.noop ? "已是目标引擎，无需改动。" : "未找到可替换的声明（请手动调整导言区）。"}
+              </div>
+            )
+          ) : (
+            <div className="zo-style-hint">已取消：本次只转换 .bib 字段，主 .tex 导言区保持不变。</div>
+          )}
+        </div>
 
         <div className="zo-style-note">
-          导言区改动可用 <kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销；.bib 字段改名写入文件（保留 citekey）。
+          .bib 字段改名写入文件（保留 citekey）；若勾选了导言区改动，可用 <kbd>Ctrl</kbd>+<kbd>Z</kbd> 撤销。
           不会自动重新编译，请确认后自行编译验证。
         </div>
 

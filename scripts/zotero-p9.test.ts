@@ -8,6 +8,7 @@ import {
   mapFieldName,
   needsRename,
   normalizeBibFormat,
+  planBibliographySetup,
   planEngineSwitch,
   type BibFormatConfig,
 } from "../src/modules/zotero/zoteroFormat.ts";
@@ -218,6 +219,30 @@ eq(fieldsBlx["year"], undefined, "字段表 biblatex 无 year");
 const fieldsBtx = zoteroFieldsFromItem(ITEM, "bibtex");
 eq(fieldsBtx["year"], "2020", "字段表 bibtex year");
 eq(fieldsBtx["journal"], "J. Test", "字段表 bibtex journal");
+
+// ── [9] 引用环境补齐 planBibliographySetup（P11） ─────────────
+console.log("\n[9] planBibliographySetup 补齐 \\bibliography / biblatex 环境");
+const bareTex = "\\documentclass{article}\n\\begin{document}\n\\cite{doe2020}\n\\end{document}\n";
+const planBtx = planBibliographySetup(bareTex, "references.bib", "none", "bibtex");
+check(!planBtx.noop && planBtx.edits.length === 2, "空环境 → 两处补丁（样式 + 输出）");
+const outBtx = applyEngineSwitch(bareTex, planBtx);
+check(outBtx.includes("\\bibliographystyle{plain}"), "bibtex 补 \bibliographystyle");
+check(outBtx.includes("\\bibliography{references}"), "bibtex 补 \bibliography{references}（去 .bib）");
+check(/\\bibliography\{references\}\n\\end\{document\}/.test(outBtx), "\bibliography 放在 \end{document} 前");
+// 幂等：已补齐后再规划应 noop
+check(planBibliographySetup(outBtx, "references.bib", "bibtex", "bibtex").noop, "已配 bibtex 环境 → noop");
+const planBlx = planBibliographySetup(bareTex, "refs.bib", "none", "biblatex");
+const outBlx = applyEngineSwitch(bareTex, planBlx);
+check(outBlx.includes("\\usepackage{biblatex}"), "biblatex 补宏包");
+check(outBlx.includes("\\addbibresource{refs.bib}"), "biblatex 补 addbibresource（带 .bib）");
+check(outBlx.includes("\\printbibliography"), "biblatex 补 printbibliography");
+check(planBibliographySetup(outBlx, "refs.bib", "biblatex", "biblatex").noop, "已配 biblatex 环境 → noop");
+// thebibliography 环境也算已有输出
+const manualTex = "\\documentclass{article}\n\\begin{document}\n\\begin{thebibliography}{9}\n\\end{thebibliography}\n\\end{document}";
+check(planBibliographySetup(manualTex, "references.bib", "none", "bibtex").edits.length === 1, "thebibliography 已在 → 只补样式，不补输出");
+// 注释掉的声明不算生效
+const commentedTex = "\\documentclass{article}\n% \\bibliography{old}\n% \\bibliographystyle{plain}\n\\begin{document}\n\\end{document}";
+check(planBibliographySetup(commentedTex, "references.bib", "none", "bibtex").edits.length === 2, "注释掉的声明不算生效，仍补两处");
 
 console.log(`\n${total - failures}/${total} 通过`);
 process.exit(failures === 0 ? 0 : 1);

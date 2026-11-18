@@ -7,6 +7,7 @@
 // 原地转换 = 逐字段定位字段名 span → 按目标格式改名；目标名已存在则跳过该字段
 // （不覆盖用户数据），保证幂等、可预览、可撤销（由 UI 层用 view.dispatch 承接）。
 import type { BibEngine } from "./zoteroStyleMap.ts";
+import { maskTexComments } from "./zoteroStyleMap.ts";
 import { parseBibEntries, type ParsedBibEntry } from "./zoteroMerge.ts";
 
 // 字段别名表与 mapFieldName 定义在上游 zoteroMerge（避免循环依赖），此处 re-export。
@@ -324,4 +325,86 @@ export function formatPreview(text: string, tex: string, from: BibEngine, to: Co
   engine: EngineSwitchPlan;
 } {
   return { bib: convertBibFormat(text, to), engine: planEngineSwitch(tex, from, to) };
+}
+
+// ── 引用环境补齐（新建 .bib 后消除「\cite used but no \bibliography」） ──
+
+export interface BibliographySetupPlan {
+  ok: boolean;
+  message: string;
+  /** 已配置完整引用环境，无需改动 */
+  noop?: boolean;
+  from: BibEngine;
+  to: ConcreteBibFormat;
+  /** 文档类型：bibtex → \bibliography{name}；biblatex → \addbibresource{name.bib} */
+  bibName: string;
+  edits: { from: number; to: number; insert: string; label: string }[];
+  before: string[];
+  after: string[];
+}
+
+/**
+ * 规划「让主 .tex 具备目标引擎的完整参考文献环境」。缺什么补什么、可重复调用（幂等）：
+ * - bibtex：导言区 \bibliographystyle{plain}（缺则补）+ 正文末 \bibliography{name}（缺则补）；
+ * - biblatex：导言区 \usepackage{biblatex} + \addbibresource{name.bib}（缺则补）+ 正文末 \printbibliography（缺则补）。
+ * 注释里的声明用 maskTexComments 遮掉，不算生效。不碰样式名细节（由 P3-4 样式映射另行负责）。
+ */
+export function planBibliographySetup(
+  tex: string,
+  bibName: string,
+  from: BibEngine,
+  to: ConcreteBibFormat,
+): BibliographySetupPlan {
+  const masked = maskTexComments(tex);
+  const name = bibName.replace(/\.bib$/i, "");
+  const base = { ok: true, from, to, bibName: name, edits: [] as BibliographySetupPlan["edits"], before: [] as string[], after: [] as string[] };
+  const doc = /\\documentclass(?:\[[^\]]*\])?\s*\{[^}]*\}/.exec(masked);
+  const beg = /\\begin\s*\{document\}/.exec(masked);
+  const end = /\\end\s*\{document\}/.exec(masked);
+  const pushEdit = (from: number, to: number, insert: string, label: string, beforeLine: string, afterLines: string[]) => {
+    base.edits.push({ from, to, insert, label });
+    base.before.push(beforeLine);
+    base.after.push(...afterLines);
+  };
+  // 导言区插入点：\documentclass 之后 → \begin{document} 之前 → 文首
+  const headAt = doc ? doc.index + doc[0].length : beg ? beg.index : 0;
+  const headInsert = (lines: string[]) => `\n${lines.join("\n")}`;
+
+  if (to === "bibtex") {
+    const hasBst = /\\bibliographystyle\s*\{[^}]*\}/.test(masked);
+    const hasOutput = /\\bibliography\s*\{[^}]*\}/.test(masked) || /\\begin\s*\{thebibliography\}/.test(masked);
+    if (!hasBst) {
+      pushEdit(headAt, headAt, headInsert(["\\bibliographystyle{plain}"]), "插入 \\bibliographystyle{plain}", "（导言区缺样式声明）", ["\\bibliographystyle{plain}"]);
+    }
+    if (!hasOutput) {
+      const cmd = `\\bibliography{${name}}`;
+      if (end) pushEdit(end.index, end.index, `${cmd}\n`, "插入 \\bibliography", "（正文末缺参考文献命令）", [cmd]);
+      else pushEdit(tex.length, tex.length, `\n${cmd}\n`, "追加 \\bibliography", "（未找到 \\end{document}）", [cmd]);
+    }
+  } else {
+    const hasPkg = /\\usepackage\s*(?:\[[^\]]*\])?\s*\{[^}]*\bbiblatex\b[^}]*\}/.test(masked);
+    const hasRes = /\\addbibresource\s*(?:\[[^\]]*\])?\s*\{[^}]*\}/.test(masked) || /\\bibliography\s*\{[^}]*\}/.test(masked);
+    const hasOutput = /\\printbibliography\b/.test(masked) || /\\begin\s*\{thebibliography\}/.test(masked);
+    const headLines: string[] = [];
+    if (!hasPkg) headLines.push("\\usepackage{biblatex}");
+    if (!hasRes) headLines.push(`\\addbibresource{${name}.bib}`);
+    if (headLines.length > 0) {
+      pushEdit(headAt, headAt, headInsert(headLines), "插入 biblatex 宏包与资源声明", "（导言区缺 biblatex 配置）", headLines);
+    }
+    if (!hasOutput) {
+      const cmd = "\\printbibliography";
+      if (end) pushEdit(end.index, end.index, `${cmd}\n`, "插入 \\printbibliography", "（正文末缺参考文献输出）", [cmd]);
+      else pushEdit(tex.length, tex.length, `\n${cmd}\n`, "追加 \\printbibliography", "（未找到 \\end{document}）", [cmd]);
+    }
+  }
+
+  const noop = base.edits.length === 0;
+  return {
+    ...base,
+    ok: true,
+    noop,
+    message: noop
+      ? "主 .tex 已具备目标引擎的参考文献环境，无需添加"
+      : `将补齐引用环境：${base.edits.map((e) => e.label).join("、")}（可撤销，不自动重新编译）`,
+  };
 }

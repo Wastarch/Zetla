@@ -9053,6 +9053,51 @@ body.row-resizing {
   border-bottom-color: var(--accent);
 }
 
+/* ── P9/P11 · 引用侧栏 Bib 条目格式条 + 确认窗勾选 ────── */
+.ref-fmt-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--txt-3);
+  border-bottom: 1px solid var(--line-soft);
+  flex: none;
+}
+.ref-fmt-bar > span:first-child { white-space: nowrap; }
+.ref-fmt-select {
+  height: 22px;
+  padding: 0 4px;
+  font-size: 11px;
+  color: var(--txt);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.ref-fmt-select:focus { border-color: var(--accent); }
+.ref-fmt-effective {
+  margin-left: auto;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.ref-fmt-note {
+  padding: 5px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--txt-2);
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--line-soft);
+  flex: none;
+}
+.zo-fmt-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+.zo-fmt-toggle input { cursor: pointer; accent-color: var(--accent); }
+
 /* Zotero 文献库 */
 .zo-lib {
   flex: 1 1 auto;

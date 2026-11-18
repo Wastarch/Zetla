@@ -33,6 +33,8 @@ import { useUpdateCheck } from "@/modules/updater/useUpdateCheck";
 import { startReferenceWatcher } from "@/modules/reference/useReferenceStore";
 // Zotero 联动 · P2：沉浸式引用插入浮层（Ctrl+Alt+K；状态由模块级 store 驱动）
 import { CitationPicker } from "@/modules/zotero/CitationPicker";
+// Zotero 联动 · P11：新建 .bib 后「补齐引用环境」确认窗（全局，store 驱动）
+import { BibSetupDialog } from "@/modules/zotero/BibSetupDialog";
 // M2-5b：快捷输入代码片段浮层（插入菜单唤起；store 驱动开关）
 import { SnippetPicker } from "@/ui/SnippetPicker";
 import { refreshUserSnippets } from "@/editor/snippetsSupport";
@@ -221,6 +223,7 @@ function App() {
       </div>
       <StatusBar />
       <CitationPicker />
+      <BibSetupDialog />
       <SnippetPicker />
       <ToastHost />
       <CtxMenu />

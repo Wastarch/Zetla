@@ -26,7 +26,17 @@ import {
   shouldPoll,
   type ZoteroPollSettings,
 } from "./zoteroDiagnostics";
-import type { EffectiveFormat } from "./zoteroFormat";
+import type { ConcreteBibFormat, EffectiveFormat } from "./zoteroFormat";
+
+/** P11：新建 .bib 后「补引用环境」提示的触发参数（详情由弹窗挂载后自行读盘计算） */
+export interface BibSetupPrompt {
+  /** 新建 .bib 的项目内相对路径（用于写 \bibliography 的命令名） */
+  bibPath: string;
+  /** 引用所在主 .tex 绝对路径 */
+  texPath: string;
+  /** 当前生效的参考文献引擎 */
+  format: ConcreteBibFormat;
+}
 
 export interface ZoteroStoreState {
   /** 最近一次自检结果（关闭联动时也可能保留历史值） */
@@ -56,6 +66,9 @@ export interface ZoteroStoreState {
   /** P9：项目参考文献格式（配置 + 主 .tex 检测 + 生效值），换项目时由 runtime 重算 */
   bibFormat: EffectiveFormat;
   setBibFormat: (f: EffectiveFormat) => void;
+  /** P11：新建 .bib 后待确认的「补引用环境」提示（全局弹窗消费；取消/完成后置 null） */
+  bibSetupPrompt: BibSetupPrompt | null;
+  setBibSetupPrompt: (p: BibSetupPrompt | null) => void;
   setBindings: (b: ZoteroBinding[]) => void;
   setKeyMap: (m: ZoteroKeyMap | null) => void;
   setLastSync: (r: ZoteroSyncRecord | null) => void;
@@ -98,6 +111,8 @@ export const useZoteroStore = create<ZoteroStoreState>((set, get) => ({
   bibChange: null,
   bibFormat: { configured: "auto", detected: "none", effective: null, needsChoice: false },
   setBibFormat: (bibFormat) => set({ bibFormat }),
+  bibSetupPrompt: null,
+  setBibSetupPrompt: (bibSetupPrompt) => set({ bibSetupPrompt }),
   setBindings: (bindings) => set({ bindings }),
   setKeyMap: (keyMap) => set({ keyMap }),
   setLastSync: (lastSync) => set({ lastSync }),
