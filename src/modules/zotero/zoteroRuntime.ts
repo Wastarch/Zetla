@@ -24,6 +24,7 @@ import {
   type ZoteroKeyMap,
   type ZoteroSyncRecord,
 } from "@/types/zotero";
+import type { ProjectNode } from "@/types";
 import {
   BIB_DEBOUNCE_MS,
   appendKeyMap,
@@ -105,6 +106,35 @@ function isDirtyBib(absPath: string): boolean {
     .getState()
     .buffers.find((x) => pathKey(x.path) === key);
   return !!b && b.kind === "text" && b.content !== b.savedContent;
+}
+
+/**
+ * 判断一个 .bib 绝对路径是否已进入项目树（reindex 只从 tree.nodes 收集 .bib）。
+ * 新建的库刚落盘时还没被 scanProject 收进树里，需要刷新后才能进引用索引。
+ */
+function bibInProjectTree(nodes: ProjectNode[] | undefined, absPath: string): boolean {
+  if (!nodes) return false;
+  const key = pathKey(absPath);
+  for (const n of nodes) {
+    if (n.type === "file" && extOf(n.name) === "bib" && pathKey(n.path) === key) return true;
+    if (n.type === "dir" && n.children && bibInProjectTree(n.children, absPath)) return true;
+  }
+  return false;
+}
+
+/**
+ * 让刚新建的 .bib 进入索引：若它还不在项目树中，静默重扫项目树，
+ * 再清反向引用缓存并重建索引（后续插入的 \cite 才能命中新库条目）。失败不阻断。
+ */
+async function reindexNewBib(absPath: string): Promise<void> {
+  try {
+    if (!bibInProjectTree(useProjectStore.getState().tree?.nodes, absPath)) {
+      await useProjectStore.getState().refresh(true);
+    }
+  } catch {
+    /* 刷新失败仍尝试 reindex（若树已含该文件仍可收录） */
+  }
+  await reindexNow();
 }
 
 async function reindexNow(): Promise<void> {
@@ -660,7 +690,7 @@ export async function ensureBibEntries(
   };
   try {
     const hit = onDemandBinding();
-    if (!hit) return { ...empty, ok: false, message: "项目内没有可写入的 .bib（请先新建一个）" };
+    if (!hit) return { ...empty, ok: false, message: "请先打开一个项目再插入引用" };
     const { binding, root, abs } = hit;
     const c = cfg();
     if (!c.enabled) return { ...empty, ok: false, message: "Zotero 联动未启用" };
@@ -732,7 +762,8 @@ export async function ensureBibEntries(
         );
         await zoteroApi.saveMap(root, JSON.stringify(map, null, 2));
         st.setKeyMap(map);
-        await reindexNow();
+        // 新建的默认库尚未进入项目树：先静默重扫，再重建索引，让新条目可被补全/跳转命中
+        await reindexNewBib(abs);
       }
       return {
         ok: true,
@@ -780,14 +811,15 @@ export async function runZoteroPreCompile(): Promise<void> {
     const line = consistencySummary(report);
     if (line) useAppStore.getState().appendLog([line]);
 
-    // P6 按需补齐：编译前把「被引但缺失」的条目写进受管 .bib（失败只记日志，不阻断）
-    const odBinding = st.bindings.find((b) => b.enabled);
-    if (odBinding && report.missing.length > 0) {
+    // P6 按需补齐：编译前把「被引但缺失」的条目写进按需推断的 .bib
+    // （无受管绑定也能补写——复用 ensureBibEntries 的路径推断，含无库时自动新建；失败只记日志，不阻断）
+    if (report.missing.length > 0) {
       const r = await ensureBibEntries(report.missing.map((k) => ({ citeKey: k })));
       if (r.written > 0) {
         useAppStore.getState().appendLog([
-          `Zotero 按需补写：编译前已补写 ${r.written} 条到 ${odBinding.bibPath}` +
-            (r.unknown.length ? `；另有 ${r.unknown.length} 条无法生成` : ""),
+          `Zotero 按需补写：编译前已补写 ${r.written} 条` +
+            (r.unknown.length ? `；另有 ${r.unknown.length} 条无法生成` : "") +
+            (r.message ? `（${r.message}）` : ""),
         ]);
       } else if (r.unknown.length > 0) {
         useAppStore.getState().appendLog([

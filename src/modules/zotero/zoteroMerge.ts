@@ -303,7 +303,11 @@ export function itemKeyNotesFromBib(text: string): Record<string, string> {
 // 自动写进项目内最合适的 .bib。优先级：
 //   1) 已启用的受管绑定且在项目内 → 用它（用户显式指定最高优先）；
 //   2) 否则从项目内候选 .bib 里挑「主库」：Zotero 映射条目多 > 总条目多 > 路径升序；
-//   3) 没有任何候选 → null（调用方只提示、不阻断插入）。
+//   3) 没有任何候选 → 项目根下新建默认库 references.bib（底层 zotero_append_entries
+//      对不存在的文件会 create_dir_all + 原子新建，故「插入即创建」无需预先 touch 文件）。
+
+/** 无任何候选 .bib 时自动新建的默认库名（相对项目根） */
+export const DEFAULT_BIB_NAME = "references.bib";
 
 /** 项目内一个候选 .bib 的画像（由调用方从 reference store 汇总） */
 export interface BibWriteCandidate {
@@ -331,7 +335,9 @@ export function pickInsertBibPath(
     if (isPathInsideRoot(root, abs)) return abs;
   }
   const inside = candidates.filter((c) => c.file && isPathInsideRoot(root, c.file));
-  if (inside.length === 0) return null;
+  // 项目内没有任何 .bib（连空的都没有）→ 回落到默认库路径，交给底层原子新建。
+  // 若项目里已有空的 references.bib（在树里但 0 条目，不进 candidates），默认路径同样命中它。
+  if (inside.length === 0) return normalizeBibPath(root, DEFAULT_BIB_NAME);
   const sorted = [...inside].sort((a, b) => {
     if (b.zoteroCount !== a.zoteroCount) return b.zoteroCount - a.zoteroCount;
     if (b.entryCount !== a.entryCount) return b.entryCount - a.entryCount;

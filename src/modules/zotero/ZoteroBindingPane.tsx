@@ -127,7 +127,7 @@ export function ZoteroBindingPane() {
 
           <div className="zotero-bind-list">
             {!binding ? (
-              <p className="set-note">尚未设置受管 .bib。保存后：插入引用时缺一条补一条；Zotero 里改了题录字段可在下方「立即同步字段」写回项目 .bib。</p>
+              <p className="set-note">尚未设置受管 .bib。不设也能用：插入引用时若项目内没有 .bib 会自动新建 references.bib，缺一条补一条；设置受管 .bib 后可固定写入目标，并在下方「立即同步字段」把 Zotero 改动写回。</p>
             ) : (
               <div className="zotero-bind-row">
                 <div className="zotero-bind-meta">

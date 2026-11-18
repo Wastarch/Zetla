@@ -8,6 +8,7 @@ import {
   mergeBibFields,
   parseBibEntries,
   pickInsertBibPath,
+  DEFAULT_BIB_NAME,
   unwrapBibValue,
   zoteroFieldsFromItem,
 } from "../src/modules/zotero/zoteroMerge.ts";
@@ -249,11 +250,20 @@ console.log("\n[pickInsertBibPath]");
     "E:/Project/Demo/figures/zotero.bib",
     "越界绑定忽略，回落项目内推断",
   );
-  eq(pickInsertBibPath(root, null, []), null, "无任何候选 → null");
+  eq(
+    pickInsertBibPath(root, null, []),
+    `E:/Project/Demo/${DEFAULT_BIB_NAME}`,
+    "无任何候选 → 默认新建 references.bib（插入即创建）",
+  );
   eq(
     pickInsertBibPath(root, null, [{ file: "E:/Elsewhere/x.bib", zoteroCount: 9, entryCount: 9 }]),
-    null,
-    "项目外候选不计入",
+    `E:/Project/Demo/${DEFAULT_BIB_NAME}`,
+    "项目外候选不计入 → 回落默认新建路径",
+  );
+  eq(
+    pickInsertBibPath(root, { enabled: true, bibPath: "custom/new.bib" }, []),
+    "E:/Project/Demo/custom/new.bib",
+    "无候选但显式受管绑定仍优先（可指向待新建文件）",
   );
 }
 
