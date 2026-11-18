@@ -2,14 +2,21 @@
 // Rust 端已按 500ms 防抖推 project_changed（只含文件增减）；
 // 这里再做一层合并：刷新在飞时只记一次 pending，避免连续事件堆积全树扫描。
 // 编译进行中不刷新（latexmk 会连续产出 .aux/.log/.pdf），改由 compile_finished 统一刷一次。
-// 2026-11-14（用户指令）：移除「文件已在编辑器外部被修改，是否重新加载？」提示条，
-// 因此这里的 file_changed 订阅一并撤掉 —— 外部改动不再提示、也不自动重载缓冲
-// （需要手工从盘重读时仍可用 useBuffers.revertBuffer）。Rust 侧事件保留，零改动。
+// 2026-11-14（用户指令）：移除「文件已在编辑器外部被修改，是否重新加载？」提示条。
+// 2026-11-18（用户指令）：恢复 file_changed 订阅，改为**静默自动刷新**打开的文本标签——
+//  仍然不弹提示条；只重载干净缓冲（未保存改动优先保留），细节见 useBuffers.reloadExternalFile。
+//  仍然保留手工重读入口 useBuffers.revertBuffer。Rust 侧事件零改动。
 import { useEffect } from "react";
 import { RustEvents, onKernelEvent } from "@/ipc/events";
 import { useAppStore } from "@/core/store";
+import { useBuffersStore } from "@/editor/useBuffers";
+import { shouldReloadOnExternalChange } from "@/editor/externalReload";
+import { pathKey } from "@/modules/zotero/zoteroSync";
 import { useProjectStore } from "./useProject";
-import type { ProjectChanged } from "@/types";
+import type { FileChanged, ProjectChanged } from "@/types";
+
+/** 同一文件的 file_changed 合并窗口（原子写一次落盘会触发多条 notify 事件） */
+const FILE_RELOAD_DEBOUNCE_MS = 250;
 
 export function useProjectWatch(): void {
   useEffect(() => {
@@ -49,8 +56,33 @@ export function useProjectWatch(): void {
       else un();
     });
 
+    // 外部改动 → 自动重载已打开的文本标签（静默；脏缓冲不覆盖）
+    const reloadTimers = new Map<string, number>();
+    void onKernelEvent<FileChanged>(RustEvents.fileChanged, (e) => {
+      if (!alive || typeof e?.path !== "string" || !e.path) return;
+      const key = pathKey(e.path);
+      const prev = reloadTimers.get(key);
+      if (prev !== undefined) window.clearTimeout(prev);
+      reloadTimers.set(
+        key,
+        window.setTimeout(() => {
+          reloadTimers.delete(key);
+          const st = useBuffersStore.getState();
+          // Rust 事件路径写法可能与缓冲 path 不同（反斜杠 / verbatim 前缀），
+          // 先按规范化路径找缓冲，再用它自己的 path 重载（revert 内部是精确匹配）。
+          const buf = st.buffers.find((b) => shouldReloadOnExternalChange(b, e.path));
+          if (buf) void st.reloadExternalFile(buf.path);
+        }, FILE_RELOAD_DEBOUNCE_MS),
+      );
+    }).then((un) => {
+      if (alive) unlisteners.push(un);
+      else un();
+    });
+
     return () => {
       alive = false;
+      reloadTimers.forEach((t) => window.clearTimeout(t));
+      reloadTimers.clear();
       unlisteners.forEach((u) => u());
     };
   }, []);

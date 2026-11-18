@@ -7,6 +7,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "@/ipc/invoke";
 import { useSettingsStore } from "@/core/settings";
 import { startCompile } from "@/compile/useCompile";
+import { sameTextIgnoringEol } from "./externalReload";
 import type { SettingsPane } from "@/core/store";
 import type { FileDoc } from "@/types";
 
@@ -154,6 +155,10 @@ export interface BuffersState {
   /** 放弃缓冲、重新从盘读回（revert_file 回填并清脏）；返回是否成功。
    *  2026-11-14 起外部改动不再自动提示，需要手工重读时调用本方法。 */
   revertBuffer: (path: string) => Promise<boolean>;
+  /** 外部文件被改动后自动重载已打开的文本缓冲（不提示、不覆盖未保存改动）。
+   *  三重守卫：仅文本 + 当前干净 + 读盘期间内容未变；内容与磁盘相同（多为自身保存回显）直接跳过。
+   *  返回是否真的重载了内容。 */
+  reloadExternalFile: (path: string) => Promise<boolean>;
   /** 诊断用：缓冲是否脏 */
   isDirty: (path: string) => boolean;
 }
@@ -440,6 +445,33 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
       return true;
     } catch (e) {
       set({ notice: { text: `重新加载失败 ${buf.name}：${String(e)}`, kind: "err" } });
+      return false;
+    }
+  },
+
+  reloadExternalFile: async (path) => {
+    const buf = get().buffers.find((b) => b.path === path);
+    if (!buf || buf.kind !== "text") return false;
+    // 守卫一：有未保存改动绝不覆盖（用户工作优先）
+    if (buf.content !== buf.savedContent) return false;
+    const snapshot = buf.content;
+    try {
+      const d = await projectApi.revertFile(path);
+      // 守卫二：内容没变（自身保存回显 / 重复事件 / 仅 EOL 差异）→ 不做无谓重载，避免重置 CM 撤销栈
+      if (sameTextIgnoringEol(d.content, snapshot)) return false;
+      // 守卫三：读盘这段时间里用户又开始编辑 → 放弃覆盖，保留用户内容
+      const cur = get().buffers.find((b) => b.path === path);
+      if (!cur || cur.content !== snapshot || cur.content !== cur.savedContent) return false;
+      set((s) => ({
+        buffers: s.buffers.map((b) =>
+          b.path === path
+            ? { ...b, content: d.content, savedContent: d.content, encoding: d.encoding, eol: d.eol }
+            : b,
+        ),
+      }));
+      return true;
+    } catch (e) {
+      set({ notice: { text: `外部更新重读失败 ${buf.name}：${String(e)}`, kind: "err" } });
       return false;
     }
   },
