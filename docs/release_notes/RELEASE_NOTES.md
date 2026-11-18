@@ -4,6 +4,72 @@
 
 ---
 
+## Zetla 0.4.1 —— macOS 原生菜单 · 片段浮层 · Zotero 收尾
+
+`0.4.1` 是接在 Zotero 大版本后的补齐版本。macOS 的菜单栏交还给系统原生菜单，窗口顶条只剩红绿灯和项目名；「插入代码片段」从一条藏得深的菜单项变成双栏浮层；Zotero 联动把四件收尾事项做完——项目没 `.bib` 时自动建库、建好库自动补引用环境、格式切换下沉到引用侧栏、`itemKey` 彻底不再出现在编译出的参考文献里。另外外部编辑器改动文件时标签页静默自动重载，并修复了 `0.4.0` 更新下载链接 404 的问题。
+
+### 亮点
+
+- **macOS 原生菜单栏**
+  - Rust 侧构建中文原生菜单（Zetla / 文件 / 编辑 / 插入 / 构建 / 查看 / 模板 / 设置 / 窗口 / 帮助），菜单点击经 `menu-action` 事件桥回前端执行；自绘菜单与原生菜单共用同一份动作表（`menuActions.ts`），Windows / Linux 的菜单行为完全不变
+  - 窗口顶条精简为红绿灯按钮 + 居中项目名（`setTitle` 同步），去掉自绘标题与交通灯留位的旧样式
+  - 退出 / 关窗走**自定义菜单项**而不是系统 Predefined 项，未保存内容的确认流程保留；撤销 / 重做接入 CodeMirror 撤销栈，避开系统 Predefined undo/redo 与 CM6 冲突
+- **插入代码片段浮层**
+  - 菜单入口「插入代码片段…」从编辑组迁到插入组，打开双栏浮层：左侧分类与片段列表（搜索 / `↑↓` / `Enter` / `Esc`），右侧代码预览、Tab Stops 标注与展开示意；代码高亮为纯函数渲染，不用 `innerHTML`
+  - 修复原入口走 `startCompletion` 时，在非 LaTeX 档位 / 空前缀下点击片段没反应的问题——现在直接走 `expandSnippet`，占位符跳转与 `$SELECTION` 包裹照常生效
+  - 样式为独立 `.snip-*` 族，配色走项目 token，明暗主题自适应，代码块用恒定纸墨 token
+- **Zotero 联动四件收尾**
+  - **没库自动建**：项目里没有任何 `.bib` 时，引用浮层 / 文献库插入 / 编译前校验会自动在项目根新建 `references.bib` 并写入条目，不用再手动建文件；新建的库立即进引用索引，补全与跳转马上可用
+  - **建库补环境**：自动建库写成功后弹窗提示补引用环境——BibTeX 补 `\bibliographystyle` + `\bibliography`，biblatex 补 `\usepackage{biblatex}` + `\addbibresource` + `\printbibliography`；预览确认后走可撤销的最小补丁写入导言区，不自动重编译
+  - **格式切换进侧栏**：引用侧栏的 Bib 条目格式下拉与设置页「参考文献格式」共用同一配置键，改一处两处同步；切换格式时可选「同步修改导言区」，确认窗先预览再落笔
+  - **itemKey 不再进正文**：0.4.0 用 `note = {Zotero itemKey: ...}` 当映射锚点，会被 biber/BibTeX 渲染进参考文献；0.4.1 改存自定义字段（对未知字段默认静默忽略），写盘前自动迁移存量 note 标记（纯标记删行、混合内容只剔标记），设置页提供一键清理旧格式
+- **外部改动静默自动重载**
+  - 外部编辑器 / 其他工具改了已打开的文本文件，对应标签 250ms 防抖后自动重读，不再要求手动刷新
+  - 守卫完备：仅文本标签参与、路径按归一化 key 匹配、缓冲有未保存改动时跳过、读盘期间用户开始编辑则放弃覆盖；内容未变或仅 LF/CRLF 差异不重复加载
+- **修复更新下载链接**
+  - `0.4.0` 发布时 tag 未带 `v` 前缀，而更新清单里的 URL 按 `v0.4.0` 拼接，自更新下载 404；`0.4.1` 发布前的热修已把清单改为实际 tag。本版起恢复标准 `v<版本>` 格式，本次清单与发布页链接均按 `v0.4.1` 生成
+
+### 改进 / 修复
+
+- 修复引用面板里 `\cite{}` 指向的条目在编译产物中打印出「Zotero itemKey: XXXX」——映射锚点改用非标准字段承载，BibTeX 与 biber 对未知字段都默认静默忽略
+- 新建 `.bib` 落盘后立即重扫项目树并重建引用索引，避免新库在补全 / 跳转里「看不见」
+- 消除非 macOS 平台 setup 闭包参数未使用警告；`cargo test` 保持零回归
+- 测试基线：Node 纯逻辑 **26 套件全绿**（新增 external-reload 14 项；Zotero p0–p9 不退化），Rust **240 passed**，`tsc --noEmit` / `npm run build` 零错误
+
+### 安装 / 升级
+
+1. Windows：下载 `Zetla_0.4.1_x64-setup.exe` 并运行；从 `0.4.0` 及更早版本可直接覆盖安装，配置、偏好、Zotero 联动设置与项目都会保留
+2. Linux：`Zetla_0.4.1_amd64.AppImage`（`chmod +x` 后运行，支持应用内原地换包自更新）、`Zetla_0.4.1_amd64.deb`、`Zetla-0.4.1-1.x86_64.rpm`（系统包安装版只提供下载引导，由系统安装器覆盖安装）
+3. macOS：`Zetla_0.4.1_universal.app.tar.gz`（通用二进制，应用内自更新换包）或 `Zetla_0.4.1_universal.dmg`（首次安装）；ad-hoc 签名，首次打开需在「系统设置 → 隐私与安全性」允许；本版起 macOS 菜单栏为系统原生菜单
+4. 未签名安装包在 Windows SmartScreen 提示时选「更多信息 → 仍要运行」
+5. 从 `0.4.0` 升级后首次写盘时，`.bib` 里的旧式 `note` 映射标记会自动迁移为自定义字段；也可以在「设置 → Zotero 联动」里点一键清理立即完成
+6. 本版发布 tag 恢复标准 `v` 前缀格式（`v0.4.1`），客户端更新清单与下载链接均按此生成；`0.4.0` 用户收到的本次更新推送即修复版链接
+
+SHA256：以 Releases 页与 `latest.json` 为准。本版清单由 `npm run release:manifest` 生成（URL 按标准 `v0.4.1` tag 拼接）、`npm run release:sha -- -Check` 复核（5 项安装包全部一致），产物与文件名的对应关系如下：
+
+- `Zetla_0.4.1_x64-setup.exe` — `8AEBE7AC55A3F1CCD318305CFB9A4B36ED492A6737F7995485F18A87404BAD7E`
+- `Zetla_0.4.1_universal.app.tar.gz` — `BC32ABF9F1003AFA329605C0341ED31238A76D4059427A2F09BF7F17412EE13D`
+- `Zetla_0.4.1_amd64.AppImage` — `B29FE6E5348012810FD7DFAAA95C2124BCBC6504C25190A0E9E6CADFEA8F7A4D`
+- `Zetla_0.4.1_amd64.deb` — `30FB114310CBAC0FC68831607CA85B15AA012FB738C8AF4BE2D4BBDFADD72E74`
+- `Zetla-0.4.1-1.x86_64.rpm` — `FFF45A970AA2146E1C62BA00C3DC1AB166F7E1E0012981F77D54A01C8BE86EA0`
+- `Zetla_0.4.1_universal.dmg`（仅首次安装，不进更新清单）— `9E721ABB56BD922C188E40C2B75949EDF5C1349729ECDB8B20DD06DCCEE4F828`
+
+### 已知限制
+
+- macOS 原生菜单不支持组合键（chord）：`Ctrl+B` 后按 `0` / `1`–`7` 切换资源树面板的连招在 macOS 上不可用（`Ctrl+B` 单按编译不受影响）；原生菜单为静态构建、不随状态置灰，点击时由动作表兜底拦截不可用项
+- Zotero 联动仍为只读：不写回 Zotero 文献库、不自动改写正文 citekey，相关边界沿用 `0.4.0`
+- 系统包安装版（deb / rpm）依旧不能应用内自更新，只能下载新包后由系统安装器安装
+- macOS 仍为 ad-hoc 签名、未经公证；应用内自更新会清理 quarantine，从浏览器下载的包首次打开仍需放行一次
+- 绘图 / 拼图 / 编译相关的既有限制沿用 `0.4.0`
+
+### 反馈
+
+问题与建议请提 Issue：https://github.com/Wastarch/Zetla/issues
+
+完整对比：https://github.com/Wastarch/Zetla/compare/0.4.0...v0.4.1
+
+---
+
 ## Zetla 0.4.0 —— Zotero 联动 · 偏好设置常驻标签页
 
 `0.4.0` 是 Zetla 正式接入文献管理器的第一个版本。此前写论文的循环是「Zotero 导出 `.bib` → 拷进项目 → 手动刷新引用」，本版改为：Zotero 里改题录，项目的 `.bib`、引用补全、悬浮卡与引用校验自动跟着变；插入引用时按 `Ctrl+Alt+K` 唤起浮层，搜索、多选、挑命令、填页码，插入后焦点不离开编辑器；条目还没写进 `.bib` 的，插入时自动补一条。顺带把偏好设置做成了可以和编辑区并排的常驻标签页。**联动本期只读**：不写回 Zotero、不需要 local API key，也绝不静默改写 `.tex` 里已有的 `\cite{}`。
@@ -92,7 +158,7 @@ SHA256：以 Releases 页与 `latest.json` 为准。本版清单由 `npm run rel
 
 问题与建议请提 Issue：https://github.com/Wastarch/Zetla/issues
 
-完整对比：https://github.com/Wastarch/Zetla/compare/v0.3.1...v0.4.0
+完整对比：https://github.com/Wastarch/Zetla/compare/0.3.1...0.4.0
 
 ---
 
