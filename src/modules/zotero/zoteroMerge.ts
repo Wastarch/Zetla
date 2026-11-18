@@ -8,6 +8,8 @@
 // 兼容 `{...}` / `(...)` 两种条目定界与嵌套花括号 / 引号值。
 import type { ZoteroItem } from "../../types/zotero.ts";
 import {
+  LEGACY_ITEM_KEY_NOTE_RE,
+  ZOTERO_KEY_FIELD,
   escapeBibValue,
   isPathInsideRoot,
   normalizeBibPath,
@@ -285,17 +287,83 @@ export function zoteroFieldsFromItem(
   return out;
 }
 
-/** 从 .bib 文本里抽 note 里的 `Zotero itemKey: XXXX`（映射缓存丢失时的兜底） */
+/**
+ * 从 .bib 文本里抽 itemKey → citeKey 映射（映射缓存丢失时的兜底）。
+ * 优先新写法 `zoteroitemkey = {XXXX}`，兼容旧写法 `note = {Zotero itemKey: XXXX}`。
+ */
 export function itemKeyNotesFromBib(text: string): Record<string, string> {
   const out: Record<string, string> = {};
   const entries = parseBibEntries(text);
   for (const e of entries) {
+    let found = false;
     for (const f of e.fields) {
-      const m = f.raw.match(/Zotero\s+itemKey:\s*([A-Za-z0-9]+)/i);
-      if (m) out[m[1]] = e.citeKey;
+      if (f.name === ZOTERO_KEY_FIELD) {
+        const key = unwrapBibValue(f.raw).trim();
+        if (key) {
+          out[key] = e.citeKey;
+          found = true;
+        }
+        continue;
+      }
+      if (!found) {
+        const m = f.raw.match(LEGACY_ITEM_KEY_NOTE_RE);
+        if (m) {
+          out[m[1]] = e.citeKey;
+          found = true;
+        }
+      }
     }
   }
   return out;
+}
+
+/**
+ * 把存量 .bib 里旧式 `note = {Zotero itemKey: XXXX}` 迁移为自定义字段 `zoteroitemkey`，
+ * 让itemKey 不再被 BibTeX/biber 渲染进参考文献。
+ * - note 只有标记 → 整行删除；note 还含用户手写内容 → 剔除标记后保留原文；
+ * - 已有 zoteroitemkey → 不重复添加，只清 note 里的标记；
+ * - 其余字段 / 定界符 / citekey 原样保留，只重建真正变化的条目块。
+ */
+export function migrateZoteroItemKeyNotes(text: string): { text: string; changed: boolean; migratedKeys: string[] } {
+  const entries = parseBibEntries(text);
+  const parts: { start: number; end: number; text: string }[] = [];
+  const migratedKeys: string[] = [];
+  for (const e of entries) {
+    const marked = e.fields.filter(
+      (f) => f.name === "note" && LEGACY_ITEM_KEY_NOTE_RE.test(unwrapBibValue(f.raw)),
+    );
+    if (marked.length === 0) continue;
+    const first = unwrapBibValue(marked[0].raw).match(LEGACY_ITEM_KEY_NOTE_RE);
+    const itemKey = first?.[1];
+    if (!itemKey) continue;
+    const hasKeyField = e.fields.some((f) => f.name === ZOTERO_KEY_FIELD);
+    const lines: string[] = [];
+    for (const f of e.fields) {
+      if (f.name === "note" && LEGACY_ITEM_KEY_NOTE_RE.test(unwrapBibValue(f.raw))) {
+        const cleaned = unwrapBibValue(f.raw)
+          .replace(new RegExp(LEGACY_ITEM_KEY_NOTE_RE.source, "gi"), "")
+          .replace(/\s+/g, " ")
+          .replace(/^[\s.,;:]+|[\s.,;:]+$/g, "")
+          .trim();
+        if (cleaned) lines.push(`  note = {${cleaned}}`);
+      } else {
+        lines.push(f.raw);
+      }
+    }
+    if (!hasKeyField) lines.push(`  ${ZOTERO_KEY_FIELD} = {${itemKey}}`);
+    parts.push({
+      start: e.start,
+      end: e.end,
+      text: `@${e.typeRaw}${e.open}${e.citeKey},\n${lines.join(",\n")}\n${e.close}`,
+    });
+    migratedKeys.push(e.citeKey);
+  }
+  if (parts.length === 0) return { text, changed: false, migratedKeys };
+  let out = text;
+  for (const p of parts.sort((a, b) => b.start - a.start)) {
+    out = out.slice(0, p.start) + p.text + out.slice(p.end);
+  }
+  return { text: out, changed: out !== text, migratedKeys };
 }
 
 // ── 「插入即写入」目标 .bib 自动推断 ─────────────────────────────

@@ -143,7 +143,8 @@ check(bib.includes("@book{smith1999book,"), "book → book + BBT key 优先");
 check(bib.includes("author = {Doe, John}"), "author 字段");
 check(bib.includes("journal = {Journal of Things}"), "article 用 journal");
 check(bib.includes("title = {Book Title}"), "book 标题去花括号");
-check(bib.includes("Zotero itemKey: AB12CD34"), "note 带 itemKey");
+check(bib.includes("zoteroitemkey = {AB12CD34}"), "itemKey 写自定义字段（BibTeX/biber 不渲染）");
+check(!/note\s*=/.test(bib), "生成块不含 note 标准字段（不打印进参考文献）");
 check(bib.includes("doi = {10.1000/xyz}"), "doi 字段");
 const dupBib = itemsToBibtex([item(), item({ itemKey: "ZZ99" })]);
 eq(bibKeysFromText(dupBib).length, 2, "相同题录生成两个不冲突的 key");
@@ -151,9 +152,10 @@ check(bibKeysFromText(dupBib)[1].endsWith("a"), "第二个 key 追加 a 消歧")
 eq(bibKeysFromText("@article{a, title={x}}\n@book{b,\n author={y}}\n@article{a,}").join(","), "a,b", "bibKeysFromText 去重保序");
 eq(bibKeysFromText("no entries").length, 0, "无条目时 key 列表为空");
 const notes = parseItemKeyNotes(bib);
-eq(notes["AB12CD34"], "doe2020things", "note → itemKey 映射");
-eq(notes["EF56GH78"], "smith1999book", "第二条 note 映射");
-eq(Object.keys(parseItemKeyNotes("@article{x,\n title={y}}")).length, 0, "无 note 不误判");
+eq(notes["AB12CD34"], "doe2020things", "自定义字段 → itemKey 映射");
+eq(notes["EF56GH78"], "smith1999book", "第二条字段映射");
+eq(Object.keys(parseItemKeyNotes("@article{x,\n title={y}}")).length, 0, "无映射字段不误判");
+eq(parseItemKeyNotes("@article{legacy2020,\n note = {Zotero itemKey: OLD12345}\n}")["OLD12345"], "legacy2020", "兼容旧式 note 映射");
 
 // ── 3. 键映射与漂移 ──────────────────────────────────────────
 console.log("\n[3] 键映射 / 键漂移");

@@ -57,7 +57,8 @@ console.log("\n[3] bibtexEntryBlock");
 const forced = bibtexEntryBlock(zitem(), "myKey2026");
 check(forced.startsWith("@article{myKey2026,"), "强制 citekey 生效");
 check(!forced.includes("Zetla · Zotero managed"), "单条块不带受管文件头");
-check(forced.includes("note = {Zotero itemKey: AB12CD34}"), "note 保留 itemKey 供映射");
+check(forced.includes("zoteroitemkey = {AB12CD34}"), "itemKey 写自定义字段供映射（不打印）");
+check(!forced.includes("note ="), "不产出 note 标准字段");
 check(forced.includes("journal = {Nature}"), "article 落 journal 字段");
 check(!forced.endsWith("\n"), "块尾无多余换行（拼接方负责分隔）");
 // 不传 key 时走 BBT/citationKey → makeCiteKey 回退

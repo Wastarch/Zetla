@@ -43,11 +43,13 @@ import {
   pathKey,
   planKeyMigration,
   shouldPull,
+  ZOTERO_KEY_FIELD,
   type KeyMigration,
 } from "./zoteroSync";
 import {
   itemKeyNotesFromBib,
   mergeBibFields,
+  migrateZoteroItemKeyNotes,
   pickInsertBibPath,
   type BibWriteCandidate,
   zoteroFieldsFromItem,
@@ -519,7 +521,10 @@ export async function syncZoteroBinding(binding: ZoteroBinding): Promise<ZoteroS
   st.setSyncError(null);
   try {
     const port = c.port || 23119;
-    const existing = await zoteroApi.readBib(root, binding.bibPath);
+    const existingRaw = await zoteroApi.readBib(root, binding.bibPath);
+    // P12：存量库里旧式 note 映射标记就地迁走（note 会被渲染进参考文献）
+    const migrated = migrateZoteroItemKeyNotes(existingRaw);
+    const existing = migrated.text;
 
     // 1) 拉全库 top-level 题录（只读；一次请求，按 itemKey 索引）
     let itemsJson = "";
@@ -566,12 +571,14 @@ export async function syncZoteroBinding(binding: ZoteroBinding): Promise<ZoteroS
     let written = false;
     let hash = "";
     let message = "";
-    if (merged.changedKeys.length > 0) {
+    if (merged.changedKeys.length > 0 || migrated.changed) {
       const r = await zoteroApi.writeBib(root, binding.bibPath, merged.text);
       written = r.written;
       hash = r.hash;
       const sample = merged.changedKeys.slice(0, 4).join(", ");
-      message = `已同步 ${merged.changedKeys.length} 条题录字段（${sample}${merged.changedKeys.length > 4 ? "…" : ""}）`;
+      message = merged.changedKeys.length > 0
+        ? `已同步 ${merged.changedKeys.length} 条题录字段（${sample}${merged.changedKeys.length > 4 ? "…" : ""}）`
+        : `已清理 ${migrated.migratedKeys.length} 条旧式 note 映射标记（改由 ${ZOTERO_KEY_FIELD} 承载，不再打印）`;
     } else {
       message = patches.length
         ? `字段无变化（已检查 ${patches.length} 条映射）`
@@ -674,7 +681,10 @@ function onDemandBinding(): { binding: ZoteroBinding; root: string; abs: string 
       candidates.push(c);
     }
     c.entryCount += 1;
-    if (/Zotero\s+itemKey:/i.test(e.fields.note ?? "")) c.zoteroCount += 1;
+    // 新库用自定义字段，旧库可能还是 note 标记；两者都算 Zotero 托管信号
+    if ((e.fields[ZOTERO_KEY_FIELD] ?? "").trim() || /Zotero\s+itemKey:/i.test(e.fields.note ?? "")) {
+      c.zoteroCount += 1;
+    }
   }
 
   const abs = pickInsertBibPath(root, managed, candidates);
@@ -757,12 +767,17 @@ export async function ensureBibEntries(
       .map(({ item, key }) => bibtexEntryBlock(item, key, fmt))
       .join("\n\n");
     // P11：写入前判断目标库是否为空/不存在（空库 = 刚新建），决定写入后是否提示补引用环境
+    // P12：顺带把存量旧式 note 映射锚点迁走，免得被 BibTeX/biber 渲染进参考文献
     let bibWasEmpty = false;
+    let existingBib = "";
     try {
-      bibWasEmpty = !(await zoteroApi.readBib(root, binding.bibPath)).trim();
+      existingBib = await zoteroApi.readBib(root, binding.bibPath);
     } catch {
-      bibWasEmpty = true;
+      existingBib = "";
     }
+    bibWasEmpty = !existingBib.trim();
+    const migrated = migrateZoteroItemKeyNotes(existingBib);
+    if (migrated.changed) await zoteroApi.writeBib(root, binding.bibPath, migrated.text);
     st.setSyncBusy(true);
     try {
       const r = await zoteroApi.appendBib(root, binding.bibPath, text);
@@ -805,6 +820,55 @@ export async function ensureBibEntries(
       message: `按需写入失败：${String(e)}`,
     };
   }
+}
+
+/**
+ * P12：清理当前项目内所有 .bib 的旧式 `note = {Zotero itemKey: XXXX}` 标记，
+ * 改为自定义字段承载（BibTeX/biber 不渲染，参考文献不再打印 itemKey）。
+ * 用户手动触发；跳过有未保存改动的库，单文件失败不影响其它；最后重建引用索引。
+ */
+export async function cleanupLegacyItemKeyNotes(): Promise<{
+  ok: boolean;
+  files: number;
+  entries: number;
+  message: string;
+}> {
+  const root = useProjectStore.getState().root;
+  if (!root) return { ok: false, files: 0, entries: 0, message: "请先打开一个项目" };
+  const byFile = new Map<string, string>();
+  for (const e of useReferenceStore.getState().entries) {
+    if (!e.file || !isPathInsideRoot(root, e.file)) continue;
+    const k = pathKey(e.file);
+    if (!byFile.has(k)) byFile.set(k, e.file);
+  }
+  const rootSlash = root.replace(/\\/g, "/").replace(/\/+$/, "") + "/";
+  let files = 0;
+  let entries = 0;
+  for (const abs of byFile.values()) {
+    if (isDirtyBib(abs)) continue;
+    const rel = abs.replace(/\\/g, "/").startsWith(rootSlash)
+      ? abs.replace(/\\/g, "/").slice(rootSlash.length)
+      : abs;
+    try {
+      const raw = await zoteroApi.readBib(root, rel);
+      const m = migrateZoteroItemKeyNotes(raw);
+      if (!m.changed) continue;
+      await zoteroApi.writeBib(root, rel, m.text);
+      files += 1;
+      entries += m.migratedKeys.length;
+    } catch {
+      // 单个库失败不阻断其它库
+    }
+  }
+  if (files > 0) await reindexNow();
+  return {
+    ok: true,
+    files,
+    entries,
+    message: files > 0
+      ? `已清理 ${files} 个 .bib 中的 ${entries} 条旧式 note 映射标记（itemKey 改由 ${ZOTERO_KEY_FIELD} 承载）`
+      : "没有发现旧式 note 映射标记，无需清理",
+  };
 }
 
 // ── 编译前校验（P1-7） ───────────────────────────────────────

@@ -10,6 +10,7 @@ import {
   type ZoteroBinding,
 } from "@/types/zotero";
 import {
+  cleanupLegacyItemKeyNotes,
   persistZoteroBindings,
   syncZoteroBinding,
 } from "./zoteroRuntime";
@@ -30,6 +31,7 @@ export function ZoteroBindingPane() {
   const binding = bindings.find((b) => b.enabled) ?? bindings[0] ?? null;
   const [draftPath, setDraftPath] = useState(binding?.bibPath ?? DEFAULT_ZOTERO_BINDING.bibPath);
   const [formBusy, setFormBusy] = useState(false);
+  const [cleanBusy, setCleanBusy] = useState(false);
   const [note, setNote] = useState("");
 
   // 绑定是异步从 .ltex/config.json 载入的；载入后同步输入框草稿
@@ -97,6 +99,20 @@ export function ZoteroBindingPane() {
     setNote(syncSummary(r));
   };
 
+  // P12：把存量 .bib 里会被渲染进参考文献的旧式 note 映射标记迁到自定义字段
+  const cleanNotes = async () => {
+    setCleanBusy(true);
+    setNote("");
+    try {
+      const r = await cleanupLegacyItemKeyNotes();
+      setNote(r.message);
+    } catch (e) {
+      setNote(`清理失败：${String(e)}`);
+    } finally {
+      setCleanBusy(false);
+    }
+  };
+
   const abs = root && binding ? normalizeBibPath(root, binding.bibPath) : "";
   const inside = root && abs ? isPathInsideRoot(root, abs) : false;
 
@@ -152,6 +168,15 @@ export function ZoteroBindingPane() {
 
           <div className="zotero-actions">
             <span className="zotero-last">{syncSummary(lastSync)}</span>
+            <button
+              type="button"
+              className="btn sm"
+              disabled={cleanBusy || !root}
+              title="旧版把 Zotero itemKey 写在 note 字段，会被 BibTeX/biber 打印进参考文献；点此改成不渲染的自定义字段"
+              onClick={() => void cleanNotes()}
+            >
+              {cleanBusy ? "清理中…" : "清理旧式 note 标记"}
+            </button>
           </div>
           {note && <div className="zotero-diag zotero-muted"><b>操作结果</b><p>{note}</p></div>}
           {syncError && <div className="zotero-diag zotero-warn"><b>同步提示</b><p>{syncError}</p></div>}
@@ -182,6 +207,7 @@ export function ZoteroBindingPane() {
       <p className="set-note">
         同步规则：Zotero 题录的非空字段（标题 / 作者 / 年份 / 期刊 / DOI / URL / 摘要）覆盖项目 .bib 中同 citekey 条目的同名字段；
         .bib 独有字段（手写 note / eprint 等）与 citekey 保持不动。缺条目时在插入引用或编译前幂等补写。
+        Zotero itemKey 存在自定义字段 <code>zoteroitemkey</code>（不会被打印进参考文献）；旧版写在 note 里的标记可用上方按钮一键清理。
         已打开且未保存的 .bib 不写盘；离线或 403 时编译照常。
       </p>
     </div>

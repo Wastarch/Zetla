@@ -212,6 +212,8 @@ const blockBlx = bibtexEntryBlock(ITEM, "doe2020", "biblatex");
 check(blockBtx.includes("year = {2020}") && blockBtx.includes("journal = {J. Test}"), "bibtex 产出 year/journal");
 check(blockBlx.includes("date = {2020}") && blockBlx.includes("journaltitle = {J. Test}"), "biblatex 产出 date/journaltitle");
 check(!/year\s*=/.test(blockBlx) && !/journal\s*=/.test(blockBlx.replace("journaltitle", "")), "biblatex 块无旧字段名");
+check(!/note\s*=/.test(blockBtx) && !/note\s*=/.test(blockBlx), "两种格式均不产出 note 标准字段（不打印 itemKey）");
+check(blockBtx.includes("zoteroitemkey = {ABCD1234}"), "itemKey 改由自定义字段承载");
 const fieldsBlx = zoteroFieldsFromItem(ITEM, "biblatex");
 eq(fieldsBlx["date"], "2020", "字段表 biblatex date");
 eq(fieldsBlx["journaltitle"], "J. Test", "字段表 biblatex journaltitle");

@@ -6,6 +6,7 @@ import {
   ZOTERO_MANAGED_FIELDS,
   itemKeyNotesFromBib,
   mergeBibFields,
+  migrateZoteroItemKeyNotes,
   parseBibEntries,
   pickInsertBibPath,
   DEFAULT_BIB_NAME,
@@ -204,8 +205,43 @@ const item = (over: Partial<ZoteroItem> = {}): ZoteroItem => ({
 console.log("\n[itemKeyNotesFromBib]");
 {
   const notes = itemKeyNotesFromBib(SAMPLE);
-  eq(notes["AB12CD34"], "roe2021", "从 note 抽出 itemKey → citekey");
+  eq(notes["AB12CD34"], "roe2021", "从旧式 note 抽出 itemKey → citekey");
   eq(notes["NOPE"], undefined, "不存在的 key 返回 undefined");
+  const modern = `@article{new2026,\n  title = {T},\n  zoteroitemkey = {J2CVYHYK}\n}`;
+  eq(itemKeyNotesFromBib(modern)["J2CVYHYK"], "new2026", "从新自定义字段抽出映射");
+}
+
+// ── migrateZoteroItemKeyNotes（存量 note → 自定义字段） ───────
+console.log("\n[migrateZoteroItemKeyNotes]");
+{
+  const r = migrateZoteroItemKeyNotes(SAMPLE);
+  eq(r.changed, true, "识别到旧式标记");
+  eq(r.migratedKeys.join(","), "roe2021", "记录迁移的 citekey");
+  check(r.text.includes("zoteroitemkey = {AB12CD34}"), "改为自定义字段");
+  check(!r.text.includes("Zotero itemKey: AB12CD34"), "不再有会被打印的 note 标记");
+  check(r.text.includes("note = {我的手写笔记}"), "用户手写 note 不动");
+  check(r.text.includes("eprint = {arXiv:1234}"), "其它字段保留");
+  eq(parseBibEntries(r.text).length, 2, "条目数不变");
+  eq(itemKeyNotesFromBib(r.text)["AB12CD34"], "roe2021", "迁移后映射仍可解析");
+}
+{
+  const input = SAMPLE.replace("Zotero itemKey: AB12CD34", "user text");
+  const none = migrateZoteroItemKeyNotes(input);
+  eq(none.changed, false, "无旧标记时原样返回");
+  eq(none.text, input, "文本未被改动");
+}
+{
+  const mixed = `@article{mix2026,\n  title = {T},\n  note = {用户备注。Zotero itemKey: AB12CD34}\n}`;
+  const r = migrateZoteroItemKeyNotes(mixed);
+  check(r.text.includes("note = {用户备注。}"), "混合 note 保留用户内容");
+  check(r.text.includes("zoteroitemkey = {AB12CD34}"), "混合 note 抽出 itemKey");
+  check(!/Zotero\s+itemKey:/i.test(r.text), "混合 note 标记已清除");
+}
+{
+  const already = `@article{a2026,\n  note = {Zotero itemKey: AB12CD34},\n  zoteroitemkey = {AB12CD34}\n}`;
+  const r = migrateZoteroItemKeyNotes(already);
+  eq((r.text.match(/zoteroitemkey\s*=/g) ?? []).length, 1, "已有新字段时不重复添加");
+  check(!/Zotero\s+itemKey:/i.test(r.text), "旧 note 仍被清除");
 }
 
 // ── pickInsertBibPath（插入即写入目标推断） ────────────────────

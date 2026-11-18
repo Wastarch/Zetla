@@ -17,6 +17,17 @@ export const PULL_MIN_INTERVAL_MS = 60_000;
 /** `.bib` 变更事件的前端合并窗口（Rust 侧已做 300ms，这里再兜一层） */
 export const BIB_DEBOUNCE_MS = 300;
 
+/**
+ * itemKey 在 .bib 里的落点字段名（自定义字段，非 BibTeX 标准字段）。
+ * 关键：`note` 是标准字段，会被 BibTeX / biblatex 渲染进参考文献 → 曾导致
+ * 「Zotero itemKey: XXXX」被打出来。biber 对未知字段默认静默忽略、BibTeX 同样如此，
+ * 故改用 `zoteroitemkey` 承载映射锚点：既保住 citekey↔itemKey 兜底，又不出现在成文。
+ * 旧库里的 `note = {Zotero itemKey: XXXX}` 读取端仍兼容，并由 migrate 逻辑写盘时迁移。
+ */
+export const ZOTERO_KEY_FIELD = "zoteroitemkey";
+/** 旧版 note 里的 itemKey 标记（读取兼容 / 存量迁移用） */
+export const LEGACY_ITEM_KEY_NOTE_RE = /Zotero\s+itemKey:\s*([A-Za-z0-9]+)/i;
+
 type Rec = Record<string, unknown>;
 
 function asRecord(v: unknown): Rec | null {
@@ -197,7 +208,8 @@ export function bibtexEntryBlock(
   push("doi", item.doi);
   push("url", item.url);
   if (item.abstract) push("abstract", item.abstract.replace(/\s+/g, " "));
-  if (item.itemKey) fields.push(["note", `Zotero itemKey: ${item.itemKey}`]);
+  // 不写 note（标准字段会被渲染进参考文献）；用自定义字段承载映射锚点，biber 静默忽略。
+  if (item.itemKey) fields.push([ZOTERO_KEY_FIELD, item.itemKey]);
   const body = fields.map(([k, v]) => `  ${k} = {${v}}`).join(",\n");
   return `@${type}{${key},\n${body}\n}`;
 }
@@ -230,12 +242,20 @@ export function bibKeysFromText(text: string): string[] {
   return out;
 }
 
-/** 从生成的 BibTeX 里读 `note = {Zotero itemKey: XXXX}` → itemKey → citeKey */
+/**
+ * 从 BibTeX 里读 itemKey → citeKey 映射。
+ * 新写法 `zoteroitemkey = {XXXX}`；兼容旧写法 `note = {Zotero itemKey: XXXX}`。
+ */
 export function parseItemKeyNotes(text: string): Record<string, string> {
   const out: Record<string, string> = {};
-  const re = /@[A-Za-z]+\s*\{\s*([^,\s}]+)[^@]*?note\s*=\s*\{[^}]*Zotero itemKey:\s*([A-Za-z0-9]+)/g;
+  const re = new RegExp(
+    `@[A-Za-z]+\\s*\\{\\s*([^,\\s}]+)[^@]*?` +
+      `(?:${ZOTERO_KEY_FIELD}\\s*=\\s*\\{([A-Za-z0-9]+)\\}` +
+      `|note\\s*=\\s*\\{[^}]*Zotero\\s+itemKey:\\s*([A-Za-z0-9]+))`,
+    "gi",
+  );
   let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) out[m[2]] = m[1];
+  while ((m = re.exec(text))) out[m[2] ?? m[3]] = m[1];
   return out;
 }
 
