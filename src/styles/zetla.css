@@ -3076,6 +3076,20 @@ body.col-resizing {
   color: var(--accent);
 }
 
+/* M1-26 拖拽落点：源行半透明，目标目录合法=accent 描边、非法=warn 描边 */
+.tnode.is-dragging {
+  opacity: 0.4;
+}
+
+.tnode.drop-ok {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.tnode.drop-bad {
+  box-shadow: inset 0 0 0 1px var(--warn);
+}
+
 .tnode .chev {
   width: 12px;
   height: 12px;

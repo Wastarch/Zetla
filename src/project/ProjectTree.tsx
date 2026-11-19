@@ -2,11 +2,27 @@
 // 目录展开/文件选中/主文件 badge/缓冲脏点/右键菜单入口
 // 补充：Ctrl+C/X/V 复制剪切粘贴、剪切项置灰
 // M0-13 前移：树首行改为「根目录行」（资源管理器头部的图标组移入该行，hover 才显）
-import { useMemo, useRef, type ReactNode } from "react";
+// M1-26：树内拖拽条目到目录（移动；Ctrl / macOS Option 拖拽复制），指针事件实现
+import {
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { Icon } from "@/ui/Icon";
 import { useBuffersStore } from "@/editor/useBuffers";
 import type { ProjectNode } from "@/types";
 import { EXT_IMG, base, extOf, findNode, notify, parentOf, useProjectStore } from "./useProject";
+import { dropProblem, resolveDropDir, type TreeDropHit } from "./treeDrop";
+
+/** 拖拽复制修饰键文案（macOS 用 Option，其余平台用 Ctrl） */
+function macModifierLabel(): string {
+  return typeof document !== "undefined" &&
+    document.documentElement.dataset.platform === "darwin"
+    ? "Option"
+    : "Ctrl";
+}
 
 function iconFor(name: string): { icon: string; cls: string } {
   const ext = extOf(name);
@@ -31,6 +47,7 @@ export function ProjectTree() {
   const copyPaths = useProjectStore((s) => s.copyPaths);
   const cutPaths = useProjectStore((s) => s.cutPaths);
   const pasteInto = useProjectStore((s) => s.pasteInto);
+  const dropEntry = useProjectStore((s) => s.dropEntry);
   const clip = useProjectStore((s) => s.clip);
   const buffers = useBuffersStore((s) => s.buffers);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -39,6 +56,106 @@ export function ProjectTree() {
     () => new Set(buffers.filter((b) => b.content !== b.savedContent).map((b) => b.path)),
     [buffers],
   );
+
+  // ── M1-26 拖拽：pointer 事件（Tauri Windows 的 HTML5 拖放会被原生文件拖入拦截） ──
+  const [dragPath, setDragPath] = useState<string | null>(null);
+  const [hover, setHover] = useState<{ targetDir: string; valid: boolean } | null>(null);
+  const suppressClick = useRef(false);
+
+  /** 当前指针下的树行（根节点/子行都带 data-tree-*；空白区返回 null → 项目根） */
+  const hitAt = (x: number, y: number): TreeDropHit | null => {
+    const el = document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-tree-path]");
+    const path = el?.dataset.treePath;
+    if (!path) return null;
+    const kind = el?.dataset.treeKind;
+    return {
+      path,
+      kind: kind === "dir" || kind === "file" ? kind : "blank",
+    };
+  };
+
+  const startDrag = (e: ReactPointerEvent<HTMLElement>, src: string) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("button")) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let lastX = startX;
+    let lastY = startY;
+    let copy = false;
+    let active = false;
+    let edgeY = 0;
+    let raf = 0;
+    const rootDir = root ?? "";
+    const isDir = findNode(nodes, src)?.type === "dir";
+    const mac = document.documentElement.dataset.platform === "darwin";
+
+    const updateHover = (x: number, y: number) => {
+      const hit = hitAt(x, y);
+      const targetDir = resolveDropDir(hit, rootDir);
+      const problem = dropProblem(src, targetDir, copy ? "copy" : "move", !!isDir);
+      setHover({ targetDir, valid: !problem });
+    };
+
+    const autoScroll = () => {
+      if (edgeY !== 0 && treeRef.current) {
+        treeRef.current.scrollTop += edgeY * 10;
+        updateHover(lastX, lastY);
+      }
+      if (active) raf = requestAnimationFrame(autoScroll);
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      if (!active) {
+        if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
+        active = true;
+        setDragPath(src);
+        raf = requestAnimationFrame(autoScroll);
+      }
+      lastX = ev.clientX;
+      lastY = ev.clientY;
+      copy = mac ? ev.altKey : ev.ctrlKey;
+      ev.preventDefault();
+      updateHover(lastX, lastY);
+      const box = treeRef.current?.getBoundingClientRect();
+      if (box) {
+        edgeY = lastY < box.top + 24 ? -1 : lastY > box.bottom - 24 ? 1 : 0;
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+      active = false;
+      edgeY = 0;
+      cancelAnimationFrame(raf);
+      setDragPath(null);
+      setHover(null);
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (active) {
+        const hit = hitAt(ev.clientX, ev.clientY);
+        const targetDir = resolveDropDir(hit, rootDir);
+        void dropEntry(src, targetDir, copy ? "copy" : "move");
+        // 拖拽尾随的 click 不应再触发打开/展开
+        suppressClick.current = true;
+        window.setTimeout(() => (suppressClick.current = false), 0);
+      }
+      cleanup();
+    };
+    const onCancel = () => cleanup();
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+  };
+
+  /** 拖拽时的行样式：源行半透明；目标目录行高亮（合法 accent / 非法 warn） */
+  function dragClass(path: string): string {
+    if (dragPath === path) return "is-dragging";
+    if (!hover || hover.targetDir !== path) return "";
+    return hover.valid ? "drop-ok" : "drop-bad";
+  }
 
   // Ctrl+C / Ctrl+X / Ctrl+V（树容器获得焦点时；粘贴目标=选中目录 / 选中文件的父目录 / 项目根）
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -82,13 +199,20 @@ export function ProjectTree() {
     return list.map((n) => {
       if (n.type === "dir") {
         const open = openDirs.has(n.path);
+        const cls = [open ? "open-dir" : "", dragClass(n.path)].filter(Boolean).join(" ");
         return (
           <div key={n.path}>
             <div
-              className={open ? "tnode open-dir" : "tnode"}
+              className={cls ? `tnode ${cls}` : "tnode"}
               style={{ paddingLeft: pad, opacity: isCut(n.path) ? 0.55 : undefined }}
-              title={n.path}
-              onClick={() => toggleDir(n.path)}
+              title={`${n.path} · 拖动可移动，按住 ${macModifierLabel()} 拖动可复制`}
+              data-tree-path={n.path}
+              data-tree-kind="dir"
+              onPointerDown={(e) => startDrag(e, n.path)}
+              onClick={() => {
+                if (suppressClick.current) return;
+                toggleDir(n.path);
+              }}
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -105,13 +229,22 @@ export function ProjectTree() {
       }
       const { icon, cls } = iconFor(n.name);
       const isSel = selected === n.path;
+      const rowCls = [isSel ? "sel" : "", "file", dragClass(n.path)]
+        .filter(Boolean)
+        .join(" ");
       return (
         <div
           key={n.path}
-          className={isSel ? "tnode sel file" : "tnode file"}
+          className={`tnode ${rowCls}`}
           style={{ paddingLeft: pad, opacity: isCut(n.path) ? 0.55 : undefined }}
-          title={n.path}
-          onClick={() => openFromTree(n.path)}
+          title={`${n.path} · 拖动可移动，按住 ${macModifierLabel()} 拖动可复制`}
+          data-tree-path={n.path}
+          data-tree-kind="file"
+          onPointerDown={(e) => startDrag(e, n.path)}
+          onClick={() => {
+            if (suppressClick.current) return;
+            openFromTree(n.path);
+          }}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -158,12 +291,22 @@ export function ProjectTree() {
         <>
           {/* 根目录行：树的第一层（所有节点的父行），图标组 hover 才显 */}
           <div
-            className={
-              openDirs.has(root) ? "tnode tree-root open-dir" : "tnode tree-root"
-            }
+            className={[
+              "tnode",
+              "tree-root",
+              openDirs.has(root) ? "open-dir" : "",
+              dragClass(root),
+            ]
+              .filter(Boolean)
+              .join(" ")}
             style={{ paddingLeft: 8 }}
-            title={root}
-            onClick={() => toggleDir(root)}
+            title={`${root} · 可把条目拖到这里（项目根）`}
+            data-tree-path={root}
+            data-tree-kind="dir"
+            onClick={() => {
+              if (suppressClick.current) return;
+              toggleDir(root);
+            }}
             onContextMenu={(e) => {
               e.preventDefault();
               e.stopPropagation();

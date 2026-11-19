@@ -8,6 +8,12 @@ import { configApi, projectApi } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
+import {
+  dropProblem,
+  pathKey,
+  uniqueCopyName,
+  type TreeDropMode,
+} from "./treeDrop";
 import type { EntryKind, ProjectNode, ProjectTree } from "@/types";
 
 /** 统一 toast 反馈（写入编辑域 notice） */
@@ -230,6 +236,9 @@ interface ProjectState {
   cutPaths: (paths: string[]) => void;
   /** 粘贴到目标目录（冲突报错中止；剪切成功后清空剪贴板） */
   pasteInto: (targetDir: string) => Promise<void>;
+  /** M1-26：树内拖拽落点。move=移动，copy=复制（同名自动加「 - 副本」后缀）；
+   *  移动后同步已打开缓冲/展开目录/剪贴板里的旧路径，再重扫树。 */
+  dropEntry: (src: string, targetDir: string, mode: TreeDropMode) => Promise<void>;
 
   /** 打开/关闭「从模板新建」向导（dir 缺省用项目根；templateId 预选模板） */
   openWizard: (dir?: string, templateId?: string) => void;
@@ -579,6 +588,69 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
           : `已移动 ${created.length} 项到 ${base(targetDir)}`,
         "ok",
       );
+    }
+  },
+
+  dropEntry: async (src, targetDir, mode) => {
+    const st = get();
+    const root = st.root;
+    if (!root) return;
+    const isDir = findNode(st.tree?.nodes, src)?.type === "dir";
+    const problem = dropProblem(src, targetDir, mode, isDir);
+    if (problem) {
+      notify(problem, "err");
+      return;
+    }
+
+    // 复制时按目标目录现有名字生成不冲突的副本名；移动保持原名（重名由后端拒绝）
+    const taken =
+      pathKey(targetDir) === pathKey(root)
+        ? (st.tree?.nodes ?? []).map((n) => n.name)
+        : (findNode(st.tree?.nodes, targetDir)?.children ?? []).map((n) => n.name);
+    const name = mode === "copy" ? uniqueCopyName(base(src), taken) : base(src);
+    const to = joinPath(targetDir, name);
+
+    try {
+      const created =
+        mode === "copy"
+          ? await projectApi.copyEntry(src, to)
+          : await projectApi.renameEntry(src, to);
+
+      // 移动会把源及其所有子路径改前缀：已打开标签、展开目录、剪贴板一起迁。
+      // 只改 store 中的 path 字符串，不动 buffer 内容与脏状态（编辑器实例随 React key 重建一次）。
+      const remap = (p: string): string => {
+        if (mode !== "move") return p;
+        if (pathKey(p) === pathKey(src)) return created;
+        if (p.startsWith(`${src}/`) || p.startsWith(`${src}\\`)) {
+          return created + p.slice(src.length);
+        }
+        return p;
+      };
+      set((s) => {
+        const openDirs = new Set([...s.openDirs].map(remap));
+        openDirs.add(targetDir); // 拖进折叠目录后直接展开，立刻看到落点
+        return {
+          selected: created,
+          openDirs,
+          clip: s.clip ? { ...s.clip, paths: s.clip.paths.map(remap) } : s.clip,
+        };
+      });
+      if (mode === "move") {
+        useBuffersStore.setState((s) => ({
+          buffers: s.buffers.map((b) => {
+            const np = remap(b.path);
+            return np === b.path ? b : { ...b, path: np, name: base(np) };
+          }),
+          activePath: s.activePath ? remap(s.activePath) : s.activePath,
+        }));
+      }
+      await get().refresh();
+      notify(
+        `${mode === "copy" ? "已复制" : "已移动"} ${base(created)} → ${base(targetDir)}`,
+        "ok",
+      );
+    } catch (e) {
+      notify(`${mode === "copy" ? "复制" : "移动"}失败 ${base(src)}：${String(e)}`, "err");
     }
   },
 
