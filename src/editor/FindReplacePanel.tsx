@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { Icon } from "@/ui/Icon";
+import { Chevron } from "@/ui/Chevron";
 import { useFindStore, findPanelBridge } from "./findStore";
 import { getActiveEditorHandle } from "./activeView";
 import { useBuffersStore } from "./useBuffers";
@@ -169,7 +170,7 @@ export function FindReplacePanel() {
           title={replaceMode ? "折叠替换" : "展开替换"}
           onClick={toggleReplaceMode}
         >
-          <Icon name="chev" size={12} style={{ transform: replaceMode ? "rotate(0deg)" : "rotate(-90deg)" }} />
+          <Chevron open={replaceMode} />
         </button>
         <div className={`fp-field${invalid ? " invalid" : ""}`}>
           <input

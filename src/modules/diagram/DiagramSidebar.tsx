@@ -16,6 +16,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useDiagramStore } from "./store";
 import { LayersPanel } from "./LayersPanel";
+import { Chevron } from "@/ui/Chevron";
 import { insertDiagramCode, insertFigureForImage } from "./insert";
 import { exportDiagram, type ExportFormat } from "./export";
 import {
@@ -104,7 +105,7 @@ function Accordion({
       <summary className="dg-accordion-head">
         <span className="dg-accordion-title">{title}</span>
         {meta && <span className="dg-accordion-meta">{meta}</span>}
-        <span className="dg-accordion-arrow" aria-hidden="true">▾</span>
+        <Chevron open={open} className="dg-accordion-arrow" />
       </summary>
       <div className={`dg-accordion-body${flush ? " is-flush" : ""}`}>{children}</div>
     </details>

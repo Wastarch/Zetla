@@ -2351,12 +2351,7 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-accordion-arrow {
   flex: none;
   margin-left: 4px;
-  font-size: 10px;
   color: var(--txt-3, #9a9a9a);
-  transition: transform 140ms ease;
-}
-.dg-accordion:not([open]) > .dg-accordion-head .dg-accordion-arrow {
-  transform: rotate(-90deg);
 }
 .dg-accordion-body {
   display: flex;

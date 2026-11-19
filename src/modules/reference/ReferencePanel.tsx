@@ -24,6 +24,7 @@ import {
 import { ensureBibEntries } from "@/modules/zotero/zoteroRuntime";
 import { useBibFormatControl } from "@/modules/zotero/useBibFormatControl";
 import { BibFormatSwitchDialog } from "./BibFormatSwitchDialog";
+import { Chevron } from "@/ui/Chevron";
 import { engineLabel } from "@/modules/zotero/zoteroStyleMap";
 import type { ZoteroItem } from "@/types/zotero";
 import {
@@ -636,7 +637,7 @@ export default function ReferencePanel() {
                       onClick={() => toggleGroup(file)}
                       title={file}
                     >
-                      <span className={isCollapsed ? "ref-caret" : "ref-caret open"}>▾</span>
+                      <Chevron open={!isCollapsed} className="ref-caret" />
                       <span className="ref-group-name">{file.split(/[\\/]/).pop()}</span>
                       <span className="ref-group-count">{es.length}</span>
                     </button>

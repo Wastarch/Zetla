@@ -112,6 +112,13 @@ body {
   stroke: none;
 }
 
+/* 统一折叠 / 下拉箭头（项目树同款 chevron；方向由 src/ui/Chevron.tsx 内联 transform 决定） */
+.ui-chev {
+  flex: none;
+  color: inherit;
+  transition: transform 0.14s ease;
+}
+
 /* ── app 外壳（M0-13 补 titlebar/menubar） ── */
 .app {
   position: relative;
@@ -6797,15 +6804,10 @@ body.row-resizing {
   position: absolute;
   top: 2px;
   right: 3px;
-  font-size: 8px;
-  line-height: 1;
   color: var(--txt-3);
 }
 .sym-cat.is-open .sym-cat-arrow {
   color: var(--accent);
-}
-.sym-cat-arrow.up {
-  transform: rotate(180deg);
 }
 
 /* 分类全部收起时的提示行 */
@@ -6900,10 +6902,6 @@ body.row-resizing {
   border-color: var(--accent);
 }
 
-.math-tool-arrow {
-  font-size: 8px;
-  line-height: 1;
-}
 
 .math-tool-clear{
     display: inline-flex;
@@ -7280,14 +7278,7 @@ body.row-resizing {
   background: var(--bg-3);
 }
 .ref-caret {
-  display: inline-block;
-  font-size: 9px;
-  transition: transform 0.12s ease;
-  transform: rotate(-90deg);
   color: var(--txt-4);
-}
-.ref-caret.open {
-  transform: rotate(0deg);
 }
 .ref-group-name {
   overflow: hidden;

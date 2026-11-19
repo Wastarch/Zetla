@@ -12,6 +12,7 @@
 //   · 折叠只切 CSS class，不卸载面板，Draft / 提示消息不丢。
 import { useState } from "react";
 import { useDiagramStore } from "./store";
+import { Chevron } from "@/ui/Chevron";
 import { DiagramProperties } from "./DiagramProperties";
 import { SizePanel } from "./SizePanel";
 import { TransformPanel } from "./TransformPanel";
@@ -55,7 +56,7 @@ export function DiagramInspector() {
           title={collapsed ? "展开属性面板" : "折叠属性面板"}
           onClick={() => setCollapsed((v) => !v)}
         >
-          {collapsed ? "›" : "‹"}
+          <Chevron dir={collapsed ? "right" : "left"} />
         </button>
       </div>
       <div className="dg-canvas-inspector-body">

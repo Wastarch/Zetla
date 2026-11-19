@@ -12,6 +12,7 @@ import {
 import { useProjectStore, notify } from "@/project/useProject";
 import { useAppStore } from "@/core/store";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
+import { Chevron } from "@/ui/Chevron";
 import { OUTLINE_H_DEFAULT, OUTLINE_HEAD_H, clampOutlineHeight } from "./outlineLayout";
 import { useOutlineStore, base, type OutlineItem } from "./useOutline";
 import { jumpToError } from "@/editor/jump";
@@ -154,7 +155,7 @@ export function OutlinePanel() {
           title={expanded ? "折叠大纲" : "展开大纲"}
           onClick={toggleOutline}
         >
-          {expanded ? "▾" : "▸"}
+          <Chevron open={expanded} />
         </button>
         <span className="outline-title">大纲</span>
         <span className="outline-count">{items.length ? `· ${items.length}` : ""}</span>

@@ -8,6 +8,7 @@
 // absolute 定位的下拉会被区域边缘裁掉。
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useComposeStore } from "./composeStore";
+import { Chevron } from "@/ui/Chevron";
 
 interface DropItem {
   label: string;
@@ -71,7 +72,7 @@ function Drop({ label, items }: { label: string; items: DropItem[] }) {
         onClick={toggle}
       >
         {label}
-        <span className="math-tool-arrow">▾</span>
+        <Chevron dir="down" className="math-tool-arrow" />
       </button>
       {open && (
         <div ref={ref} className="math-drop" style={{ left: pos.x, top: pos.y }} role="menu">

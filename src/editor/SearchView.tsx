@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { Icon } from "@/ui/Icon";
+import { Chevron } from "@/ui/Chevron";
 import replaceAllIcon from "@/assets/icon/全部替换.svg";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { projectApi } from "@/ipc/invoke";
@@ -324,11 +325,7 @@ export function SearchView() {
             title={showReplace ? "折叠替换" : "展开替换"}
             onClick={() => setShowReplace((v) => !v)}
           >
-            <Icon
-              name="chev"
-              size={12}
-              style={{ transform: showReplace ? "rotate(0deg)" : "rotate(-90deg)" }}
-            />
+            <Chevron open={showReplace} />
           </button>
           <div className="sv-field">
             <input
@@ -453,14 +450,7 @@ export function SearchView() {
                   onClick={() => toggleCollapse(g.path)}
                   title={g.path}
                 >
-                  <Icon
-                    name="chev"
-                    size={11}
-                    style={{
-                      transform: isCollapsed ? "rotate(-90deg)" : "rotate(0deg)",
-                      flex: "none",
-                    }}
-                  />
+                  <Chevron open={!isCollapsed} size={11} />
                   <span className="sv-file-name">{g.name}</span>
                   <span className="sv-file-count">{g.count}</span>
                 </button>

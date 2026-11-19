@@ -12,6 +12,7 @@ import MatrixDialog from "./MatrixDialog";
 import { notify } from "@/project/useProject";
 import { useComposeStore } from "@/modules/formula/composeStore";
 import { InsertCtxMenu, type CtxAction } from "@/ui/InsertCtxMenu";
+import { Chevron } from "@/ui/Chevron";
 import { CATEGORIES, CAT_ICONS, itemsByCat, searchItems, SUBCATS, SUBCAT_LABEL, type InsertItem } from "./symbolItems";
 
 /** 回显时长（ms） */
@@ -240,7 +241,7 @@ export default function SymbolPanel() {
               >
                 <span className="sym-cat-icon">{CAT_ICONS[c]}</span>
                 <span className="sym-cat-name">{c}</span>
-                <span className={open ? "sym-cat-arrow up" : "sym-cat-arrow"}>▾</span>
+                <Chevron open={open} className="sym-cat-arrow" />
               </button>
             );
           })}

@@ -8,6 +8,7 @@
 // 与 F2-3 的能力矩阵锁定区分：这里的是用户主动「不想误改」，画布拖拽与属性区都会尊重。
 import { useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useDiagramStore } from "./store";
+import { Chevron } from "@/ui/Chevron";
 import {
   buildLayerRows,
   createGroup,
@@ -247,7 +248,7 @@ export function LayersPanel() {
                       setGrouping(patchGroup(grouping, row.id, { collapsed: !row.collapsed }))
                     }
                   >
-                    {row.collapsed ? "▸" : "▾"}
+                    <Chevron open={!row.collapsed} />
                   </button>
                 )}
                 {isGroup && renaming === row.id ? (
