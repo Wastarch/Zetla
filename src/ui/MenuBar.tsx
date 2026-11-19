@@ -226,19 +226,18 @@ export function MenuBar() {
           useAppStore.getState().toggleSidebar();
           return;
         }
-        // M1-12a：Ctrl+B 1/2/3/4 直达活动栏视图（资源管理器 / 大纲 / 公式 / 引用）
-        if (e.key === "1" || e.key === "2" || e.key === "3" || e.key === "4") {
+        // M1-28：Ctrl+B 1/3/4 直达活动栏视图（资源管理器 / 公式 / 引用）；2 原为大纲，已移除
+        if (e.key === "1" || e.key === "3" || e.key === "4") {
           e.preventDefault();
           clearChord();
-          const v =
-            e.key === "1"
-              ? "explorer"
-              : e.key === "2"
-                ? "outline"
-                : e.key === "3"
-                  ? "math"
-                  : "references";
+          const v = e.key === "1" ? "explorer" : e.key === "3" ? "math" : "references";
           useAppStore.getState().setSidebarView(v);
+          return;
+        }
+        // 保留 2 空缺：按了不做事，但要取消 chord 状态（否则后续按键像仍在 Ctrl+B 连招中）
+        if (e.key === "2") {
+          e.preventDefault();
+          clearChord();
           return;
         }
         // M1-8：Ctrl+B 5/6/7… 直达模块自带视图（顺序与「视图」菜单动态项一致）

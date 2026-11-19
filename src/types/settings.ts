@@ -196,6 +196,10 @@ export interface AppSettings {
     pvSideWidth: number;
     /** M1-16：底部日志面板高度（120–560，拖拽上边界调整） */
     logHeight: number;
+    /** M1-28：资源管理器底部大纲区是否展开（默认 true，持久化） */
+    outlineExpanded: boolean;
+    /** M1-28：大纲区展开高度（96–480，默认 180，顶部拖拽条调整） */
+    outlineHeight: number;
   };
   /** M0-13：通用开关 */
   general: {
@@ -370,6 +374,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
     previewRatio: 0.5,
     pvSideWidth: 132,
     logHeight: 212,
+    outlineExpanded: true,
+    outlineHeight: 180,
   },
   general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true, theme: "light" },
   tex: { distro: null, installDir: null, engineBinDir: null },

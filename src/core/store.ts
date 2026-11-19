@@ -1,14 +1,16 @@
 // 全局状态（zustand）—— 项目、编译、编辑器的共享状态
 import { create } from "zustand";
 import type { CompileResult, CompileStepProgress, ProjectInfo, TexDistInfo } from "@/types";
+import { OUTLINE_H_DEFAULT } from "@/outline/outlineLayout";
 
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
 /** 内置侧栏视图（M1-5a/M1-12a/M1-14f）。M1-8 起侧栏视图集合对外开放：
  *  模块可经 LatexModule.view 声明自带视图（如 "table"），故 SidebarView 放宽为 string。
  *  M1-12a：原「符号 / 公式」两视图合并为「公式」单视图（内部含 快捷工具/公式模板 两页签，
- *  输入/输出双区结构，见 src/project/MathView.tsx） */
-export const BUILTIN_SIDEBAR_VIEWS = ["explorer", "outline", "math", "references", "search"] as const;
+ *  输入/输出双区结构，见 src/project/MathView.tsx）
+ *  M1-28：大纲改为资源管理器底部 section，不再是独立视图（Ctrl+B 2 空缺）。 */
+export const BUILTIN_SIDEBAR_VIEWS = ["explorer", "math", "references", "search"] as const;
 export type BuiltinSidebarView = (typeof BUILTIN_SIDEBAR_VIEWS)[number];
 /**
  * 侧栏视图 id：内置 4 项 + 模块自带视图（运行期由 ModuleViewDecl 提供）。
@@ -48,6 +50,12 @@ export interface AppState {
   previewRatio: number;
   /** PDF 预览内「缩略图/目录」侧栏宽度（110–380，拖拽写入，偏好设置持久化） */
   pvSideWidth: number;
+  /** M1-28：资源管理器底部大纲区是否展开（持久化；首次默认展开） */
+  outlineExpanded: boolean;
+  toggleOutline: () => void;
+  /** M1-28：大纲区展开高度（96–480，拖拽顶部横线调整；持久化） */
+  outlineHeight: number;
+  setOutlineHeight: (h: number) => void;
 
   // ── 偏好设置（M0-14a）──
   /** 设置页状态：null 关闭；否则为打开时停留的页签 */
@@ -146,6 +154,10 @@ export const useAppStore = create<AppState>((set) => ({
   sidebarWidth: 258,
   previewRatio: 0.5,
   pvSideWidth: 132,
+  outlineExpanded: true,
+  toggleOutline: () => set((s) => ({ outlineExpanded: !s.outlineExpanded })),
+  outlineHeight: OUTLINE_H_DEFAULT,
+  setOutlineHeight: (h) => set({ outlineHeight: h }),
 
   // ── 偏好设置（M0-14a）──
   settingsDialog: null,

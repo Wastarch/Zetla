@@ -87,6 +87,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ...DEFAULT_SETTINGS,
         ...cfg,
         build: { ...DEFAULT_SETTINGS.build, ...(cfg.build ?? {}) },
+        // M1-28：layout 子对象深合并——旧配置缺 outlineExpanded/outlineHeight 时补默认值，
+        // 否则整对象回写会把这两个新字段丢掉（与 build/terminal 同口径）
+        layout: { ...DEFAULT_SETTINGS.layout, ...(cfg.layout ?? {}) },
         // M1-22：terminal 子对象深合并（旧配置缺 terminal 时补默认值）
         terminal: { ...DEFAULT_SETTINGS.terminal, ...(cfg.terminal ?? {}) },
         // Zotero 联动 P0：旧配置缺 zotero 段时补默认值，避免整对象回写丢字段

@@ -45,6 +45,10 @@ pub const PV_SIDE_DEFAULT: u32 = 132;
 pub const LOG_H_MIN: u32 = 120;
 pub const LOG_H_MAX: u32 = 560;
 pub const LOG_H_DEFAULT: u32 = 212;
+/// M1-28：资源管理器底部大纲区高度（与前端 src/outline/outlineLayout.ts 常量一致）
+pub const OUTLINE_H_MIN: u32 = 96;
+pub const OUTLINE_H_MAX: u32 = 480;
+pub const OUTLINE_H_DEFAULT: u32 = 180;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -378,6 +382,10 @@ pub struct LayoutConfig {
     pub pv_side_width: u32,
     /// M1-16：底部编译日志面板高度（120–560，拖拽上边界调整）
     pub log_height: u32,
+    /// M1-28：资源管理器底部大纲区是否展开（默认 true）
+    pub outline_expanded: bool,
+    /// M1-28：大纲区展开高度（96–480，拖拽顶部横线调整）
+    pub outline_height: u32,
 }
 
 impl Default for LayoutConfig {
@@ -389,6 +397,8 @@ impl Default for LayoutConfig {
             preview_ratio: 0.5,
             pv_side_width: PV_SIDE_DEFAULT,
             log_height: LOG_H_DEFAULT,
+            outline_expanded: true,
+            outline_height: OUTLINE_H_DEFAULT,
         }
     }
 }
@@ -1099,6 +1109,8 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     }
     // M1-16：日志面板高度钳制（拖拽已限幅，此处兜底手改配置）
     cfg.layout.log_height = cfg.layout.log_height.clamp(LOG_H_MIN, LOG_H_MAX);
+    // M1-28：大纲区高度钳制（与前端 outlineLayout.ts 的 clamp 口径一致）
+    cfg.layout.outline_height = cfg.layout.outline_height.clamp(OUTLINE_H_MIN, OUTLINE_H_MAX);
     // M1-17：LaTeX 语法高亮配色归一化（以默认 12 组为蓝本，覆盖已保存颜色）
     cfg.highlight = normalize_highlight(cfg.highlight);
     // M1-22：终端配置归一化（字号/回滚钳制；光标样式与工作目录白名单）
@@ -1845,6 +1857,42 @@ mod tests {
             let mut cfg = AppConfig::default();
             cfg.layout.pv_side_width = input;
             assert_eq!(normalize(cfg).layout.pv_side_width, expect, "input={input}");
+        }
+    }
+
+    #[test]
+    fn outline_layout_default_and_clamp() {
+        // 旧配置缺字段 → serde default（展开 / 180），不报错
+        let raw = json!({
+            "layout": {
+                "sidebarVisible": true,
+                "sidebarWidth": 258,
+                "previewVisible": true,
+                "previewRatio": 0.5
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert!(parsed.layout.outline_expanded);
+        assert_eq!(parsed.layout.outline_height, OUTLINE_H_DEFAULT);
+
+        // camelCase 键名往返：整对象回写时前端新字段必须保留（否则重启丢失）
+        let text = serde_json::to_string(&parsed).unwrap();
+        assert!(text.contains("\"outlineExpanded\""));
+        assert!(text.contains("\"outlineHeight\""));
+
+        // 越界 → 钳制；合法值保留
+        for (input, expect) in [
+            (OUTLINE_H_MIN - 1, OUTLINE_H_MIN),
+            (OUTLINE_H_MIN, OUTLINE_H_MIN),
+            (250, 250),
+            (OUTLINE_H_MAX, OUTLINE_H_MAX),
+            (OUTLINE_H_MAX + 1, OUTLINE_H_MAX),
+        ] {
+            let mut cfg = AppConfig::default();
+            cfg.layout.outline_height = input;
+            let out = normalize(cfg);
+            assert_eq!(out.layout.outline_height, expect, "input={input}");
+            assert!(out.layout.outline_expanded, "折叠态未被 normalize 改动");
         }
     }
 

@@ -157,7 +157,6 @@ pub fn install(app: &App) -> tauri::Result<()> {
     // 注意：原生菜单 accelerator 不支持 chord（Ctrl+B 0/1/… 编号键），切视图走本菜单项。
     let v_sidebar = mi(app, "view.toggle_sidebar", "切换侧栏", None)?;
     let v_explorer = mi(app, "view.explorer", "资源管理器", None)?;
-    let v_outline = mi(app, "view.outline", "大纲", None)?;
     let v_math = mi(app, "view.math", "公式", None)?;
     let v_refs = mi(app, "view.references", "引用", None)?;
     let v_preview = mi(app, "view.toggle_preview", "切换 PDF 预览", None)?;
@@ -174,7 +173,6 @@ pub fn install(app: &App) -> tauri::Result<()> {
         &[
             &v_sidebar,
             &v_explorer,
-            &v_outline,
             &v_math,
             &v_refs,
             &v_preview,

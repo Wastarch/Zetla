@@ -2597,9 +2597,7 @@ body.col-resizing {
   flex-direction: column;
 }
 
-.side-view .outline {
-  border-top: none;
-}
+/* M1-28：大纲已移入资源管理器底部，原 .side-view .outline 覆盖规则随之移除 */
 
 /* M1-12c：符号/公式面板改挂 .math-input-body（MathView），原 .side-view 直挂规则已废止 */
 
@@ -2936,12 +2934,13 @@ body.col-resizing {
   background-clip: padding-box;
 }
 
-/* ── M1-5 大纲导航 ────────────────────── */
+/* ── M1-5 大纲导航 / M1-28 资源管理器底部 section ────────────────────── */
 .outline {
-  flex: 1 1 0;
+  flex: none;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   border-top: 1px solid var(--line-soft);
 }
 
@@ -2968,7 +2967,6 @@ body.col-resizing {
 }
 
 .outline-refresh {
-  margin-left: auto;
   width: 20px;
   height: 20px;
   display: grid;
@@ -3040,6 +3038,78 @@ body.col-resizing {
   padding-left: 8px;
   font-size: 10.5px;
   color: var(--txt-5, #8a8f98);
+}
+
+/* M1-28 大纲 section：折叠 caret、更多菜单、顶部拖拽分隔条 */
+.outline-caret {
+  width: 16px;
+  height: 18px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--txt-3);
+  cursor: pointer;
+  font-size: 9px;
+  line-height: 1;
+}
+.outline-caret:hover,
+.outline-more:hover {
+  background: var(--bg-3);
+  color: var(--txt-1);
+}
+.outline-spacer {
+  flex: 1 1 auto;
+}
+.outline-more {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--txt-3);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.outline-resizer {
+  flex: none;
+  height: 5px;
+  margin-top: -1px; /* 压在 border-top 上，视觉只有一条线 */
+  cursor: row-resize;
+  position: relative;
+  z-index: 5;
+  background: transparent;
+  touch-action: none;
+}
+.outline-resizer::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  bottom: -3px;
+}
+.outline-resizer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  transition: background 0.15s;
+}
+.outline-resizer:hover::after,
+.outline.dragging .outline-resizer::after {
+  background: var(--accent);
+  opacity: 0.5;
+}
+.outline.dragging .outline-list {
+  pointer-events: none;
 }
 
 .tree::-webkit-scrollbar-thumb:hover,

@@ -325,14 +325,6 @@ export const menuActions: Record<string, MenuActionDef> = {
     sc: "Ctrl+B 1",
     run: () => useAppStore.getState().setSidebarView("explorer"),
   },
-  "view.outline": {
-    label: () => {
-      const s = useAppStore.getState();
-      return `${s.sidebarVisible && s.sidebarView === "outline" ? "✓ " : ""}大纲`;
-    },
-    sc: "Ctrl+B 2",
-    run: () => useAppStore.getState().setSidebarView("outline"),
-  },
   "view.math": {
     // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库 两页签）
     label: () => {
@@ -542,7 +534,6 @@ export const MENU_GROUPS: MenuGroupSpec[] = [
     items: [
       "view.toggle_sidebar",
       "view.explorer",
-      "view.outline",
       "view.math",
       "view.references",
       "view.toggle_preview",

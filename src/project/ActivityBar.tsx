@@ -15,13 +15,13 @@ interface Item {
   hint: string;
 }
 
-/** 内置视图（编号与 Ctrl+B 1/2/3/4 对应；搜索 Ctrl+Shift+F）。
- *  顺序：资源管理器 → 搜索（VS Code 风格，置于第二） → 大纲 → 公式 → 引用。 */
+/** 内置视图（编号与 Ctrl+B 1/3/4 对应，2 空缺；搜索 Ctrl+Shift+F）。
+ *  顺序：资源管理器 → 搜索（VS Code 风格，置于第二） → 公式 → 引用。
+ *  M1-28：大纲已移入资源管理器底部 section，不再是独立视图。 */
 const ITEMS: Item[] = [
   { view: "explorer", icon: "folder", label: "资源管理器", hint: "Ctrl+B 1" },
   // M1-find：全局搜索（侧栏视图，参考 VS Code 搜索）；置于活动栏第二位，仅次于资源管理器
   { view: "search", icon: "search", label: "搜索", hint: "Ctrl+Shift+F" },
-  { view: "outline", icon: "menu", label: "大纲", hint: "Ctrl+B 2" },
   // M1-12a：符号面板与公式合并为「公式」单视图（内部 符号/公式库 两页签）
   { view: "math", icon: "formula", label: "公式", hint: "Ctrl+B 3" },
   // M1-14f：引用管理面板（校验汇总 + 条目列表 + 导入 .bib）
