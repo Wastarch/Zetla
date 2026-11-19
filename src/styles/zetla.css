@@ -1176,6 +1176,31 @@ html[data-platform="darwin"] .darwin-title {
   background: var(--accent);
 }
 
+/* 标签拖拽：源标签半透明；插入位用 0 宽元素的竖线表示，不挤动布局 */
+.tab.is-dragging {
+  opacity: 0.45;
+}
+
+.tab-dropmark {
+  flex: 0 0 0;
+  align-self: stretch;
+  position: relative;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tab-dropmark::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: -1px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
 .tab .tname {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -8,6 +8,7 @@ import { projectApi } from "@/ipc/invoke";
 import { useSettingsStore } from "@/core/settings";
 import { startCompile } from "@/compile/useCompile";
 import { sameTextIgnoringEol } from "./externalReload";
+import { reorderByDrop } from "./bufferOrder";
 import type { SettingsPane } from "@/core/store";
 import type { FileDoc } from "@/types";
 
@@ -128,6 +129,9 @@ export interface BuffersState {
   openFiles: (paths: string[]) => Promise<void>;
   /** 激活指定缓冲 */
   setActive: (path: string) => void;
+  /** 标签拖拽排序：把 path 移到「原数组插入位置」dropIndex（0..buffers.length）；
+   *  位置未变时不改动 state，避免无谓的会话写盘。活动标签、内容、脏状态均不受影响。 */
+  reorderBuffer: (path: string, dropIndex: number) => void;
   /** 打开拼图预览 Tab（单例伪 buffer；永不脏、不落盘）；P1 */
   openFigure: () => void;
   /** 打开绘图工作台 Tab（单例伪 buffer `diagram://editor`；永不脏、不落盘）；M2·F1-1 */
@@ -233,6 +237,11 @@ export const useBuffersStore = create<BuffersState>((set, get) => ({
 
   setActive: (path) => {
     if (get().buffers.some((b) => b.path === path)) set({ activePath: path });
+  },
+
+  reorderBuffer: (path, dropIndex) => {
+    const reordered = reorderByDrop(get().buffers, path, dropIndex);
+    if (reordered) set({ buffers: reordered });
   },
 
   openFigure: () => {
