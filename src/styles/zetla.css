@@ -1603,6 +1603,13 @@ html[data-platform="darwin"] .darwin-title {
   font-size: calc(var(--editor-fs) - 1px);
 }
 
+/* M1-33：lint 诊断列移到行号左侧。默认排列为 行号→折叠→lint，lint 空列把箭头与代码隔开；
+   order:-1 让 lint 排到最左，折叠箭头成为 gutter 末列紧贴代码（VS Code 风格）。
+   CM6 的点击/hover 处理器绑定在各 gutter DOM 上，order 只改绘制顺序不影响功能。 */
+.latex-editor .cm-gutter-lint {
+  order: -1;
+}
+
 /* M1-31：代码折叠 gutter（foldGutter 只在开关打开时挂载） */
 /* M1-32：markerDOM 改为 #i-chev SVG，flex 居中于行号与代码之间的 gutter 列 */
 .latex-editor .cm-foldGutter .cm-gutterElement {
