@@ -1,34 +1,14 @@
 // M1-15b · 项目切换器（命令面板式浮层；Ctrl+R / 文件→切换项目）
 // 列出最近项目（置顶+最近，后端已排序），输入过滤，↑↓ 选择 / Enter 打开 / Esc 关闭。
-// 会话保留：切换离开时把当前项目的「标签页 + 活动标签」存入内存缓存（按项目 path 索引），
-// 切回时按新项目树过滤已存在文件后重开（同名/已删文件自然被过滤）。
-// 说明：缓存为会话级内存（跨重启仅上次项目由 M0-13 全局 session 恢复）。
+// 标签页保留（M1-15i 起跨重启持久化）：切走时由 openProject 统一把当前项目标签页写入
+// 持久化 projectSessions；切回时从持久化会话取回、按新项目树过滤已存在文件后重开
+// （同名/已删文件自然被过滤；重启后其它项目的标签页同样可恢复）。
 import { useEffect, useMemo, useRef, useState } from "react";
 import { configApi } from "@/ipc/invoke";
 import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { useProjectStore } from "./useProject";
 import type { ProjectEntry, ProjectNode } from "@/types";
-
-interface CachedSession {
-  openFiles: string[];
-  activeFile: string | null;
-}
-
-/** 会话级「项目 → 标签页」缓存（不落盘；见文件头说明） */
-const sessionCache = new Map<string, CachedSession>();
-
-/** 路径是否属于某项目根（Windows 分隔符两态） */
-function isUnder(root: string, p: string): boolean {
-  return p.startsWith(`${root}\\`) || p.startsWith(`${root}/`);
-}
-
-/** 捕获当前项目已打开标签（切换离开前调用） */
-function captureCurrent(root: string): void {
-  const bs = useBuffersStore.getState();
-  const openFiles = bs.buffers.filter((b) => isUnder(root, b.path)).map((b) => b.path);
-  sessionCache.set(root, { openFiles, activeFile: bs.activePath });
-}
 
 /** 收集项目树中的文件路径（小写，用于过滤缓存中已删除的文件） */
 function collectFiles(nodes: ProjectNode[]): Set<string> {
@@ -92,15 +72,20 @@ export function ProjectSwitcher() {
     const st = useProjectStore.getState();
     close();
     if (!target || st.root === target) return; // 已打开：不自我关闭重开
-    if (st.root) captureCurrent(st.root);
+    // M1-15i：旧项目的标签页由 openProject 统一捕获并持久化（此处不再维护内存缓存）
     await st.openProject(target);
     const nowRoot = useProjectStore.getState().root;
     if (nowRoot !== target) return; // 打开失败（toast 已由 openProject 给出）
-    const cached = sessionCache.get(target);
+    // M1-15i：恢复目标项目的标签页（持久化会话；跨重启同样有效）
+    const cached = useSettingsStore
+      .getState()
+      .persisted.session.projectSessions?.find((p) => p.project === target);
     const tree = useProjectStore.getState().tree;
     if (!cached || !tree || cached.openFiles.length === 0) return;
     const exists = collectFiles(tree.nodes);
-    const files = cached.openFiles.filter((p) => exists.has(p.toLowerCase()));
+    const files = [...new Set(cached.openFiles)].filter((p) =>
+      exists.has(p.toLowerCase()),
+    );
     if (files.length === 0) return;
     await useBuffersStore.getState().openFiles(files);
     const active = cached.activeFile;

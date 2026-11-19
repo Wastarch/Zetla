@@ -350,17 +350,17 @@ export function ProjectSettingsDialog() {
                       </select>
                     </Fld>
                     <Fld
-                      label="输出目录（暂未接通）"
-                      hint="编译产物当前固定落在主文件同目录"
-                      tip="输出目录（outputDir）支持留待后续切片；此处仅保留原值，不会改变产物位置"
+                      label="输出目录"
+                      hint="编译产物（PDF / 日志 / 辅助文件）的落盘目录，相对项目根；留空 = 主文件同目录"
+                      tip="M1-15f：设置后编译会加 -output-directory，预览与双向跳转按输出目录定位产物"
                     >
                       <input
                         className="txt-in"
                         style={{ minWidth: 280 }}
                         value={draft.outputDir}
-                        placeholder="固定为主文件同目录"
+                        placeholder="主文件同目录"
                         spellCheck={false}
-                        disabled
+                        onChange={(e) => set("outputDir", e.target.value)}
                       />
                     </Fld>
                   </div>

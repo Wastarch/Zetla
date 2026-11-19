@@ -211,12 +211,75 @@ pub struct SessionConfig {
     pub open_files: Vec<String>,
     /// M0-13c：上次离开时的活动标签（须在 open_files 内；None=无活动标签）
     pub active_file: Option<String>,
+    /// M1-15i：各项目的标签页记忆（project = 项目根绝对路径），供切换器跨重启恢复；
+    /// 旧配置缺字段 → serde default 空表
+    pub project_sessions: Vec<ProjectSession>,
+}
+
+/// M1-15i：单个项目的标签页记忆（与前端 useWindowMemory sessionSnapshot 对齐）
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ProjectSession {
+    /// 项目根绝对路径
+    pub project: String,
+    /// 该项目上次离开时打开的标签页（绝对路径，按打开顺序）
+    pub open_files: Vec<String>,
+    /// 该项目上次离开时的活动标签（须在 open_files 内；None=无）
+    pub active_file: Option<String>,
 }
 
 /// M0-13c：会话标签页数量上限（防呆；超出按打开顺序截断）
 pub const MAX_OPEN_FILES: usize = 50;
 
+/// M1-15i：项目标签记忆条数上限（超出按「最近写入」保留；注册表 MAX_RECENT 量级）
+pub const MAX_PROJECT_SESSIONS: usize = 20;
+
+/// M1-15i：单个项目会话归一化——去空白/去重、截断至上限；active_file 不在列表内则置空；
+/// project 为空则整体丢弃（返回 None）
+fn normalize_project_session(mut ps: ProjectSession) -> Option<ProjectSession> {
+    let project = ps.project.trim().to_string();
+    if project.is_empty() {
+        return None;
+    }
+    ps.project = project;
+    let mut files: Vec<String> = Vec::new();
+    for p in ps.open_files.drain(..) {
+        let t = p.trim().to_string();
+        if t.is_empty() || files.iter().any(|f| f == &t) {
+            continue;
+        }
+        files.push(t);
+    }
+    files.truncate(MAX_OPEN_FILES);
+    ps.open_files = files;
+    ps.active_file = ps
+        .active_file
+        .take()
+        .map(|a| a.trim().to_string())
+        .filter(|a| !a.is_empty() && ps.open_files.iter().any(|p| p == a));
+    Some(ps)
+}
+
+/// M1-15i：项目会话列表归一化——逐条 normalize，按 project 去重（保留最后一次写入），
+/// 截断至 MAX_PROJECT_SESSIONS
+fn normalize_project_sessions(list: Vec<ProjectSession>) -> Vec<ProjectSession> {
+    let mut out: Vec<ProjectSession> = Vec::new();
+    for ps in list {
+        if let Some(p) = normalize_project_session(ps) {
+            // 同项目再次写入：移除旧条目（upsert 语义，顺序 = 最近使用）
+            out.retain(|x| x.project != p.project);
+            out.push(p);
+        }
+    }
+    let excess = out.len().saturating_sub(MAX_PROJECT_SESSIONS);
+    if excess > 0 {
+        out.drain(0..excess); // 保留最近的（尾部）
+    }
+    out
+}
+
 /// M0-13c：会话归一化——去空白/去重、截断至上限；active_file 不在列表内则置空
+/// （M1-15i：同时归一化 project_sessions）
 pub fn normalize_session(mut session: SessionConfig) -> SessionConfig {
     let mut files: Vec<String> = Vec::new();
     for p in session.open_files.drain(..) {
@@ -232,6 +295,7 @@ pub fn normalize_session(mut session: SessionConfig) -> SessionConfig {
         .active_file
         .map(|a| a.trim().to_string())
         .filter(|a| !a.is_empty() && session.open_files.iter().any(|p| p == a));
+    session.project_sessions = normalize_project_sessions(session.project_sessions);
     session
 }
 
@@ -1470,6 +1534,89 @@ mod tests {
         let got = normalize(many);
         assert_eq!(got.session.open_files.len(), MAX_OPEN_FILES);
         assert_eq!(got.session.active_file, None); // 被截断掉
+    }
+
+    #[test]
+    fn project_sessions_normalize_dedup_and_cap() {
+        // M1-15i：旧配置缺 projectSessions → serde default 空；camelCase 往返
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true, "mouseWheelZoom": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" },
+            "session": {
+                "lastProject": "D:/proj",
+                "openFiles": [],
+                "activeFile": null,
+                "projectSessions": [
+                    {
+                        "project": "D:/proj",
+                        "openFiles": ["D:/proj/main.tex", "D:/proj/intro.tex"],
+                        "activeFile": "D:/proj/intro.tex"
+                    }
+                ]
+            }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        assert_eq!(parsed.session.project_sessions.len(), 1);
+        assert_eq!(parsed.session.project_sessions[0].project, "D:/proj");
+        let text = serde_json::to_string(&parsed).unwrap();
+        assert!(text.contains("\"projectSessions\""));
+
+        // 归一化：空 project 丢弃；open_files 去空白去重截断；active_file 不在列表内 → None
+        let mut cfg = AppConfig::default();
+        cfg.session.project_sessions = vec![
+            ProjectSession {
+                project: "  ".into(),
+                open_files: vec!["D:/x.tex".into()],
+                active_file: None,
+            },
+            ProjectSession {
+                project: "D:/p1".into(),
+                open_files: vec![" ".into(), "D:/a.tex".into(), "D:/a.tex".into()],
+                active_file: Some("D:/ghost.tex".into()),
+            },
+            ProjectSession {
+                project: "D:/p2".into(),
+                open_files: vec!["D:/b.tex".into()],
+                active_file: Some("D:/b.tex".into()),
+            },
+        ];
+        let got = normalize(cfg);
+        assert_eq!(got.session.project_sessions.len(), 2);
+        assert_eq!(got.session.project_sessions[0].project, "D:/p1");
+        assert_eq!(got.session.project_sessions[0].open_files, vec!["D:/a.tex"]);
+        assert_eq!(got.session.project_sessions[0].active_file, None);
+        assert_eq!(got.session.project_sessions[1].active_file.as_deref(), Some("D:/b.tex"));
+
+        // upsert：同 project 再写 → 旧条目被替换（顺序 = 最近使用）
+        let mut cfg = AppConfig::default();
+        cfg.session.project_sessions = vec![
+            ProjectSession { project: "D:/p1".into(), open_files: vec!["D:/old.tex".into()], active_file: None },
+            ProjectSession { project: "D:/p1".into(), open_files: vec!["D:/new.tex".into()], active_file: None },
+            ProjectSession { project: "D:/p2".into(), open_files: vec!["D:/b.tex".into()], active_file: None },
+        ];
+        let got = normalize(cfg);
+        assert_eq!(got.session.project_sessions.len(), 2);
+        // upsert 语义：p1 的旧条目被新条目替换（原地保序），p2 最后写入排在尾部
+        assert_eq!(got.session.project_sessions[0].project, "D:/p1");
+        assert_eq!(got.session.project_sessions[0].open_files, vec!["D:/new.tex"]);
+        assert_eq!(got.session.project_sessions[1].project, "D:/p2");
+
+        // 超上限：保留最近的 MAX_PROJECT_SESSIONS 条
+        let mut cfg = AppConfig::default();
+        cfg.session.project_sessions = (0..30)
+            .map(|i| ProjectSession {
+                project: format!("D:/p{i}"),
+                open_files: vec![],
+                active_file: None,
+            })
+            .collect();
+        let got = normalize(cfg);
+        assert_eq!(got.session.project_sessions.len(), MAX_PROJECT_SESSIONS);
+        assert_eq!(got.session.project_sessions[0].project, format!("D:/p{}", 30 - MAX_PROJECT_SESSIONS));
+        assert_eq!(got.session.project_sessions.last().unwrap().project, "D:/p29");
     }
 
     #[test]

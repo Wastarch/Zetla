@@ -98,14 +98,44 @@ function joinPath(dir: string, name: string): string {
   return dir.endsWith(sep) || dir.endsWith("/") ? dir + name : dir + sep + name;
 }
 
-/** 主文件同目录的编译产物（与 compile.rs 当前输出位置一致） */
-export function expectedPdfPath(mainFile: string): string {
+/**
+ * 编译产物位置（与 compile.rs 的 run_job 一致）：
+ * M1-15f 起显式 outputDir（相对项目根）时产物在 <root>/<outputDir>/<主文件名>.pdf，
+ * 否则与旧版一致落主文件同目录。
+ */
+export function expectedPdfPath(
+  mainFile: string,
+  outputDir?: string | null,
+  root?: string | null,
+): string {
   const stem = base(mainFile).replace(/\.tex$/i, "");
+  if (outputDir && outputDir.trim() && root && root.trim()) {
+    return joinPath(joinPath(root, outputDir.trim().replace(/\\/g, "/")), `${stem}.pdf`);
+  }
   return joinPath(parentOf(mainFile), `${stem}.pdf`);
 }
 
-/** 在树中按路径查找文件（Windows 路径不区分大小写，用实际大小写返回） */
-function findFileByPath(nodes: ProjectNode[], path: string): ProjectNode | null {
+/**
+ * M1-15i：把某项目当前打开的标签页 upsert 进持久化 projectSessions（立即写盘，不走防抖）。
+ * 切换项目前调用；防抖快照（useWindowMemory）工作期间持续刷新当前项目条目，
+ * 这里兜住「切走那一刻」的最终状态，保证其它项目的标签记忆跨重启可恢复。
+ */
+function captureProjectSession(root: string): void {
+  const bs = useBuffersStore.getState();
+  const under = (p: string): boolean =>
+    p.startsWith(`${root}\\`) || p.startsWith(`${root}/`);
+  const openFiles = bs.buffers.filter((b) => under(b.path)).map((b) => b.path);
+  const activeFile = bs.activePath && under(bs.activePath) ? bs.activePath : null;
+  const st = useSettingsStore.getState();
+  const prev = st.persisted.session.projectSessions ?? [];
+  const projectSessions = [
+    ...prev.filter((p) => p.project !== root),
+    { project: root, openFiles, activeFile },
+  ];
+  void st.persist({ session: { ...st.persisted.session, projectSessions } });
+}
+
+/** 在树中按路径查找文件（Windows 路径不区分大小写，用实际大小写返回） */function findFileByPath(nodes: ProjectNode[], path: string): ProjectNode | null {
   const want = path.toLowerCase();
   for (const n of nodes) {
     if (n.type === "file" && n.path.toLowerCase() === want) return n;
@@ -248,6 +278,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       // M0-12：切换项目时关掉上一个项目打开的文件（非强制：脏文件弹关闭确认，取消则该文件保留）
       const oldRoot = get().root;
       if (oldRoot && oldRoot !== root) {
+        // M1-15i：切走前把旧项目的标签页写入持久化会话（跨重启可恢复）
+        captureProjectSession(oldRoot);
         const toClose = useBuffersStore
           .getState()
           .buffers.filter(
@@ -290,9 +322,13 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (defaultMain) {
         await useBuffersStore.getState().openFiles([defaultMain.path]);
       }
-      // M0-10b：主文件同目录已有编译产物时直接加载，不必先编译（不强制展开预览栏）
+      // M0-10b：已有编译产物时直接加载，不必先编译（不强制展开预览栏）
+      // M1-15f：产物按输出目录定位（outputDir 相对项目根；缺省 = 主文件同目录）
       if (tree.mainFile) {
-        const existing = findFileByPath(tree.nodes, expectedPdfPath(tree.mainFile));
+        const existing = findFileByPath(
+          tree.nodes,
+          expectedPdfPath(tree.mainFile, tree.outputDir, root),
+        );
         if (existing) {
           useAppStore.setState((s) => ({
             previewPdf: existing.path,

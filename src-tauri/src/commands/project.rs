@@ -39,6 +39,8 @@ pub struct ProjectTree {
     pub engine: String,
     /// 图片目录（R5 拖拽导入；.ltex/config.json 的 imageDir，缺省 "figures"；相对项目根）
     pub image_dir: Option<String>,
+    /// M1-15f：编译输出目录（.ltex/config.json 的 outputDir；None/非法 = 主文件同目录，相对项目根）
+    pub output_dir: Option<String>,
     pub nodes: Vec<ProjectNode>,
 }
 
@@ -144,8 +146,28 @@ fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
         main_file,
         engine: config_engine(root_path),
         image_dir: config_image_dir(root_path),
+        output_dir: config_output_dir(root_path),
         nodes,
     })
+}
+
+/// 读 .ltex/config.json 的 outputDir（M1-15f 编译输出目录，相对项目根）。
+/// 文件缺失 / 非法 / 绝对路径 / `..` 穿越 → None（回落主文件同目录）。
+fn config_output_dir(root: &Path) -> Option<String> {
+    let cfg = root.join(".ltex").join("config.json");
+    let text = std::fs::read_to_string(cfg).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let od = v.get("outputDir")?.as_str()?;
+    let od = od.trim();
+    if od.is_empty()
+        || od.starts_with('/')
+        || od.starts_with('\\')
+        || od.contains("..")
+        || Path::new(od).is_absolute()
+    {
+        return None;
+    }
+    Some(od.to_string())
 }
 
 /// 读 .ltex/config.json 的 mainFile（项目权威入口；M0-7 完整版）。文件缺失/非法/目标不存在 → None 走启发式
@@ -287,8 +309,8 @@ const PROJECT_ENGINES: [&str; 4] = ["xelatex", "pdflatex", "lualatex", "latexmk"
 /// 合法项目类型
 const PROJECT_TYPES: [&str; 5] = ["article", "thesis", "beamer", "resume", "custom"];
 
-/// 相对路径校验：空 → None；绝对路径 / .. 穿越 → Err
-fn clean_rel(field: &str, s: Option<String>) -> Result<Option<String>, String> {
+/// 相对路径校验：空 → None；绝对路径 / .. 穿越 → Err（M1-15f 起 compile.rs 复用校验 outputDir）
+pub(crate) fn clean_rel(field: &str, s: Option<String>) -> Result<Option<String>, String> {
     let Some(v) = s else { return Ok(None) };
     let v = v.trim().to_string();
     if v.is_empty() {
@@ -1280,6 +1302,38 @@ mod tests {
         .unwrap();
         let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
         assert_eq!(tree.engine, "xelatex");
+    }
+
+    #[test]
+    fn scan_project_reports_output_dir() {
+        // M1-15f：合法 outputDir 进树；非法（绝对路径 / .. 穿越）→ None 回落主文件同目录
+        let root = tmp_root("outdir");
+        let ltex = root.join(".ltex");
+        std::fs::create_dir_all(&ltex).unwrap();
+        std::fs::write(root.join("main.tex"), "\\documentclass{article}").unwrap();
+
+        // 未配置 → None
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert_eq!(tree.output_dir, None);
+
+        // 合法相对路径
+        std::fs::write(ltex.join("config.json"), r#"{"outputDir":"build/out"}"#).unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert_eq!(tree.output_dir.as_deref(), Some("build/out"));
+
+        // 绝对路径 → None
+        std::fs::write(
+            ltex.join("config.json"),
+            r#"{"outputDir":"C:\\evil"}"#,
+        )
+        .unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert_eq!(tree.output_dir, None);
+
+        // .. 穿越 → None
+        std::fs::write(ltex.join("config.json"), r#"{"outputDir":"../elsewhere"}"#).unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        assert_eq!(tree.output_dir, None);
     }
 
     #[test]

@@ -438,6 +438,9 @@ enum CmdOutcome {
 struct Job {
     root: PathBuf,
     main: PathBuf,
+    /// M1-15f：输出目录（产物 PDF/log/synctex 落这里；None 语义 = 主文件同目录）
+    /// 惰性解析为 `resolved_out`（main 不存在时 main.parent 不可靠，见 run_job）
+    out: Option<PathBuf>,
     engine: String,
     /// M2：已解析的编译流程（内置或用户级）
     recipe: RecipeDef,
@@ -540,8 +543,15 @@ pub async fn compile_project(
     engine: Option<String>,
     steps: Option<Vec<String>>,
     recipe: Option<String>,
+    // M1-15f：输出目录（相对项目根；None/空 = 主文件同目录，行为与旧版一致）
+    output_dir: Option<String>,
 ) -> Result<(), String> {
     let st = state.inner().clone();
+
+    // M1-15f：输出目录校验（相对项目根、禁绝对路径 / .. 穿越；非法直接报错，
+    // 与 update_project_config 的写入校验同口径——手改配置出错应显式可见）。
+    // 放在抢占任务位之前：校验失败直接 Err，不会留下幽灵「运行中」任务。
+    let out_rel = crate::commands::project::clean_rel("输出目录", output_dir)?;
 
     // 领新代号并抢占「当前任务」位：swap 之后旧任务立刻变成 stale（它会在下个检查点退出）
     let seq = st.next_seq.fetch_add(1, Ordering::SeqCst) + 1;
@@ -580,8 +590,10 @@ pub async fn compile_project(
         &steps.unwrap_or_default(),
     );
     let job = Job {
-        root: PathBuf::from(root),
+        root: PathBuf::from(&root),
         main: PathBuf::from(main_file),
+        // M1-15f：输出目录已在校验处解析（Some = 相对项目根的合法路径）
+        out: out_rel.map(|rel| PathBuf::from(&root).join(rel.replace('\\', "/"))),
         engine: resolved_engine,
         recipe: recipe_def,
         user_tools: cfg.build.tools.clone(),
@@ -786,6 +798,30 @@ enum ToolResolution {
     Skip(String),
 }
 
+/// M1-15f：引擎 / latexmk 的输出目录附加参数——输出目录与主文件目录不同时
+/// 追加 `-output-directory=<OUTDIR>`（%OUTDIR% 为 / 分隔绝对路径，TeX 引擎普遍认）；
+/// 相同（默认行为）时不加任何参数，与旧版完全一致。
+fn output_dir_flags(ctx: &Ctx) -> Vec<String> {
+    if ctx.out == ctx.dir {
+        Vec::new()
+    } else {
+        vec![format!(
+            "-output-directory={}",
+            placeholders::expand_str("%OUTDIR%", ctx)
+        )]
+    }
+}
+
+/// M1-15f：biber/bibtex 的基础参数——输出目录不同时 .bcf/.aux 在输出目录里，
+/// 基础参数改指 %OUTDIR%/%DOCFILE%（cwd 仍是主文件目录，故用绝对路径）。
+fn aux_tool_base_arg(ctx: &Ctx) -> String {
+    if ctx.out == ctx.dir {
+        placeholders::expand_str("%DOCFILE%", ctx)
+    } else {
+        placeholders::expand_str("%OUTDIR%/%DOCFILE%", ctx)
+    }
+}
+
 /// 引擎步解析：真实引擎名（xelatex / pdflatex / lualatex）或兼容别名 latex（跟随 job.engine）。
 /// 统一补 `-synctex=1 -interaction=nonstopmode -file-line-error <主文件>`，再追加 Tool.args。
 fn engine_resolution(
@@ -804,6 +840,8 @@ fn engine_resolution(
                 "-file-line-error".to_string(),
                 placeholders::expand_str("%DOCFILE_EXT%", ctx),
             ];
+            // M1-15f：显式输出目录时补 -output-directory
+            a.extend(output_dir_flags(ctx));
             a.extend(placeholders::expand_args(args, ctx));
             ToolResolution::Run {
                 exe,
@@ -852,6 +890,9 @@ fn resolve_command(
                     "-file-line-error".to_string(),
                     placeholders::expand_str("%DOCFILE_EXT%", ctx),
                 ];
+                // M1-15f：与引擎直跑一致，显式输出目录时补 -output-directory（latexmk 会把它
+                // 传给引擎，并自己在输出目录里跑 bibtex/biber、找 .bcf/.aux）
+                a.extend(output_dir_flags(ctx));
                 a.extend(placeholders::expand_args(args, ctx));
                 ToolResolution::Run {
                     exe,
@@ -864,7 +905,7 @@ fn resolve_command(
         },
         "biber" | "bibtex" => match find_engine(command.trim(), &job.search_dirs) {
             Some(exe) => {
-                let mut a = vec![placeholders::expand_str("%DOCFILE%", ctx)];
+                let mut a = vec![aux_tool_base_arg(ctx)];
                 a.extend(placeholders::expand_args(args, ctx));
                 ToolResolution::Run {
                     exe,
@@ -1088,6 +1129,28 @@ async fn run_recipe(
     RecipeOutcome::Ok
 }
 
+/// 构造一条错误结果（M1-15f：输出目录创建失败等编译尚未开始就失败的场景；
+/// message 以一条 TexError 进 errors，让日志面板「错误」页直接可见）
+fn error_result(started: Instant, msg: String) -> CompileResult {
+    CompileResult {
+        status: "error".to_string(),
+        pdf_path: None,
+        errors: vec![TexError {
+            file: String::new(),
+            line: 0,
+            severity: "error".to_string(),
+            col: None,
+            raw: msg.clone(),
+            readable: msg,
+            fix: None,
+            hint: None,
+        }],
+        log_path: None,
+        passes: 0,
+        duration_ms: started.elapsed().as_millis() as u64,
+    }
+}
+
 /// 执行完整编译流程（Recipe 驱动 + fallback 链），返回最终结果
 async fn run_job(
     app: &AppHandle,
@@ -1096,12 +1159,25 @@ async fn run_job(
     started: Instant,
     sig: &JobSig,
 ) -> CompileResult {
-    // 产物与 main.tex 同目录（用户定稿：不设 -output-directory）
+    // 工作目录恒为主文件所在目录（相对 \input / \include 都按它解析）
     let dir = job
         .main
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| job.root.clone());
+    // M1-15f：输出目录 = 显式 outputDir（相对项目根）?? 主文件同目录（旧行为）
+    let out_dir = match &job.out {
+        Some(p) => p.clone(),
+        None => dir.clone(),
+    };
+    if job.out.is_some() {
+        if let Err(e) = std::fs::create_dir_all(&out_dir) {
+            return error_result(
+                started,
+                format!("无法创建输出目录 {}: {}", out_dir.display(), e),
+            );
+        }
+    }
     let main_name = job
         .main
         .file_name()
@@ -1112,20 +1188,21 @@ async fn run_job(
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
-    let pdf = dir.join(format!("{stem}.pdf"));
-    let log = dir.join(format!("{stem}.log"));
+    // 产物（PDF / log）随输出目录走：显式 outputDir 时落 out_dir，否则与旧行为一致
+    let pdf = out_dir.join(format!("{stem}.pdf"));
+    let log = out_dir.join(format!("{stem}.log"));
     // 编译前记录产物 / 日志 mtime：失败时目录里可能残留上一次的结果
     let pdf_mtime_before = std::fs::metadata(&pdf).and_then(|m| m.modified()).ok();
     let log_mtime_before = std::fs::metadata(&log).and_then(|m| m.modified()).ok();
 
     emit_progress(app, "prepare", 0, format!("准备编译 · {main_name}"));
 
-    // 占位符上下文
+    // 占位符上下文（M1-15f：%OUTDIR%/%AUXDIR% 随输出目录走；%DIR% 仍是主文件目录）
     let ctx = Ctx {
         doc: &job.main,
         dir: &dir,
-        out: &dir,
-        aux: &dir,
+        out: &out_dir,
+        aux: &out_dir,
         ws: &job.root,
     };
 
@@ -1440,6 +1517,40 @@ mod tests {
         assert_eq!(latexmk_flag("lualatex"), "-lualatex");
         // 未知引擎回退 xelatex
         assert_eq!(latexmk_flag("tectonic"), "-xelatex");
+    }
+
+    /// M1-15f：显式输出目录时引擎 / latexmk 步追加 -output-directory；
+    /// 输出目录与主文件目录相同（默认）时不追加任何参数（与旧行为一致）。
+    #[test]
+    fn output_dir_flags_only_when_separate() {
+        let doc = Path::new("/proj/sub/main.tex");
+        let dir = Path::new("/proj/sub");
+        // 输出目录 = 主文件目录 → 不加参数
+        let same = Ctx { doc, dir, out: dir, aux: dir, ws: Path::new("/proj") };
+        assert!(output_dir_flags(&same).is_empty());
+        assert_eq!(aux_tool_base_arg(&same), "main");
+        // 输出目录 = 项目根下 out → 引擎步加 -output-directory；biber 基础参数指向 OUTDIR
+        let out = Path::new("/proj/out");
+        let separate = Ctx { doc, dir, out, aux: out, ws: Path::new("/proj") };
+        let flags = output_dir_flags(&separate);
+        assert_eq!(flags.len(), 1);
+        assert_eq!(flags[0], "-output-directory=/proj/out");
+        assert_eq!(aux_tool_base_arg(&separate), "/proj/out/main");
+    }
+
+    /// M1-15f：Windows 反斜杠路径下 -output-directory 的值也用 / 分隔（%OUTDIR% 走 fwd 语义，
+    /// TeX 引擎在 Windows 同样认正斜杠）
+    #[test]
+    fn output_dir_flags_use_forward_slashes_on_windows_paths() {
+        let doc = Path::new("E:\\proj\\main.tex");
+        let dir = Path::new("E:\\proj");
+        let out = Path::new("E:\\proj\\build");
+        let ctx = Ctx { doc, dir, out, aux: out, ws: dir };
+        let flags = output_dir_flags(&ctx);
+        assert_eq!(flags.len(), 1);
+        assert_eq!(flags[0], "-output-directory=E:/proj/build");
+        // 占位符必须全部展开，不允许 % 残留
+        assert!(!flags[0].contains('%'));
     }
 
     /// M2：内置兜底流程的引擎步必须是真实引擎名（跟随当前生效引擎），

@@ -153,7 +153,15 @@ export async function startCompile(opts?: {
   liveAnchorAt = live ? currentCursor() : null;
 
   try {
-    await compileApi.compileProject(root, tree.mainFile, engine, steps, recipe);
+    // M1-15f：项目输出目录（.ltex/config.json outputDir，null = 主文件同目录）
+    await compileApi.compileProject(
+      root,
+      tree.mainFile,
+      engine,
+      steps,
+      recipe,
+      tree.outputDir ?? null,
+    );
   } catch (e) {
     // 命令本身失败（主文件不存在 / 引擎缺失 / 环境异常）；
     // M1-18b 起「已有任务在跑」不再是错误（后端 latest-wins 顶替旧任务）

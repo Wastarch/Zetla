@@ -105,6 +105,16 @@ export interface FormulaConfig {
   inline: boolean;
 }
 
+/** M1-15i：单个项目的标签页记忆（与 Rust SessionConfig.project_sessions 一一对应） */
+export interface ProjectSessionEntry {
+  /** 项目根绝对路径 */
+  project: string;
+  /** 该项目上次离开时打开的标签页（绝对路径，按打开顺序） */
+  openFiles: string[];
+  /** 该项目上次离开时的活动标签（须在 openFiles 内；null=无） */
+  activeFile: string | null;
+}
+
 export interface AppSettings {
   schemaVersion: number;
   editor: {
@@ -173,6 +183,8 @@ export interface AppSettings {
     openFiles: string[];
     /** M0-13c：上次离开时的活动标签（须在 openFiles 内；null=无活动标签） */
     activeFile: string | null;
+    /** M1-15i：各项目的标签页记忆（切换器跨重启恢复用；project = 项目根绝对路径） */
+    projectSessions: ProjectSessionEntry[];
   };
   /** M0-13：布局（侧栏/预览宽度与显隐） */
   layout: {
@@ -345,7 +357,12 @@ export const DEFAULT_SETTINGS: AppSettings = {
   build: { saveBeforeCompile: true, engine: "auto", steps: [], tools: [], recipes: [], defaultRecipe: null, compileOnSave: false, livePreview: false, livePreviewDelayMs: 600, cleanAuxAfterCompile: false, cleanAuxExtensions: DEFAULT_AUX_EXTENSIONS },
   pdf: { defaultZoom: "fit-width" },
   window: { width: null, height: null, x: null, y: null, maximized: false },
-  session: { lastProject: null, openFiles: [], activeFile: null },
+  session: {
+    lastProject: null,
+    openFiles: [],
+    activeFile: null,
+    projectSessions: [],
+  },
   layout: {
     sidebarVisible: true,
     sidebarWidth: 258,

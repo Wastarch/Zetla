@@ -52,6 +52,8 @@ export interface ProjectTree {
   engine: string;
   /** 图片目录（R5 拖拽导入；.ltex/config.json 的 imageDir，缺省 "figures"；相对项目根） */
   imageDir?: string;
+  /** M1-15f：编译输出目录（.ltex/config.json 的 outputDir；缺省/非法 = 主文件同目录，相对项目根） */
+  outputDir?: string;
   nodes: ProjectNode[];
 }
 

@@ -52,6 +52,8 @@ export const compileApi = {
     engine: string,
     steps: string[],
     recipe?: string | null,
+    /** M1-15f：输出目录（相对项目根；null = 主文件同目录） */
+    outputDir?: string | null,
   ) =>
     call<void>("compile_project", {
       root,
@@ -59,6 +61,7 @@ export const compileApi = {
       engine,
       steps,
       recipe: recipe ?? null,
+      outputDir: outputDir ?? null,
     }),
   /** 取消当前编译（杀掉子进程） */
   cancelCompile: () => call<void>("cancel_compile"),

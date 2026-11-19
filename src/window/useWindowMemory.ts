@@ -166,12 +166,30 @@ export function useWindowMemory(): void {
       if (layoutKey(s) !== layoutKey(prev)) debouncedLayoutSave();
     });
     // 4) 会话记忆写盘（M0-13c：项目根 + 标签页 + 活动标签；三字段始终一起写，防浅合并丢字段）
+    // M1-15i：同时把当前项目的标签页 upsert 进 projectSessions（其它项目条目原样保留，
+    // 以 persisted 为准——settings.session 可能落后于最后一次旁路保存）
     const sessionSnapshot = (): AppSettings["session"] => {
       const bs = useBuffersStore.getState();
+      const root = useProjectStore.getState().root;
+      const prev =
+        useSettingsStore.getState().persisted.session.projectSessions ?? [];
+      const under = (p: string): boolean =>
+        !!root && (p.startsWith(`${root}\\`) || p.startsWith(`${root}/`));
+      const entry = root
+        ? {
+            project: root,
+            openFiles: bs.buffers.filter((b) => under(b.path)).map((b) => b.path),
+            activeFile: bs.activePath && under(bs.activePath) ? bs.activePath : null,
+          }
+        : null;
+      const projectSessions = entry
+        ? [...prev.filter((p) => p.project !== root), entry]
+        : prev;
       return {
-        lastProject: useProjectStore.getState().root,
+        lastProject: root,
         openFiles: bs.buffers.map((b) => b.path),
         activeFile: bs.activePath,
+        projectSessions,
       };
     };
     const debouncedSessionSave = debounce(500, () => {
@@ -221,9 +239,16 @@ export function useWindowMemory(): void {
           console.warn("[window-memory] 恢复上次项目失败", e);
         }
         if (useProjectStore.getState().root !== root) {
-          // 打开失败：清除坏记忆（subscription 已可能写过，这里强制置空）
+          // 打开失败：清除坏记忆（subscription 已可能写过，这里强制置空；
+          // M1-15i：projectSessions 保留——其它项目的标签记忆不受影响）
           void useSettingsStore.getState().persist({
-            session: { lastProject: null, openFiles: [], activeFile: null },
+            session: {
+              lastProject: null,
+              openFiles: [],
+              activeFile: null,
+              projectSessions:
+                useSettingsStore.getState().persisted.session.projectSessions ?? [],
+            },
           });
           notify("上次项目已不可用（已清空记忆）", "err");
           return;
