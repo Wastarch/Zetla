@@ -126,6 +126,10 @@ export interface AppSettings {
     mouseWheelZoom: boolean;
     /** 编辑器右侧缩略图（M1 小地图） */
     minimap: boolean;
+    /** M1-31：光标靠近括号时高亮配对括号（默认开） */
+    bracketMatching: boolean;
+    /** M1-31：行号区折叠箭头（默认开） */
+    foldGutter: boolean;
   };
   autosave: {
     enabled: boolean;
@@ -356,7 +360,7 @@ export function liveSafeAuxExtensions(exts: string[]): string[] {
 /** 前端兜底默认值（与 Rust Default 一致；正常路径以 load_app_config 返回为准） */
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: 1,
-  editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true, minimap: true },
+  editor: { fontFamily: "IBM Plex Mono", fontSize: 13, lineWrapping: true, mouseWheelZoom: true, minimap: true, bracketMatching: true, foldGutter: true },
   autosave: { enabled: true, intervalSeconds: 30, pauseWhileCompiling: true },
   build: { saveBeforeCompile: true, engine: "auto", steps: [], tools: [], recipes: [], defaultRecipe: null, compileOnSave: false, livePreview: false, livePreviewDelayMs: 600, cleanAuxAfterCompile: false, cleanAuxExtensions: DEFAULT_AUX_EXTENSIONS },
   pdf: { defaultZoom: "fit-width" },

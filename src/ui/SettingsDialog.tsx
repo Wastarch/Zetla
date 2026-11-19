@@ -723,12 +723,21 @@ export function SettingsDialog({ host = "modal", tabPane }: SettingsHostProps) {
                     }
                   />
                 </Fld>
-                <Fld
-                  label="括号匹配 / 代码折叠"
-                  hint="CodeMirror 6 语法特性"
-                  tip="括号匹配固定开启；代码折叠"
-                >
-                  <Switch checked disabled />
+                <Fld label="括号匹配" hint="光标靠近括号时高亮配对括号">
+                  <Switch
+                    checked={draft.editor.bracketMatching ?? true}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, editor: { ...d.editor, bracketMatching: v } }))
+                    }
+                  />
+                </Fld>
+                <Fld label="代码折叠" hint="行号区显示折叠箭头，可折叠环境与章节（CodeMirror 6）">
+                  <Switch
+                    checked={draft.editor.foldGutter ?? true}
+                    onChange={(v) =>
+                      update((d) => ({ ...d, editor: { ...d.editor, foldGutter: v } }))
+                    }
+                  />
                 </Fld>
 
                 <h4 style={{ marginTop: 18 }}>终端</h4>

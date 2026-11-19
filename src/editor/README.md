@@ -15,5 +15,6 @@ CodeMirror 6 封装与编辑器 UI 落位于此：
   撤销栈 / 光标 / 滚动由 `EditorState` 原生隔离，不做状态序列化搬运；`refresh()` 在隐藏→显示后重新测量。
 - **跳行统一走 `ref.gotoLine(line, col?)`**（1-based，滚动居中并聚焦），M0-12 错误定位直接复用，不要另造接口。
 - 查找替换用 CM 内置面板（`openFind()` / Ctrl+F），不另做 findbar（设计稿 findbar 样式已备，M1 视需要再接）。
-- 代码折叠 MVP 不做（`MVP.md` Phase 1-2），`foldGutter: false`。
+- 代码折叠（M1-31）由设置项 `editor.foldGutter` 控制：`basicSetup.foldGutter` 固定 false，按需显式挂
+  `foldGutter()` + `foldKeymap`；括号匹配由 `editor.bracketMatching` 控制高亮显隐（CSS），`closeBrackets` 固定开启。
 - UI tokens 与样式在 `src/styles/zetla.css`（来源 `docs/UI/code.html`，亮色主题；dark 块保留待 M3）。

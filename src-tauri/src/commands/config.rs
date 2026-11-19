@@ -524,6 +524,12 @@ pub struct EditorConfig {
     pub line_wrapping: bool,
     /// M0-14a 用户追加：Ctrl+滚轮缩放编辑器字体（默认开）
     pub mouse_wheel_zoom: bool,
+    /// M1 小地图（默认开）
+    pub minimap: bool,
+    /// M1-31：光标靠近括号时高亮配对括号（默认开）
+    pub bracket_matching: bool,
+    /// M1-31：行号区折叠箭头（默认开）
+    pub fold_gutter: bool,
 }
 
 impl Default for EditorConfig {
@@ -533,6 +539,9 @@ impl Default for EditorConfig {
             font_size: 13,
             line_wrapping: true,
             mouse_wheel_zoom: true,
+            minimap: true,
+            bracket_matching: true,
+            fold_gutter: true,
         }
     }
 }
@@ -1254,6 +1263,9 @@ mod tests {
         cfg.editor.font_family = "Cascadia Mono".to_string();
         cfg.editor.line_wrapping = false;
         cfg.editor.mouse_wheel_zoom = false;
+        cfg.editor.minimap = false;
+        cfg.editor.bracket_matching = false;
+        cfg.editor.fold_gutter = false;
         cfg.autosave.enabled = false;
         cfg.autosave.interval_seconds = 60;
         cfg.build.save_before_compile = false;
@@ -1300,6 +1312,9 @@ mod tests {
         assert!(text.contains("fontSize"));
         assert!(text.contains("lineWrapping"));
         assert!(text.contains("mouseWheelZoom"));
+        assert!(text.contains("minimap"));
+        assert!(text.contains("bracketMatching"));
+        assert!(text.contains("foldGutter"));
         assert!(text.contains("intervalSeconds"));
         assert!(text.contains("pauseWhileCompiling"));
         assert!(text.contains("saveBeforeCompile"));
@@ -1690,6 +1705,19 @@ mod tests {
         });
         let parsed: AppConfig = serde_json::from_value(raw).unwrap();
         assert!(normalize(parsed).editor.mouse_wheel_zoom);
+        // M1-31：旧配置缺 minimap / bracketMatching / foldGutter → serde default = true
+        let raw = json!({
+            "schemaVersion": 1,
+            "editor": { "fontFamily": "IBM Plex Mono", "fontSize": 13, "lineWrapping": true },
+            "autosave": { "enabled": true, "intervalSeconds": 30, "pauseWhileCompiling": true },
+            "build": { "saveBeforeCompile": true },
+            "pdf": { "defaultZoom": "fit-width" }
+        });
+        let parsed: AppConfig = serde_json::from_value(raw).unwrap();
+        let editor = normalize(parsed).editor;
+        assert!(editor.minimap);
+        assert!(editor.bracket_matching);
+        assert!(editor.fold_gutter);
     }
 
     #[test]

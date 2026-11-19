@@ -8,7 +8,7 @@ import CodeMirror, {
   keymap,
   type ReactCodeMirrorRef,
 } from "@uiw/react-codemirror";
-import { syntaxHighlighting } from "@codemirror/language";
+import { syntaxHighlighting, foldGutter, foldKeymap } from "@codemirror/language";
 import { search } from "@codemirror/search";
 import { latex, latexCompletionSource, latexLinter } from "codemirror-lang-latex";
 import { autocompletion, completionKeymap } from "@codemirror/autocomplete";
@@ -330,11 +330,18 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     const lang = langOverride ?? (path ? langOf(path) : "latex");
     // M1 · 右侧缩略图开关（设置 → 编辑器；缺省开，兼容旧配置无此字段）
     const minimapOn = editor.minimap ?? true;
+    // M1-31：括号匹配 / 代码折叠（缺省开，兼容旧配置无新字段）
+    const bracketMatchOn = editor.bracketMatching ?? true;
+    const foldOn = editor.foldGutter ?? true;
     const extensions = useMemo(
       () => [
         // M1 · 右侧缩略图（null = 关闭；Facet 自动挂载渲染插件，主题色取自编辑器自身）
         // M2·F1-2：bare（绘图 Tab 源码栏）不挂，窄栏无需缩略图
         ...(bare ? [] : [showMinimap.of(minimapOn ? MINIMAP_CONFIG : null)]),
+        // M1-31：行号区折叠箭头。basicSetup.foldGutter 固定 false，避免 @uiw 与此处重复挂 gutter；
+        // codemirror-lang-latex 已提供环境/章节/导言区的 fold 数据，这里只挂 gutter 与快捷键。
+        // bare（绘图窄源码栏）不挂，避免挤占宽度。
+        ...(foldOn && !bare ? [foldGutter(), keymap.of(foldKeymap)] : []),
         // M1-14i/j：按档位装配词法（bib/bst/log 专属；plain 不挂语言；latex 含全部 LaTeX 方言）
         ...langSupport(lang, () => pathRef.current, bare),
         // 软换行：只影响显示，不向文档写入换行符
@@ -473,7 +480,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
               }),
             ]),
       ],
-      [lineWrapping, theme, lang, minimapOn, latexGroups, bare, SEARCH_EXT, SEARCH_MATCH_HL],
+      [lineWrapping, theme, lang, minimapOn, foldOn, latexGroups, bare, SEARCH_EXT, SEARCH_MATCH_HL],
     );
 
     // 字号/字体/换行开关变化后重新测量，避免放大后仍按旧字宽计算换行位置
@@ -577,7 +584,11 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
     }));
 
     return (
-      <div ref={wrapRef} className="latex-editor" style={{ height }}>
+      <div
+        ref={wrapRef}
+        className={bracketMatchOn ? "latex-editor" : "latex-editor no-bracket-match"}
+        style={{ height }}
+      >
         <CodeMirror
           ref={cmRef}
           value={value}

@@ -87,6 +87,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         ...DEFAULT_SETTINGS,
         ...cfg,
         build: { ...DEFAULT_SETTINGS.build, ...(cfg.build ?? {}) },
+        // M1-31：editor 子对象深合并——旧配置缺 bracketMatching/foldGutter/minimap 时补默认值，
+        // 否则设置页整对象回写会把这些字段丢掉（与 build/layout 同口径）
+        editor: { ...DEFAULT_SETTINGS.editor, ...(cfg.editor ?? {}) },
         // M1-28：layout 子对象深合并——旧配置缺 outlineExpanded/outlineHeight 时补默认值，
         // 否则整对象回写会把这两个新字段丢掉（与 build/terminal 同口径）
         layout: { ...DEFAULT_SETTINGS.layout, ...(cfg.layout ?? {}) },

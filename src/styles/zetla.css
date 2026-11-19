@@ -1603,6 +1603,27 @@ html[data-platform="darwin"] .darwin-title {
   font-size: calc(var(--editor-fs) - 1px);
 }
 
+/* M1-31：代码折叠 gutter（foldGutter 只在开关打开时挂载） */
+.latex-editor .cm-foldGutter .cm-gutterElement {
+  padding: 0 2px;
+  cursor: pointer;
+}
+.latex-editor .cm-foldPlaceholder {
+  background: var(--bg-3);
+  border: 1px solid var(--line-soft);
+  color: var(--txt-3);
+  padding: 0 4px;
+}
+
+/* M1-31：括号匹配开关关闭时隐藏高亮（latex() 内置 latexBracketMatching 会一直挂载） */
+.latex-editor.no-bracket-match .cm-matchingBracket,
+.latex-editor.no-bracket-match .cm-nonmatchingBracket {
+  background: transparent !important;
+  outline: none !important;
+  box-shadow: none !important;
+  text-decoration: none !important;
+}
+
 .latex-editor .cm-lineNumbers .cm-gutterElement {
   padding: 0 0px 0 8px;
   min-width: 26px;
