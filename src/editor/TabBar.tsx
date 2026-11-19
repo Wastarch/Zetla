@@ -14,6 +14,7 @@ import { RecipeMenu } from "@/compile/RecipeMenu";
 import { useCurrentRecipe } from "@/compile/recipePicker";
 import { useBuffersStore } from "./useBuffers";
 import { insertionIndex, type TabSpan } from "./bufferOrder";
+import { createDragGhost, type DragGhost } from "@/ui/dragGhost";
 
 export interface TabBarProps {
   onFind: () => void;
@@ -69,12 +70,15 @@ export function TabBar({ onFind }: TabBarProps) {
     // 关闭按钮 / 脏点交给自身 click，不从这里启动拖拽
     if ((e.target as HTMLElement).closest("button")) return;
 
+    // currentTarget 在 React 合成事件返回后会清空，同步保存供阈值触发时克隆
+    const srcEl = e.currentTarget as HTMLElement;
     const startX = e.clientX;
     const startY = e.clientY;
     let lastX = startX;
     let active = false;
     let edge = 0;
     let raf = 0;
+    let ghost: DragGhost | null = null;
 
     // 拖到标签条左右边缘时自动滚动，才能把标签移到当前视口外的位置
     const autoScroll = () => {
@@ -89,10 +93,13 @@ export function TabBar({ onFind }: TabBarProps) {
       if (!active) {
         if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
         active = true;
+        // 过了阈值才造影像：点击时不会出现一闪而过的幽灵
+        ghost = createDragGhost(srcEl, ev.clientX, ev.clientY);
         setDragPath(path);
         raf = requestAnimationFrame(autoScroll);
       }
       lastX = ev.clientX;
+      ghost?.move(ev.clientX, ev.clientY);
       ev.preventDefault();
       setDropIndex(insertionIndex(spansOf(), lastX));
       const bar = barRef.current;
@@ -115,6 +122,8 @@ export function TabBar({ onFind }: TabBarProps) {
       active = false;
       edge = 0;
       cancelAnimationFrame(raf);
+      ghost?.hide();
+      ghost = null;
       setDragPath(null);
       setDropIndex(null);
     };

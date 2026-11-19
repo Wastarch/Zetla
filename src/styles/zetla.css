@@ -9531,3 +9531,55 @@ body.row-resizing {
   .snip-preview { border-left: 0; border-top: 1px solid var(--line); }
   .snip-head h1 { font-size: 20px; }
 }
+
+/* M1-27 拖拽影像：标签页 / 项目树拖拽时跟随鼠标的"原物"浮影。
+   影像在 body 上，故内部的 .tab / .tnode 需自带实底以脱离原容器仍可辨。 */
+.drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2147483000;
+  pointer-events: none; /* 关键：不能挡住 project tree 的 elementFromPoint 落点命中 */
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.45));
+  will-change: transform;
+}
+/* 克隆体内部可能自带 pointer-events 声明，统一压掉，确保落点命中穿透到树/标签 */
+.drag-ghost,
+.drag-ghost * {
+  pointer-events: none !important;
+}
+.drag-ghost-inner {
+  position: relative;
+  transform-origin: 12px 50%;
+  animation: drag-ghost-in 120ms ease-out both;
+}
+@keyframes drag-ghost-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1.02); }
+}
+.drag-ghost .tab,
+.drag-ghost .tnode {
+  opacity: 1 !important;
+  background: var(--bg-3) !important;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  box-shadow: none;
+  color: var(--txt);
+  max-width: none;
+}
+.drag-ghost-badge {
+  display: none;
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  width: 17px;
+  height: 17px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg-1);
+  font: 700 12px/1 var(--font-mono);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.drag-ghost.is-copy .drag-ghost-badge { display: flex; }

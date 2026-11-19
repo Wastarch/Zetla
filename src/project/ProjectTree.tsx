@@ -15,6 +15,7 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import type { ProjectNode } from "@/types";
 import { EXT_IMG, base, extOf, findNode, notify, parentOf, useProjectStore } from "./useProject";
 import { dropProblem, resolveDropDir, type TreeDropHit } from "./treeDrop";
+import { createDragGhost, type DragGhost } from "@/ui/dragGhost";
 
 /** 拖拽复制修饰键文案（macOS 用 Option，其余平台用 Ctrl） */
 function macModifierLabel(): string {
@@ -77,6 +78,8 @@ export function ProjectTree() {
   const startDrag = (e: ReactPointerEvent<HTMLElement>, src: string) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest("button")) return;
+    // currentTarget 在 React 合成事件返回后会清空，同步保存供阈值触发时克隆
+    const srcEl = e.currentTarget as HTMLElement;
     const startX = e.clientX;
     const startY = e.clientY;
     let lastX = startX;
@@ -85,6 +88,7 @@ export function ProjectTree() {
     let active = false;
     let edgeY = 0;
     let raf = 0;
+    let ghost: DragGhost | null = null;
     const rootDir = root ?? "";
     const isDir = findNode(nodes, src)?.type === "dir";
     const mac = document.documentElement.dataset.platform === "darwin";
@@ -108,12 +112,17 @@ export function ProjectTree() {
       if (!active) {
         if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
         active = true;
+        // 过了阈值才造影像：点击时不会出现一闪而过的幽灵
+        ghost = createDragGhost(srcEl, ev.clientX, ev.clientY);
         setDragPath(src);
         raf = requestAnimationFrame(autoScroll);
       }
       lastX = ev.clientX;
       lastY = ev.clientY;
       copy = mac ? ev.altKey : ev.ctrlKey;
+      // 复制拖拽显示 ＋ 角标；影像跟随指针（源行仍半透明，落点仍由 hover 描边）
+      ghost?.setCopy(copy);
+      ghost?.move(ev.clientX, ev.clientY);
       ev.preventDefault();
       updateHover(lastX, lastY);
       const box = treeRef.current?.getBoundingClientRect();
@@ -129,6 +138,8 @@ export function ProjectTree() {
       active = false;
       edgeY = 0;
       cancelAnimationFrame(raf);
+      ghost?.hide();
+      ghost = null;
       setDragPath(null);
       setHover(null);
     };
