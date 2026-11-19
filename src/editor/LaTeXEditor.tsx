@@ -22,6 +22,7 @@ import { bibtexLanguage, BIB_HIGHLIGHT } from "./bibtex";
 import { bstLanguage, BST_HIGHLIGHT } from "./bst";
 import { logLanguage, LOG_HIGHLIGHT } from "./log";
 import { langOf, type EditorLang } from "./langByExt";
+import { createFoldMarkerDOM } from "./foldMarker";
 import { useLangOverride } from "./langOverride";
 import { buildLatexHighlight } from "./highlightConfig";
 import {
@@ -340,8 +341,11 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
         ...(bare ? [] : [showMinimap.of(minimapOn ? MINIMAP_CONFIG : null)]),
         // M1-31：行号区折叠箭头。basicSetup.foldGutter 固定 false，避免 @uiw 与此处重复挂 gutter；
         // codemirror-lang-latex 已提供环境/章节/导言区的 fold 数据，这里只挂 gutter 与快捷键。
+        // M1-32：markerDOM 用项目树同款 #i-chev sprite 替换默认 ⌄/›（展开朝下 / 折叠朝右）。
         // bare（绘图窄源码栏）不挂，避免挤占宽度。
-        ...(foldOn && !bare ? [foldGutter(), keymap.of(foldKeymap)] : []),
+        ...(foldOn && !bare
+          ? [foldGutter({ markerDOM: createFoldMarkerDOM }), keymap.of(foldKeymap)]
+          : []),
         // M1-14i/j：按档位装配词法（bib/bst/log 专属；plain 不挂语言；latex 含全部 LaTeX 方言）
         ...langSupport(lang, () => pathRef.current, bare),
         // 软换行：只影响显示，不向文档写入换行符

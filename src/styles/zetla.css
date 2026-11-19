@@ -1604,9 +1604,31 @@ html[data-platform="darwin"] .darwin-title {
 }
 
 /* M1-31：代码折叠 gutter（foldGutter 只在开关打开时挂载） */
+/* M1-32：markerDOM 改为 #i-chev SVG，flex 居中于行号与代码之间的 gutter 列 */
 .latex-editor .cm-foldGutter .cm-gutterElement {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 0 2px;
   cursor: pointer;
+}
+.latex-editor .cm-fold-chev {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  padding: 0; /* 覆盖 CM6 baseTheme 的 .cm-foldGutter span { padding: 0 1px } */
+  transition: transform 0.14s ease;
+}
+.latex-editor .cm-fold-chev .ic {
+  display: block;
+  color: var(--txt-3);
+  opacity: 0.8;
+}
+.latex-editor .cm-fold-chev:hover .ic {
+  color: var(--accent);
+  opacity: 1;
 }
 .latex-editor .cm-foldPlaceholder {
   background: var(--bg-3);
