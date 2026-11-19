@@ -15,6 +15,7 @@ import { useUpdateStore, selectHasUpdate } from "@/modules/updater/updateStore";
 import { useModuleViews } from "@/modules/useModuleList";
 import { moduleRegistry } from "@/core/moduleRegistry";
 import { MENU_GROUPS, toBarItem, type BarItem } from "./menuActions";
+import { insertModuleViews } from "./menuOrder";
 import { startNativeMenuBridge } from "./nativeMenuBridge";
 
 interface MenuDef {
@@ -163,15 +164,14 @@ export function MenuBar() {
 
 
   // M-macos-menu：菜单结构来自共享动作表（menuActions.ts，与 macOS 原生菜单同源）
-  const menus: MenuDef[] = MENU_GROUPS.map((g) => ({
-    label: g.label,
-    dot: g.id === "help" && hasUpdate,
-    items: [
-      ...g.items.map((e) =>
-        e === "sep" ? { sep: true, label: "" } : toBarItem(e),
-      ),
-      // M1-8：查看菜单追加模块自带视图动态项（编号 5 起与 Ctrl+B 5/6/7… 一致）
-      ...(g.id === "view"
+  const menus: MenuDef[] = MENU_GROUPS.map((g) => {
+    const staticItems: BarItem[] = g.items.map((e) =>
+      e === "sep" ? { sep: true, label: "" } : toBarItem(e),
+    );
+    // M1-8 / M1-30：模块视图编号 5 起，插在静态视图项之后、第一个分隔线之前；
+    // 顺序与 Ctrl+B 5/6/7… 的 moduleRegistry.listViews() 映射同源。
+    const moduleItems: BarItem[] =
+      g.id === "view"
         ? moduleViews.map((mv, i) => ({
             label: `${
               sidebarVisible && sidebarView === mv.view.id ? "✓ " : ""
@@ -179,9 +179,13 @@ export function MenuBar() {
             sc: `Ctrl+B ${5 + i}`,
             onClick: () => useAppStore.getState().setSidebarView(mv.view.id),
           }))
-        : []),
-    ],
-  }));
+        : [];
+    return {
+      label: g.label,
+      dot: g.id === "help" && hasUpdate,
+      items: insertModuleViews(staticItems, moduleItems),
+    };
+  });
 
   // 点击栏外 / Esc 关闭
   useEffect(() => {
