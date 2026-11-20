@@ -382,8 +382,31 @@ fn is_known_artifact_name(lower: &str) -> bool {
     ends_with_any(lower, &TREE_AUX_SUFFIXES[..]) || lower.ends_with(".pdf")
 }
 
+/// 主文件名（去 .tex）：只有 `<stem>.*` 才可能是本次主文件编译产物。
+/// 用户导入的 figure/xxx.pdf、章节的 ch.aux 等非主文件名一律保留。
+fn main_stem(main_file: &str) -> String {
+    Path::new(main_file)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// 主文件前缀 + 后缀双重判定：
+/// - 有 outputDir：`<stem>.*` 且非用户文件即产物（含未知后缀）
+/// - 无 outputDir：还需命中 19 类中间文件或 `.pdf`
+fn is_main_artifact_name(lower_name: &str, lower_stem: &str, outdir_mode: bool) -> bool {
+    if lower_stem.is_empty() || !lower_name.starts_with(lower_stem) {
+        return false;
+    }
+    if !lower_name[lower_stem.len()..].starts_with('.') {
+        return false;
+    }
+    outdir_mode || is_known_artifact_name(lower_name)
+}
+
 /// 用户文件判定：点号路径（含 .ltex/.git）、符号链接、用户代码/资源/文档白名单。
-/// 注意产物后缀先判，因此用户自己的 notes.log / x.pdf 在本规则下仍算产物。
+/// 产物后缀先判，但进入本函数前已由 is_main_artifact_name 做过主文件名前缀过滤，
+/// 因此用户手写的 notes.log 与导入的 figure/xxx.pdf 不会走到这里。
 fn is_user_file(abs: &Path, root: &Path) -> bool {
     let rel = abs.strip_prefix(root).unwrap_or(abs);
     if rel
@@ -462,11 +485,13 @@ fn collect_snapshot(
     root: &Path,
     dir: &Path,
     outdir_mode: bool,
+    main_stem: &str,
 ) -> Result<CleanSnapshot, String> {
     fn walk(
         root: &Path,
         cur: &Path,
         outdir_mode: bool,
+        stem: &str,
         depth: usize,
         visited: &mut usize,
         files: &mut Vec<SnapFile>,
@@ -498,10 +523,12 @@ fn collect_snapshot(
                 subdirs.push(p.clone());
                 dirs.push(p);
             } else if ft.is_file() {
-                if is_user_file(&p, root) {
+                // 主文件名前缀是硬门槛：非 <stem>.* 的文件（含用户导入 PDF）一律不进快照
+                let lower = name.to_ascii_lowercase();
+                if !is_main_artifact_name(&lower, stem, outdir_mode) {
                     continue;
                 }
-                if !outdir_mode && !is_known_artifact_name(&name.to_ascii_lowercase()) {
+                if is_user_file(&p, root) {
                     continue;
                 }
                 let Ok(md) = std::fs::metadata(&p) else { continue };
@@ -518,11 +545,12 @@ fn collect_snapshot(
             }
         }
         for d in subdirs {
-            walk(root, &d, outdir_mode, depth + 1, visited, files, dirs)?;
+            walk(root, &d, outdir_mode, stem, depth + 1, visited, files, dirs)?;
         }
         Ok(())
     }
 
+    let stem = main_stem.to_ascii_lowercase();
     let mut visited = 0usize;
     let mut files = Vec::new();
     let mut dirs = Vec::new();
@@ -530,6 +558,7 @@ fn collect_snapshot(
         root,
         dir,
         outdir_mode,
+        &stem,
         0,
         &mut visited,
         &mut files,
@@ -588,6 +617,13 @@ pub fn preview_build_outputs(
 ) -> Result<BuildOutputPreview, String> {
     let root_path = Path::new(&root);
     let (dir, dir_label, outdir_mode) = resolve_clean_dir(root_path, &main_file, output_dir)?;
+    // 确认弹窗明确写出「仅 main.*」，避免用户以为整目录都会被清空
+    let stem = main_stem(&main_file);
+    let dir_label = if stem.is_empty() {
+        dir_label
+    } else {
+        format!("{}（仅 {}.*）", dir_label, stem)
+    };
     if !dir.is_dir() {
         return Ok(BuildOutputPreview {
             token: 0,
@@ -596,7 +632,7 @@ pub fn preview_build_outputs(
             dir_label,
         });
     }
-    let snap = collect_snapshot(root_path, &dir, outdir_mode)?;
+    let snap = collect_snapshot(root_path, &dir, outdir_mode, &stem)?;
     let total = snap.files.len();
     let files: Vec<String> = snap
         .files
@@ -824,58 +860,79 @@ mod tests {
         let out = root.join("build");
         put(&out.join("main.pdf"), "x");
         put(&out.join("main.aux"), "x");
-        put(&out.join("sub/ch.log"), "x");
+        put(&out.join("main.xyz"), "x"); // 有 outputDir：主文件名前缀 + 未知后缀也算产物
+        put(&out.join("sub/main.log"), "x"); // 子目录里的同名产物也删
+        put(&out.join("sub/ch.log"), "KEEP"); // 非主文件名 → 保留
+        put(&out.join("figure/ZGNR能带 N=10.pdf"), "KEEP"); // 用户导入 PDF 矢量图
         put(&out.join("fig.png"), "KEEP");
         put(&out.join("user.tex"), "KEEP");
+        put(&out.join("main.tex"), "KEEP"); // 主文件源码即使同名也保护
         put(&out.join("notes.md"), "KEEP");
         put(&out.join("x.py"), "KEEP");
-        put(&out.join("weird.xyz"), "x"); // 有 outputDir：未知后缀视为产物
+        put(&out.join("weird.xyz"), "KEEP"); // 非主文件名 → 保留
         put(&out.join(".hidden"), "KEEP");
         put(&out.join(".ltex/config.json"), "KEEP");
         std::fs::create_dir_all(out.join("empty")).unwrap();
 
-        let snap = collect_snapshot(&root, &out, true).unwrap();
+        let snap = collect_snapshot(&root, &out, true, "main").unwrap();
         let res = apply_snapshot(snap);
-        assert_eq!(res.removed, 4);
-        assert_eq!(res.dirs_removed, 2); // empty + sub（删空后）
-        assert!(out.join("fig.png").exists());
-        assert!(out.join("user.tex").exists());
-        assert!(out.join("notes.md").exists());
-        assert!(out.join("x.py").exists());
-        assert!(out.join(".hidden").exists());
-        assert!(out.join(".ltex/config.json").exists());
+        assert_eq!(res.removed, 4); // main.pdf / main.aux / main.xyz / sub/main.log
+        assert_eq!(res.dirs_removed, 1); // empty；sub 与 figure 仍有用户文件
+        for keep in [
+            "sub/ch.log",
+            "figure/ZGNR能带 N=10.pdf",
+            "fig.png",
+            "user.tex",
+            "main.tex",
+            "notes.md",
+            "x.py",
+            "weird.xyz",
+            ".hidden",
+            ".ltex/config.json",
+        ] {
+            assert!(out.join(keep).exists(), "应保留 {keep}");
+        }
         assert!(out.is_dir(), "扫描根必须保留，保证可重新编译");
         assert!(!out.join("main.pdf").exists());
         assert!(!out.join("main.aux").exists());
-        assert!(!out.join("sub").exists());
+        assert!(!out.join("sub/main.log").exists());
     }
 
     #[test]
     fn clean_outputs_without_outdir() {
         let root = fresh_dir("clean_outputs_no_outdir");
-        for (i, suffix) in TREE_AUX_SUFFIXES.iter().enumerate() {
-            put(&root.join(format!("f{i}{suffix}")), "x");
+        for suffix in TREE_AUX_SUFFIXES.iter() {
+            put(&root.join(format!("main{suffix}")), "x");
         }
         put(&root.join("main.pdf"), "x");
-        put(&root.join("chapters/ch.pdf"), "x");
-        put(&root.join("chapters/ch.aux"), "x");
+        put(&root.join("chapters/main.pdf"), "x"); // 主文件名同名 → 删
+        put(&root.join("chapters/ch.aux"), "KEEP"); // 章节辅助文件非主文件名 → 保留
+        put(&root.join("figure/ZGNR能带 N=10.pdf"), "KEEP"); // 用户导入 PDF → 保留
         put(&root.join("main.tex"), "KEEP");
         put(&root.join("refs.bib"), "KEEP");
         put(&root.join("fig.webp"), "KEEP");
         put(&root.join(".ltex/config.json"), "KEEP");
-        put(&root.join("node_modules/x.pdf"), "KEEP");
+        put(&root.join("node_modules/main.pdf"), "KEEP"); // 重型目录跳过
 
-        let snap = collect_snapshot(&root, &root, false).unwrap();
+        let snap = collect_snapshot(&root, &root, false, "main").unwrap();
         let res = apply_snapshot(snap);
-        assert_eq!(res.removed, TREE_AUX_SUFFIXES.len() + 3);
+        assert_eq!(res.removed, TREE_AUX_SUFFIXES.len() + 2);
         assert!(!root.join("main.pdf").exists());
-        assert!(!root.join("chapters/ch.pdf").exists());
-        for name in ["main.tex", "refs.bib", "fig.webp", ".ltex/config.json", "node_modules/x.pdf"] {
+        assert!(!root.join("chapters/main.pdf").exists());
+        for name in [
+            "chapters/ch.aux",
+            "figure/ZGNR能带 N=10.pdf",
+            "main.tex",
+            "refs.bib",
+            "fig.webp",
+            ".ltex/config.json",
+            "node_modules/main.pdf",
+        ] {
             assert!(root.join(name).exists(), "应保留 {name}");
         }
-        // 未知后缀在无 outputDir 时不删（保守）
-        put(&root.join("mystery.dat"), "KEEP");
-        let snap2 = collect_snapshot(&root, &root, false).unwrap();
+        // 无 outputDir 时未知后缀即使带主文件名也不删（保守）
+        put(&root.join("main.mystery"), "KEEP");
+        let snap2 = collect_snapshot(&root, &root, false, "main").unwrap();
         assert_eq!(apply_snapshot(snap2).removed, 0);
     }
 
@@ -895,22 +952,24 @@ mod tests {
     fn clean_outputs_token_snapshot_guards_changes() {
         let root = fresh_dir("clean_outputs_token");
         let out = root.join("build");
-        put(&out.join("a.log"), "old");
-        put(&out.join("b.pdf"), "x");
+        put(&out.join("main.log"), "old");
+        put(&out.join("main.pdf"), "x");
         let state = CleanState::default();
         let token = {
-            let snap = collect_snapshot(&root, &out, true).unwrap();
+            let snap = collect_snapshot(&root, &out, true, "main").unwrap();
             state.alloc(snap)
         };
         // 预览后新增文件、改动已列文件 —— 都不该被删
-        put(&out.join("new.pdf"), "x");
+        put(&out.join("figure/imported.pdf"), "x");
+        put(&out.join("main2.pdf"), "x");
         std::thread::sleep(std::time::Duration::from_millis(20));
-        put(&out.join("a.log"), "changed");
+        put(&out.join("main.log"), "changed");
         let res = apply_snapshot(state.take(token).unwrap());
         assert_eq!(res.removed, 1);
-        assert!(out.join("new.pdf").exists());
-        assert!(out.join("a.log").exists());
-        assert!(!out.join("b.pdf").exists());
+        assert!(out.join("figure/imported.pdf").exists());
+        assert!(out.join("main2.pdf").exists());
+        assert!(out.join("main.log").exists());
+        assert!(!out.join("main.pdf").exists());
     }
 
     #[test]
@@ -920,11 +979,11 @@ mod tests {
         put(&out.join("main.pdf"), "x");
         put(&out.join("user.tex"), "KEEP");
         let state = CleanState::default();
-        let snap = collect_snapshot(&root, &out, true).unwrap();
+        let snap = collect_snapshot(&root, &out, true, "main").unwrap();
         let token = state.alloc(snap);
         assert_eq!(apply_snapshot(state.take(token).unwrap()).removed, 1);
         assert!(state.take(token).is_none(), "token 只能消费一次");
-        let snap2 = collect_snapshot(&root, &out, true).unwrap();
+        let snap2 = collect_snapshot(&root, &out, true, "main").unwrap();
         assert_eq!(snap2.files.len(), 0);
         assert_eq!(apply_snapshot(snap2).removed, 0);
         assert_eq!(std::fs::read_to_string(out.join("user.tex")).unwrap(), "KEEP");
