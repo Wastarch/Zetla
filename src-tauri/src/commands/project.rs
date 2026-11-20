@@ -50,11 +50,9 @@ const MAX_ENTRIES: usize = 5000;
 /// M1-40：outputDir 留空时从项目树隐藏的 LaTeX 中间文件后缀（含点，按文件名 ends_with 判定；
 /// .synctex.gz / .run.xml 是复合后缀，不能用 Path::extension）。
 /// = 默认 AUX 后缀 14 项 + .bcf + .run.xml + .nav + .snm + .vrb。
+/// M1-41：真源移到 fsdoc.rs，与新规则共用，避免多套后缀集合漂移。
 /// 与 is_aux_file（导出/另存模板用，17 项）用途不同，两份列表刻意分开。
-const TREE_AUX_SUFFIXES: [&str; 19] = [
-    ".aux", ".log", ".bbl", ".blg", ".toc", ".out", ".lof", ".lot", ".idx", ".ilg", ".ind",
-    ".fls", ".fdb_latexmk", ".synctex.gz", ".nav", ".snm", ".vrb", ".bcf", ".run.xml",
-];
+pub(crate) use crate::commands::fsdoc::TREE_AUX_SUFFIXES;
 
 /// 树过滤用的中间文件判定（大小写不敏感、支持复合后缀）
 fn is_tree_aux_file(name: &str) -> bool {

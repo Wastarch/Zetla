@@ -33,6 +33,8 @@ pub fn run() {
         .manage(std::sync::Arc::new(
             commands::terminal::TerminalState::default(),
         ))
+        // M1-41：手动清理构建产物的预览快照表（token → 待删清单）
+        .manage(std::sync::Arc::new(commands::fsdoc::CleanState::default()))
     // M-macos-menu：macOS 原生菜单栏（中文菜单镜像自绘菜单，事件桥到前端 menuActions）
     .setup(|_app| {
         // 语句级 #[cfg]（稳定）；非 macOS 平台此语句整体不编译，
@@ -52,8 +54,11 @@ pub fn run() {
             commands::fsdoc::read_file,
             commands::fsdoc::write_file,
             commands::fsdoc::revert_file,
-            // M1-9：清理 LaTeX 辅助文件
+            // M1-9：清理 LaTeX 辅助文件（仅自动清理路径使用，PDF 受保护）
             commands::fsdoc::clean_aux,
+            // M1-41：菜单手动清理 —— 预览 + 按 token 清除全部编译产物
+            commands::fsdoc::preview_build_outputs,
+            commands::fsdoc::clean_build_outputs,
             // 编译引擎（M0-3a）
             commands::compile::detect_tex_distribution,
             // TeX 自动安装（M0-15b/c）
@@ -170,7 +175,7 @@ pub fn run() {
             // M0-2+ 逐步注册：
             // list_templates, get_template, create_project, import_template,
             // scan_project, read_file, write_file, revert_file
-            // — clean_aux 已于 M1-9 注册
+            // — clean_aux（自动清理）与 preview/clean_build_outputs（M1-41 手动清理）均已注册
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -177,6 +177,18 @@ export const projectApi = {
   revertFile: (path: string) => call<FileDoc>("revert_file", { path }),
   cleanAux: (path: string, extensions: string[]) =>
     call<{ removed: number; paths: string[] }>("clean_aux", { root: path, extensions }),
+  /** M1-41：手动清理 —— 先预览快照（total=0 时前端不弹确认） */
+  previewBuildOutputs: (path: string, mainFile: string, outputDir: string | null) =>
+    call<{ token: number; files: string[]; total: number; dirLabel: string }>(
+      "preview_build_outputs",
+      { root: path, mainFile, outputDir },
+    ),
+  /** M1-41：按预览 token 执行清理，前端不能指定删除路径 */
+  cleanBuildOutputs: (token: number) =>
+    call<{ removed: number; dirsRemoved: number; paths: string[] }>(
+      "clean_build_outputs",
+      { token },
+    ),
   /** M0-9a：监听项目根的文件增减（重复调用即换根） */
   watchProject: (root: string) => call<void>("watch_project", { root }),
   unwatchProject: () => call<void>("unwatch_project"),

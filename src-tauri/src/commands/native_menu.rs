@@ -144,7 +144,8 @@ pub fn install(app: &App) -> tauri::Result<()> {
     let b_start = mi(app, "build.start", "开始编译", Some("CmdOrCtrl+B"))?;
     let b_cancel = mi(app, "build.cancel", "终止编译", None)?;
     let b_sep = sep(app)?;
-    let b_clean = mi(app, "build.clean_aux", "清理辅助文件", None)?;
+    // M1-41：菜单语义改为清除全部编译产物（id 不变，仍走 menuActions 同一动作）
+    let b_clean = mi(app, "build.clean_aux", "清理构建产物", None)?;
     let b_preview = mi(app, "build.compile_preview", "编译并查看 PDF", None)?;
     let build_menu = Submenu::with_items(
         app,

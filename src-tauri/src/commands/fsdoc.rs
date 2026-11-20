@@ -3,7 +3,13 @@
 use chardetng::EncodingDetector;
 use encoding_rs::{Encoding, UTF_8};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::collections::HashMap;
+use std::fs::Metadata;
+use std::path::{Component, Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::UNIX_EPOCH;
+use tauri::State;
 
 /// 读取结果（与 src/types/project.ts FileDoc 对齐）
 #[derive(Debug, Serialize)]
@@ -268,6 +274,365 @@ pub fn clean_aux(root: String, extensions: Vec<String>) -> Result<CleanAuxResult
     clean_aux_in(Path::new(&root), &extensions)
 }
 
+// ── M1-41：清除全部编译产物（仅菜单手动清理使用）────────────────────────
+// 与上面的 clean_aux 完全隔离：自动清理（useCompile.ts）继续走旧命令，旧
+// PROTECTED_SUFFIXES 仍保护 .pdf；新规则把 PDF 与未知后缀（有 outputDir 时）
+// 都视为编译产物，只靠下面的用户文件白名单保护用户自己的资源与代码。
+
+/// 项目树隐藏 / 新规则共用的 LaTeX 中间文件后缀（19 项，含复合后缀）
+pub(crate) const TREE_AUX_SUFFIXES: [&str; 19] = [
+    ".aux", ".log", ".bbl", ".blg", ".toc", ".out", ".lof", ".lot", ".idx", ".ilg", ".ind",
+    ".fls", ".fdb_latexmk", ".synctex.gz", ".nav", ".snm", ".vrb", ".bcf", ".run.xml",
+];
+
+/// 用户自己写的代码（不含 .pdf，pdf 在新规则中是产物）
+const USER_SOURCE_SUFFIXES: &[&str] = &[
+    ".tex", ".bib", ".cls", ".sty", ".bst", ".dtx", ".ins", ".ltx", ".lua", ".py", ".js",
+    ".jsx", ".ts", ".tsx", ".sh", ".bat", ".ps1", ".r", ".rmd", ".ipynb", ".c", ".cpp", ".h",
+    ".hpp", ".java", ".go", ".rs", ".sql", ".html", ".css", ".rst",
+];
+
+/// 用户导入的图片/资源（= 前端 EXT_IMG 去掉 pdf，并补 webp/avif/字体）
+const USER_ASSET_SUFFIXES: &[&str] = &[
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".avif", ".bmp", ".eps", ".tif", ".tiff",
+    ".ico", ".ttf", ".otf", ".woff", ".woff2", ".eot",
+];
+
+/// 用户文档/配置（.xml 由产物判定优先，故 .run.xml 仍会被删）
+const USER_DOC_SUFFIXES: &[&str] = &[
+    ".md", ".txt", ".json", ".yaml", ".yml", ".toml", ".cfg", ".ini", ".csv", ".xml",
+];
+
+/// 递归时跳过的大型工具目录（扫描根本身不跳过，即便名为 out）
+const SKIP_DIR_NAMES: &[&str] = &["node_modules", "target", "dist", "out", "__pycache__"];
+
+const CLEAN_MAX_DEPTH: usize = 12;
+const CLEAN_MAX_ENTRIES: usize = 5000;
+const CLEAN_MAX_TOKENS: usize = 16;
+const PREVIEW_LIST_LIMIT: usize = 12;
+
+/// 预览结果：files 只回前 12 条用于确认文案，total 是全量数量
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildOutputPreview {
+    pub token: u64,
+    pub files: Vec<String>,
+    pub total: usize,
+    pub dir_label: String,
+}
+
+/// 执行结果
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CleanBuildOutputsResult {
+    pub removed: usize,
+    pub dirs_removed: usize,
+    pub paths: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SnapFile {
+    abs: PathBuf,
+    rel: String,
+    modified: Option<u128>,
+}
+
+#[derive(Debug)]
+struct CleanSnapshot {
+    root: PathBuf,
+    files: Vec<SnapFile>,
+    empty_dir_candidates: Vec<PathBuf>,
+}
+
+/// 快照表：token 是幂等句柄（最多保留 16 份），执行后即销毁
+#[derive(Default)]
+pub struct CleanState {
+    next: AtomicU64,
+    snapshots: Mutex<HashMap<u64, CleanSnapshot>>,
+}
+
+impl CleanState {
+    fn alloc(&self, snap: CleanSnapshot) -> u64 {
+        let token = self.next.fetch_add(1, Ordering::Relaxed);
+        let mut map = self.snapshots.lock().unwrap_or_else(|e| e.into_inner());
+        while map.len() >= CLEAN_MAX_TOKENS {
+            match map.keys().copied().min() {
+                Some(oldest) => {
+                    map.remove(&oldest);
+                }
+                None => break,
+            }
+        }
+        map.insert(token, snap);
+        token
+    }
+
+    fn take(&self, token: u64) -> Option<CleanSnapshot> {
+        let mut map = self.snapshots.lock().unwrap_or_else(|e| e.into_inner());
+        map.remove(&token)
+    }
+}
+
+fn ends_with_any(name: &str, list: &[&str]) -> bool {
+    list.iter().any(|s| name.ends_with(*s))
+}
+
+/// 已知编译产物后缀：19 项中间文件 + PDF（优先级高于用户白名单，保证 .run.xml 被删）
+fn is_known_artifact_name(lower: &str) -> bool {
+    ends_with_any(lower, &TREE_AUX_SUFFIXES[..]) || lower.ends_with(".pdf")
+}
+
+/// 用户文件判定：点号路径（含 .ltex/.git）、符号链接、用户代码/资源/文档白名单。
+/// 注意产物后缀先判，因此用户自己的 notes.log / x.pdf 在本规则下仍算产物。
+fn is_user_file(abs: &Path, root: &Path) -> bool {
+    let rel = abs.strip_prefix(root).unwrap_or(abs);
+    if rel
+        .components()
+        .any(|c| c.as_os_str().to_string_lossy().starts_with('.'))
+    {
+        return true;
+    }
+    if let Ok(md) = std::fs::symlink_metadata(abs) {
+        if md.file_type().is_symlink() {
+            return true;
+        }
+    }
+    let name = abs
+        .file_name()
+        .map(|n| n.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    if is_known_artifact_name(&name) {
+        return false;
+    }
+    ends_with_any(&name, USER_SOURCE_SUFFIXES)
+        || ends_with_any(&name, USER_ASSET_SUFFIXES)
+        || ends_with_any(&name, USER_DOC_SUFFIXES)
+}
+
+fn modified_nanos(md: &Metadata) -> Option<u128> {
+    md.modified()
+        .ok()
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos())
+}
+
+/// 解析清理范围：有 outputDir → <root>/<outputDir>（outdir_mode=true，未知后缀也删）；
+/// 无 → 主文件父目录（outdir_mode=false，只删已知产物后缀）。
+fn resolve_clean_dir(
+    root: &Path,
+    main_file: &str,
+    output_dir: Option<String>,
+) -> Result<(PathBuf, String, bool), String> {
+    let root_canon = root.canonicalize().map_err(|e| format!("项目目录无效: {e}"))?;
+    let rel = crate::commands::project::clean_rel("构建产物目录", output_dir)?;
+    let (dir, label, outdir_mode) = match rel {
+        Some(r) => {
+            let rp = Path::new(&r);
+            if rp.components().any(|c| {
+                matches!(
+                    c,
+                    Component::Prefix(_) | Component::RootDir | Component::ParentDir
+                )
+            }) {
+                return Err("构建产物目录必须为项目内的相对路径".into());
+            }
+            (root.join(rp), format!("构建产物目录：{}", r), true)
+        }
+        None => {
+            let parent = Path::new(main_file)
+                .parent()
+                .filter(|p| !p.as_os_str().is_empty())
+                .unwrap_or(root);
+            (parent.to_path_buf(), "主文件所在目录".to_string(), false)
+        }
+    };
+    if !dir.starts_with(root) {
+        return Err("构建产物目录必须位于项目目录内".into());
+    }
+    if let Ok(c) = dir.canonicalize() {
+        if !c.starts_with(&root_canon) {
+            return Err("构建产物目录必须位于项目目录内".into());
+        }
+    }
+    Ok((dir, label, outdir_mode))
+}
+
+/// 扫描并生成快照（不删除任何文件）
+fn collect_snapshot(
+    root: &Path,
+    dir: &Path,
+    outdir_mode: bool,
+) -> Result<CleanSnapshot, String> {
+    fn walk(
+        root: &Path,
+        cur: &Path,
+        outdir_mode: bool,
+        depth: usize,
+        visited: &mut usize,
+        files: &mut Vec<SnapFile>,
+        dirs: &mut Vec<PathBuf>,
+    ) -> std::io::Result<()> {
+        if depth > CLEAN_MAX_DEPTH || *visited >= CLEAN_MAX_ENTRIES {
+            return Ok(());
+        }
+        let mut subdirs = Vec::new();
+        for entry in std::fs::read_dir(cur)? {
+            let entry = entry?;
+            *visited += 1;
+            if *visited >= CLEAN_MAX_ENTRIES {
+                break;
+            }
+            let p = entry.path();
+            let ft = entry.file_type()?;
+            if ft.is_symlink() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') {
+                continue;
+            }
+            if ft.is_dir() {
+                if SKIP_DIR_NAMES.contains(&name.to_ascii_lowercase().as_str()) {
+                    continue;
+                }
+                subdirs.push(p.clone());
+                dirs.push(p);
+            } else if ft.is_file() {
+                if is_user_file(&p, root) {
+                    continue;
+                }
+                if !outdir_mode && !is_known_artifact_name(&name.to_ascii_lowercase()) {
+                    continue;
+                }
+                let Ok(md) = std::fs::metadata(&p) else { continue };
+                let rel = p
+                    .strip_prefix(root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .into_owned();
+                files.push(SnapFile {
+                    abs: p,
+                    rel,
+                    modified: modified_nanos(&md),
+                });
+            }
+        }
+        for d in subdirs {
+            walk(root, &d, outdir_mode, depth + 1, visited, files, dirs)?;
+        }
+        Ok(())
+    }
+
+    let mut visited = 0usize;
+    let mut files = Vec::new();
+    let mut dirs = Vec::new();
+    walk(
+        root,
+        dir,
+        outdir_mode,
+        0,
+        &mut visited,
+        &mut files,
+        &mut dirs,
+    )
+    .map_err(|e| format!("扫描构建产物失败: {e}"))?;
+    Ok(CleanSnapshot {
+        root: root.to_path_buf(),
+        files,
+        empty_dir_candidates: dirs,
+    })
+}
+
+/// 按快照执行删除：二次校验用户文件/mtime，只删快照内的文件与空目录
+fn apply_snapshot(snap: CleanSnapshot) -> CleanBuildOutputsResult {
+    let mut removed = 0usize;
+    let mut paths = Vec::new();
+    for f in &snap.files {
+        if is_user_file(&f.abs, &snap.root) {
+            continue;
+        }
+        let md = match std::fs::symlink_metadata(&f.abs) {
+            Ok(m) if m.file_type().is_file() => m,
+            _ => continue,
+        };
+        if modified_nanos(&md) != f.modified {
+            continue;
+        }
+        if std::fs::remove_file(&f.abs).is_ok() {
+            removed += 1;
+            paths.push(f.rel.clone());
+        }
+    }
+    // 自底向上删空目录；含用户文件的目录 remove_dir 会失败，天然保留。
+    // 扫描根本身不在 candidates 中，清理后目录一定还在。
+    let mut dirs_removed = 0usize;
+    for d in snap.empty_dir_candidates.iter().rev() {
+        if std::fs::remove_dir(d).is_ok() {
+            dirs_removed += 1;
+        }
+    }
+    CleanBuildOutputsResult {
+        removed,
+        dirs_removed,
+        paths,
+    }
+}
+
+/// 预览待清理文件（不删）：生成快照并返回确认文案所需的清单
+#[tauri::command]
+pub fn preview_build_outputs(
+    root: String,
+    main_file: String,
+    output_dir: Option<String>,
+    state: State<'_, Arc<CleanState>>,
+) -> Result<BuildOutputPreview, String> {
+    let root_path = Path::new(&root);
+    let (dir, dir_label, outdir_mode) = resolve_clean_dir(root_path, &main_file, output_dir)?;
+    if !dir.is_dir() {
+        return Ok(BuildOutputPreview {
+            token: 0,
+            files: Vec::new(),
+            total: 0,
+            dir_label,
+        });
+    }
+    let snap = collect_snapshot(root_path, &dir, outdir_mode)?;
+    let total = snap.files.len();
+    let files: Vec<String> = snap
+        .files
+        .iter()
+        .take(PREVIEW_LIST_LIMIT)
+        .map(|f| f.rel.clone())
+        .collect();
+    if total == 0 {
+        return Ok(BuildOutputPreview {
+            token: 0,
+            files,
+            total,
+            dir_label,
+        });
+    }
+    let token = state.alloc(snap);
+    Ok(BuildOutputPreview {
+        token,
+        files,
+        total,
+        dir_label,
+    })
+}
+
+/// 按预览 token 执行清理（前端不能指定路径）
+#[tauri::command]
+pub fn clean_build_outputs(
+    token: u64,
+    state: State<'_, Arc<CleanState>>,
+) -> Result<CleanBuildOutputsResult, String> {
+    let snap = state
+        .take(token)
+        .ok_or_else(|| "预览已失效，请重新点击清理".to_string())?;
+    Ok(apply_snapshot(snap))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -436,5 +801,142 @@ mod tests {
         let f = tmp_path("not_a_dir.tex");
         std::fs::write(&f, "x").unwrap();
         assert!(clean_aux_in(Path::new(&f), &Vec::new()).is_err());
+    }
+
+    // ── M1-41：手动清理全部编译产物 ──
+    fn fresh_dir(name: &str) -> PathBuf {
+        let p = PathBuf::from(tmp_path(name));
+        let _ = std::fs::remove_dir_all(&p);
+        std::fs::create_dir_all(&p).unwrap();
+        p
+    }
+
+    fn put(p: &Path, text: &str) {
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
+        std::fs::write(p, text).unwrap();
+    }
+
+    #[test]
+    fn clean_outputs_with_outdir_keeps_user_files() {
+        let root = fresh_dir("clean_outputs_outdir");
+        let out = root.join("build");
+        put(&out.join("main.pdf"), "x");
+        put(&out.join("main.aux"), "x");
+        put(&out.join("sub/ch.log"), "x");
+        put(&out.join("fig.png"), "KEEP");
+        put(&out.join("user.tex"), "KEEP");
+        put(&out.join("notes.md"), "KEEP");
+        put(&out.join("x.py"), "KEEP");
+        put(&out.join("weird.xyz"), "x"); // 有 outputDir：未知后缀视为产物
+        put(&out.join(".hidden"), "KEEP");
+        put(&out.join(".ltex/config.json"), "KEEP");
+        std::fs::create_dir_all(out.join("empty")).unwrap();
+
+        let snap = collect_snapshot(&root, &out, true).unwrap();
+        let res = apply_snapshot(snap);
+        assert_eq!(res.removed, 4);
+        assert_eq!(res.dirs_removed, 2); // empty + sub（删空后）
+        assert!(out.join("fig.png").exists());
+        assert!(out.join("user.tex").exists());
+        assert!(out.join("notes.md").exists());
+        assert!(out.join("x.py").exists());
+        assert!(out.join(".hidden").exists());
+        assert!(out.join(".ltex/config.json").exists());
+        assert!(out.is_dir(), "扫描根必须保留，保证可重新编译");
+        assert!(!out.join("main.pdf").exists());
+        assert!(!out.join("main.aux").exists());
+        assert!(!out.join("sub").exists());
+    }
+
+    #[test]
+    fn clean_outputs_without_outdir() {
+        let root = fresh_dir("clean_outputs_no_outdir");
+        for (i, suffix) in TREE_AUX_SUFFIXES.iter().enumerate() {
+            put(&root.join(format!("f{i}{suffix}")), "x");
+        }
+        put(&root.join("main.pdf"), "x");
+        put(&root.join("chapters/ch.pdf"), "x");
+        put(&root.join("chapters/ch.aux"), "x");
+        put(&root.join("main.tex"), "KEEP");
+        put(&root.join("refs.bib"), "KEEP");
+        put(&root.join("fig.webp"), "KEEP");
+        put(&root.join(".ltex/config.json"), "KEEP");
+        put(&root.join("node_modules/x.pdf"), "KEEP");
+
+        let snap = collect_snapshot(&root, &root, false).unwrap();
+        let res = apply_snapshot(snap);
+        assert_eq!(res.removed, TREE_AUX_SUFFIXES.len() + 3);
+        assert!(!root.join("main.pdf").exists());
+        assert!(!root.join("chapters/ch.pdf").exists());
+        for name in ["main.tex", "refs.bib", "fig.webp", ".ltex/config.json", "node_modules/x.pdf"] {
+            assert!(root.join(name).exists(), "应保留 {name}");
+        }
+        // 未知后缀在无 outputDir 时不删（保守）
+        put(&root.join("mystery.dat"), "KEEP");
+        let snap2 = collect_snapshot(&root, &root, false).unwrap();
+        assert_eq!(apply_snapshot(snap2).removed, 0);
+    }
+
+    #[test]
+    fn clean_outputs_rejects_outdir_outside_root() {
+        let root = fresh_dir("clean_outputs_escape");
+        assert!(resolve_clean_dir(&root, "", Some("../../evil".into())).is_err());
+        #[cfg(windows)]
+        assert!(resolve_clean_dir(&root, "", Some("C:/evil".into())).is_err());
+        // 合法相对路径可解析
+        let (dir, _, outdir_mode) = resolve_clean_dir(&root, "", Some("build".into())).unwrap();
+        assert_eq!(dir, root.join("build"));
+        assert!(outdir_mode);
+    }
+
+    #[test]
+    fn clean_outputs_token_snapshot_guards_changes() {
+        let root = fresh_dir("clean_outputs_token");
+        let out = root.join("build");
+        put(&out.join("a.log"), "old");
+        put(&out.join("b.pdf"), "x");
+        let state = CleanState::default();
+        let token = {
+            let snap = collect_snapshot(&root, &out, true).unwrap();
+            state.alloc(snap)
+        };
+        // 预览后新增文件、改动已列文件 —— 都不该被删
+        put(&out.join("new.pdf"), "x");
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        put(&out.join("a.log"), "changed");
+        let res = apply_snapshot(state.take(token).unwrap());
+        assert_eq!(res.removed, 1);
+        assert!(out.join("new.pdf").exists());
+        assert!(out.join("a.log").exists());
+        assert!(!out.join("b.pdf").exists());
+    }
+
+    #[test]
+    fn clean_outputs_token_consumed_and_idempotent() {
+        let root = fresh_dir("clean_outputs_idempotent");
+        let out = root.join("build");
+        put(&out.join("main.pdf"), "x");
+        put(&out.join("user.tex"), "KEEP");
+        let state = CleanState::default();
+        let snap = collect_snapshot(&root, &out, true).unwrap();
+        let token = state.alloc(snap);
+        assert_eq!(apply_snapshot(state.take(token).unwrap()).removed, 1);
+        assert!(state.take(token).is_none(), "token 只能消费一次");
+        let snap2 = collect_snapshot(&root, &out, true).unwrap();
+        assert_eq!(snap2.files.len(), 0);
+        assert_eq!(apply_snapshot(snap2).removed, 0);
+        assert_eq!(std::fs::read_to_string(out.join("user.tex")).unwrap(), "KEEP");
+    }
+
+    #[test]
+    fn clean_aux_regression_pdf_still_protected() {
+        let dir = fresh_dir("clean_aux_pdf_regression");
+        put(&dir.join("main.pdf"), "KEEP");
+        put(&dir.join("main.aux"), "x");
+        let res = clean_aux_in(&dir, &Vec::new()).unwrap();
+        assert_eq!(res.removed, 1);
+        assert_eq!(std::fs::read_to_string(dir.join("main.pdf")).unwrap(), "KEEP");
     }
 }

@@ -24,6 +24,8 @@ export function BuildFilesPanel() {
   const outputDir = useProjectStore((s) => s.tree?.outputDir ?? null);
   const openFromTree = useProjectStore((s) => s.openFromTree);
   const previewRev = useAppStore((s) => s.previewRev);
+  // M1-41：手动清理后由 menuActions 触发，避免只 refresh(true) 时面板仍是旧清单
+  const buildFilesRev = useAppStore((s) => s.buildFilesRev);
   const expanded = useAppStore((s) => s.buildFilesExpanded);
   const toggle = useAppStore((s) => s.toggleBuildFiles);
   const height = useAppStore((s) => s.buildFilesHeight);
@@ -62,10 +64,10 @@ export function BuildFilesPanel() {
     }
   }, [root, mainFile, outputDir]);
 
-  // 打开项目 / 编译完成 / 手动刷新 / 输出目录变化时重列；折叠态也刷计数
+  // 打开项目 / 编译完成 / 手动刷新 / 手动清理 / 输出目录变化时重列；折叠态也刷计数
   useEffect(() => {
     void refresh();
-  }, [refresh, previewRev, manualRev]);
+  }, [refresh, previewRev, buildFilesRev, manualRev]);
 
   // 顶部横线拖拽改高度：与大纲互相扣减占用，项目树始终至少留 MIN_TREE_H。
   // 拖拽中不写盘，useWindowMemory 的 layoutKey + 500ms 防抖负责持久化。

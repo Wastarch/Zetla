@@ -6,7 +6,7 @@
 // zustand 订阅驱动重渲染，快照即当前值）；原生菜单为静态构建、不随状态置灰，
 // 点击时由 nativeMenuBridge 用 enabled() 兜底拦截。
 // 注意：纯逻辑测试不 import 本模块（依赖 store/@/ 别名）。
-import { open as openFileDialog } from "@tauri-apps/plugin-dialog";
+import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { redo, toggleComment, undo } from "@codemirror/commands";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -22,6 +22,7 @@ import { moduleRegistry } from "@/core/moduleRegistry";
 import { useUpdateStore } from "@/modules/updater/updateStore";
 import { importImageFromPaths } from "@/editor/image/importImage";
 import { projectApi } from "@/ipc/invoke";
+import { formatCleanMessage } from "@/project/cleanOutputs";
 
 /** 有活动编辑器时才可执行编辑类命令 */
 function withView(
@@ -270,26 +271,46 @@ export const menuActions: Record<string, MenuActionDef> = {
     run: () => void cancelCompile(),
   },
   "build.clean_aux": {
-    // M1-9：清理 LaTeX 辅助文件（.aux/.log/.bbl/.blg/.toc/.out/.synctex.gz 等）
-    label: "清理辅助文件",
-    enabled: hasProject,
-    hint: () => "未打开项目",
+    // M1-41：清除全部编译产物（PDF 也删），用户图片/代码/配置保留；旧 cleanAux 仅供自动清理
+    label: "清理构建产物",
+    enabled: () => hasProject() && !isCompiling(),
+    hint: () => (isCompiling() ? "编译进行中" : "未打开项目"),
     run: async () => {
-      const root = useProjectStore.getState().root;
+      const { root, tree } = useProjectStore.getState();
       if (!root) return;
       try {
-        const res = await projectApi.cleanAux(
+        // 后端生成快照并只回前 12 条路径；确认后按 token 删除，确认期间新增的文件不会被删
+        const preview = await projectApi.previewBuildOutputs(
           root,
-          useSettingsStore.getState().settings.build.cleanAuxExtensions,
+          tree?.mainFile ?? "",
+          tree?.outputDir ?? null,
         );
-        // 清理绕过 store，notify 刷新有时序延迟/编译态丢弃风险 → 先主动刷新资源树
-        if (res.removed > 0) {
+        if (preview.total === 0) {
+          notify("没有需要清理的构建产物", "ok");
+          return;
+        }
+        const ok = await confirm(
+          formatCleanMessage(preview.files, preview.total, preview.dirLabel),
+          {
+            title: "清理构建产物",
+            kind: "warning",
+            okLabel: "删除",
+            cancelLabel: "取消",
+          },
+        );
+        if (!ok) {
+          notify("已取消清理", "ok");
+          return;
+        }
+        const res = await projectApi.cleanBuildOutputs(preview.token);
+        if (res.removed > 0 || res.dirsRemoved > 0) {
+          // 清理绕过 store，notify 刷新有时序延迟/编译态丢弃风险 → 先主动刷新资源树
           await useProjectStore.getState().refresh(true);
+          // 构建文件面板的 effect 不订阅 projectStore，必须单独踢一下
+          useAppStore.getState().bumpBuildFilesRev();
         }
         notify(
-          res.removed > 0
-            ? `已清理 ${res.removed} 个辅助文件`
-            : "没有需要清理的辅助文件",
+          `已清除 ${res.removed} 个文件${res.dirsRemoved > 0 ? `、${res.dirsRemoved} 个空目录` : ""}`,
           "ok",
         );
       } catch (e) {

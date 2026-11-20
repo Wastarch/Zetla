@@ -62,6 +62,9 @@ export interface AppState {
   /** M1-40：构建文件面板展开高度（96–480，拖拽顶部横线调整；持久化） */
   buildFilesHeight: number;
   setBuildFilesHeight: (h: number) => void;
+  /** M1-41：手动清理构建产物后强制构建文件面板重列（会话内，不持久化） */
+  buildFilesRev: number;
+  bumpBuildFilesRev: () => void;
 
   // ── 偏好设置（M0-14a）──
   /** 设置页状态：null 关闭；否则为打开时停留的页签 */
@@ -168,6 +171,8 @@ export const useAppStore = create<AppState>((set) => ({
   toggleBuildFiles: () => set((s) => ({ buildFilesExpanded: !s.buildFilesExpanded })),
   buildFilesHeight: BUILD_FILES_H_DEFAULT,
   setBuildFilesHeight: (h) => set({ buildFilesHeight: h }),
+  buildFilesRev: 0,
+  bumpBuildFilesRev: () => set((s) => ({ buildFilesRev: s.buildFilesRev + 1 })),
 
   // ── 偏好设置（M0-14a）──
   settingsDialog: null,
