@@ -26,7 +26,6 @@ import { useBibFormatControl } from "@/modules/zotero/useBibFormatControl";
 import { BibFormatSwitchDialog } from "./BibFormatSwitchDialog";
 import { RefMoreMenu } from "./RefMoreMenu";
 import { Chevron } from "@/ui/Chevron";
-import { engineLabel } from "@/modules/zotero/zoteroStyleMap";
 import type { ZoteroItem } from "@/types/zotero";
 import {
   citationCopyMessage,
@@ -812,15 +811,12 @@ export default function ReferencePanel() {
         />
       )}
 
-      {/* M1-36：页签右侧 ⋯ 菜单（Bib 格式 / 引用命令二级菜单） */}
+      {/* M1-37：页签右侧 ⋯ 菜单（Bib 格式 / 引用命令，统一为下拉行） */}
       {moreMenu && (
         <RefMoreMenu
           x={moreMenu.x}
           y={moreMenu.y}
           configured={fmt.bibFormat.configured}
-          effective={
-            fmt.bibFormat.effective ? engineLabel(fmt.bibFormat.effective) : "未识别"
-          }
           busy={fmt.busy}
           onChooseFormat={fmt.choose}
           onClose={() => setMoreMenu(null)}

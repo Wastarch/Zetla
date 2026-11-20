@@ -9243,39 +9243,29 @@ body.row-resizing {
   border-bottom-color: var(--accent);
 }
 
-/* ── M1-36 · 引用侧栏 ⋯ 菜单（原 .ref-fmt-bar 收进此处）────── */
+/* ── M1-37 · 引用侧栏 ⋯ 菜单（Bib 格式 / 引用命令统一为下拉行）────── */
 .ref-tabs-more {
   margin-left: auto;
   align-self: center;
 }
 .ref-more-menu { min-width: 244px; z-index: 260; }
-.ref-more-fmt {
+.ref-more-row {
   display: flex; align-items: center; gap: 8px;
   padding: 6px 10px;
   font-size: 11px; color: var(--txt-3);
 }
-.ref-more-fmt > span { white-space: nowrap; }
-.ref-more-effective {
-  padding: 0 10px 2px;
-  font-size: 10.5px; color: var(--txt-3);
-}
-.ref-more-sub {
-  position: absolute; left: calc(100% + 4px); z-index: 270;
-  min-width: 148px;
-}
-.ref-more-sub .mi { font-family: var(--font-mono); font-size: 11.5px; }
-.ref-more-check { margin-left: auto; color: var(--accent); }
-.ref-fmt-select {
-  height: 22px;
+.ref-more-row > span { white-space: nowrap; }
+.ref-more-select {
+  flex: 1 1 auto; min-width: 0; height: 22px;
   padding: 0 4px;
-  font-size: 11px;
+  font-size: 11px; font-family: inherit;
   color: var(--txt);
   background: var(--bg-2);
   border: 1px solid var(--line);
   border-radius: 4px;
   cursor: pointer;
 }
-.ref-fmt-select:focus { border-color: var(--accent); }
+.ref-more-select:focus { border-color: var(--accent); }
 .ref-fmt-note {
   padding: 5px 10px;
   font-size: 11px;
