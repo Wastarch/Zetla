@@ -127,6 +127,11 @@ pub const ZOTERO_COMMANDS: [&str; 6] = ["cite", "citep", "citet", "autocite", "p
 /// citekey 生成策略白名单（P1 使用）
 pub const ZOTERO_KEY_STRATEGIES: [&str; 2] = ["bbt-first", "zetla"];
 pub const ZOTERO_DEFAULT_CSL_STYLE: &str = "china-national-standard-gb-t-7714-2015-numeric";
+/// M1-34：Citation Picker 列表可配置列白名单（title 恒显，不参与配置）
+pub const ZOTERO_PICKER_COLUMN_IDS: [&str; 5] =
+    ["authors", "year", "publication", "citeKey", "status"];
+/// M1-34：Picker 列表默认显示列（title 之外）
+pub const ZOTERO_PICKER_COLUMNS_DEFAULT: [&str; 4] = ["authors", "year", "citeKey", "status"];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -149,6 +154,8 @@ pub struct ZoteroConfig {
     pub key_strategy: String,
     /// P0：状态自检轮询间隔（秒）
     pub poll_interval_seconds: u32,
+    /// M1-34：Citation Picker 列表显示列（title 恒显；与前端 pickerColumns 对应）
+    pub picker_columns: Vec<String>,
 }
 
 impl Default for ZoteroConfig {
@@ -163,6 +170,10 @@ impl Default for ZoteroConfig {
             csl_style: ZOTERO_DEFAULT_CSL_STYLE.to_string(),
             key_strategy: "bbt-first".to_string(),
             poll_interval_seconds: ZOTERO_POLL_DEFAULT,
+            picker_columns: ZOTERO_PICKER_COLUMNS_DEFAULT
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
         }
     }
 }
@@ -192,6 +203,17 @@ pub fn normalize_zotero(mut z: ZoteroConfig) -> ZoteroConfig {
     z.poll_interval_seconds = z
         .poll_interval_seconds
         .clamp(ZOTERO_POLL_MIN, ZOTERO_POLL_MAX);
+    // M1-34：显示列白名单过滤 + 去重，空表回退默认（normalize(default) 仍 == default）
+    let mut seen = std::collections::HashSet::new();
+    z.picker_columns.retain(|c| {
+        ZOTERO_PICKER_COLUMN_IDS.contains(&c.as_str()) && seen.insert(c.clone())
+    });
+    if z.picker_columns.is_empty() {
+        z.picker_columns = ZOTERO_PICKER_COLUMNS_DEFAULT
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+    }
     z
 }
 
@@ -2291,6 +2313,7 @@ mod tests {
             csl_style: "  apa; DROP TABLE  ".to_string(),
             key_strategy: "random".to_string(),
             poll_interval_seconds: 1,
+            picker_columns: vec!["citeKey".to_string(), "nope".to_string(), "citeKey".to_string()],
         };
         let n = normalize_zotero(z);
         assert_eq!(n.port, ZOTERO_DEFAULT_PORT);
@@ -2298,6 +2321,20 @@ mod tests {
         assert_eq!(n.key_strategy, "bbt-first");
         assert_eq!(n.csl_style, ZOTERO_DEFAULT_CSL_STYLE);
         assert_eq!(n.poll_interval_seconds, ZOTERO_POLL_MIN);
+        // M1-34：显示列白名单过滤 + 去重保序
+        assert_eq!(n.picker_columns, vec!["citeKey".to_string()]);
+
+        let empty_cols = ZoteroConfig {
+            picker_columns: Vec::new(),
+            ..ZoteroConfig::default()
+        };
+        assert_eq!(
+            normalize_zotero(empty_cols).picker_columns,
+            ZOTERO_PICKER_COLUMNS_DEFAULT
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>()
+        );
 
         let high = ZoteroConfig {
             poll_interval_seconds: 9999,

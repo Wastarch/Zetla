@@ -8895,28 +8895,58 @@ body.row-resizing {
   font-style: normal; font-size: 10.5px; color: var(--accent);
   white-space: nowrap;
 }
+/* M1-34：工具行单排化（label 文字与控件同行），压缩浮层高度 */
 .zotero-picker-tools {
-  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px;
-  padding: 0 16px 10px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px;
+  padding: 0 16px 8px;
   border-bottom: 1px solid var(--line-soft);
 }
 .zotero-picker-tools label {
-  display: flex; flex-direction: column; gap: 4px;
+  display: flex; flex-direction: row; align-items: center; gap: 6px;
   font-size: 11px; color: var(--txt-3);
-}
-.zotero-picker-tools label.zotero-picker-inline {
-  flex-direction: row; align-items: center; gap: 5px;
-  padding-bottom: 6px; color: var(--txt-2);
 }
 .zotero-picker-tools select,
 .zotero-picker-arg {
-  min-width: 92px; padding: 5px 8px;
+  min-width: 92px; padding: 4px 8px;
   font-size: 12px; font-family: inherit;
   color: var(--txt); background: var(--bg-3);
   border: 1px solid var(--line); border-radius: 4px;
   outline: none;
 }
 .zotero-picker-arg { min-width: 92px; max-width: 130px; }
+/* M1-34：列表表头（grid 模板由组件按显示列内联注入，与数据行对齐） */
+.zotero-picker-cols {
+  display: grid; align-items: center; column-gap: 10px;
+  margin: 0 8px; padding: 4px 9px;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 10.5px; color: var(--txt-3);
+  user-select: none;
+}
+.zotero-picker-hcell {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zotero-picker-colwrap { position: relative; }
+.zotero-picker-colbtn {
+  padding: 1px 7px; font-size: 10.5px; font-family: inherit;
+  color: var(--txt-3); background: transparent;
+  border: 1px solid var(--line); border-radius: 4px;
+  cursor: pointer;
+}
+.zotero-picker-colbtn:hover,
+.zotero-picker-colbtn.on { color: var(--txt); border-color: var(--accent); }
+.zotero-picker-colmenu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 20;
+  display: flex; flex-direction: column; gap: 6px;
+  min-width: 118px; padding: 10px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: 0 10px 28px rgb(0 0 0 / 0.3);
+}
+.zotero-picker-colmenu label {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; color: var(--txt-2);
+  white-space: nowrap; cursor: pointer;
+}
 .zotero-picker-list {
   flex: 1 1 auto; min-height: 120px; overflow: auto;
   padding: 6px 8px;
@@ -8925,9 +8955,10 @@ body.row-resizing {
   margin: 18px 0; text-align: center;
   font-size: 12px; color: var(--txt-3);
 }
+/* M1-34：数据行改 grid（模板内联注入，列与表头一一对应） */
 .zotero-picker-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 7px 9px;
+  display: grid; align-items: center; column-gap: 10px;
+  padding: 5px 9px;
   border: 1px solid transparent; border-radius: 5px;
   cursor: pointer;
 }
@@ -8935,31 +8966,31 @@ body.row-resizing {
 .zotero-picker-row.on { border-color: var(--accent); background: var(--bg-3); }
 .zotero-picker-row.picked { background: color-mix(in srgb, var(--accent) 12%, var(--bg-2)); }
 .zotero-picker-check {
-  flex: 0 0 16px; width: 16px; height: 16px;
+  justify-self: start;
+  width: 16px; height: 16px;
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 11px; color: var(--accent);
   border: 1px solid var(--line); border-radius: 3px;
   background: var(--bg);
 }
-.zotero-picker-meta { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.zotero-picker-meta b {
+.zotero-picker-cell {
+  min-width: 0; font-size: 11.5px; color: var(--txt-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.zotero-picker-cell.zc-title {
   font-size: 12px; font-weight: 600; color: var(--txt);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.zotero-picker-meta span {
-  font-size: 11px; color: var(--txt-3);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-.zotero-picker-code {
-  flex: 0 0 auto; max-width: 160px;
-  font-size: 11px; font-family: var(--font-mono); color: var(--txt-2);
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.zotero-picker-cell.zc-year { font-size: 11px; color: var(--txt-3); }
+.zotero-picker-cell.zc-mono {
+  font-family: var(--font-mono); font-size: 11px; color: var(--txt-2);
 }
 .zotero-picker-tag {
-  flex: 0 0 auto; padding: 2px 7px;
+  justify-self: start; max-width: 100%;
+  padding: 2px 7px;
   font-size: 10px; color: var(--ok);
   border: 1px solid var(--line-soft); border-radius: 999px;
   background: var(--bg);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .zotero-picker-tag.warn { color: var(--warn); }
 .zotero-picker-more {

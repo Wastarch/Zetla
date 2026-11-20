@@ -19,6 +19,7 @@ import { notify } from "@/project/useProject";
 import { ZOTERO_COMMANDS, type ZoteroCollection, type ZoteroCommand, type ZoteroItem } from "@/types/zotero";
 import { useReferenceStore } from "@/modules/reference/useReferenceStore";
 import {
+  PICKER_COLUMN_DEFS,
   PICKER_DEBOUNCE_MS,
   PICKER_MIN_QUERY,
   PICKER_PAGE_SIZE,
@@ -27,8 +28,10 @@ import {
   mergeCandidates,
   nextPageStart,
   normalizeCommand,
+  normalizePickerColumns,
   parseSearchItems,
   parseSelectedCollection,
+  pickerGridTemplate,
   rankCandidates,
   type BibLikeEntry,
 } from "./zoteroPicker";
@@ -47,6 +50,8 @@ export function CitationPicker() {
   const keyMap = useZoteroStore((s) => s.keyMap);
   const health = useZoteroStore((s) => s.health);
   const zoteroSettings = useSettingsStore((s) => s.settings.zotero);
+  // M1-34：列表显示列配置（持久化在 zotero.pickerColumns，title 恒显）
+  const pickerColumnsCfg = useSettingsStore((s) => s.settings.zotero?.pickerColumns);
 
   const [query, setQuery] = useState("");
   const [command, setCommand] = useState<ZoteroCommand>("cite");
@@ -65,6 +70,8 @@ export function CitationPicker() {
   const [collections, setCollections] = useState<ZoteroCollection[]>([]);
   const [collectionKey, setCollectionKey] = useState("");
   const [collAuto, setCollAuto] = useState<string | null>(null);
+  // M1-34：表头「列」菜单开合
+  const [colOpen, setColOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const closeAndFocus = useCallback(() => {
@@ -90,6 +97,7 @@ export function CitationPicker() {
     setCollections([]);
     setCollectionKey("");
     setCollAuto(null);
+    setColOpen(false);
     setCommand(
       normalizeCommand(useSettingsStore.getState().settings.zotero?.defaultCommand ?? "cite"),
     );
@@ -285,6 +293,31 @@ export function CitationPicker() {
     void st.persist({ zotero: next });
   }, []);
 
+  // M1-34：显示列派生（归一化兜底旧配置/非法值）与勾选切换（旁路落盘）
+  const colOn = useMemo(
+    () => new Set(normalizePickerColumns(pickerColumnsCfg)),
+    [pickerColumnsCfg],
+  );
+  const visibleDefs = useMemo(
+    () => PICKER_COLUMN_DEFS.filter((d) => d.id !== "title" && colOn.has(d.id)),
+    [colOn],
+  );
+  const gridTemplate = useMemo(
+    () => pickerGridTemplate(pickerColumnsCfg ?? []),
+    [pickerColumnsCfg],
+  );
+  const toggleColumn = useCallback((id: string) => {
+    const st = useSettingsStore.getState();
+    const cur = st.settings.zotero;
+    if (!cur) return;
+    const base = normalizePickerColumns(cur.pickerColumns);
+    const next = base.includes(id) ? base.filter((c) => c !== id) : [...base, id];
+    if (next.length === 0) return; // 至少保留一列
+    const nextZotero = { ...cur, pickerColumns: next };
+    st.setSettings({ ...st.settings, zotero: nextZotero });
+    void st.persist({ zotero: nextZotero });
+  }, []);
+
   const doInsert = useCallback(async () => {
     if (activeKeys.length === 0) {
       setNote("请至少选择一条文献");
@@ -426,7 +459,7 @@ export function CitationPicker() {
               ))}
             </select>
           </label>
-          <label className="zotero-picker-inline">
+          <label>
             <input
               type="checkbox"
               checked={starred}
@@ -454,6 +487,47 @@ export function CitationPicker() {
           </label>
         </div>
 
+        {/* M1-34：列表表头（与数据行共用 grid 模板）+「列」自定义菜单 */}
+        <div
+          className="zotero-picker-cols"
+          style={{ gridTemplateColumns: `${gridTemplate} 26px` }}
+        >
+          <span className="zotero-picker-hcell" />
+          <span className="zotero-picker-hcell">标题</span>
+          {visibleDefs.map((d) => (
+            <span key={d.id} className="zotero-picker-hcell">
+              {d.label}
+            </span>
+          ))}
+          <div className="zotero-picker-colwrap">
+            <button
+              type="button"
+              className={`zotero-picker-colbtn${colOpen ? " on" : ""}`}
+              title="自定义显示列"
+              onClick={() => setColOpen((o) => !o)}
+            >
+              列
+            </button>
+            {colOpen && (
+              <div
+                className="zotero-picker-colmenu"
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                {PICKER_COLUMN_DEFS.filter((d) => d.id !== "title").map((d) => (
+                  <label key={d.id}>
+                    <input
+                      type="checkbox"
+                      checked={colOn.has(d.id)}
+                      onChange={() => toggleColumn(d.id)}
+                    />
+                    {d.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="zotero-picker-list">
           {shown.length === 0 && (
             <p className="zotero-picker-empty">
@@ -471,6 +545,7 @@ export function CitationPicker() {
               className={`zotero-picker-row${i === highlight ? " on" : ""}${
                 selected.includes(c.citeKey) ? " picked" : ""
               }`}
+              style={{ gridTemplateColumns: `${gridTemplate} 26px` }}
               onClick={() => {
                 setHighlight(i);
                 toggleSelect(c.citeKey);
@@ -481,20 +556,31 @@ export function CitationPicker() {
               <span className="zotero-picker-check">
                 {selected.includes(c.citeKey) ? "✓" : ""}
               </span>
-              <div className="zotero-picker-meta">
-                <b>{c.title || c.citeKey}</b>
-                <span>
-                  {[c.authors, c.year, c.publication].filter(Boolean).join(" · ") || "—"}
-                </span>
-              </div>
-              <span className="zotero-picker-code">{c.citeKey}</span>
-              <span
-                className={`zotero-picker-tag${c.inBib ? "" : " warn"}`}
-                title={c.inBib ? "该 key 已在项目 .bib 中" : "尚未同步到项目 .bib"}
-              >
-                {c.inBib ? "已在 .bib" : "未同步"}
-                {c.citedCount > 0 ? ` · 被引 ${c.citedCount}` : ""}
+              <span className="zotero-picker-cell zc-title">
+                {c.title || c.citeKey}
               </span>
+              {colOn.has("authors") && (
+                <span className="zotero-picker-cell">{c.authors || "—"}</span>
+              )}
+              {colOn.has("year") && (
+                <span className="zotero-picker-cell zc-year">{c.year || "—"}</span>
+              )}
+              {colOn.has("publication") && (
+                <span className="zotero-picker-cell">{c.publication || "—"}</span>
+              )}
+              {colOn.has("citeKey") && (
+                <span className="zotero-picker-cell zc-mono">{c.citeKey}</span>
+              )}
+              {colOn.has("status") && (
+                <span
+                  className={`zotero-picker-tag${c.inBib ? "" : " warn"}`}
+                  title={c.inBib ? "该 key 已在项目 .bib 中" : "尚未同步到项目 .bib"}
+                >
+                  {c.inBib ? "已在 .bib" : "未同步"}
+                  {c.citedCount > 0 ? ` · 被引 ${c.citedCount}` : ""}
+                </span>
+              )}
+              <span />
             </div>
           ))}
           {hasMore && (

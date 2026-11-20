@@ -44,7 +44,21 @@ export interface ZoteroSettings {
   keyStrategy: ZoteroKeyStrategy;
   /** P0：状态自检轮询间隔（秒，Rust 钳制 10–300） */
   pollIntervalSeconds: number;
+  /** M1-34：Citation Picker 列表显示列（title 恒显不参与配置；与 Rust picker_columns 一一对应） */
+  pickerColumns: string[];
 }
+
+/** Picker 列表可配置列白名单（title 固定显示，不在其中） */
+export const ZOTERO_PICKER_COLUMN_IDS = [
+  "authors",
+  "year",
+  "publication",
+  "citeKey",
+  "status",
+] as const;
+
+/** Picker 列表默认显示列（title 之外）：作者 / 年份 / citekey / 状态 */
+export const DEFAULT_PICKER_COLUMNS: string[] = ["authors", "year", "citeKey", "status"];
 
 /** 默认关闭联动：不改变存量用户行为 */
 export const DEFAULT_ZOTERO_SETTINGS: ZoteroSettings = {
@@ -57,6 +71,7 @@ export const DEFAULT_ZOTERO_SETTINGS: ZoteroSettings = {
   cslStyle: "china-national-standard-gb-t-7714-2015-numeric",
   keyStrategy: "bbt-first",
   pollIntervalSeconds: 30,
+  pickerColumns: [...DEFAULT_PICKER_COLUMNS],
 };
 
 /**

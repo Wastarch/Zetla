@@ -11,7 +11,9 @@ import {
   mergeCandidates,
   nextPageStart,
   normalizeCommand,
+  normalizePickerColumns,
   parseSearchItems,
+  pickerGridTemplate,
   pickerWarning,
   rankCandidates,
   sanitizeKeys,
@@ -299,6 +301,38 @@ const scanned = scanCitesForIndex(
 eq(scanned.length, 5, "lint/反向引用扫描覆盖新旧命令与多 key");
 eq(scanned.map((x) => x.key).join(","), "a,b,c,d,e", "跳过 \\nocite{*} 通配");
 eq(scanned[1].line, 2, "行号正确");
+
+// ── M1-34：列表自定义显示列 ────────────────────────────────────
+eq(
+  JSON.stringify(normalizePickerColumns(["year", "nope", "year", "status"])),
+  JSON.stringify(["year", "status"]),
+  "白名单过滤 + 去重且保序",
+);
+eq(
+  JSON.stringify(normalizePickerColumns([])),
+  JSON.stringify(["authors", "year", "citeKey", "status"]),
+  "空表回退默认列",
+);
+eq(
+  JSON.stringify(normalizePickerColumns("junk")),
+  JSON.stringify(["authors", "year", "citeKey", "status"]),
+  "非数组输入回退默认列",
+);
+eq(
+  JSON.stringify(normalizePickerColumns(["title"])),
+  JSON.stringify(["authors", "year", "citeKey", "status"]),
+  "title 不参与配置（恒显），单独配置视为空表回退默认",
+);
+eq(
+  pickerGridTemplate(["year", "status"]),
+  "18px minmax(0, 1.6fr) 46px 96px",
+  "模板 = 勾选列 + title + 按定义顺序拼接勾选列宽",
+);
+eq(
+  pickerGridTemplate([]),
+  "18px minmax(0, 1.6fr) minmax(0, 1.3fr) 46px minmax(110px, 0.9fr) 96px",
+  "默认模板含 authors/year/citeKey/status 四列",
+);
 
 console.log(`\n${failures === 0 ? "✅ ALL PASS" : "❌ FAILED"} — ${total - failures}/${total}`);
 if (failures > 0) process.exit(1);

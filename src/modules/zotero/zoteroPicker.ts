@@ -5,6 +5,8 @@
 // 铁律：插入的必须是 **citekey**，绝不是 Zotero 的 8 位 itemKey；
 //       候选以「项目 .bib 索引」为主源，Zotero 全库搜索只做增强。
 import {
+  DEFAULT_PICKER_COLUMNS,
+  ZOTERO_PICKER_COLUMN_IDS,
   ZOTERO_COMMANDS,
   type ZoteroCommand,
   type ZoteroItem,
@@ -407,4 +409,54 @@ export function matchCollectionKey(
     if (exact) return exact.key;
   }
   return hits[0].key;
+}
+
+// ── M1-34 · 列表表头与自定义显示列 ──────────────────────────────
+// title 列恒显（不参与配置），其余列由设置 zotero.pickerColumns 决定；
+// 白名单与 Rust ZOTERO_PICKER_COLUMN_IDS / normalize_zotero 同规则。
+
+/** Picker 列表列定义（label 供表头与列菜单，width 供 grid-template-columns） */
+export interface PickerColumnDef {
+  id: string;
+  label: string;
+  width: string;
+}
+
+export const PICKER_COLUMN_DEFS: readonly PickerColumnDef[] = [
+  { id: "title", label: "标题", width: "minmax(0, 1.6fr)" },
+  { id: "authors", label: "作者", width: "minmax(0, 1.3fr)" },
+  { id: "year", label: "年份", width: "46px" },
+  { id: "publication", label: "出版物", width: "minmax(0, 1fr)" },
+  { id: "citeKey", label: "citekey", width: "minmax(110px, 0.9fr)" },
+  { id: "status", label: "状态", width: "96px" },
+];
+
+/** 归一化列配置：白名单过滤 + 去重 + 空表回退默认（与 Rust normalize_zotero 一致） */
+export function normalizePickerColumns(cols: unknown): string[] {
+  if (!Array.isArray(cols)) return [...DEFAULT_PICKER_COLUMNS];
+  const seen = new Set<string>();
+  for (const c of cols) {
+    if (
+      typeof c === "string" &&
+      ZOTERO_PICKER_COLUMN_IDS.includes(c as (typeof ZOTERO_PICKER_COLUMN_IDS)[number]) &&
+      !seen.has(c)
+    ) {
+      seen.add(c);
+    }
+  }
+  return seen.size > 0 ? [...seen] : [...DEFAULT_PICKER_COLUMNS];
+}
+
+/**
+ * 由列配置拼 grid-template-columns（表头与数据行共用同一模板保证对齐）：
+ * 首列固定 18px 勾选框列，第二列固定 title，其后按 PICKER_COLUMN_DEFS
+ * 顺序拼接被勾选的列宽。
+ */
+export function pickerGridTemplate(configured: string[]): string {
+  const on = new Set(normalizePickerColumns(configured));
+  const parts = ["18px"];
+  for (const def of PICKER_COLUMN_DEFS) {
+    if (def.id === "title" || on.has(def.id)) parts.push(def.width);
+  }
+  return parts.join(" ");
 }
