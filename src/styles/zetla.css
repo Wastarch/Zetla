@@ -3289,6 +3289,13 @@ body.col-resizing {
   background: var(--bg-2);
 }
 
+/* M1-38：「显示隐藏文件」开启态（hover 时不掉色） */
+.tree-root-acts .ibtn.on,
+.tree-root-acts .ibtn.on:hover {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
 /* 根行下直接跟子节点，缩进从 depth 1 起算 */
 
 .ic.file-tex {

@@ -434,6 +434,8 @@ pub struct LayoutConfig {
     pub outline_expanded: bool,
     /// M1-28：大纲区展开高度（96–480，拖拽顶部横线调整）
     pub outline_height: u32,
+    /// M1-38：项目树是否显示隐藏文件（点号项；默认关）
+    pub show_hidden_files: bool,
 }
 
 impl Default for LayoutConfig {
@@ -447,6 +449,7 @@ impl Default for LayoutConfig {
             log_height: LOG_H_DEFAULT,
             outline_expanded: true,
             outline_height: OUTLINE_H_DEFAULT,
+            show_hidden_files: false,
         }
     }
 }
@@ -1950,11 +1953,13 @@ mod tests {
         let parsed: AppConfig = serde_json::from_value(raw).unwrap();
         assert!(parsed.layout.outline_expanded);
         assert_eq!(parsed.layout.outline_height, OUTLINE_H_DEFAULT);
+        assert!(!parsed.layout.show_hidden_files, "隐藏文件默认关");
 
         // camelCase 键名往返：整对象回写时前端新字段必须保留（否则重启丢失）
         let text = serde_json::to_string(&parsed).unwrap();
         assert!(text.contains("\"outlineExpanded\""));
         assert!(text.contains("\"outlineHeight\""));
+        assert!(text.contains("\"showHiddenFiles\""));
 
         // 越界 → 钳制；合法值保留
         for (input, expect) in [
@@ -1969,7 +1974,12 @@ mod tests {
             let out = normalize(cfg);
             assert_eq!(out.layout.outline_height, expect, "input={input}");
             assert!(out.layout.outline_expanded, "折叠态未被 normalize 改动");
+            assert!(!out.layout.show_hidden_files, "显示隐藏文件开关未被 normalize 改动");
         }
+
+        let mut on = AppConfig::default();
+        on.layout.show_hidden_files = true;
+        assert!(normalize(on).layout.show_hidden_files, "开启态整对象回写不丢");
     }
 
     #[test]

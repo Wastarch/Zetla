@@ -154,8 +154,11 @@ export function useWindowMemory(): void {
       `${s.sidebarVisible}|${s.sidebarWidth}|${s.previewVisible}|${s.previewRatio}|${s.pvSideWidth}|${s.logHeight}|${s.outlineExpanded}|${s.outlineHeight}`;
     const debouncedLayoutSave = debounce(500, () => {
       const s = useAppStore.getState();
-      void useSettingsStore.getState().persist({
+      const st = useSettingsStore.getState();
+      void st.persist({
+        // M1-38：以 persisted 为基底，避免整对象回写丢掉 showHiddenFiles
         layout: {
+          ...st.persisted.layout,
           sidebarVisible: s.sidebarVisible,
           sidebarWidth: s.sidebarWidth,
           previewVisible: s.previewVisible,

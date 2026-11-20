@@ -1,8 +1,9 @@
 // M0-6 · 项目树（对齐 docs/UI/UI.html renderTree）
 // 目录展开/文件选中/主文件 badge/缓冲脏点/右键菜单入口
 // 补充：Ctrl+C/X/V 复制剪切粘贴、剪切项置灰
-// M0-13 前移：树首行改为「根目录行」（资源管理器头部的图标组移入该行，hover 才显）
+// M0-13 前移：树首行改为「根目录行」（资源管理器头部的图标组移入该行，始终显示）
 // M1-26：树内拖拽条目到目录（移动；Ctrl / macOS Option 拖拽复制），指针事件实现
+// M1-38：根目录图标组加「显示隐藏文件」眼睛开关（点号项，.git/重型目录始终跳过）
 import {
   useMemo,
   useRef,
@@ -11,6 +12,7 @@ import {
   type ReactNode,
 } from "react";
 import { Icon } from "@/ui/Icon";
+import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import type { ProjectNode } from "@/types";
 import { EXT_IMG, base, extOf, findNode, notify, parentOf, useProjectStore } from "./useProject";
@@ -49,6 +51,8 @@ export function ProjectTree() {
   const cutPaths = useProjectStore((s) => s.cutPaths);
   const pasteInto = useProjectStore((s) => s.pasteInto);
   const dropEntry = useProjectStore((s) => s.dropEntry);
+  const setShowHiddenFiles = useProjectStore((s) => s.setShowHiddenFiles);
+  const showHiddenFiles = useSettingsStore((s) => s.settings.layout.showHiddenFiles);
   const clip = useProjectStore((s) => s.clip);
   const buffers = useBuffersStore((s) => s.buffers);
   const treeRef = useRef<HTMLDivElement>(null);
@@ -300,7 +304,7 @@ export function ProjectTree() {
         </div>
       ) : (
         <>
-          {/* 根目录行：树的第一层（所有节点的父行），图标组 hover 才显 */}
+          {/* 根目录行：树的第一层（所有节点的父行），图标组始终显示 */}
           <div
             className={[
               "tnode",
@@ -350,6 +354,19 @@ export function ProjectTree() {
                 }}
               >
                 <Icon name="folder-plus" size={14} />
+              </button>
+              <button
+                type="button"
+                className={`ibtn${showHiddenFiles ? " on" : ""}`}
+                title={showHiddenFiles ? "隐藏文件（点击关闭）" : "显示隐藏文件"}
+                aria-label={showHiddenFiles ? "隐藏文件" : "显示隐藏文件"}
+                aria-pressed={showHiddenFiles}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void setShowHiddenFiles(!showHiddenFiles);
+                }}
+              >
+                <Icon name={showHiddenFiles ? "eye-off" : "eye"} size={14} />
               </button>
               <button
                 type="button"

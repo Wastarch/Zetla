@@ -47,13 +47,20 @@ pub struct ProjectTree {
 const MAX_DEPTH: usize = 12;
 const MAX_ENTRIES: usize = 5000;
 
-/// 需要跳过的名字：隐藏项（含 .git/.ltex）与重型目录
-fn skip_name(name: &str) -> bool {
-    name.starts_with('.')
-        || matches!(
-            name,
-            "node_modules" | "target" | "dist" | "build" | "out" | "__pycache__"
-        )
+/// 需要跳过的名字：重型目录始终跳过；点号项默认跳过，show_hidden=true 时放行
+/// （.git 例外：对象目录会吃满 MAX_ENTRIES，且资源管理器不需要直接浏览它）。
+/// 与前端 src/project/hiddenFiles.ts shouldSkipTreeName 同规则。
+fn skip_name(name: &str, show_hidden: bool) -> bool {
+    if matches!(
+        name,
+        "node_modules" | "target" | "dist" | "build" | "out" | "__pycache__"
+    ) {
+        return true;
+    }
+    if name.starts_with('.') {
+        return !show_hidden || name == ".git";
+    }
+    false
 }
 
 fn is_tex(p: &Path) -> bool {
@@ -79,8 +86,13 @@ fn depth_from(root: &Path, p: &Path) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-/// 扫描 + 组装
+/// 扫描 + 组装（默认不显示隐藏项；既有测试沿用此入口）
 fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
+    scan_project_inner_opts(root, false)
+}
+
+/// M1-38：带「显示隐藏文件」开关的扫描
+fn scan_project_inner_opts(root: &str, show_hidden: bool) -> Result<ProjectTree, String> {
     if root.trim().is_empty() {
         return Err("项目路径为空".into());
     }
@@ -101,7 +113,7 @@ fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
                 return true;
             }
             let name = e.file_name().to_string_lossy();
-            if skip_name(&name) {
+            if skip_name(&name, show_hidden) {
                 return false;
             }
             let rel = e
@@ -844,8 +856,8 @@ fn flag_main(nodes: &mut [ProjectNode], main_file: &str) {
 // ── 扫描命令 ────────────────────────────────────────────────
 
 #[tauri::command]
-pub fn scan_project(path: String) -> Result<ProjectTree, String> {
-    scan_project_inner(&path)
+pub fn scan_project(path: String, show_hidden: Option<bool>) -> Result<ProjectTree, String> {
+    scan_project_inner_opts(&path, show_hidden.unwrap_or(false))
 }
 
 // ── 文件操作（项目树右键） ─────────────────────────────────
@@ -1040,6 +1052,27 @@ mod tests {
             .find(|n| n.path == tree.main_file)
             .unwrap();
         assert!(main_node.is_main);
+    }
+
+    #[test]
+    fn scan_show_hidden_keeps_dotfiles_but_skips_git_and_heavy_dirs() {
+        let root = tmp_root("scan_hidden");
+        std::fs::create_dir_all(root.join(".git/objects")).unwrap();
+        std::fs::create_dir_all(root.join(".ltex")).unwrap();
+        std::fs::create_dir_all(root.join("node_modules/pkg")).unwrap();
+        std::fs::write(root.join(".hidden.tex"), "x").unwrap();
+        std::fs::write(root.join(".ltex/config.json"), "{}").unwrap();
+        std::fs::write(root.join(".git/objects/junk"), "x").unwrap();
+        std::fs::write(root.join("node_modules/pkg/a.tex"), "x").unwrap();
+
+        let tree = scan_project_inner_opts(root.to_str().unwrap(), true).unwrap();
+        let names: Vec<&str> = tree.nodes.iter().map(|n| n.name.as_str()).collect();
+        assert!(names.contains(&".hidden.tex"), "点号文件应显示");
+        assert!(names.contains(&".ltex"), "点号目录应显示");
+        assert!(!names.contains(&".git"), ".git 永远跳过");
+        assert!(!names.contains(&"node_modules"), "重型目录永远跳过");
+        let ltex = tree.nodes.iter().find(|n| n.name == ".ltex").unwrap();
+        assert!(ltex.children.as_ref().unwrap().iter().any(|n| n.name == "config.json"));
     }
 
     #[test]

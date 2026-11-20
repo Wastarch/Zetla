@@ -204,6 +204,8 @@ export interface AppSettings {
     outlineExpanded: boolean;
     /** M1-28：大纲区展开高度（96–480，默认 180，顶部拖拽条调整） */
     outlineHeight: number;
+    /** M1-38：项目树显示隐藏文件（点号项；默认关） */
+    showHiddenFiles: boolean;
   };
   /** M0-13：通用开关 */
   general: {
@@ -380,6 +382,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     logHeight: 212,
     outlineExpanded: true,
     outlineHeight: 180,
+    showHiddenFiles: false,
   },
   general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true, theme: "light" },
   tex: { distro: null, installDir: null, engineBinDir: null },

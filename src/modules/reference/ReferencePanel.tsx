@@ -508,7 +508,10 @@ export default function ReferencePanel() {
     setRefreshing(true);
     try {
       // 1) 重扫目录，确保新增/改名/外部加入的 .bib 进入项目树
-      const tree = await projectApi.scanProject(root);
+      const tree = await projectApi.scanProject(
+        root,
+        useSettingsStore.getState().settings.layout.showHiddenFiles,
+      );
       useProjectStore.setState({ tree });
       // 2) 清反向引用缓存并重索引（重读全部 .tex / .bib，已打开走 buffer）
       useReferenceStore.getState().invalidateCitations();

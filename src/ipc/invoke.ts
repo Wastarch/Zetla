@@ -120,7 +120,9 @@ export const templateApi = {
 
 // ── 项目/文档 ─────────────────────────────────────────────
 export const projectApi = {
-  scanProject: (path: string) => call<ProjectTree>("scan_project", { path }),
+  /** M1-38：showHidden=true 时项目树纳入点号文件/目录（.git 与重型目录仍跳过） */
+  scanProject: (path: string, showHidden = false) =>
+    call<ProjectTree>("scan_project", { path, showHidden }),
   /** 新建条目（M0-6），返回最终绝对路径 */
   createEntry: (path: string, kind: EntryKind) =>
     call<string>("create_entry", { path, kind }),

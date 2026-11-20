@@ -141,6 +141,11 @@ function captureProjectSession(root: string): void {
   void st.persist({ session: { ...st.persisted.session, projectSessions } });
 }
 
+/** M1-38：项目树扫描统一取当前「显示隐藏文件」开关 */
+function treeShowHidden(): boolean {
+  return useSettingsStore.getState().settings.layout.showHiddenFiles === true;
+}
+
 /** 在树中按路径查找文件（Windows 路径不区分大小写，用实际大小写返回） */function findFileByPath(nodes: ProjectNode[], path: string): ProjectNode | null {
   const want = path.toLowerCase();
   for (const n of nodes) {
@@ -212,6 +217,8 @@ interface ProjectState {
   closeProject: () => Promise<void>;
   /** silent=true 时失败不弹 toast（M0-9a 监听触发的刷新用） */
   refresh: (silent?: boolean) => Promise<void>;
+  /** M1-38：切换「显示隐藏文件」，落盘设置并按新口径重扫树 */
+  setShowHiddenFiles: (show: boolean) => Promise<void>;
   toggleDir: (path: string) => void;
   /** 全部折叠（资源管理器头部「全部折叠」按钮） */
   collapseAll: () => void;
@@ -283,7 +290,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
 
   openProject: async (root) => {
     try {
-      const tree = await projectApi.scanProject(root);
+      const tree = await projectApi.scanProject(root, treeShowHidden());
       // M0-12：切换项目时关掉上一个项目打开的文件（非强制：脏文件弹关闭确认，取消则该文件保留）
       const oldRoot = get().root;
       if (oldRoot && oldRoot !== root) {
@@ -402,12 +409,23 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     const root = get().root;
     if (!root) return;
     try {
-      const tree = await projectApi.scanProject(root);
+      const tree = await projectApi.scanProject(root, treeShowHidden());
       set({ tree }); // 保留 selected / openDirs
     } catch (e) {
       if (silent) console.warn("[refresh]", e);
       else notify(String(e), "err");
     }
+  },
+  setShowHiddenFiles: async (show) => {
+    const st = useSettingsStore.getState();
+    st.setSettings({
+      ...st.settings,
+      layout: { ...st.settings.layout, showHiddenFiles: show },
+    });
+    await st.persist({
+      layout: { ...st.persisted.layout, showHiddenFiles: show },
+    });
+    await get().refresh();
   },
 
   toggleDir: (path) =>
