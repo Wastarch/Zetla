@@ -208,6 +208,8 @@ export interface AppSettings {
     showHiddenFiles: boolean;
     /** M1-39：资源管理器底部「构建文件」折叠面板是否展开（默认折叠） */
     buildFilesExpanded: boolean;
+    /** M1-40：构建文件面板展开高度（96–480，默认 152，顶部拖拽条调整） */
+    buildFilesHeight: number;
   };
   /** M0-13：通用开关 */
   general: {
@@ -386,6 +388,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     outlineHeight: 180,
     showHiddenFiles: false,
     buildFilesExpanded: false,
+    buildFilesHeight: 152,
   },
   general: { restoreLastProject: true, rememberWindow: true, restoreLayout: true, theme: "light" },
   tex: { distro: null, installDir: null, engineBinDir: null },

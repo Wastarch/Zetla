@@ -47,20 +47,36 @@ pub struct ProjectTree {
 const MAX_DEPTH: usize = 12;
 const MAX_ENTRIES: usize = 5000;
 
-/// 需要跳过的名字：重型目录始终跳过；点号项默认跳过，show_hidden=true 时放行
-/// （.git 例外：对象目录会吃满 MAX_ENTRIES，且资源管理器不需要直接浏览它）。
+/// M1-40：outputDir 留空时从项目树隐藏的 LaTeX 中间文件后缀（含点，按文件名 ends_with 判定；
+/// .synctex.gz / .run.xml 是复合后缀，不能用 Path::extension）。
+/// = 默认 AUX 后缀 14 项 + .bcf + .run.xml + .nav + .snm + .vrb。
+/// 与 is_aux_file（导出/另存模板用，17 项）用途不同，两份列表刻意分开。
+const TREE_AUX_SUFFIXES: [&str; 19] = [
+    ".aux", ".log", ".bbl", ".blg", ".toc", ".out", ".lof", ".lot", ".idx", ".ilg", ".ind",
+    ".fls", ".fdb_latexmk", ".synctex.gz", ".nav", ".snm", ".vrb", ".bcf", ".run.xml",
+];
+
+/// 树过滤用的中间文件判定（大小写不敏感、支持复合后缀）
+fn is_tree_aux_file(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    TREE_AUX_SUFFIXES.iter().any(|s| n.ends_with(s))
+}
+
+/// 需要跳过的名字：show_hidden=true 时全部放行（用户明确选择「真正显示所有文件」，
+/// 含 .git 与 node_modules；仅受 MAX_ENTRIES / MAX_DEPTH 兜底约束）。
+/// 默认口径跳过重型目录与所有点号项（含 .git）。
 /// 与前端 src/project/hiddenFiles.ts shouldSkipTreeName 同规则。
 fn skip_name(name: &str, show_hidden: bool) -> bool {
+    if show_hidden {
+        return false;
+    }
     if matches!(
         name,
         "node_modules" | "target" | "dist" | "build" | "out" | "__pycache__"
     ) {
         return true;
     }
-    if name.starts_with('.') {
-        return !show_hidden || name == ".git";
-    }
-    false
+    name.starts_with('.')
 }
 
 fn is_tex(p: &Path) -> bool {
@@ -103,7 +119,10 @@ fn scan_project_inner_opts(root: &str, show_hidden: bool) -> Result<ProjectTree,
     }
 
     // 1) 收集（跳过隐藏/重型目录 + .ltex/config.json 的 exclude globs；条目上限保护，单条目错误跳过）
+    // M1-40：outputDir 留空时产物落在项目根，树中隐藏中间文件（眼睛开启则全放行）。
     let excludes = load_exclude(root_path);
+    let output_dir = config_output_dir(root_path);
+    let hide_aux = !show_hidden && output_dir.is_none();
     let mut entries: Vec<(PathBuf, bool)> = Vec::new();
     for item in WalkDir::new(root_path)
         .follow_links(false)
@@ -115,6 +134,11 @@ fn scan_project_inner_opts(root: &str, show_hidden: bool) -> Result<ProjectTree,
             }
             let name = e.file_name().to_string_lossy();
             if skip_name(&name, show_hidden) {
+                return false;
+            }
+            // M1-40：仅 outputDir 留空且未开启「显示所有文件」时隐藏中间文件；
+            // PDF / .tex / .bib 不在后缀集，天然保留；排除目录本身只判文件。
+            if hide_aux && e.file_type().is_file() && is_tree_aux_file(&name) {
                 return false;
             }
             let rel = e
@@ -159,7 +183,7 @@ fn scan_project_inner_opts(root: &str, show_hidden: bool) -> Result<ProjectTree,
         main_file,
         engine: config_engine(root_path),
         image_dir: config_image_dir(root_path),
-        output_dir: config_output_dir(root_path),
+        output_dir,
         nodes,
     })
 }
@@ -940,7 +964,14 @@ pub fn list_build_artifacts(
             modified,
         });
     }
-    out.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.name.cmp(&b.name)));
+    // M1-40：PDF 恒置顶，其余按修改时间倒序（与前端 sortArtifacts 同口径）
+    out.sort_by(|a, b| {
+        let rank = |n: &str| if n.to_ascii_lowercase().ends_with(".pdf") { 0 } else { 1 };
+        rank(&a.name)
+            .cmp(&rank(&b.name))
+            .then_with(|| b.modified.cmp(&a.modified))
+            .then_with(|| a.name.cmp(&b.name))
+    });
     Ok(out)
 }
 
@@ -1139,7 +1170,7 @@ mod tests {
     }
 
     #[test]
-    fn scan_show_hidden_keeps_dotfiles_but_skips_git_and_heavy_dirs() {
+    fn scan_show_hidden_shows_everything_including_git_and_heavy_dirs() {
         let root = tmp_root("scan_hidden");
         std::fs::create_dir_all(root.join(".git/objects")).unwrap();
         std::fs::create_dir_all(root.join(".ltex")).unwrap();
@@ -1153,10 +1184,70 @@ mod tests {
         let names: Vec<&str> = tree.nodes.iter().map(|n| n.name.as_str()).collect();
         assert!(names.contains(&".hidden.tex"), "点号文件应显示");
         assert!(names.contains(&".ltex"), "点号目录应显示");
-        assert!(!names.contains(&".git"), ".git 永远跳过");
-        assert!(!names.contains(&"node_modules"), "重型目录永远跳过");
+        assert!(names.contains(&".git"), "M1-40：.git 全部放行");
+        assert!(names.contains(&"node_modules"), "M1-40：重型目录全部放行");
+        let git = tree.nodes.iter().find(|n| n.name == ".git").unwrap();
+        assert!(
+            git.children.as_ref().unwrap().iter().any(|n| n.name == "objects"),
+            ".git 递归放行",
+        );
+        let nm = tree.nodes.iter().find(|n| n.name == "node_modules").unwrap();
+        assert!(
+            nm.children.as_ref().unwrap().iter().any(|n| n.name == "pkg"),
+            "重型目录递归放行",
+        );
         let ltex = tree.nodes.iter().find(|n| n.name == ".ltex").unwrap();
         assert!(ltex.children.as_ref().unwrap().iter().any(|n| n.name == "config.json"));
+    }
+
+    #[test]
+    fn scan_hides_aux_when_output_dir_empty_and_restores_when_configured() {
+        let root = tmp_root("scan_aux_hidden");
+        std::fs::create_dir_all(root.join("chapters")).unwrap();
+        std::fs::create_dir_all(root.join(".ltex")).unwrap();
+        std::fs::write(root.join("main.tex"), "x").unwrap();
+        std::fs::write(root.join("references.bib"), "x").unwrap();
+        std::fs::write(root.join("main.pdf"), "pdf").unwrap();
+        for name in ["main.aux", "main.log", "main.bcf", "main.run.xml", "main.synctex.gz"] {
+            std::fs::write(root.join(name), "x").unwrap();
+        }
+        std::fs::write(root.join("chapters/intro.tex"), "x").unwrap();
+        std::fs::write(root.join("chapters/intro.aux"), "x").unwrap();
+
+        // outputDir 留空：中间文件从树中隐藏，PDF / 源文件保留
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        let names: Vec<&str> = tree.nodes.iter().map(|n| n.name.as_str()).collect();
+        assert!(names.contains(&"main.tex"));
+        assert!(names.contains(&"references.bib"));
+        assert!(names.contains(&"main.pdf"), "PDF 恒保留");
+        for hidden in ["main.aux", "main.log", "main.bcf", "main.run.xml", "main.synctex.gz"] {
+            assert!(!names.contains(&hidden), "{} 应被隐藏", hidden);
+        }
+        let chapters = tree.nodes.iter().find(|n| n.name == "chapters").unwrap();
+        let kids: Vec<&str> = chapters
+            .children
+            .as_ref()
+            .unwrap()
+            .iter()
+            .map(|n| n.name.as_str())
+            .collect();
+        assert!(kids.contains(&"intro.tex"));
+        assert!(!kids.contains(&"intro.aux"), "子目录中间文件也隐藏");
+
+        // 配了 outputDir：中间文件不再额外隐藏
+        std::fs::write(root.join(".ltex/config.json"), "{\"outputDir\":\"build\"}").unwrap();
+        let tree = scan_project_inner(root.to_str().unwrap()).unwrap();
+        let names: Vec<&str> = tree.nodes.iter().map(|n| n.name.as_str()).collect();
+        assert!(names.contains(&"main.aux"), "outputDir 非空时不额外隐藏");
+        assert_eq!(tree.output_dir.as_deref(), Some("build"));
+
+        // 眼睛开启：即使 outputDir 留空也全部放行
+        std::fs::remove_file(root.join(".ltex/config.json")).unwrap();
+        let tree = scan_project_inner_opts(root.to_str().unwrap(), true).unwrap();
+        let names: Vec<&str> = tree.nodes.iter().map(|n| n.name.as_str()).collect();
+        for shown in ["main.aux", "main.log", "main.bcf", "main.run.xml", "main.synctex.gz"] {
+            assert!(names.contains(&shown), "显示所有文件时 {} 应出现", shown);
+        }
     }
 
     #[test]

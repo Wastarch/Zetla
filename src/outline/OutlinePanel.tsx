@@ -25,6 +25,9 @@ export function OutlinePanel() {
   const height = useAppStore((s) => s.outlineHeight);
   const toggleOutline = useAppStore((s) => s.toggleOutline);
   const setOutlineHeight = useAppStore((s) => s.setOutlineHeight);
+  // M1-40：与上方「构建文件」面板互相扣减占用，保证项目树至少留 MIN_TREE_H
+  const buildFilesExpanded = useAppStore((s) => s.buildFilesExpanded);
+  const buildFilesHeight = useAppStore((s) => s.buildFilesHeight);
   const { items, loading, error, manualRev, recompute, refresh } = useOutlineStore();
 
   const sectionRef = useRef<HTMLDivElement | null>(null);
@@ -56,7 +59,8 @@ export function OutlinePanel() {
       const d = dragRef.current;
       if (!d) return;
       const sidebarH = sectionRef.current?.parentElement?.clientHeight ?? window.innerHeight - 100;
-      setOutlineHeight(clampOutlineHeight(d.h - (e.clientY - d.y), sidebarH));
+      const otherH = buildFilesExpanded ? buildFilesHeight : OUTLINE_HEAD_H;
+      setOutlineHeight(clampOutlineHeight(d.h - (e.clientY - d.y), sidebarH, otherH));
     };
     const onUp = () => {
       dragRef.current = null;
@@ -72,19 +76,20 @@ export function OutlinePanel() {
       window.removeEventListener("pointercancel", onUp);
       document.body.classList.remove("row-resizing");
     };
-  }, [dragging, setOutlineHeight]);
+  }, [dragging, setOutlineHeight, buildFilesExpanded, buildFilesHeight]);
 
   // 窗口变小时兜底：记忆的高度不得超过当前侧栏可容纳上限（同 LogPanel 口径，另加 resize 监听）
   useEffect(() => {
     const clamp = () => {
       const sidebarH = sectionRef.current?.parentElement?.clientHeight ?? window.innerHeight - 100;
-      const c = clampOutlineHeight(height, sidebarH);
+      const otherH = buildFilesExpanded ? buildFilesHeight : OUTLINE_HEAD_H;
+      const c = clampOutlineHeight(height, sidebarH, otherH);
       if (c !== height) setOutlineHeight(c);
     };
     clamp();
     window.addEventListener("resize", clamp);
     return () => window.removeEventListener("resize", clamp);
-  }, [height, setOutlineHeight]);
+  }, [height, setOutlineHeight, buildFilesExpanded, buildFilesHeight]);
 
   const onJump = (it: OutlineItem) => jumpToError(it.file, it.line);
 

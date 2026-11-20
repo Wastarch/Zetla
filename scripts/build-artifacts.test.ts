@@ -59,6 +59,18 @@ eq(
   JSON.stringify(["a.log", "b.log"]),
   "同时间按文件名",
 );
+eq(
+  JSON.stringify(
+    sortArtifacts([a("old.pdf", 1), a("new.log", 3), a("mid.aux", 2)]).map((x) => x.name),
+  ),
+  JSON.stringify(["old.pdf", "new.log", "mid.aux"]),
+  "M1-40：旧 PDF 仍置顶，其余按时间倒序",
+);
+eq(
+  JSON.stringify(sortArtifacts([a("b.pdf", 1), a("a.pdf", 2)]).map((x) => x.name)),
+  JSON.stringify(["a.pdf", "b.pdf"]),
+  "M1-40：多个 PDF 之间仍按时间倒序",
+);
 
 console.log(`\n${failures === 0 ? "✅ ALL PASS" : "❌ FAILED"} — ${total - failures}/${total}`);
 if (failures > 0) process.exit(1);

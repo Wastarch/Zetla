@@ -33,9 +33,13 @@ export function formatArtifactTime(ms: number, now = Date.now()): string {
   return sameDay ? hhmm : `${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-/** 后端已排序；前端兜底按修改时间倒序，同时间按文件名 */
+/** M1-40：PDF 恒置顶；其余按修改时间倒序，同时间按文件名（与 Rust list_build_artifacts 同口径） */
 export function sortArtifacts(items: BuildArtifact[]): BuildArtifact[] {
+  const rank = (n: string) => (artifactKind(n) === "pdf" ? 0 : 1);
   return [...items].sort(
-    (a, b) => b.modified - a.modified || a.name.localeCompare(b.name),
+    (a, b) =>
+      rank(a.name) - rank(b.name) ||
+      b.modified - a.modified ||
+      a.name.localeCompare(b.name),
   );
 }

@@ -14,11 +14,17 @@ function check(cond: boolean, msg: string) {
 check(shouldSkipTreeName("main.tex", false) === false, "普通文件默认显示");
 check(shouldSkipTreeName(".hidden.tex", false) === true, "点号文件默认隐藏");
 check(shouldSkipTreeName(".ltex", false) === true, "点号目录默认隐藏");
+check(shouldSkipTreeName(".git", false) === true, ".git 默认口径隐藏");
+check(shouldSkipTreeName("node_modules", false) === true, "重型目录默认口径隐藏");
 check(shouldSkipTreeName(".hidden.tex", true) === false, "开启后点号文件显示");
 check(shouldSkipTreeName(".ltex", true) === false, "开启后 .ltex 目录显示");
-check(shouldSkipTreeName(".git", true) === true, ".git 开启后仍跳过");
-check(shouldSkipTreeName("node_modules", true) === true, "重型目录开启后仍跳过");
-check(shouldSkipTreeName("dist", true) === true, "dist 开启后仍跳过");
+check(shouldSkipTreeName(".git", true) === false, "M1-40：开启后 .git 放行");
+check(shouldSkipTreeName("node_modules", true) === false, "M1-40：开启后 node_modules 放行");
+check(shouldSkipTreeName("dist", true) === false, "M1-40：开启后 dist 放行");
+check(shouldSkipTreeName("target", true) === false, "M1-40：开启后 target 放行");
+check(shouldSkipTreeName("build", true) === false, "M1-40：开启后 build 放行");
+check(shouldSkipTreeName("out", true) === false, "M1-40：开启后 out 放行");
+check(shouldSkipTreeName("__pycache__", true) === false, "M1-40：开启后 __pycache__ 放行");
 check(shouldSkipTreeName("chapters", true) === false, "普通目录不受开关影响");
 check(shouldSkipTreeName("Node_modules", true) === false, "白名单大小写敏感（与 Rust 一致）");
 

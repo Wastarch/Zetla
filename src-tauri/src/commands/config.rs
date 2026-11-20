@@ -49,6 +49,10 @@ pub const LOG_H_DEFAULT: u32 = 212;
 pub const OUTLINE_H_MIN: u32 = 96;
 pub const OUTLINE_H_MAX: u32 = 480;
 pub const OUTLINE_H_DEFAULT: u32 = 180;
+/// M1-40：资源管理器底部「构建文件」面板高度（与前端 outlineLayout.ts 常量一致）
+pub const BUILD_FILES_H_MIN: u32 = 96;
+pub const BUILD_FILES_H_MAX: u32 = 480;
+pub const BUILD_FILES_H_DEFAULT: u32 = 152;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -438,6 +442,8 @@ pub struct LayoutConfig {
     pub show_hidden_files: bool,
     /// M1-39：资源管理器底部「构建文件」折叠面板是否展开（默认折叠）
     pub build_files_expanded: bool,
+    /// M1-40：构建文件面板展开高度（96–480，拖拽顶部横线调整）
+    pub build_files_height: u32,
 }
 
 impl Default for LayoutConfig {
@@ -453,6 +459,7 @@ impl Default for LayoutConfig {
             outline_height: OUTLINE_H_DEFAULT,
             show_hidden_files: false,
             build_files_expanded: false,
+            build_files_height: BUILD_FILES_H_DEFAULT,
         }
     }
 }
@@ -1172,8 +1179,12 @@ pub fn normalize(mut cfg: AppConfig) -> AppConfig {
     }
     // M1-16：日志面板高度钳制（拖拽已限幅，此处兜底手改配置）
     cfg.layout.log_height = cfg.layout.log_height.clamp(LOG_H_MIN, LOG_H_MAX);
-    // M1-28：大纲区高度钳制（与前端 outlineLayout.ts 的 clamp 口径一致）
+    // M1-28/M1-40：大纲区与构建文件面板高度钳制（与前端 outlineLayout.ts 的 clamp 口径一致）
     cfg.layout.outline_height = cfg.layout.outline_height.clamp(OUTLINE_H_MIN, OUTLINE_H_MAX);
+    cfg.layout.build_files_height = cfg
+        .layout
+        .build_files_height
+        .clamp(BUILD_FILES_H_MIN, BUILD_FILES_H_MAX);
     // M1-17：LaTeX 语法高亮配色归一化（以默认 12 组为蓝本，覆盖已保存颜色）
     cfg.highlight = normalize_highlight(cfg.highlight);
     // M1-22：终端配置归一化（字号/回滚钳制；光标样式与工作目录白名单）
@@ -1958,6 +1969,7 @@ mod tests {
         assert_eq!(parsed.layout.outline_height, OUTLINE_H_DEFAULT);
         assert!(!parsed.layout.show_hidden_files, "隐藏文件默认关");
         assert!(!parsed.layout.build_files_expanded, "构建文件面板默认折叠");
+        assert_eq!(parsed.layout.build_files_height, BUILD_FILES_H_DEFAULT, "构建面板高度默认 152");
 
         // camelCase 键名往返：整对象回写时前端新字段必须保留（否则重启丢失）
         let text = serde_json::to_string(&parsed).unwrap();
@@ -1965,6 +1977,7 @@ mod tests {
         assert!(text.contains("\"outlineHeight\""));
         assert!(text.contains("\"showHiddenFiles\""));
         assert!(text.contains("\"buildFilesExpanded\""));
+        assert!(text.contains("\"buildFilesHeight\""));
 
         // 越界 → 钳制；合法值保留
         for (input, expect) in [
@@ -1976,8 +1989,10 @@ mod tests {
         ] {
             let mut cfg = AppConfig::default();
             cfg.layout.outline_height = input;
+            cfg.layout.build_files_height = input;
             let out = normalize(cfg);
             assert_eq!(out.layout.outline_height, expect, "input={input}");
+            assert_eq!(out.layout.build_files_height, expect, "input={input}");
             assert!(out.layout.outline_expanded, "折叠态未被 normalize 改动");
             assert!(!out.layout.show_hidden_files, "显示隐藏文件开关未被 normalize 改动");
             assert!(!out.layout.build_files_expanded, "构建文件折叠态未被 normalize 改动");
@@ -1986,9 +2001,11 @@ mod tests {
         let mut on = AppConfig::default();
         on.layout.show_hidden_files = true;
         on.layout.build_files_expanded = true;
+        on.layout.build_files_height = 250;
         let kept = normalize(on);
         assert!(kept.layout.show_hidden_files, "开启态整对象回写不丢");
         assert!(kept.layout.build_files_expanded, "构建文件展开态整对象回写不丢");
+        assert_eq!(kept.layout.build_files_height, 250, "高度整对象回写不丢");
     }
 
     #[test]

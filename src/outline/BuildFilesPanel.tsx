@@ -1,6 +1,7 @@
-// M1-39 · 资源管理器底部「构建文件」折叠面板（位于大纲上方）
+// M1-39/M1-40 · 资源管理器底部「构建文件」折叠面板（位于大纲上方）
 // 复用 .outline 折叠样式；列出输出目录（或主文件同目录）的编译产物，点击在标签中打开。
-import { useCallback, useEffect, useState } from "react";
+// M1-40：顶部可拖拽调高（96–480，与大纲互相钳制），PDF 恒置顶。
+import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
 import { projectApi } from "@/ipc/invoke";
@@ -9,16 +10,13 @@ import { Chevron } from "@/ui/Chevron";
 import { Icon } from "@/ui/Icon";
 import { DEFAULT_AUX_EXTENSIONS } from "@/types";
 import type { BuildArtifact } from "@/types/project";
-import { OUTLINE_HEAD_H } from "./outlineLayout";
+import { OUTLINE_HEAD_H, clampBuildFilesHeight } from "./outlineLayout";
 import {
   artifactKind,
   formatArtifactSize,
   formatArtifactTime,
   sortArtifacts,
 } from "./buildArtifacts";
-
-/** 展开态固定高度（无拖拽条，列表内部滚动）；折叠态只留标题行 */
-const BUILD_FILES_H = 152;
 
 export function BuildFilesPanel() {
   const root = useProjectStore((s) => s.root);
@@ -28,11 +26,19 @@ export function BuildFilesPanel() {
   const previewRev = useAppStore((s) => s.previewRev);
   const expanded = useAppStore((s) => s.buildFilesExpanded);
   const toggle = useAppStore((s) => s.toggleBuildFiles);
+  const height = useAppStore((s) => s.buildFilesHeight);
+  const setHeight = useAppStore((s) => s.setBuildFilesHeight);
+  const outlineExpanded = useAppStore((s) => s.outlineExpanded);
+  const outlineHeight = useAppStore((s) => s.outlineHeight);
 
   const [items, setItems] = useState<BuildArtifact[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [manualRev, setManualRev] = useState(0);
+
+  const sectionRef = useRef<HTMLDivElement | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const dragRef = useRef<{ y: number; h: number } | null>(null);
 
   const refresh = useCallback(async () => {
     if (!root || !mainFile) {
@@ -43,7 +49,9 @@ export function BuildFilesPanel() {
     setError("");
     try {
       const cfg = useSettingsStore.getState().settings.build.cleanAuxExtensions;
-      const extensions = cfg?.length ? cfg : DEFAULT_AUX_EXTENSIONS;
+      const base = cfg?.length ? cfg : DEFAULT_AUX_EXTENSIONS;
+      // M1-40：树中隐藏的 .bcf / .run.xml 不在默认 cleanAux 列表，补进面板避免「两边都看不到」
+      const extensions = Array.from(new Set([...base, ".bcf", ".run.xml"]));
       const found = await projectApi.listBuildArtifacts(root, mainFile, outputDir, extensions);
       setItems(sortArtifacts(found));
     } catch (e) {
@@ -59,13 +67,73 @@ export function BuildFilesPanel() {
     void refresh();
   }, [refresh, previewRev, manualRev]);
 
+  // 顶部横线拖拽改高度：与大纲互相扣减占用，项目树始终至少留 MIN_TREE_H。
+  // 拖拽中不写盘，useWindowMemory 的 layoutKey + 500ms 防抖负责持久化。
+  const onResizeDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dragRef.current = { y: e.clientY, h: height };
+      setDragging(true);
+      document.body.classList.add("row-resizing");
+    },
+    [height],
+  );
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: PointerEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const sidebarH = sectionRef.current?.parentElement?.clientHeight ?? window.innerHeight - 100;
+      const outlineH = outlineExpanded ? outlineHeight : OUTLINE_HEAD_H;
+      setHeight(clampBuildFilesHeight(d.h - (e.clientY - d.y), sidebarH, outlineH));
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      setDragging(false);
+      document.body.classList.remove("row-resizing");
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      document.body.classList.remove("row-resizing");
+    };
+  }, [dragging, setHeight, outlineExpanded, outlineHeight]);
+
+  // 窗口/大纲变化时兜底：记忆的高度不得超过当前可容纳上限
+  useEffect(() => {
+    const clamp = () => {
+      const sidebarH = sectionRef.current?.parentElement?.clientHeight ?? window.innerHeight - 100;
+      const outlineH = outlineExpanded ? outlineHeight : OUTLINE_HEAD_H;
+      const c = clampBuildFilesHeight(height, sidebarH, outlineH);
+      if (c !== height) setHeight(c);
+    };
+    clamp();
+    window.addEventListener("resize", clamp);
+    return () => window.removeEventListener("resize", clamp);
+  }, [height, setHeight, outlineExpanded, outlineHeight]);
+
   const dirLabel = outputDir ? outputDir : mainFile ? "主文件目录" : "—";
 
   return (
     <div
-      className={`outline build-files${expanded ? "" : " collapsed"}`}
-      style={{ height: expanded ? BUILD_FILES_H : OUTLINE_HEAD_H }}
+      ref={sectionRef}
+      className={`outline build-files${expanded ? "" : " collapsed"}${dragging ? " dragging" : ""}`}
+      style={{ height: expanded ? height : OUTLINE_HEAD_H }}
     >
+      {expanded && (
+        <div
+          className="outline-resizer"
+          title="拖拽调整构建文件区高度"
+          onPointerDown={onResizeDown}
+        />
+      )}
       <div className="outline-head">
         <button
           type="button"

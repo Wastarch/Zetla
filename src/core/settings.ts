@@ -90,8 +90,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         // M1-31：editor 子对象深合并——旧配置缺 bracketMatching/foldGutter/minimap 时补默认值，
         // 否则设置页整对象回写会把这些字段丢掉（与 build/layout 同口径）
         editor: { ...DEFAULT_SETTINGS.editor, ...(cfg.editor ?? {}) },
-        // M1-28/M1-38/M1-39：layout 子对象深合并——旧配置缺 outlineExpanded/
-        // outlineHeight/showHiddenFiles/buildFilesExpanded 时补默认值，否则整对象回写丢新字段
+        // M1-28/M1-38/M1-39/M1-40：layout 子对象深合并——旧配置缺 outlineExpanded/
+        // outlineHeight/showHiddenFiles/buildFilesExpanded/buildFilesHeight 时补默认值，否则整对象回写丢新字段
         layout: { ...DEFAULT_SETTINGS.layout, ...(cfg.layout ?? {}) },
         // M1-22：terminal 子对象深合并（旧配置缺 terminal 时补默认值）
         terminal: { ...DEFAULT_SETTINGS.terminal, ...(cfg.terminal ?? {}) },

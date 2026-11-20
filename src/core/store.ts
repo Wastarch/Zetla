@@ -1,7 +1,7 @@
 // 全局状态（zustand）—— 项目、编译、编辑器的共享状态
 import { create } from "zustand";
 import type { CompileResult, CompileStepProgress, ProjectInfo, TexDistInfo } from "@/types";
-import { OUTLINE_H_DEFAULT } from "@/outline/outlineLayout";
+import { OUTLINE_H_DEFAULT, BUILD_FILES_H_DEFAULT } from "@/outline/outlineLayout";
 
 export type CompileStatus = "idle" | "running" | "ok" | "error" | "cancelled";
 
@@ -59,6 +59,9 @@ export interface AppState {
   /** M1-39：资源管理器底部「构建文件」折叠面板是否展开（默认折叠，持久化） */
   buildFilesExpanded: boolean;
   toggleBuildFiles: () => void;
+  /** M1-40：构建文件面板展开高度（96–480，拖拽顶部横线调整；持久化） */
+  buildFilesHeight: number;
+  setBuildFilesHeight: (h: number) => void;
 
   // ── 偏好设置（M0-14a）──
   /** 设置页状态：null 关闭；否则为打开时停留的页签 */
@@ -163,6 +166,8 @@ export const useAppStore = create<AppState>((set) => ({
   setOutlineHeight: (h) => set({ outlineHeight: h }),
   buildFilesExpanded: false,
   toggleBuildFiles: () => set((s) => ({ buildFilesExpanded: !s.buildFilesExpanded })),
+  buildFilesHeight: BUILD_FILES_H_DEFAULT,
+  setBuildFilesHeight: (h) => set({ buildFilesHeight: h }),
 
   // ── 偏好设置（M0-14a）──
   settingsDialog: null,
