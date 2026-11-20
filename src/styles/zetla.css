@@ -3264,7 +3264,7 @@ body.col-resizing {
   flex: none;
 }
 
-/* ── 根目录行（树的第一层，图标组 hover 才显） ── */
+/* ── 根目录行（树的第一层，图标组始终显示） ── */
 .tree-root .nm {
   font-weight: 500;
   color: var(--txt);
@@ -3276,13 +3276,6 @@ body.col-resizing {
   align-items: center;
   gap: 0;
   flex: none;
-  opacity: 0;
-  transition: opacity 0.12s;
-}
-
-.tree-root:hover .tree-root-acts,
-.tree-root:focus-within .tree-root-acts {
-  opacity: 1;
 }
 
 .tree-root-acts .ibtn {
