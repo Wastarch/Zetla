@@ -24,6 +24,7 @@ import {
 import { ensureBibEntries } from "@/modules/zotero/zoteroRuntime";
 import { useBibFormatControl } from "@/modules/zotero/useBibFormatControl";
 import { BibFormatSwitchDialog } from "./BibFormatSwitchDialog";
+import { RefMoreMenu } from "./RefMoreMenu";
 import { Chevron } from "@/ui/Chevron";
 import { engineLabel } from "@/modules/zotero/zoteroStyleMap";
 import type { ZoteroItem } from "@/types/zotero";
@@ -125,6 +126,8 @@ export default function ReferencePanel() {
     entry: BibEntry;
     source: "menu" | "card";
   } | null>(null);
+  /** M1-36：页签右侧 ⋯ 菜单（Bib 格式 + 引用命令）锚点 */
+  const [moreMenu, setMoreMenu] = useState<{ x: number; y: number } | null>(null);
   /** 右键菜单：命中的条目、屏幕坐标、以及「查看反向引用」用的浮窗锚点 */
   const [menu, setMenu] = useState<{
     entry: BibEntry;
@@ -543,25 +546,23 @@ export default function ReferencePanel() {
             {label}
           </button>
         ))}
+        {/* M1-36：⋯ 菜单：Bib 条目格式与引用命令移到此处（outline-more 同款按钮） */}
+        <button
+          type="button"
+          className="outline-more ref-tabs-more"
+          title="Bib 条目格式 / 引用命令"
+          aria-label="更多设置"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            const at = { x: r.right, y: r.bottom + 4 };
+            setMoreMenu((prev) => (prev ? null : at));
+          }}
+        >
+          ⋯
+        </button>
       </div>
 
-      {/* P9/P11：Bib 条目格式（与偏好设置共用配置键与切换逻辑） */}
-      <div className="ref-fmt-bar" title="导出的 Zotero 条目跟随主 .tex 使用的引擎；切换时原地转换已有字段，可选择是否同步改导言区（citekey 不变）">
-        <span>Bib 条目格式</span>
-        <select
-          className="ref-fmt-select"
-          value={fmt.bibFormat.configured}
-          disabled={fmt.busy}
-          onChange={(e) => fmt.choose(e.target.value)}
-        >
-          <option value="auto">跟随项目</option>
-          <option value="bibtex">BibTeX</option>
-          <option value="biblatex">biblatex</option>
-        </select>
-        <span className="ref-fmt-effective">
-          当前：{fmt.bibFormat.effective ? engineLabel(fmt.bibFormat.effective) : "未识别"}
-        </span>
-      </div>
       {fmt.note && <div className="ref-fmt-note">{fmt.note}</div>}
 
       {view === "project" ? (
@@ -808,6 +809,21 @@ export default function ReferencePanel() {
         <ZoteroLibraryPane
           onInsert={onInsert}
           onNotice={(m, k) => notify(m, k)}
+        />
+      )}
+
+      {/* M1-36：页签右侧 ⋯ 菜单（Bib 格式 / 引用命令二级菜单） */}
+      {moreMenu && (
+        <RefMoreMenu
+          x={moreMenu.x}
+          y={moreMenu.y}
+          configured={fmt.bibFormat.configured}
+          effective={
+            fmt.bibFormat.effective ? engineLabel(fmt.bibFormat.effective) : "未识别"
+          }
+          busy={fmt.busy}
+          onChooseFormat={fmt.choose}
+          onClose={() => setMoreMenu(null)}
         />
       )}
 

@@ -9243,18 +9243,28 @@ body.row-resizing {
   border-bottom-color: var(--accent);
 }
 
-/* ── P9/P11 · 引用侧栏 Bib 条目格式条 + 确认窗勾选 ────── */
-.ref-fmt-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  font-size: 11px;
-  color: var(--txt-3);
-  border-bottom: 1px solid var(--line-soft);
-  flex: none;
+/* ── M1-36 · 引用侧栏 ⋯ 菜单（原 .ref-fmt-bar 收进此处）────── */
+.ref-tabs-more {
+  margin-left: auto;
+  align-self: center;
 }
-.ref-fmt-bar > span:first-child { white-space: nowrap; }
+.ref-more-menu { min-width: 244px; z-index: 260; }
+.ref-more-fmt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px;
+  font-size: 11px; color: var(--txt-3);
+}
+.ref-more-fmt > span { white-space: nowrap; }
+.ref-more-effective {
+  padding: 0 10px 2px;
+  font-size: 10.5px; color: var(--txt-3);
+}
+.ref-more-sub {
+  position: absolute; left: calc(100% + 4px); z-index: 270;
+  min-width: 148px;
+}
+.ref-more-sub .mi { font-family: var(--font-mono); font-size: 11.5px; }
+.ref-more-check { margin-left: auto; color: var(--accent); }
 .ref-fmt-select {
   height: 22px;
   padding: 0 4px;
@@ -9266,11 +9276,6 @@ body.row-resizing {
   cursor: pointer;
 }
 .ref-fmt-select:focus { border-color: var(--accent); }
-.ref-fmt-effective {
-  margin-left: auto;
-  white-space: nowrap;
-  opacity: 0.85;
-}
 .ref-fmt-note {
   padding: 5px 10px;
   font-size: 11px;
