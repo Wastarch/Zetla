@@ -86,7 +86,8 @@ fn depth_from(root: &Path, p: &Path) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-/// 扫描 + 组装（默认不显示隐藏项；既有测试沿用此入口）
+/// 测试辅助：默认口径（不显示隐藏项）扫描；生产路径一律走 scan_project_inner_opts
+#[cfg(test)]
 fn scan_project_inner(root: &str) -> Result<ProjectTree, String> {
     scan_project_inner_opts(root, false)
 }
