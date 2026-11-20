@@ -860,6 +860,89 @@ pub fn scan_project(path: String, show_hidden: Option<bool>) -> Result<ProjectTr
     scan_project_inner_opts(&path, show_hidden.unwrap_or(false))
 }
 
+/// M1-39：构建产物条目（浅扫输出目录，不递归进子目录）
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildArtifact {
+    pub name: String,
+    /// 绝对路径
+    pub path: String,
+    pub size: u64,
+    /// 修改时间（Unix 毫秒；0=读取失败）
+    pub modified: u64,
+}
+
+/// M1-39：列出编译产物。目录 = 显式 outputDir（相对项目根）否则主文件同目录；
+/// 后缀来自设置 build.cleanAuxExtensions，PDF 恒列入。产物目录必须位于项目根内。
+#[tauri::command]
+pub fn list_build_artifacts(
+    root: String,
+    main_file: String,
+    output_dir: Option<String>,
+    extensions: Vec<String>,
+) -> Result<Vec<BuildArtifact>, String> {
+    let root_path = Path::new(&root);
+    if !root_path.is_dir() {
+        return Err(format!("不是有效目录: {}", root));
+    }
+    let rel = clean_rel("输出目录", output_dir)?;
+    let dir = match rel {
+        Some(r) => root_path.join(r.replace('\\', "/")),
+        None => {
+            let p = Path::new(&main_file);
+            if p.as_os_str().is_empty() {
+                return Ok(Vec::new());
+            }
+            p.parent()
+                .map(Path::to_path_buf)
+                .unwrap_or_else(|| root_path.to_path_buf())
+        }
+    };
+    if dir.strip_prefix(root_path).is_err() {
+        return Err("构建产物目录必须位于项目根内".into());
+    }
+
+    let mut suffixes: Vec<String> = extensions
+        .iter()
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty() && !s.contains('/') && !s.contains('\\'))
+        .collect();
+    if !suffixes.iter().any(|s| s == ".pdf") {
+        suffixes.push(".pdf".to_string());
+    }
+
+    let mut out = Vec::new();
+    if !dir.is_dir() {
+        return Ok(out);
+    }
+    for item in std::fs::read_dir(&dir).map_err(|e| format!("读取产物目录失败: {}", e))? {
+        let Ok(entry) = item else { continue };
+        if !entry.file_type().map(|t| t.is_file()).unwrap_or(false) {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let lower = name.to_ascii_lowercase();
+        if !suffixes.iter().any(|s| lower.ends_with(s)) {
+            continue;
+        }
+        let Ok(meta) = entry.metadata() else { continue };
+        let modified = meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        out.push(BuildArtifact {
+            name,
+            path: to_str(&entry.path()),
+            size: meta.len(),
+            modified,
+        });
+    }
+    out.sort_by(|a, b| b.modified.cmp(&a.modified).then_with(|| a.name.cmp(&b.name)));
+    Ok(out)
+}
+
 // ── 文件操作（项目树右键） ─────────────────────────────────
 
 /// 基础防护：非空、非盘符根（无文件名 → 拒绝）
@@ -1073,6 +1156,55 @@ mod tests {
         assert!(!names.contains(&"node_modules"), "重型目录永远跳过");
         let ltex = tree.nodes.iter().find(|n| n.name == ".ltex").unwrap();
         assert!(ltex.children.as_ref().unwrap().iter().any(|n| n.name == "config.json"));
+    }
+
+    #[test]
+    fn list_build_artifacts_uses_output_dir_and_pdf_always() {
+        let root = tmp_root("build_artifacts");
+        let out = root.join("build/out");
+        std::fs::create_dir_all(&out).unwrap();
+        std::fs::write(root.join("main.tex"), "x").unwrap();
+        std::fs::write(root.join("stray.aux"), "root").unwrap();
+        std::fs::write(out.join("main.pdf"), "pdf").unwrap();
+        std::fs::write(out.join("main.log"), "log").unwrap();
+        std::fs::write(out.join("main.aux"), "aux").unwrap();
+        std::fs::write(out.join("notes.md"), "md").unwrap();
+
+        let tree = list_build_artifacts(
+            root.to_str().unwrap().to_string(),
+            root.join("main.tex").to_str().unwrap().to_string(),
+            Some("build/out".to_string()),
+            vec![".aux".to_string(), ".log".to_string()],
+        )
+        .unwrap();
+        let names: Vec<&str> = tree.iter().map(|a| a.name.as_str()).collect();
+        assert!(names.contains(&"main.pdf"), "PDF 恒列入");
+        assert!(names.contains(&"main.log"));
+        assert!(names.contains(&"main.aux"));
+        assert!(!names.contains(&"notes.md"), "非构建后缀不列入");
+        assert!(!names.contains(&"stray.aux"), "只扫输出目录，不扫项目根");
+        assert!(tree.iter().all(|a| a.size > 0 && a.modified > 0));
+
+        // 无 outputDir → 主文件同目录（浅扫）
+        let flat = list_build_artifacts(
+            root.to_str().unwrap().to_string(),
+            root.join("main.tex").to_str().unwrap().to_string(),
+            None,
+            vec![".aux".to_string()],
+        )
+        .unwrap();
+        let flat_names: Vec<&str> = flat.iter().map(|a| a.name.as_str()).collect();
+        assert!(flat_names.contains(&"stray.aux"));
+        assert!(!flat_names.contains(&"main.aux"), "不递归进 build/out");
+
+        // 越界目录拒绝
+        assert!(list_build_artifacts(
+            root.to_str().unwrap().to_string(),
+            root.join("main.tex").to_str().unwrap().to_string(),
+            Some("../evil".to_string()),
+            vec![],
+        )
+        .is_err());
     }
 
     #[test]

@@ -83,6 +83,8 @@ export function useWindowMemory(): void {
         // M1-28：大纲区折叠态/高度；旧配置缺字段时兜底默认值
         outlineExpanded: st.settings.layout.outlineExpanded ?? true,
         outlineHeight: st.settings.layout.outlineHeight ?? 180,
+        // M1-39：构建文件面板折叠态（默认折叠）
+        buildFilesExpanded: st.settings.layout.buildFilesExpanded ?? false,
       });
     }
 
@@ -151,7 +153,7 @@ export function useWindowMemory(): void {
 
     // 3) 布局变化 → 防抖旁路写盘（restoreLayout 关闭时不写，遵守用户设置）
     const layoutKey = (s: AppState): string =>
-      `${s.sidebarVisible}|${s.sidebarWidth}|${s.previewVisible}|${s.previewRatio}|${s.pvSideWidth}|${s.logHeight}|${s.outlineExpanded}|${s.outlineHeight}`;
+      `${s.sidebarVisible}|${s.sidebarWidth}|${s.previewVisible}|${s.previewRatio}|${s.pvSideWidth}|${s.logHeight}|${s.outlineExpanded}|${s.outlineHeight}|${s.buildFilesExpanded}`;
     const debouncedLayoutSave = debounce(500, () => {
       const s = useAppStore.getState();
       const st = useSettingsStore.getState();
@@ -167,6 +169,7 @@ export function useWindowMemory(): void {
           logHeight: s.logHeight,
           outlineExpanded: s.outlineExpanded,
           outlineHeight: s.outlineHeight,
+          buildFilesExpanded: s.buildFilesExpanded,
         },
       });
     });

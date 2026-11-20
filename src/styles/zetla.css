@@ -3097,6 +3097,25 @@ body.col-resizing {
   color: var(--txt-5, #8a8f98);
 }
 
+/* ── M1-39 · 构建文件折叠面板（复用 .outline 外壳） ────────── */
+.build-files .outline-list { padding-top: 4px; }
+.build-files .outline-empty {
+  padding: 10px 14px;
+  font-size: 11px;
+}
+.build-artifact {
+  align-items: center;
+  font-size: 12px;
+}
+.ba-icon {
+  flex: none;
+  color: var(--txt-4);
+}
+.build-artifact.ba-pdf .ba-icon { color: var(--warn); }
+.build-artifact.ba-log .ba-icon { color: var(--txt-3); }
+.build-artifact.ba-aux .ba-icon { color: var(--accent); }
+.build-artifact .outline-file { font-family: var(--font-mono); }
+
 /* M1-28 大纲 section：折叠 caret、更多菜单、顶部拖拽分隔条 */
 .outline-caret {
   width: 16px;

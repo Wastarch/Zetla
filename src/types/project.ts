@@ -57,6 +57,16 @@ export interface ProjectTree {
   nodes: ProjectNode[];
 }
 
+/** M1-39：构建产物（list_build_artifacts 返回；与 Rust BuildArtifact 对齐） */
+export interface BuildArtifact {
+  name: string;
+  /** 绝对路径 */
+  path: string;
+  size: number;
+  /** 修改时间（Unix 毫秒） */
+  modified: number;
+}
+
 /** 图片导入结果（import_image / import_image_from_path 返回；与 Rust ImportImageResult 对齐） */
 export interface ImportImageResult {
   /** 落盘后的绝对路径（前端算相对 .tex 目录路径用） */

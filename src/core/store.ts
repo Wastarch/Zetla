@@ -56,6 +56,9 @@ export interface AppState {
   /** M1-28：大纲区展开高度（96–480，拖拽顶部横线调整；持久化） */
   outlineHeight: number;
   setOutlineHeight: (h: number) => void;
+  /** M1-39：资源管理器底部「构建文件」折叠面板是否展开（默认折叠，持久化） */
+  buildFilesExpanded: boolean;
+  toggleBuildFiles: () => void;
 
   // ── 偏好设置（M0-14a）──
   /** 设置页状态：null 关闭；否则为打开时停留的页签 */
@@ -158,6 +161,8 @@ export const useAppStore = create<AppState>((set) => ({
   toggleOutline: () => set((s) => ({ outlineExpanded: !s.outlineExpanded })),
   outlineHeight: OUTLINE_H_DEFAULT,
   setOutlineHeight: (h) => set({ outlineHeight: h }),
+  buildFilesExpanded: false,
+  toggleBuildFiles: () => set((s) => ({ buildFilesExpanded: !s.buildFilesExpanded })),
 
   // ── 偏好设置（M0-14a）──
   settingsDialog: null,

@@ -4,6 +4,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
   EntryKind,
+  BuildArtifact,
   FileDoc,
   ImportImageResult,
   ProjectConfig,
@@ -123,6 +124,19 @@ export const projectApi = {
   /** M1-38：showHidden=true 时项目树纳入点号文件/目录（.git 与重型目录仍跳过） */
   scanProject: (path: string, showHidden = false) =>
     call<ProjectTree>("scan_project", { path, showHidden }),
+  /** M1-39：构建产物（输出目录浅扫；后缀由设置传入，PDF 恒列入） */
+  listBuildArtifacts: (
+    root: string,
+    mainFile: string,
+    outputDir: string | null,
+    extensions: string[],
+  ) =>
+    call<BuildArtifact[]>("list_build_artifacts", {
+      root,
+      mainFile,
+      outputDir,
+      extensions,
+    }),
   /** 新建条目（M0-6），返回最终绝对路径 */
   createEntry: (path: string, kind: EntryKind) =>
     call<string>("create_entry", { path, kind }),

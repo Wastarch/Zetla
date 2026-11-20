@@ -13,6 +13,7 @@ import { useModuleViews } from "@/modules/useModuleList";
 import type { LatexModule, ModuleViewDecl } from "@/types/module";
 import { ProjectTree } from "./ProjectTree";
 import { OutlinePanel } from "@/outline/OutlinePanel";
+import { BuildFilesPanel } from "@/outline/BuildFilesPanel";
 import ReferencePanel from "@/modules/reference/ReferencePanel";
 import { SearchView } from "@/editor/SearchView";
 
@@ -65,6 +66,8 @@ export function Sidebar({ style }: SidebarProps) {
           </div>
 
           <ProjectTree />
+          {/* M1-39：构建文件折叠面板，位于大纲上方（复用大纲 section 样式） */}
+          <BuildFilesPanel />
           {/* M1-28：大纲常驻资源管理器底部（可折叠 / 拖拽调高），不再是独立视图 */}
           <OutlinePanel />
         </>

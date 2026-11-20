@@ -86,6 +86,8 @@ pub fn run() {
             commands::template::delete_template,
             // 项目管理（M0-6）
             commands::project::scan_project,
+            // M1-39：构建产物列表（资源管理器底部折叠面板）
+            commands::project::list_build_artifacts,
             commands::project::create_entry,
             commands::project::remove_entry,
             commands::project::rename_entry,

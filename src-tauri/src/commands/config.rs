@@ -436,6 +436,8 @@ pub struct LayoutConfig {
     pub outline_height: u32,
     /// M1-38：项目树是否显示隐藏文件（点号项；默认关）
     pub show_hidden_files: bool,
+    /// M1-39：资源管理器底部「构建文件」折叠面板是否展开（默认折叠）
+    pub build_files_expanded: bool,
 }
 
 impl Default for LayoutConfig {
@@ -450,6 +452,7 @@ impl Default for LayoutConfig {
             outline_expanded: true,
             outline_height: OUTLINE_H_DEFAULT,
             show_hidden_files: false,
+            build_files_expanded: false,
         }
     }
 }
@@ -1954,12 +1957,14 @@ mod tests {
         assert!(parsed.layout.outline_expanded);
         assert_eq!(parsed.layout.outline_height, OUTLINE_H_DEFAULT);
         assert!(!parsed.layout.show_hidden_files, "隐藏文件默认关");
+        assert!(!parsed.layout.build_files_expanded, "构建文件面板默认折叠");
 
         // camelCase 键名往返：整对象回写时前端新字段必须保留（否则重启丢失）
         let text = serde_json::to_string(&parsed).unwrap();
         assert!(text.contains("\"outlineExpanded\""));
         assert!(text.contains("\"outlineHeight\""));
         assert!(text.contains("\"showHiddenFiles\""));
+        assert!(text.contains("\"buildFilesExpanded\""));
 
         // 越界 → 钳制；合法值保留
         for (input, expect) in [
@@ -1975,11 +1980,15 @@ mod tests {
             assert_eq!(out.layout.outline_height, expect, "input={input}");
             assert!(out.layout.outline_expanded, "折叠态未被 normalize 改动");
             assert!(!out.layout.show_hidden_files, "显示隐藏文件开关未被 normalize 改动");
+            assert!(!out.layout.build_files_expanded, "构建文件折叠态未被 normalize 改动");
         }
 
         let mut on = AppConfig::default();
         on.layout.show_hidden_files = true;
-        assert!(normalize(on).layout.show_hidden_files, "开启态整对象回写不丢");
+        on.layout.build_files_expanded = true;
+        let kept = normalize(on);
+        assert!(kept.layout.show_hidden_files, "开启态整对象回写不丢");
+        assert!(kept.layout.build_files_expanded, "构建文件展开态整对象回写不丢");
     }
 
     #[test]
