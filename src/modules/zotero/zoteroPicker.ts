@@ -7,6 +7,7 @@
 import {
   DEFAULT_PICKER_COLUMNS,
   ZOTERO_PICKER_COLUMN_IDS,
+  ZOTERO_PICKER_WIDTH_IDS,
   ZOTERO_COMMANDS,
   type ZoteroCommand,
   type ZoteroItem,
@@ -425,11 +426,17 @@ export interface PickerColumnDef {
 export const PICKER_COLUMN_DEFS: readonly PickerColumnDef[] = [
   { id: "title", label: "标题", width: "minmax(0, 1.6fr)" },
   { id: "authors", label: "作者", width: "minmax(0, 1.3fr)" },
-  { id: "year", label: "年份", width: "46px" },
+  { id: "year", label: "年", width: "46px" },
   { id: "publication", label: "出版物", width: "minmax(0, 1fr)" },
+  { id: "doi", label: "DOI", width: "minmax(100px, 0.8fr)" },
   { id: "citeKey", label: "citekey", width: "minmax(110px, 0.9fr)" },
+  { id: "citedCount", label: "被引数", width: "60px" },
   { id: "status", label: "状态", width: "96px" },
 ];
+
+/** 列宽钳制范围（与 Rust normalize_zotero 一致） */
+export const PICKER_COL_WIDTH_MIN = 48;
+export const PICKER_COL_WIDTH_MAX = 600;
 
 /** 归一化列配置：白名单过滤 + 去重 + 空表回退默认（与 Rust normalize_zotero 一致） */
 export function normalizePickerColumns(cols: unknown): string[] {
@@ -448,15 +455,40 @@ export function normalizePickerColumns(cols: unknown): string[] {
 }
 
 /**
- * 由列配置拼 grid-template-columns（表头与数据行共用同一模板保证对齐）：
- * 首列固定 18px 勾选框列，第二列固定 title，其后按 PICKER_COLUMN_DEFS
- * 顺序拼接被勾选的列宽。
+ * 归一化拖拽后的列宽覆盖：只保留全部列白名单（含 title）内的键，
+ * 数值钳制到 48–600px。非数字/非有限值一律丢弃。
  */
-export function pickerGridTemplate(configured: string[]): string {
+export function normalizePickerColumnWidths(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (
+      ZOTERO_PICKER_WIDTH_IDS.includes(k as (typeof ZOTERO_PICKER_WIDTH_IDS)[number]) &&
+      typeof v === "number" &&
+      Number.isFinite(v)
+    ) {
+      out[k] = Math.round(Math.min(PICKER_COL_WIDTH_MAX, Math.max(PICKER_COL_WIDTH_MIN, v)));
+    }
+  }
+  return out;
+}
+
+/**
+ * 由列配置拼 grid-template-columns（表头与数据行共用同一模板保证对齐）：
+ * 首列固定 18px 勾选框列，其后按 PICKER_COLUMN_DEFS 顺序拼接各列宽。
+ * 被拖过的列用持久化 px 宽覆盖默认弹性宽；未拖过的列保持默认弹性宽。
+ */
+export function pickerGridTemplate(
+  configured: string[],
+  widths: Record<string, number> = {},
+): string {
   const on = new Set(normalizePickerColumns(configured));
+  const px = normalizePickerColumnWidths(widths);
   const parts = ["18px"];
   for (const def of PICKER_COLUMN_DEFS) {
-    if (def.id === "title" || on.has(def.id)) parts.push(def.width);
+    if (def.id === "title" || on.has(def.id)) {
+      parts.push(px[def.id] != null ? `${px[def.id]}px` : def.width);
+    }
   }
   return parts.join(" ");
 }

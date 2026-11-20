@@ -11,6 +11,7 @@ import {
   mergeCandidates,
   nextPageStart,
   normalizeCommand,
+  normalizePickerColumnWidths,
   normalizePickerColumns,
   parseSearchItems,
   pickerGridTemplate,
@@ -332,6 +333,28 @@ eq(
   pickerGridTemplate([]),
   "18px minmax(0, 1.6fr) minmax(0, 1.3fr) 46px minmax(110px, 0.9fr) 96px",
   "默认模板含 authors/year/citeKey/status 四列",
+);
+eq(
+  JSON.stringify(
+    normalizePickerColumnWidths({ title: 320, nope: 200, year: 1, citeKey: -5, doi: 9999 }),
+  ),
+  JSON.stringify({ title: 320, year: 48, citeKey: 48, doi: 600 }),
+  "列宽只保留白名单键且钳制到 48–600px",
+);
+eq(
+  JSON.stringify(normalizePickerColumnWidths(null)),
+  "{}",
+  "非对象输入列宽回退空表（沿用默认弹性宽）",
+);
+eq(
+  pickerGridTemplate(["year", "doi"], { title: 260, year: 88 }),
+  "18px 260px 88px minmax(100px, 0.8fr)",
+  "拖拽过的列用 px 覆盖默认弹性宽，其余列仍弹性",
+);
+eq(
+  JSON.stringify(normalizePickerColumns(["doi", "citedCount", "title"])),
+  JSON.stringify(["doi", "citedCount"]),
+  "DOI/被引数进入可勾选白名单，title 不入",
 );
 
 console.log(`\n${failures === 0 ? "✅ ALL PASS" : "❌ FAILED"} — ${total - failures}/${total}`);

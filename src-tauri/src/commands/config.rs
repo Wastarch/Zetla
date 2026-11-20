@@ -128,8 +128,26 @@ pub const ZOTERO_COMMANDS: [&str; 6] = ["cite", "citep", "citet", "autocite", "p
 pub const ZOTERO_KEY_STRATEGIES: [&str; 2] = ["bbt-first", "zetla"];
 pub const ZOTERO_DEFAULT_CSL_STYLE: &str = "china-national-standard-gb-t-7714-2015-numeric";
 /// M1-34：Citation Picker 列表可配置列白名单（title 恒显，不参与配置）
-pub const ZOTERO_PICKER_COLUMN_IDS: [&str; 5] =
-    ["authors", "year", "publication", "citeKey", "status"];
+pub const ZOTERO_PICKER_COLUMN_IDS: [&str; 7] = [
+    "authors",
+    "year",
+    "publication",
+    "doi",
+    "citeKey",
+    "citedCount",
+    "status",
+];
+/// M1-35：列宽可持久化的全部列 id（含恒显的 title）
+pub const ZOTERO_PICKER_WIDTH_IDS: [&str; 8] = [
+    "title",
+    "authors",
+    "year",
+    "publication",
+    "doi",
+    "citeKey",
+    "citedCount",
+    "status",
+];
 /// M1-34：Picker 列表默认显示列（title 之外）
 pub const ZOTERO_PICKER_COLUMNS_DEFAULT: [&str; 4] = ["authors", "year", "citeKey", "status"];
 
@@ -156,6 +174,8 @@ pub struct ZoteroConfig {
     pub poll_interval_seconds: u32,
     /// M1-34：Citation Picker 列表显示列（title 恒显；与前端 pickerColumns 对应）
     pub picker_columns: Vec<String>,
+    /// M1-35：Citation Picker 列宽覆盖（px，键为列 id；与前端 pickerColumnWidths 对应）
+    pub picker_column_widths: BTreeMap<String, u32>,
 }
 
 impl Default for ZoteroConfig {
@@ -174,6 +194,7 @@ impl Default for ZoteroConfig {
                 .iter()
                 .map(|s| s.to_string())
                 .collect(),
+            picker_column_widths: BTreeMap::new(),
         }
     }
 }
@@ -213,6 +234,11 @@ pub fn normalize_zotero(mut z: ZoteroConfig) -> ZoteroConfig {
             .iter()
             .map(|s| s.to_string())
             .collect();
+    }
+    // M1-35：列宽覆盖只保留白名单键，并钳制到 48–600px（与前端同一范围）
+    z.picker_column_widths.retain(|k, _| ZOTERO_PICKER_WIDTH_IDS.contains(&k.as_str()));
+    for w in z.picker_column_widths.values_mut() {
+        *w = (*w).clamp(48, 600);
     }
     z
 }
@@ -2314,6 +2340,10 @@ mod tests {
             key_strategy: "random".to_string(),
             poll_interval_seconds: 1,
             picker_columns: vec!["citeKey".to_string(), "nope".to_string(), "citeKey".to_string()],
+            picker_column_widths: BTreeMap::from([
+                ("citeKey".to_string(), 9999),
+                ("nope".to_string(), 200),
+            ]),
         };
         let n = normalize_zotero(z);
         assert_eq!(n.port, ZOTERO_DEFAULT_PORT);
@@ -2323,6 +2353,9 @@ mod tests {
         assert_eq!(n.poll_interval_seconds, ZOTERO_POLL_MIN);
         // M1-34：显示列白名单过滤 + 去重保序
         assert_eq!(n.picker_columns, vec!["citeKey".to_string()]);
+        // M1-35：列宽白名单过滤 + 钳制
+        assert_eq!(n.picker_column_widths.len(), 1);
+        assert_eq!(n.picker_column_widths.get("citeKey"), Some(&600));
 
         let empty_cols = ZoteroConfig {
             picker_columns: Vec::new(),

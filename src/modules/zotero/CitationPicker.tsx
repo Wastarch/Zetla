@@ -10,6 +10,8 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 import { insertSnippet } from "@/core/moduleRegistry";
 import { useSettingsStore } from "@/core/settings";
@@ -28,10 +30,13 @@ import {
   mergeCandidates,
   nextPageStart,
   normalizeCommand,
+  normalizePickerColumnWidths,
   normalizePickerColumns,
   parseSearchItems,
   parseSelectedCollection,
   pickerGridTemplate,
+  PICKER_COL_WIDTH_MAX,
+  PICKER_COL_WIDTH_MIN,
   rankCandidates,
   type BibLikeEntry,
 } from "./zoteroPicker";
@@ -52,6 +57,8 @@ export function CitationPicker() {
   const zoteroSettings = useSettingsStore((s) => s.settings.zotero);
   // M1-34：列表显示列配置（持久化在 zotero.pickerColumns，title 恒显）
   const pickerColumnsCfg = useSettingsStore((s) => s.settings.zotero?.pickerColumns);
+  // M1-35：列宽覆盖（持久化在 zotero.pickerColumnWidths）
+  const pickerWidthsCfg = useSettingsStore((s) => s.settings.zotero?.pickerColumnWidths);
 
   const [query, setQuery] = useState("");
   const [command, setCommand] = useState<ZoteroCommand>("cite");
@@ -70,8 +77,11 @@ export function CitationPicker() {
   const [collections, setCollections] = useState<ZoteroCollection[]>([]);
   const [collectionKey, setCollectionKey] = useState("");
   const [collAuto, setCollAuto] = useState<string | null>(null);
-  // M1-34：表头「列」菜单开合
+  // M1-34：表头右键菜单开合与弹出坐标（M1-35 去掉按钮，只保留右键）
   const [colOpen, setColOpen] = useState(false);
+  const [colMenuPos, setColMenuPos] = useState({ x: 0, y: 0 });
+  const colMenuRef = useRef<HTMLDivElement>(null);
+  const resizingRef = useRef<{ id: string; startX: number; startW: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const closeAndFocus = useCallback(() => {
@@ -98,6 +108,7 @@ export function CitationPicker() {
     setCollectionKey("");
     setCollAuto(null);
     setColOpen(false);
+    resizingRef.current = null;
     setCommand(
       normalizeCommand(useSettingsStore.getState().settings.zotero?.defaultCommand ?? "cite"),
     );
@@ -303,8 +314,8 @@ export function CitationPicker() {
     [colOn],
   );
   const gridTemplate = useMemo(
-    () => pickerGridTemplate(pickerColumnsCfg ?? []),
-    [pickerColumnsCfg],
+    () => pickerGridTemplate(pickerColumnsCfg ?? [], pickerWidthsCfg ?? {}),
+    [pickerColumnsCfg, pickerWidthsCfg],
   );
   const toggleColumn = useCallback((id: string) => {
     const st = useSettingsStore.getState();
@@ -316,6 +327,69 @@ export function CitationPicker() {
     const nextZotero = { ...cur, pickerColumns: next };
     st.setSettings({ ...st.settings, zotero: nextZotero });
     void st.persist({ zotero: nextZotero });
+  }, []);
+
+  // M1-35：表头右键开关列菜单（坐标钳制避免溢出屏幕）
+  const openColumnMenu = useCallback((e: ReactMouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setColMenuPos({
+      x: Math.min(e.clientX, window.innerWidth - 184),
+      y: Math.min(e.clientY, window.innerHeight - 300),
+    });
+    setColOpen(true);
+  }, []);
+  // 点菜单外部关闭（浮层自身 mousedown 会 stopPropagation，故挂 window）
+  useEffect(() => {
+    if (!colOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (!colMenuRef.current?.contains(e.target as Node)) setColOpen(false);
+    };
+    window.addEventListener("mousedown", onDown, true);
+    return () => window.removeEventListener("mousedown", onDown, true);
+  }, [colOpen]);
+
+  // M1-35：拖拽表头列边界改列宽（指针事件，与 Tauri 原生拖放隔离）；
+  // 拖动中只改内存 store 求即时反馈，松手才落盘。
+  const onResizeStart = useCallback((e: ReactPointerEvent<HTMLSpanElement>, id: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const cell = e.currentTarget.parentElement;
+    const w = cell?.getBoundingClientRect().width ?? 120;
+    resizingRef.current = { id, startX: e.clientX, startW: w };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  }, []);
+  const onResizeMove = useCallback((e: ReactPointerEvent<HTMLSpanElement>) => {
+    const r = resizingRef.current;
+    if (!r) return;
+    e.preventDefault();
+    const w = Math.round(
+      Math.min(PICKER_COL_WIDTH_MAX, Math.max(PICKER_COL_WIDTH_MIN, r.startW + e.clientX - r.startX)),
+    );
+    const st = useSettingsStore.getState();
+    const cur = st.settings.zotero;
+    if (!cur || cur.pickerColumnWidths?.[r.id] === w) return;
+    const next = { ...cur, pickerColumnWidths: { ...cur.pickerColumnWidths, [r.id]: w } };
+    st.setSettings({ ...st.settings, zotero: next }); // 拖动中不落盘
+  }, []);
+  const onResizeEnd = useCallback((e: ReactPointerEvent<HTMLSpanElement>) => {
+    const r = resizingRef.current;
+    if (!r) return;
+    e.preventDefault();
+    resizingRef.current = null;
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
+    const st = useSettingsStore.getState();
+    const cur = st.settings.zotero;
+    if (!cur) return;
+    void st.persist({
+      zotero: {
+        ...cur,
+        pickerColumnWidths: normalizePickerColumnWidths(cur.pickerColumnWidths),
+      },
+    });
   }, []);
 
   const doInsert = useCallback(async () => {
@@ -487,46 +561,71 @@ export function CitationPicker() {
           </label>
         </div>
 
-        {/* M1-34：列表表头（与数据行共用 grid 模板）+「列」自定义菜单 */}
+        {/* M1-35：表头右键选择显示列 + 拖拽列边界改列宽 */}
         <div
           className="zotero-picker-cols"
-          style={{ gridTemplateColumns: `${gridTemplate} 26px` }}
+          style={{ gridTemplateColumns: gridTemplate }}
+          onContextMenu={openColumnMenu}
+          title="右键选择显示列 · 拖拽列边界调整宽度"
         >
           <span className="zotero-picker-hcell" />
-          <span className="zotero-picker-hcell">标题</span>
+          <span className="zotero-picker-hcell">
+            标题
+            <span
+              className="zotero-picker-col-resizer"
+              onPointerDown={(e) => onResizeStart(e, "title")}
+              onPointerMove={onResizeMove}
+              onPointerUp={onResizeEnd}
+              onPointerCancel={onResizeEnd}
+            />
+          </span>
           {visibleDefs.map((d) => (
             <span key={d.id} className="zotero-picker-hcell">
               {d.label}
+              <span
+                className="zotero-picker-col-resizer"
+                onPointerDown={(e) => onResizeStart(e, d.id)}
+                onPointerMove={onResizeMove}
+                onPointerUp={onResizeEnd}
+                onPointerCancel={onResizeEnd}
+              />
             </span>
           ))}
-          <div className="zotero-picker-colwrap">
+        </div>
+        {colOpen && (
+          <div
+            ref={colMenuRef}
+            className="zotero-picker-colmenu"
+            style={{ left: colMenuPos.x, top: colMenuPos.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            {PICKER_COLUMN_DEFS.filter((d) => d.id !== "title").map((d) => (
+              <label key={d.id}>
+                <input
+                  type="checkbox"
+                  checked={colOn.has(d.id)}
+                  onChange={() => toggleColumn(d.id)}
+                />
+                {d.label}
+              </label>
+            ))}
             <button
               type="button"
-              className={`zotero-picker-colbtn${colOpen ? " on" : ""}`}
-              title="自定义显示列"
-              onClick={() => setColOpen((o) => !o)}
+              className="zotero-picker-colreset"
+              onClick={() => {
+                const st = useSettingsStore.getState();
+                const cur = st.settings.zotero;
+                if (!cur) return;
+                const next = { ...cur, pickerColumnWidths: {} };
+                st.setSettings({ ...st.settings, zotero: next });
+                void st.persist({ zotero: next });
+                setColOpen(false);
+              }}
             >
-              列
+              重置列宽
             </button>
-            {colOpen && (
-              <div
-                className="zotero-picker-colmenu"
-                onMouseDown={(e) => e.stopPropagation()}
-              >
-                {PICKER_COLUMN_DEFS.filter((d) => d.id !== "title").map((d) => (
-                  <label key={d.id}>
-                    <input
-                      type="checkbox"
-                      checked={colOn.has(d.id)}
-                      onChange={() => toggleColumn(d.id)}
-                    />
-                    {d.label}
-                  </label>
-                ))}
-              </div>
-            )}
           </div>
-        </div>
+        )}
 
         <div className="zotero-picker-list">
           {shown.length === 0 && (
@@ -545,7 +644,7 @@ export function CitationPicker() {
               className={`zotero-picker-row${i === highlight ? " on" : ""}${
                 selected.includes(c.citeKey) ? " picked" : ""
               }`}
-              style={{ gridTemplateColumns: `${gridTemplate} 26px` }}
+              style={{ gridTemplateColumns: gridTemplate }}
               onClick={() => {
                 setHighlight(i);
                 toggleSelect(c.citeKey);
@@ -568,8 +667,16 @@ export function CitationPicker() {
               {colOn.has("publication") && (
                 <span className="zotero-picker-cell">{c.publication || "—"}</span>
               )}
+              {colOn.has("doi") && (
+                <span className="zotero-picker-cell zc-mono">{c.doi || "—"}</span>
+              )}
               {colOn.has("citeKey") && (
                 <span className="zotero-picker-cell zc-mono">{c.citeKey}</span>
+              )}
+              {colOn.has("citedCount") && (
+                <span className="zotero-picker-cell zc-num">
+                  {c.citedCount > 0 ? String(c.citedCount) : "—"}
+                </span>
               )}
               {colOn.has("status") && (
                 <span
@@ -580,7 +687,6 @@ export function CitationPicker() {
                   {c.citedCount > 0 ? ` · 被引 ${c.citedCount}` : ""}
                 </span>
               )}
-              <span />
             </div>
           ))}
           {hasMore && (

@@ -46,6 +46,8 @@ export interface ZoteroSettings {
   pollIntervalSeconds: number;
   /** M1-34：Citation Picker 列表显示列（title 恒显不参与配置；与 Rust picker_columns 一一对应） */
   pickerColumns: string[];
+  /** M1-35：Citation Picker 列宽覆盖（px，键为列 id；与 Rust picker_column_widths 一一对应） */
+  pickerColumnWidths: Record<string, number>;
 }
 
 /** Picker 列表可配置列白名单（title 固定显示，不在其中） */
@@ -53,8 +55,16 @@ export const ZOTERO_PICKER_COLUMN_IDS = [
   "authors",
   "year",
   "publication",
+  "doi",
   "citeKey",
+  "citedCount",
   "status",
+] as const;
+
+/** 列宽可持久化的全部列 id（含恒显的 title） */
+export const ZOTERO_PICKER_WIDTH_IDS = [
+  "title",
+  ...ZOTERO_PICKER_COLUMN_IDS,
 ] as const;
 
 /** Picker 列表默认显示列（title 之外）：作者 / 年份 / citekey / 状态 */
@@ -72,6 +82,7 @@ export const DEFAULT_ZOTERO_SETTINGS: ZoteroSettings = {
   keyStrategy: "bbt-first",
   pollIntervalSeconds: 30,
   pickerColumns: [...DEFAULT_PICKER_COLUMNS],
+  pickerColumnWidths: {},
 };
 
 /**
