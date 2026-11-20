@@ -4,7 +4,7 @@
 // M1-3：自定义编译流程（steps 非空时绕过 latexmk，按步骤序列直跑：
 // latex=引擎一遍、bibtex/biber=参考文献工具，如 LaTeX → BibTeX → LaTeX → LaTeX）
 use serde::Serialize;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -812,13 +812,55 @@ fn output_dir_flags(ctx: &Ctx) -> Vec<String> {
     }
 }
 
-/// M1-15f：biber/bibtex 的基础参数——输出目录不同时 .bcf/.aux 在输出目录里，
-/// 基础参数改指 %OUTDIR%/%DOCFILE%（cwd 仍是主文件目录，故用绝对路径）。
-fn aux_tool_base_arg(ctx: &Ctx) -> String {
-    if ctx.out == ctx.dir {
-        placeholders::expand_str("%DOCFILE%", ctx)
+/// 词法求 `from` 到 `to` 的相对路径（纯字符串分量运算，不访问文件系统）。
+/// 跳过共同前缀后，对 `from` 剩余的每个分量补 `..`，再接上 `to` 剩余分量；
+/// 两者相同（无剩余）时返回 `.`。
+fn path_relative(from: &Path, to: &Path) -> PathBuf {
+    let from_comps: Vec<Component<'_>> = from.components().collect();
+    let to_comps: Vec<Component<'_>> = to.components().collect();
+    let mut common = 0;
+    while common < from_comps.len()
+        && common < to_comps.len()
+        && from_comps[common] == to_comps[common]
+    {
+        common += 1;
+    }
+    let mut result = PathBuf::new();
+    for c in &from_comps[common..] {
+        if !matches!(c, Component::CurDir) {
+            result.push("..");
+        }
+    }
+    for c in &to_comps[common..] {
+        if !matches!(c, Component::CurDir) {
+            result.push(c.as_os_str());
+        }
+    }
+    if result.as_os_str().is_empty() {
+        PathBuf::from(".")
     } else {
-        placeholders::expand_str("%OUTDIR%/%DOCFILE%", ctx)
+        result
+    }
+}
+
+/// M1-15f：biber/bibtex 的基础参数。子进程 cwd 固定为主文件目录（bcf 里的
+/// datasource 是相对路径，必须保持该 cwd）；输出目录不同时 .bcf/.aux 在输出
+/// 目录里，故基础参数用「相对 cwd」的 `rel/stem`（如 `build/main`）。
+/// 不能用绝对 %OUTDIR%/%DOCFILE%：中文路径在 Windows 下传给 Perl 写的 biber
+/// 会编码错乱（曾报 Cannot find 'E:/.../宇宙学笔记/.../build/main.bcf'）。
+fn aux_tool_base_arg(ctx: &Ctx) -> String {
+    let stem = placeholders::expand_str("%DOCFILE%", ctx);
+    if ctx.out == ctx.dir {
+        stem
+    } else {
+        let rel = path_relative(ctx.dir, ctx.out)
+            .to_string_lossy()
+            .replace('\\', "/");
+        if rel == "." {
+            stem
+        } else {
+            format!("{}/{}", rel, stem)
+        }
     }
 }
 
@@ -838,10 +880,12 @@ fn engine_resolution(
                 "-synctex=1".to_string(),
                 "-interaction=nonstopmode".to_string(),
                 "-file-line-error".to_string(),
-                placeholders::expand_str("%DOCFILE_EXT%", ctx),
             ];
-            // M1-15f：显式输出目录时补 -output-directory
+            // M1-15f：显式输出目录时补 -output-directory。必须放在主文件名之前——
+            // TeX/latexmk 只解析第一个非选项参数之前的开关，主文件名之后的
+            // -output-directory 会被忽略（真机 main.log 曾出现此问题）。
             a.extend(output_dir_flags(ctx));
+            a.push(placeholders::expand_str("%DOCFILE_EXT%", ctx));
             a.extend(placeholders::expand_args(args, ctx));
             ToolResolution::Run {
                 exe,
@@ -888,11 +932,12 @@ fn resolve_command(
                     "-synctex=1".to_string(),
                     "-interaction=nonstopmode".to_string(),
                     "-file-line-error".to_string(),
-                    placeholders::expand_str("%DOCFILE_EXT%", ctx),
                 ];
                 // M1-15f：与引擎直跑一致，显式输出目录时补 -output-directory（latexmk 会把它
-                // 传给引擎，并自己在输出目录里跑 bibtex/biber、找 .bcf/.aux）
+                // 传给引擎，并自己在输出目录里跑 bibtex/biber、找 .bcf/.aux）。
+                // 必须在主文件名之前，否则 latexmk 不再解析该开关。
                 a.extend(output_dir_flags(ctx));
+                a.push(placeholders::expand_str("%DOCFILE_EXT%", ctx));
                 a.extend(placeholders::expand_args(args, ctx));
                 ToolResolution::Run {
                     exe,
@@ -1535,7 +1580,31 @@ mod tests {
         let flags = output_dir_flags(&separate);
         assert_eq!(flags.len(), 1);
         assert_eq!(flags[0], "-output-directory=/proj/out");
-        assert_eq!(aux_tool_base_arg(&separate), "/proj/out/main");
+        assert_eq!(aux_tool_base_arg(&separate), "../out/main");
+    }
+
+    /// M1-15f 真机回归：项目根含中文时，biber 基础参数必须保持为相对 cwd 的
+    /// 纯 ASCII 路径（如 build/main），否则 Perl 版 biber 参数编码错乱，
+    /// 报 Cannot find '.../宇宙学笔记/.../build/main.bcf'。
+    #[test]
+    fn aux_tool_base_arg_is_ascii_relative_with_chinese_root() {
+        let doc = Path::new("E:/宇宙学笔记/proj/main.tex");
+        let dir = Path::new("E:/宇宙学笔记/proj");
+        let out = Path::new("E:/宇宙学笔记/proj/build");
+        let ctx = Ctx { doc, dir, out, aux: out, ws: dir };
+        let base = aux_tool_base_arg(&ctx);
+        assert_eq!(base, "build/main");
+        assert!(base.chars().all(|c| c.is_ascii()), "biber 参数应全为 ASCII，实际：{base}");
+    }
+
+    /// M1-15f：主文件在子目录、输出目录需 `..` 回退时，相对路径分量应正确。
+    #[test]
+    fn aux_tool_base_arg_uses_parent_components() {
+        let doc = Path::new("E:/proj/chap/main.tex");
+        let dir = Path::new("E:/proj/chap");
+        let out = Path::new("E:/proj/build");
+        let ctx = Ctx { doc, dir, out, aux: out, ws: Path::new("E:/proj") };
+        assert_eq!(aux_tool_base_arg(&ctx), "../build/main");
     }
 
     /// M1-15f：Windows 反斜杠路径下 -output-directory 的值也用 / 分隔（%OUTDIR% 走 fwd 语义，
