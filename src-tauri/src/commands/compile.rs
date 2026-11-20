@@ -799,7 +799,9 @@ enum ToolResolution {
 }
 
 /// M1-15f：引擎 / latexmk 的输出目录附加参数——输出目录与主文件目录不同时
-/// 追加 `-output-directory=<OUTDIR>`（%OUTDIR% 为 / 分隔绝对路径，TeX 引擎普遍认）；
+/// 追加 `-output-directory=<相对 cwd 的 ASCII 路径>`（TeX Live 2024+ 会把该值
+/// putenv 成 TEXMF_OUTPUT_DIRECTORY，Windows CRT 的 putenv 拒绝非 ASCII，
+/// 故必须相对主文件目录并用 / 分隔，避免中文绝对路径）；
 /// 相同（默认行为）时不加任何参数，与旧版完全一致。
 fn output_dir_flags(ctx: &Ctx) -> Vec<String> {
     if ctx.out == ctx.dir {
@@ -807,7 +809,9 @@ fn output_dir_flags(ctx: &Ctx) -> Vec<String> {
     } else {
         vec![format!(
             "-output-directory={}",
-            placeholders::expand_str("%OUTDIR%", ctx)
+            path_relative(ctx.dir, ctx.out)
+                .to_string_lossy()
+                .replace('\\', "/")
         )]
     }
 }
@@ -1579,7 +1583,7 @@ mod tests {
         let separate = Ctx { doc, dir, out, aux: out, ws: Path::new("/proj") };
         let flags = output_dir_flags(&separate);
         assert_eq!(flags.len(), 1);
-        assert_eq!(flags[0], "-output-directory=/proj/out");
+        assert_eq!(flags[0], "-output-directory=../out");
         assert_eq!(aux_tool_base_arg(&separate), "../out/main");
     }
 
@@ -1595,6 +1599,9 @@ mod tests {
         let base = aux_tool_base_arg(&ctx);
         assert_eq!(base, "build/main");
         assert!(base.chars().all(|c| c.is_ascii()), "biber 参数应全为 ASCII，实际：{base}");
+        let flags = output_dir_flags(&ctx);
+        assert_eq!(flags[0], "-output-directory=build");
+        assert!(flags[0].is_ascii());
     }
 
     /// M1-15f：主文件在子目录、输出目录需 `..` 回退时，相对路径分量应正确。
@@ -1607,8 +1614,8 @@ mod tests {
         assert_eq!(aux_tool_base_arg(&ctx), "../build/main");
     }
 
-    /// M1-15f：Windows 反斜杠路径下 -output-directory 的值也用 / 分隔（%OUTDIR% 走 fwd 语义，
-    /// TeX 引擎在 Windows 同样认正斜杠）
+    /// M1-15f：Windows 反斜杠路径下 -output-directory 产出相对 cwd 的纯 ASCII 路径
+    /// （不再传含中文/绝对路径导致 CRT putenv 失败）
     #[test]
     fn output_dir_flags_use_forward_slashes_on_windows_paths() {
         let doc = Path::new("E:\\proj\\main.tex");
@@ -1617,7 +1624,7 @@ mod tests {
         let ctx = Ctx { doc, dir, out, aux: out, ws: dir };
         let flags = output_dir_flags(&ctx);
         assert_eq!(flags.len(), 1);
-        assert_eq!(flags[0], "-output-directory=E:/proj/build");
+        assert_eq!(flags[0], "-output-directory=build");
         // 占位符必须全部展开，不允许 % 残留
         assert!(!flags[0].contains('%'));
     }
