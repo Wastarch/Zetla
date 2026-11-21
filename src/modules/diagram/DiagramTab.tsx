@@ -15,6 +15,9 @@ export default function DiagramTab() {
   const layoutMode = useDiagramStore((s) => s.layoutMode);
   const splitRatio = useDiagramStore((s) => s.splitRatio);
   const setSplitRatio = useDiagramStore((s) => s.setSplitRatio);
+  // v1：Tab 挂载 = 打开绘图工作台，此时扫描项目内 TikZ 来源；
+  // 入口与结果展示在顶部 .dg-tab-meta 的「源码来源」下拉菜单。
+  const refreshTikzSources = useDiagramStore((s) => s.refreshTikzSources);
   const bodyRef = useRef<HTMLDivElement>(null);
   const draggingRef = useRef(false);
 
@@ -31,6 +34,11 @@ export default function DiagramTab() {
     },
     [],
   );
+
+  // v1：打开 / 重新打开绘图 Tab 时扫描一次；重复挂载由 store 的 scanSeq 抑制旧结果。
+  useEffect(() => {
+    void refreshTikzSources();
+  }, [refreshTikzSources]);
 
   // 分屏分隔条：沿用 App.tsx 侧栏/预览的 window 级拖拽范式（body.col-resizing 抑制选中）。
   // 比例按容器实际宽度换算，窗口缩放后仍按比例分配；钳取在 store 的 0.2–0.8。
