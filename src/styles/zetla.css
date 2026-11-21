@@ -2440,26 +2440,104 @@ html[data-platform="darwin"] .darwin-title {
   margin-top: 20px;
 }
 
-.tl-save-panel h2 {
-  margin-bottom: 8px;
-  color: var(--txt);
-  font-family: var(--font-serif);
-  font-size: 18px;
+/* ── M1-16 根据本项目制作模板向导 ────────────────────────── */
+.craft-steps {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  font-size: 11.5px;
+  color: var(--txt-3);
+}
+
+.craft-steps .step {
+  padding: 3px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.craft-steps .step.on {
+  color: var(--accent);
+  border-color: var(--accent);
   font-weight: 600;
 }
 
-.tl-save-panel .entry-label {
-  margin-top: 4px;
+.craft-files {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin-top: 6px;
 }
 
-.tl-save-panel .entry-input {
-  margin: 4px 0 12px;
-}
-
-.tl-save-acts {
+.craft-files label {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+  font-size: 12px;
+  color: var(--txt);
+  cursor: pointer;
+  font-family: var(--font-mono);
+}
+
+.craft-files .tex-badge {
+  flex: none;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--bg-4);
+  color: var(--txt-3);
+  font-size: 10px;
+  font-family: var(--font-sans, sans-serif);
+}
+
+.craft-var-row {
+  display: grid;
+  grid-template-columns: auto 90px 110px 1fr auto;
   gap: 8px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.craft-var-row .entry-input {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.craft-var-key {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--txt-2);
+  white-space: nowrap;
+}
+
+.craft-var-key .bound {
+  color: var(--accent);
+  font-size: 10px;
+  margin-left: 4px;
+}
+
+.craft-var-head {
+  display: grid;
+  grid-template-columns: auto 90px 110px 1fr auto;
+  gap: 8px;
+  margin-bottom: 4px;
+  font-size: 10.5px;
+  color: var(--txt-3);
+}
+
+.craft-summary {
+  font-size: 12px;
+  color: var(--txt-2);
+  line-height: 1.7;
+}
+
+.craft-hint {
+  font-size: 11px;
+  color: var(--txt-3);
+  line-height: 1.6;
+  margin-top: 8px;
 }
 
 .fw-field {

@@ -14,8 +14,10 @@ import type {
   RecipeInfo,
   SnippetDef,
   SyncTexHit,
+  TemplateAnalysis,
   TemplateManifest,
   TemplateMeta,
+  TemplateVar,
   TexDistInfo,
   TexError,
   TexInstallResult,
@@ -102,18 +104,28 @@ export const templateApi = {
   getTemplate: (id: string) => call<TemplateManifest>("get_template", { id }),
   createProject: (templateId: string, vars: Record<string, unknown>, targetPath: string) =>
     call<ProjectInfo>("create_project", { templateId, variables: vars, targetPath }),
-  // M1-15e：把当前项目另存为用户模板 / 导入自定义模板（目录或 .zip）
-  saveAsTemplate: (
-    root: string,
-    name: string,
-    description?: string,
-    category?: string,
-  ) =>
-    call<TemplateMeta>("save_as_template", {
-      root,
-      name,
-      description: description ?? null,
-      category: category ?? null,
+  // M1-16：根据本项目制作模板（分析 + 制作）；导入统一只收 .zip
+  analyzeProject: (root: string) =>
+    call<TemplateAnalysis>("analyze_project", { root }),
+  makeTemplate: (opts: {
+    root: string;
+    name: string;
+    description?: string;
+    category?: string;
+    variables: TemplateVar[];
+    files: string[];
+    exportPath?: string;
+    install: boolean;
+  }) =>
+    call<TemplateMeta>("make_template", {
+      root: opts.root,
+      name: opts.name,
+      description: opts.description ?? null,
+      category: opts.category ?? null,
+      variables: opts.variables,
+      files: opts.files,
+      exportPath: opts.exportPath ?? null,
+      install: opts.install,
     }),
   importTemplate: (src: string) => call<TemplateMeta>("import_template", { src }),
   /** M1-15e：删除用户模板（内置模板会拒绝） */

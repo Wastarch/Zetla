@@ -15,6 +15,7 @@ import { ProjectActionDialog } from "@/project/ProjectActionDialog";
 import { ToastHost } from "@/ui/ToastHost";
 import { TemplateWizard } from "@/template/TemplateWizard";
 import { TemplateLibraryDialog } from "@/template/TemplateLibraryDialog";
+import { TemplateCraftDialog } from "@/template/TemplateCraftDialog";
 import { WelcomeScreen } from "@/project/WelcomeScreen";
 import { useProjectStore } from "@/project/useProject";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -232,6 +233,7 @@ function App() {
       <ProjectActionDialog />
       <TemplateWizard />
       <TemplateLibraryDialog />
+      <TemplateCraftDialog />
       <ProjectSettingsDialog />
       {settingsPane !== null && <SettingsDialog />}
       {/* M0-15a：TeX 环境引导（放在设置页之后，同开时叠在其上层） */}

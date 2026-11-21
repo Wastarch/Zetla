@@ -89,10 +89,12 @@ pub fn run() {
             commands::template::list_templates,
             commands::template::get_template,
             commands::template::create_project,
-            // M1-15e：模板库管理（另存为 / 导入）
-            commands::template::save_as_template,
+            // M1-15e：模板库管理（导入 / 删除）
             commands::template::import_template,
             commands::template::delete_template,
+            // M1-16：根据项目制作模板（分析 / 制作）
+            commands::template::analyze_project,
+            commands::template::make_template,
             // 项目管理（M0-6）
             commands::project::scan_project,
             // M1-39：构建产物列表（资源管理器底部折叠面板）

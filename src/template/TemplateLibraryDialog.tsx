@@ -1,6 +1,6 @@
 // M1-15e · 模板库管理对话框（参考 docs/dev/UI/模板库.html 三栏布局）
 // 左：分类导航（内置按 category 分组 + 用户模板）；右：搜索 + 列表 / 详情双栏。
-// 能力：浏览/预览 manifest、导入（目录 / zip）、用此模板新建；「另存当前项目为模板」由菜单以另存模式打开。
+// 能力：浏览/预览 manifest、导入 .zip、用此模板新建；「根据本项目制作模板」由独立向导（TemplateCraftDialog）承担。
 import { useEffect, useMemo, useState } from "react";
 import { confirm, open as openFileDialog } from "@tauri-apps/plugin-dialog";
 import { templateApi } from "@/ipc/invoke";
@@ -43,10 +43,8 @@ function emojiFor(m: TemplateMeta): string {
 
 export function TemplateLibraryDialog() {
   const open = useProjectStore((s) => s.libraryOpen);
-  const librarySaveMode = useProjectStore((s) => s.librarySaveMode);
   const libraryInitialId = useProjectStore((s) => s.libraryInitialId);
   const close = useProjectStore((s) => s.closeLibrary);
-  const root = useProjectStore((s) => s.root);
   const openWizard = useProjectStore((s) => s.openWizard);
 
   const [metas, setMetas] = useState<TemplateMeta[]>([]);
@@ -58,10 +56,6 @@ export function TemplateLibraryDialog() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // 「另存当前项目为模板」表单
-  const [saveMode, setSaveMode] = useState(false);
-  const [saveName, setSaveName] = useState("");
-
   const refresh = async (selectId?: string) => {
     const ms = await templateApi.listTemplates();
     setMetas(ms);
@@ -72,21 +66,19 @@ export function TemplateLibraryDialog() {
     });
   };
 
-  // 打开时拉列表 + 复位筛选；另存模式直接展开表单
+  // 打开时拉列表 + 复位筛选
   useEffect(() => {
     if (!open) return;
     setErr(null);
     setScope("all");
     setQuery("");
-    setSaveMode(librarySaveMode);
-    setSaveName(librarySaveMode && root ? (root.split(/[\\/]/).pop() ?? "") : "");
     setLoading(true);
     // 向导「返回模板库」会带上当前模板 id，回填选中态
     void refresh(libraryInitialId ?? undefined)
       .catch((e) => setErr(String(e)))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, librarySaveMode, libraryInitialId, root]);
+  }, [open, libraryInitialId]);
 
   // 选中模板 → 拉清单详情
   useEffect(() => {
@@ -167,17 +159,13 @@ export function TemplateLibraryDialog() {
 
   if (!open) return null;
 
-  const doImport = async (dirMode: boolean) => {
+  const doImport = async () => {
     try {
-      const picked = await openFileDialog(
-        dirMode
-          ? { directory: true, multiple: false, title: "选择模板文件夹" }
-          : {
-              multiple: false,
-              title: "选择模板压缩包",
-              filters: [{ name: "模板压缩包", extensions: ["zip"] }],
-            },
-      );
+      const picked = await openFileDialog({
+        multiple: false,
+        title: "选择模板压缩包",
+        filters: [{ name: "模板压缩包", extensions: ["zip"] }],
+      });
       if (typeof picked !== "string") return;
       setBusy(true);
       setErr(null);
@@ -185,35 +173,6 @@ export function TemplateLibraryDialog() {
       await refresh(meta.id);
       setScope(meta.isUser ? "user" : "all");
       notify(`已导入模板「${meta.name}」`, "ok");
-    } catch (e) {
-      setErr(String(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  /** 退出另存模式（同时复位 store 标志，便于下次菜单再次打开表单） */
-  const endSaveMode = () => {
-    setSaveMode(false);
-    useProjectStore.setState({ librarySaveMode: false });
-  };
-
-  const doSave = async () => {
-    if (!root) return;
-    const name = saveName.trim();
-    if (!name) {
-      setErr("模板名不能为空");
-      return;
-    }
-    setBusy(true);
-    setErr(null);
-    try {
-      const meta = await templateApi.saveAsTemplate(root, name);
-      endSaveMode();
-      setSaveName("");
-      await refresh(meta.id);
-      setScope("user");
-      notify(`已另存为模板「${meta.name}」`, "ok");
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -347,48 +306,8 @@ export function TemplateLibraryDialog() {
                 )}
               </div>
 
-              {saveMode ? (
-                <div className="tl-detail tl-save-panel">
-                  <h2>另存当前项目为模板</h2>
-                  <p className="tl-desc">
-                    将当前项目文件复制到用户模板目录（排除 .ltex / 编译产物 /
-                    依赖目录）。
-                  </p>
-                  <label className="entry-label" htmlFor="tl-save-name">
-                    模板名
-                  </label>
-                  <input
-                    id="tl-save-name"
-                    className="entry-input"
-                    value={saveName}
-                    placeholder="例如：我的论文模板"
-                    spellCheck={false}
-                    autoFocus
-                    onChange={(e) => setSaveName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void doSave();
-                      }
-                    }}
-                  />
-                  <div className="tl-save-acts">
-                    <button type="button" className="btn" onClick={endSaveMode}>
-                      取消
-                    </button>
-                    <button
-                      type="button"
-                      className="btn primary"
-                      disabled={busy || !saveName.trim()}
-                      onClick={() => void doSave()}
-                    >
-                      {busy ? "保存中…" : "保存模板"}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="tl-detail">
-                  {manifest && selectedMeta ? (
+              <div className="tl-detail">
+                {manifest && selectedMeta ? (
                     <>
                       <div className="tl-detail-head">
                         <h2>{manifest.name}</h2>
@@ -465,8 +384,7 @@ export function TemplateLibraryDialog() {
                   ) : (
                     <p className="set-note">选择一个模板查看详情</p>
                   )}
-                </div>
-              )}
+              </div>
             </div>
           </div>
         </div>
@@ -477,17 +395,8 @@ export function TemplateLibraryDialog() {
               type="button"
               className="btn"
               disabled={busy}
-              onClick={() => void doImport(true)}
-              title="从包含 manifest.json 的模板文件夹导入"
-            >
-              导入文件夹…
-            </button>
-            <button
-              type="button"
-              className="btn"
-              disabled={busy}
-              onClick={() => void doImport(false)}
-              title="从 .zip 模板包导入"
+              onClick={() => void doImport()}
+              title="从 .zip 模板包导入（需包含 manifest.json）"
             >
               导入 zip…
             </button>
@@ -499,7 +408,7 @@ export function TemplateLibraryDialog() {
             <button
               type="button"
               className="btn primary"
-              disabled={!selected || saveMode || busy}
+              disabled={!selected || busy}
               onClick={() => {
                 const id = selected;
                 close();

@@ -95,3 +95,37 @@ export interface TemplateMeta {
   /** 编译引擎（列表项展示用） */
   engine?: string;
 }
+
+// ── M1-16：根据项目制作模板 ──────────────────────────────
+
+/** 文件清单项（制作向导勾选用） */
+export interface TemplateFileInfo {
+  /** 项目内相对路径（正斜杠） */
+  path: string;
+  /** 是否 .tex（勾选展示用） */
+  tex: boolean;
+}
+
+/** 自动提取的候选变量（analyze_project 返回） */
+export interface TemplateCandidate {
+  /** 与 LaTeX 命令同名：title/author/date，生成时回填为 <%= key %> */
+  key: string;
+  label: string;
+  /** 主文件中提取到的当前值（作为向导默认值） */
+  value: string;
+  /** 所在文件（相对路径） */
+  file: string;
+  /** 行号（1 起） */
+  line: number;
+  /** 全项目 .tex 中该命令的出现次数 */
+  count: number;
+}
+
+/** analyze_project 返回：文件清单 + 候选变量 + 项目编译配置 */
+export interface TemplateAnalysis {
+  files: TemplateFileInfo[];
+  candidates: TemplateCandidate[];
+  engine: string;
+  mainFile: string;
+  outputDir: string;
+}

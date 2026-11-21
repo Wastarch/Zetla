@@ -185,12 +185,14 @@ interface ProjectState {
   wizardTemplateId: string | null;
   /** M1-15e：模板库对话框 */
   libraryOpen: boolean;
-  /** 模板库打开时直接进入「另存当前项目为模板」表单（菜单入口用） */
-  librarySaveMode: boolean;
   /** 模板库打开时预选模板 id（向导「返回模板库」回填当前模板） */
   libraryInitialId: string | null;
-  openLibrary: (saveMode?: boolean, templateId?: string) => void;
+  openLibrary: (templateId?: string) => void;
   closeLibrary: () => void;
+  /** M1-16：「根据本项目制作模板」向导对话框 */
+  craftOpen: boolean;
+  openCraft: () => void;
+  closeCraft: () => void;
   /** R5：项目设置对话框（图片目录等） */
   projectSettingsOpen: boolean;
   /** M1-15a：启动恢复上次项目进行中（欢迎页据此延后显示，避免闪现） */
@@ -267,8 +269,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   wizardDir: null,
   wizardTemplateId: null,
   libraryOpen: false,
-  librarySaveMode: false,
   libraryInitialId: null,
+  craftOpen: false,
   projectSettingsOpen: false,
   restoring: false,
   switcherOpen: false,
@@ -682,16 +684,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({ wizardOpen: false, wizardDir: null, wizardTemplateId: null }),
 
   // M1-15e：模板库（入口见 菜单栏「模板」/ 欢迎页）
-  openLibrary: (saveMode = false, templateId) =>
+  openLibrary: (templateId) =>
     set({
       libraryOpen: true,
-      librarySaveMode: saveMode,
       libraryInitialId: templateId ?? null,
       ctx: null,
       switcherOpen: false,
     }),
-  closeLibrary: () =>
-    set({ libraryOpen: false, librarySaveMode: false, libraryInitialId: null }),
+  closeLibrary: () => set({ libraryOpen: false, libraryInitialId: null }),
+
+  // M1-16：根据本项目制作模板向导
+  openCraft: () => set({ craftOpen: true, ctx: null, switcherOpen: false }),
+  closeCraft: () => set({ craftOpen: false }),
 
   openProjectSettings: () => set({ projectSettingsOpen: true }),
   closeProjectSettings: () => set({ projectSettingsOpen: false }),

@@ -117,7 +117,7 @@ pub struct Dependencies {
     pub assets: Vec<String>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TemplateVar {
     pub key: String,
@@ -565,17 +565,6 @@ fn slugify(name: &str) -> String {
     }
 }
 
-/// 生成唯一 id：`<slug>-<秒级时间戳>`，冲突追加序号
-fn unique_template_id(user_dir: &Path, base: &str) -> String {
-    let mut id = format!("{}-{}", base, now_secs());
-    let mut n = 1u32;
-    while user_dir.join(&id).exists() {
-        id = format!("{}-{}-{}", base, now_secs(), n);
-        n += 1;
-    }
-    id
-}
-
 /// 另存模板时跳过的目录（编译产物/隐藏/重型）
 fn skip_project_dir(name: &str) -> bool {
     name == ".ltex"
@@ -711,6 +700,50 @@ fn extract_zip(src: &Path, dst: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// 校验 manifest（导入时把关坏包）：变量 key 规则 / 重复 / 保留字 / 选项完备性
+fn validate_manifest(m: &TemplateManifest) -> Result<(), String> {
+    if m.id.trim().is_empty() {
+        return Err("模板 id 不能为空".into());
+    }
+    if m.name.trim().is_empty() {
+        return Err("模板名不能为空".into());
+    }
+    validate_vars(&m.variables)
+}
+
+/// 变量定义合法性：key 命名规则、去重、保留字、label 必填、select/multiselect 需选项
+fn validate_vars(vars: &[TemplateVar]) -> Result<(), String> {
+    let mut seen: HashSet<&str> = HashSet::new();
+    for v in vars {
+        let k = v.key.trim();
+        if k.is_empty() {
+            return Err("变量名不能为空".into());
+        }
+        let first_ok = k.chars().next().map(|c| c.is_ascii_alphabetic() || c == '_');
+        let rest_ok = k
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_');
+        if first_ok != Some(true) || !rest_ok {
+            return Err(format!("变量名不合法（仅限字母/数字/下划线，且不以数字开头）: {}", k));
+        }
+        if matches!(k, "if" | "else" | "endif") {
+            return Err(format!("变量名不能使用渲染器保留字: {}", k));
+        }
+        if !seen.insert(k) {
+            return Err(format!("变量名重复: {}", k));
+        }
+        if v.label.trim().is_empty() {
+            return Err(format!("变量 {} 缺少显示名（label）", k));
+        }
+        if matches!(v.var_type, VarType::Select | VarType::Multiselect)
+            && v.options.iter().all(|o| o.trim().is_empty())
+        {
+            return Err(format!("变量 {} 为选择类型，但未提供任何选项", k));
+        }
+    }
+    Ok(())
+}
+
 /// 在解压/导入根中定位包含 manifest.json 的模板包目录（根或唯一一层子目录）
 fn find_pkg_root(dir: &Path) -> Result<PathBuf, String> {
     if dir.join("manifest.json").is_file() {
@@ -732,73 +765,377 @@ fn find_pkg_root(dir: &Path) -> Result<PathBuf, String> {
     }
 }
 
-/// 另存当前项目为用户模板：复制源文件（原样，不渲染）+ 写 manifest（build 取项目配置）
-fn save_as_template_in(
+// ── 根据项目制作模板（M1-16）──────────────────────────────
+//
+// 与旧「另存为模板」的区别：带 variables（向导表单）+ 统一导出 zip 交换格式。
+// 变量来源三层：自动提取候选（\title/\author/\date）→ 向导确认/补充 → 生成时严格回填。
+
+/// 自动候选变量绑定的 LaTeX 命令（key 与命令同名）：制作模板时回填为 <%= key %>
+const BOUND_CMDS: [&str; 3] = ["title", "author", "date"];
+
+const CMD_LABELS: [&str; 3] = ["标题", "作者", "日期"];
+
+/// 在一行内定位 `\cmd{ value }`，返回值的字节区间 [start, end)（不含花括号）。
+/// 严格口径：值内出现 `{`（嵌套）视为复杂值不处理；`\cmd` 后需为空白再到 `{`；
+/// `\cmd` 后跟字母（如 \titlepage）不算匹配。
+fn find_cmd_value_range(line: &str, cmd: &str) -> Option<(usize, usize)> {
+    let pat = format!("\\{}", cmd);
+    let bytes = line.as_bytes();
+    let mut from = 0usize;
+    while let Some(pos) = line[from..].find(&pat) {
+        let at = from + pos;
+        let after = at + pat.len();
+        // 命令名必须完整（\titlefoo 不算 \title）
+        if bytes
+            .get(after)
+            .map(|b| b.is_ascii_alphabetic())
+            .unwrap_or(false)
+        {
+            from = after;
+            continue;
+        }
+        // \cmd 与 { 之间只允许空白
+        let mut i = after;
+        while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t') {
+            i += 1;
+        }
+        if bytes.get(i) != Some(&b'{') {
+            from = after;
+            continue;
+        }
+        // 扫描闭合 }：中途出现 { 视为嵌套，放弃该命令
+        let inner_start = i + 1;
+        let mut j = inner_start;
+        while j < bytes.len() {
+            match bytes[j] {
+                b'{' => return None,
+                b'}' => {
+                    // 内部已是占位符（回填过）→ 跳过该次出现，继续向后找
+                    let inner = &line[inner_start..j];
+                    if inner.trim_start().starts_with("<%") {
+                        from = j + 1;
+                        break;
+                    }
+                    return Some((inner_start, j));
+                }
+                _ => j += 1,
+            }
+        }
+        // break 到这里：占位符跳过后继续找下一处
+        if j < bytes.len() {
+            continue;
+        }
+        return None; // 未闭合
+    }
+    None
+}
+
+/// 对一行执行回填：`\cmd{...}` → `\cmd{<%= key %>}`（bound: (命令, 变量名)）
+fn backfill_line(line: &str, bound: &[(&str, &str)]) -> String {
+    let mut out = line.to_string();
+    for (cmd, key) in bound {
+        while let Some((s, e)) = find_cmd_value_range(&out, cmd) {
+            out.replace_range(s..e, &format!("<%= {} %>", key));
+        }
+    }
+    out
+}
+
+/// 整文件回填（保留原行尾：CRLF 项目回填后仍为 CRLF，末尾换行不丢）
+fn backfill_text(text: &str, bound: &[(&str, &str)]) -> String {
+    let mut out = String::with_capacity(text.len() + 32);
+    let mut rest = text;
+    while let Some(nl) = rest.find('\n') {
+        let line = &rest[..nl];
+        out.push_str(&backfill_line(line, bound));
+        out.push('\n');
+        rest = &rest[nl + 1..];
+    }
+    out.push_str(&backfill_line(rest, bound));
+    out
+}
+
+/// 候选变量（analyze_project 返回，供向导预填）
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateCandidate {
+    pub key: String,
+    pub label: String,
+    /// 主文件中提取到的当前值（作为向导默认值）
+    pub value: String,
+    /// 所在文件（相对路径）
+    pub file: String,
+    /// 行号（1 起）
+    pub line: u32,
+    /// 全项目 .tex 中该命令的出现次数
+    pub count: u32,
+}
+
+/// 文件清单项（勾选用）
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateFileInfo {
+    pub path: String,
+    pub tex: bool,
+}
+
+/// analyze_project 返回
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TemplateAnalysis {
+    pub files: Vec<TemplateFileInfo>,
+    pub candidates: Vec<TemplateCandidate>,
+    pub engine: String,
+    pub main_file: String,
+    pub output_dir: String,
+}
+
+/// 分析项目：文件清单 + 候选变量（只读，可反复调用预览）
+fn analyze_project_in(root: &Path) -> Result<TemplateAnalysis, String> {
+    if !root.is_dir() {
+        return Err(format!("项目目录不存在: {}", root.display()));
+    }
+    let collected = collect_project_files(root);
+    if collected.is_empty() {
+        return Err("项目为空，无法制作模板".into());
+    }
+    let (engine, main_file, output_dir) = read_project_build(root);
+
+    // 各绑定命令在全项目 .tex 中的出现次数（单行简单值口径）
+    let mut counts: HashMap<&str, u32> = HashMap::new();
+    for (abs, _) in &collected {
+        if !is_tex_path(abs) {
+            continue;
+        }
+        let Ok(text) = std::fs::read_to_string(abs) else {
+            continue;
+        };
+        for line in text.lines() {
+            for cmd in BOUND_CMDS {
+                if find_cmd_value_range(line, cmd).is_some() {
+                    *counts.entry(cmd).or_insert(0) += 1;
+                }
+            }
+        }
+    }
+
+    // 主文件中首个出现作为默认值
+    let mut candidates = Vec::new();
+    if let Ok(text) = std::fs::read_to_string(root.join(&main_file)) {
+        for (idx, cmd) in BOUND_CMDS.iter().enumerate() {
+            for (i, line) in text.lines().enumerate() {
+                if let Some((s, e)) = find_cmd_value_range(line, cmd) {
+                    let value = line[s..e].trim().to_string();
+                    if value.is_empty() {
+                        continue;
+                    }
+                    candidates.push(TemplateCandidate {
+                        key: (*cmd).to_string(),
+                        label: CMD_LABELS[idx].to_string(),
+                        value,
+                        file: main_file.clone(),
+                        line: (i + 1) as u32,
+                        count: counts.get(cmd).copied().unwrap_or(0),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+
+    Ok(TemplateAnalysis {
+        files: collected
+            .into_iter()
+            .map(|(abs, rel)| TemplateFileInfo {
+                path: rel,
+                tex: is_tex_path(&abs),
+            })
+            .collect(),
+        candidates,
+        engine,
+        main_file,
+        output_dir,
+    })
+}
+
+/// 把模板包目录打包为 zip（相对路径统一正斜杠；失败时清理残留文件）
+fn zip_dir_to(src: &Path, dst: &Path) -> Result<(), String> {
+    let f = std::fs::File::create(dst).map_err(|e| format!("创建压缩包失败: {}", e))?;
+    let mut zw = zip::ZipWriter::new(f);
+    let opts = zip::write::SimpleFileOptions::default();
+    let mut err: Option<String> = None;
+    'outer: for entry in WalkDir::new(src).follow_links(false) {
+        let e = match entry {
+            Ok(e) => e,
+            Err(e) => {
+                err = Some(format!("遍历失败: {}", e));
+                break;
+            }
+        };
+        if e.file_type().is_dir() {
+            continue;
+        }
+        let rel = match e.path().strip_prefix(src) {
+            Ok(p) => p.to_string_lossy().replace('\\', "/"),
+            Err(e) => {
+                err = Some(format!("路径错误: {}", e));
+                break;
+            }
+        };
+        if let Err(e) = zw.start_file(&rel, opts) {
+            err = Some(format!("写入压缩包条目失败: {}", e));
+            break 'outer;
+        }
+        let mut file = match std::fs::File::open(e.path()) {
+            Ok(f) => f,
+            Err(e) => {
+                err = Some(format!("读取失败: {}", e));
+                break;
+            }
+        };
+        if let Err(e) = std::io::copy(&mut file, &mut zw) {
+            err = Some(format!("压缩写入失败: {}", e));
+            break;
+        }
+    }
+    if err.is_none() {
+        if let Err(e) = zw.finish() {
+            err = Some(format!("完成压缩包失败: {}", e));
+        }
+    }
+    if let Some(msg) = err {
+        let _ = std::fs::remove_file(dst);
+        return Err(msg);
+    }
+    Ok(())
+}
+
+/// 根据当前项目制作模板：勾选文件 → 绑定变量回填占位符 → manifest → 导出 zip / 安装
+#[allow(clippy::too_many_arguments)]
+fn make_template_in(
     root: &Path,
     name: &str,
     description: Option<String>,
     category: Option<String>,
+    variables: &[TemplateVar],
+    files: &[String],
+    export_path: Option<&Path>,
+    install: bool,
     user_dir: &Path,
+    builtin_dir: &Path,
 ) -> Result<TemplateMeta, String> {
-    if !root.is_dir() {
-        return Err(format!("项目目录不存在: {}", root.display()));
-    }
     let name = name.trim();
     if name.is_empty() {
         return Err("模板名不能为空".into());
     }
+    validate_vars(variables)?;
+    if !root.is_dir() {
+        return Err(format!("项目目录不存在: {}", root.display()));
+    }
+
+    // 只收勾选的文件（仍按项目扫描口径过滤，防止勾选编译产物/辅助文件）
+    let wanted: HashSet<&str> = files.iter().map(|s| s.as_str()).collect();
+    let all: Vec<(PathBuf, String)> = collect_project_files(root)
+        .into_iter()
+        .filter(|(_, rel)| wanted.contains(rel.as_str()))
+        .collect();
+    if all.is_empty() {
+        return Err("未选中任何有效文件（编译产物等已自动排除）".into());
+    }
+
     std::fs::create_dir_all(user_dir).map_err(|e| format!("创建用户模板目录失败: {}", e))?;
-    let files = collect_project_files(root);
-    if files.is_empty() {
-        return Err("项目为空，无法另存为模板".into());
-    }
 
-    let id = unique_template_id(user_dir, &slugify(name));
-    let pkg = user_dir.join(&id);
-    std::fs::create_dir_all(&pkg).map_err(|e| format!("创建模板目录失败: {}", e))?;
-
-    let mut specs: Vec<FileSpec> = Vec::new();
-    for (abs, rel) in &files {
-        let dst = pkg.join(rel);
-        if let Some(parent) = dst.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+    // id：安装时须与用户目录及内置模板都不冲突
+    let base = slugify(name);
+    let mut id = format!("{}-{}", base, now_secs());
+    if install {
+        let mut n = 1u32;
+        while user_dir.join(&id).exists() || builtin_dir.join(&id).is_dir() {
+            id = format!("{}-{}-{}", base, now_secs(), n);
+            n += 1;
         }
-        std::fs::copy(abs, &dst).map_err(|e| format!("复制失败 {}: {}", rel, e))?;
-        specs.push(FileSpec {
-            target: rel.clone(),
-            source: rel.clone(),
-            render: false,
-            condition: None,
-        });
     }
 
-    let (engine, main_file, output_dir) = read_project_build(root);
-    let manifest = TemplateManifest {
-        schema_version: "1.0".into(),
-        id: id.clone(),
-        name: name.to_string(),
-        description: description.filter(|s| !s.trim().is_empty()),
-        category: category.filter(|s| !s.trim().is_empty()),
-        tags: Vec::new(),
-        version: Some("1.0.0".into()),
-        build: BuildConfig {
-            engine,
-            main_file,
-            output_dir,
-            synctex: true,
-        },
-        dependencies: Dependencies::default(),
-        variables: Vec::new(),
-        structure: Structure {
-            dirs: Vec::new(),
-            files: specs,
-        },
-    };
-    let json = serde_json::to_string_pretty(&manifest)
-        .map_err(|e| format!("序列化模板清单失败: {}", e))?;
-    std::fs::write(pkg.join("manifest.json"), json)
-        .map_err(|e| format!("写入模板清单失败: {}", e))?;
-    Ok(meta_from(&manifest, true))
+    // 在用户模板目录的隐藏临时目录组装模板包（结束后清理）
+    let pkg = user_dir.join(format!(".craft-{}", now_secs()));
+    let _ = std::fs::remove_dir_all(&pkg);
+    let result = (|| -> Result<TemplateMeta, String> {
+        std::fs::create_dir_all(&pkg).map_err(|e| format!("创建模板目录失败: {}", e))?;
+
+        // 绑定变量：key ∈ BOUND_CMDS 的变量 → 对应命令回填
+        let bound: Vec<(&str, &str)> = variables
+            .iter()
+            .filter(|v| BOUND_CMDS.contains(&v.key.as_str()))
+            .map(|v| (v.key.as_str(), v.key.as_str()))
+            .collect();
+
+        let mut specs: Vec<FileSpec> = Vec::new();
+        for (abs, rel) in &all {
+            let dst = pkg.join(rel);
+            if let Some(parent) = dst.parent() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("创建目录失败: {}", e))?;
+            }
+            let mut rendered = false;
+            if !bound.is_empty() && is_tex_path(abs) {
+                if let Ok(text) = std::fs::read_to_string(abs) {
+                    let out = backfill_text(&text, &bound);
+                    std::fs::write(&dst, out).map_err(|e| format!("写入失败 {}: {}", rel, e))?;
+                    rendered = true;
+                }
+            }
+            if !rendered {
+                std::fs::copy(abs, &dst).map_err(|e| format!("复制失败 {}: {}", rel, e))?;
+            }
+            specs.push(FileSpec {
+                target: rel.clone(),
+                source: rel.clone(),
+                render: rendered,
+                condition: None,
+            });
+        }
+
+        let (engine, main_file, output_dir) = read_project_build(root);
+        let manifest = TemplateManifest {
+            schema_version: "1.0".into(),
+            id: id.clone(),
+            name: name.to_string(),
+            description: description.filter(|s| !s.trim().is_empty()),
+            category: category.filter(|s| !s.trim().is_empty()),
+            tags: Vec::new(),
+            version: Some("1.0.0".into()),
+            build: BuildConfig {
+                engine,
+                main_file,
+                output_dir,
+                synctex: true,
+            },
+            dependencies: Dependencies::default(),
+            variables: variables.to_vec(),
+            structure: Structure {
+                dirs: Vec::new(),
+                files: specs,
+            },
+        };
+        let json = serde_json::to_string_pretty(&manifest)
+            .map_err(|e| format!("序列化模板清单失败: {}", e))?;
+        std::fs::write(pkg.join("manifest.json"), json)
+            .map_err(|e| format!("写入模板清单失败: {}", e))?;
+
+        // 导出 zip（统一交换格式）
+        if let Some(p) = export_path {
+            zip_dir_to(&pkg, p)?;
+        }
+
+        // 安装到用户模板目录（「我的模板」）
+        if install {
+            copy_tree(&pkg, &user_dir.join(&id))?;
+        }
+
+        Ok(meta_from(&manifest, install))
+    })();
+
+    let _ = std::fs::remove_dir_all(&pkg);
+    result
 }
 
 /// 删除用户模板（拒绝内置 id 与不存在；仅动用户模板目录）
@@ -814,7 +1151,7 @@ fn delete_template_in(id: &str, user_dir: &Path, builtin_dir: &Path) -> Result<(
     std::fs::remove_dir_all(&pkg).map_err(|e| format!("删除模板失败: {}", e))
 }
 
-/// 导入模板（目录或 .zip）：校验 manifest → 复制到用户模板目录
+/// 导入模板（仅 .zip）：解压 → 定位包根 → 校验 manifest → 复制到用户模板目录
 fn import_template_in(
     src: &Path,
     user_dir: &Path,
@@ -823,25 +1160,28 @@ fn import_template_in(
     if !src.exists() {
         return Err(format!("导入源不存在: {}", src.display()));
     }
+    if !src.is_file()
+        || !src
+            .extension()
+            .map(|e| e.to_string_lossy().eq_ignore_ascii_case("zip"))
+            .unwrap_or(false)
+    {
+        return Err("仅支持导入 .zip 模板压缩包".into());
+    }
     std::fs::create_dir_all(user_dir).map_err(|e| format!("创建用户模板目录失败: {}", e))?;
 
-    // 解压 zip 到临时目录（目录则直接使用）
-    let mut tmp_holder: Option<PathBuf> = None;
+    // 解压 zip 到临时目录，再定位包根（zip 内可能嵌套一层根目录）
+    let tmp = user_dir.join(format!(".import-{}", now_secs()));
+    let _ = std::fs::remove_dir_all(&tmp);
     let result = (|| -> Result<TemplateMeta, String> {
-        let pkg_root = if src.is_dir() {
-            find_pkg_root(src)?
-        } else {
-            let tmp = user_dir.join(format!(".import-{}", now_secs()));
-            let _ = std::fs::remove_dir_all(&tmp);
-            std::fs::create_dir_all(&tmp).map_err(|e| format!("创建临时目录失败: {}", e))?;
-            tmp_holder = Some(tmp.clone());
-            extract_zip(src, &tmp)?;
-            find_pkg_root(&tmp)?
-        };
+        std::fs::create_dir_all(&tmp).map_err(|e| format!("创建临时目录失败: {}", e))?;
+        extract_zip(src, &tmp)?;
+        let pkg_root = find_pkg_root(&tmp)?;
         let text = std::fs::read_to_string(pkg_root.join("manifest.json"))
             .map_err(|e| format!("读取模板清单失败: {}", e))?;
         let manifest: TemplateManifest =
             serde_json::from_str(&text).map_err(|e| format!("模板清单解析失败: {}", e))?;
+        validate_manifest(&manifest)?;
         guard_id(&manifest.id)?;
         if builtin_dir.join(&manifest.id).join("manifest.json").is_file() {
             return Err(format!("模板 id 与内置模板冲突: {}", manifest.id));
@@ -854,9 +1194,7 @@ fn import_template_in(
         Ok(meta_from(&manifest, true))
     })();
 
-    if let Some(tmp) = tmp_holder {
-        let _ = std::fs::remove_dir_all(tmp);
-    }
+    let _ = std::fs::remove_dir_all(&tmp);
     result
 }
 
@@ -908,17 +1246,39 @@ pub fn create_project(
     create_project_in(&root, &template_id, &variables, &target_path)
 }
 
-/// M1-15e：把当前项目另存为用户模板
+/// M1-16：分析项目（候选变量 + 文件清单），供制作向导预览
 #[tauri::command]
-pub fn save_as_template(
+pub fn analyze_project(root: String) -> Result<TemplateAnalysis, String> {
+    analyze_project_in(Path::new(&root))
+}
+
+/// M1-16：根据当前项目制作模板（变量回填 → 导出 zip，可选安装到用户模板目录）
+#[tauri::command]
+pub fn make_template(
     app: tauri::AppHandle,
     root: String,
     name: String,
     description: Option<String>,
     category: Option<String>,
+    variables: Vec<TemplateVar>,
+    files: Vec<String>,
+    export_path: Option<String>,
+    install: bool,
 ) -> Result<TemplateMeta, String> {
     let user_dir = user_templates_dir(&app)?;
-    save_as_template_in(Path::new(&root), &name, description, category, &user_dir)
+    let builtin = resolve_templates_dir(&app);
+    make_template_in(
+        Path::new(&root),
+        &name,
+        description,
+        category,
+        &variables,
+        &files,
+        export_path.as_deref().map(Path::new),
+        install,
+        &user_dir,
+        &builtin,
+    )
 }
 
 /// M1-15e：导入自定义模板（目录或 .zip）
@@ -1269,86 +1629,200 @@ mod tests {
         assert!(list_templates_in(&builtin_root()).iter().all(|m| !m.is_user));
     }
 
+    // ── M1-16 根据项目制作模板 ──
+
     #[test]
-    fn save_as_template_roundtrip() {
-        let proj = tmp_dir("proj_save_tpl").join("MyProject");
-        std::fs::create_dir_all(proj.join("chapters")).unwrap();
-        std::fs::create_dir_all(proj.join(".ltex")).unwrap();
-        std::fs::create_dir_all(proj.join("build")).unwrap();
-        std::fs::write(
-            proj.join("main.tex"),
-            "\\documentclass{article}\\begin{document}hi\\end{document}",
-        )
-        .unwrap();
-        std::fs::write(proj.join("chapters/intro.tex"), "intro").unwrap();
-        std::fs::write(proj.join("main.aux"), "aux").unwrap();
-        std::fs::write(proj.join("build/x.pdf"), "%PDF").unwrap();
-        std::fs::write(
-            proj.join(".ltex/config.json"),
-            r#"{"engine":"pdflatex","mainFile":"main.tex","outputDir":"build"}"#,
-        )
-        .unwrap();
-
-        let user_dir = tmp_dir("user_tpl_save");
-        let meta = save_as_template_in(
-            &proj,
-            "我的模板",
-            Some("desc".into()),
-            Some("article".into()),
-            &user_dir,
-        )
-        .unwrap();
-        assert!(meta.is_user);
-        let pkg = user_dir.join(&meta.id);
-        assert!(pkg.join("manifest.json").is_file());
-        assert!(pkg.join("main.tex").is_file());
-        assert!(pkg.join("chapters/intro.tex").is_file());
-        // 辅助文件 / .ltex / build 不应进模板
-        assert!(!pkg.join("main.aux").exists());
-        assert!(!pkg.join(".ltex").exists());
-        assert!(!pkg.join("build").exists());
-
-        // 生成的模板可被 create_project 使用
-        let m = load_manifest(&user_dir, &meta.id).unwrap();
-        assert_eq!(m.build.engine, "pdflatex");
-        assert_eq!(m.build.main_file, "main.tex");
-        assert_eq!(m.variables.len(), 0);
-
-        let target = tmp_dir("proj_from_saved_tpl").join("out");
-        let info =
-            create_project_in(&user_dir, &meta.id, &HashMap::new(), target.to_str().unwrap())
-                .unwrap();
-        assert!(Path::new(&info.main_file).is_file());
-        assert!(target.join("chapters/intro.tex").is_file());
-        let cfg: Value = serde_json::from_str(
-            &std::fs::read_to_string(target.join(".ltex/config.json")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(cfg["templateId"], meta.id);
+    fn cmd_scan_and_backfill() {
+        assert_eq!(find_cmd_value_range("\\title{A B}", "title"), Some((7, 10)));
+        assert_eq!(find_cmd_value_range("\\title {spaced}", "title"), Some((8, 14)));
+        assert_eq!(find_cmd_value_range("\\title{}", "title"), Some((7, 7)));
+        // 命令名必须完整 / 嵌套花括号 / 未闭合 / 无花括号 → 不匹配
+        assert_eq!(find_cmd_value_range("\\titlepage", "title"), None);
+        assert_eq!(find_cmd_value_range("\\title{a{b}c}", "title"), None);
+        assert_eq!(find_cmd_value_range("\\title{unclosed", "title"), None);
+        assert_eq!(find_cmd_value_range("no cmd here", "title"), None);
+        // 回填：同行多处；已占位符的出现跳过（防死循环）
+        assert_eq!(
+            backfill_line("t=\\title{x} u=\\title{y}", &[("title", "title")]),
+            "t=\\title{<%= title %>} u=\\title{<%= title %>}"
+        );
+        assert_eq!(
+            backfill_line("\\title{<%= title %>}", &[("title", "title")]),
+            "\\title{<%= title %>}"
+        );
+        // 行尾保留：CRLF 不丢、末尾换行不丢
+        assert_eq!(backfill_text("a\r\nb\n", &[("title", "title")]), "a\r\nb\n");
     }
 
     #[test]
-    fn import_template_from_dir_and_zip() {
+    fn analyze_project_extracts_candidates() {
+        let proj = tmp_dir("proj_analyze").join("P");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::write(
+            proj.join("main.tex"),
+            "\\documentclass{article}\n\\title{我的论文}\n\\author{张三}\n\\date{2026-01-01}\n\\begin{document}\\titlepage\\end{document}\n",
+        )
+        .unwrap();
+        std::fs::write(proj.join("intro.tex"), "\\section{x}\n\\title{重复标题}\n").unwrap();
+
+        let a = analyze_project_in(&proj).unwrap();
+        assert_eq!(a.main_file, "main.tex");
+        assert!(a.files.iter().any(|f| f.path == "main.tex" && f.tex));
+        assert!(a.files.iter().any(|f| f.path == "intro.tex" && f.tex));
+
+        let get = |k: &str| a.candidates.iter().find(|c| c.key == k).unwrap();
+        assert_eq!(get("title").value, "我的论文");
+        assert_eq!(get("title").line, 2);
+        assert_eq!(get("title").count, 2, "main.tex 1 次 + intro.tex 1 次");
+        assert_eq!(get("author").value, "张三");
+        assert_eq!(get("date").value, "2026-01-01");
+        // \titlepage 不该把 title 撑成两次
+        assert_eq!(get("title").count, 2);
+
+        // 嵌套花括号的复杂值不提取
+        std::fs::write(proj.join("main.tex"), "\\title{嵌套{内}层}\n").unwrap();
+        let a2 = analyze_project_in(&proj).unwrap();
+        assert!(a2.candidates.iter().all(|c| c.key != "title"));
+    }
+
+    #[test]
+    fn make_template_backfills_installs_and_exports_zip() {
+        let proj = tmp_dir("proj_make_tpl").join("P");
+        std::fs::create_dir_all(proj.join(".ltex")).unwrap();
+        std::fs::write(
+            proj.join("main.tex"),
+            "\\documentclass{article}\r\n\\title{原标题}\r\n\\author{某人}\r\n\\date{今天}\r\n",
+        )
+        .unwrap();
+        std::fs::write(proj.join("fig.png"), "png").unwrap();
+        std::fs::write(
+            proj.join(".ltex/config.json"),
+            r#"{"engine":"xelatex","mainFile":"main.tex"}"#,
+        )
+        .unwrap();
+
+        let vars = vec![
+            TemplateVar {
+                key: "title".into(),
+                label: "标题".into(),
+                var_type: VarType::String,
+                required: true,
+                default: Some(Value::String("原标题".into())),
+                options: vec![],
+                group: None,
+                placeholder: None,
+                help: None,
+            },
+            TemplateVar {
+                key: "author".into(),
+                label: "作者".into(),
+                var_type: VarType::String,
+                required: false,
+                default: Some(Value::String("某人".into())),
+                options: vec![],
+                group: None,
+                placeholder: None,
+                help: None,
+            },
+        ];
+        let files = vec!["main.tex".to_string(), "fig.png".to_string()];
+        let user_dir = tmp_dir("user_tpl_make");
+        let builtin = builtin_root();
+        let zip_path = tmp_dir("make_export").join("out.zip");
+
+        let meta = make_template_in(
+            &proj,
+            "我的模板",
+            None,
+            None,
+            &vars,
+            &files,
+            Some(&zip_path),
+            true,
+            &user_dir,
+            &builtin,
+        )
+        .unwrap();
+        assert!(meta.is_user);
+
+        // 安装的包：绑定命令已回填；未定义变量的命令不动；CRLF 与末尾换行保留
+        let pkg = user_dir.join(&meta.id);
+        let main = std::fs::read_to_string(pkg.join("main.tex")).unwrap();
+        assert!(main.contains("\\title{<%= title %>}"));
+        assert!(main.contains("\\author{<%= author %>}"));
+        assert!(!main.contains("\\date{<%="), "date 未定义变量，不应回填");
+        assert!(main.contains("\\date{今天}"));
+        assert!(main.contains("\r\n"), "CRLF 应保留");
+        assert!(main.ends_with("\r\n"), "末尾换行应保留");
+        // 非渲染文件原样复制
+        assert_eq!(std::fs::read_to_string(pkg.join("fig.png")).unwrap(), "png");
+
+        let m = load_manifest(&user_dir, &meta.id).unwrap();
+        assert_eq!(m.variables.len(), 2);
+        assert_eq!(m.build.engine, "xelatex");
+
+        // 用安装的模板创建项目 → 变量渲染
+        let mut vv = HashMap::new();
+        vv.insert("title".to_string(), Value::String("新标题".into()));
+        vv.insert("author".to_string(), Value::String("李四".into()));
+        let target = tmp_dir("proj_from_make").join("out");
+        create_project_in(&user_dir, &meta.id, &vv, target.to_str().unwrap()).unwrap();
+        let created = std::fs::read_to_string(target.join("main.tex")).unwrap();
+        assert!(created.contains("\\title{新标题}"));
+        assert!(created.contains("\\author{李四}"));
+
+        // 导出的 zip 可再导入（交换格式闭环）
+        assert!(zip_path.is_file());
+        let user_dir2 = tmp_dir("user_tpl_make2");
+        let meta2 = import_template_in(&zip_path, &user_dir2, &builtin).unwrap();
+        assert_eq!(meta2.id, meta.id);
+        assert!(user_dir2.join(&meta.id).join("manifest.json").is_file());
+
+        // 变量校验：key 非法 / 重复 / select 无选项 → 拒绝
+        let bad_key = vec![TemplateVar {
+            key: "1bad".into(),
+            label: "K".into(),
+            var_type: VarType::String,
+            required: false,
+            default: None,
+            options: vec![],
+            group: None,
+            placeholder: None,
+            help: None,
+        }];
+        assert!(make_template_in(&proj, "bad", None, None, &bad_key, &files, None, true, &user_dir, &builtin).is_err());
+        let dup: Vec<TemplateVar> = vec![vars[0].clone(), vars[0].clone()];
+        assert!(make_template_in(&proj, "dup", None, None, &dup, &files, None, true, &user_dir, &builtin).is_err());
+        let no_opts = vec![TemplateVar {
+            key: "style".into(),
+            label: "样式".into(),
+            var_type: VarType::Select,
+            required: false,
+            default: None,
+            options: vec![],
+            group: None,
+            placeholder: None,
+            help: None,
+        }];
+        assert!(make_template_in(&proj, "noopts", None, None, &no_opts, &files, None, true, &user_dir, &builtin).is_err());
+    }
+
+    #[test]
+    fn import_template_zip_only() {
         let user_dir = tmp_dir("user_tpl_import");
         let builtin = builtin_root();
 
-        // 目录导入
+        // 目录导入 → 已不支持（统一 zip 交换格式）
         let src = tmp_dir("tpl_src_dir").join("my-tpl");
         std::fs::create_dir_all(&src).unwrap();
         std::fs::write(
             src.join("manifest.json"),
-            r#"{"id":"my-tpl","name":"导入模板","structure":{"files":[{"target":"main.tex","source":"main.tex.tmpl","render":true}]}}"#,
+            r#"{"id":"my-tpl","name":"导入模板","structure":{"files":[]}}"#,
         )
         .unwrap();
-        std::fs::write(src.join("main.tex.tmpl"), "\\documentclass{article}").unwrap();
-        let meta = import_template_in(&src, &user_dir, &builtin).unwrap();
-        assert_eq!(meta.id, "my-tpl");
-        assert!(meta.is_user);
-        assert!(user_dir.join("my-tpl/manifest.json").is_file());
-        // 重复导入 → 拒绝
         assert!(import_template_in(&src, &user_dir, &builtin).is_err());
 
-        // zip 导入（根含 manifest）
+        // zip 导入（嵌套一层根目录也可定位）
         let zip_root = tmp_dir("tpl_src_zip");
         let pkg = zip_root.join("ziptpl");
         std::fs::create_dir_all(&pkg).unwrap();
@@ -1364,7 +1838,7 @@ mod tests {
             let mut zw = zip::ZipWriter::new(f);
             for name in ["manifest.json", "main.tex.tmpl"] {
                 let opts = zip::write::SimpleFileOptions::default();
-                zw.start_file(name, opts).unwrap();
+                zw.start_file(format!("ziptpl/{}", name), opts).unwrap();
                 let mut file = std::fs::File::open(pkg.join(name)).unwrap();
                 std::io::copy(&mut file, &mut zw).unwrap();
             }
@@ -1374,16 +1848,56 @@ mod tests {
         assert_eq!(meta2.id, "ziptpl");
         assert!(user_dir.join("ziptpl/manifest.json").is_file());
         assert!(user_dir.join("ziptpl/main.tex.tmpl").is_file());
+        // 重复导入 → 拒绝
+        assert!(import_template_in(&zip_path, &user_dir, &builtin).is_err());
 
         // 与内置 id 冲突 → 拒绝
-        let conflict = tmp_dir("tpl_src_conflict").join("article");
-        std::fs::create_dir_all(&conflict).unwrap();
+        let conflict_root = tmp_dir("tpl_src_conflict");
+        let conflict_pkg = conflict_root.join("article");
+        std::fs::create_dir_all(&conflict_pkg).unwrap();
         std::fs::write(
-            conflict.join("manifest.json"),
+            conflict_pkg.join("manifest.json"),
             r#"{"id":"article","name":"x","structure":{"files":[]}}"#,
         )
         .unwrap();
-        assert!(import_template_in(&conflict, &user_dir, &builtin).is_err());
+        let conflict_zip = conflict_root.join("article.zip");
+        {
+            let f = std::fs::File::create(&conflict_zip).unwrap();
+            let mut zw = zip::ZipWriter::new(f);
+            let opts = zip::write::SimpleFileOptions::default();
+            zw.start_file("article/manifest.json", opts).unwrap();
+            std::io::copy(
+                &mut std::fs::File::open(conflict_pkg.join("manifest.json")).unwrap(),
+                &mut zw,
+            )
+            .unwrap();
+            zw.finish().unwrap();
+        }
+        assert!(import_template_in(&conflict_zip, &user_dir, &builtin).is_err());
+
+        // 变量不合法的坏包 → 拒绝（select 无选项）
+        let bad_root = tmp_dir("tpl_src_badvars");
+        let bad_pkg = bad_root.join("badvars");
+        std::fs::create_dir_all(&bad_pkg).unwrap();
+        std::fs::write(
+            bad_pkg.join("manifest.json"),
+            r#"{"id":"badvars","name":"x","variables":[{"key":"k","label":"K","type":"select"}],"structure":{"files":[]}}"#,
+        )
+        .unwrap();
+        let bad_zip = bad_root.join("badvars.zip");
+        {
+            let f = std::fs::File::create(&bad_zip).unwrap();
+            let mut zw = zip::ZipWriter::new(f);
+            let opts = zip::write::SimpleFileOptions::default();
+            zw.start_file("badvars/manifest.json", opts).unwrap();
+            std::io::copy(
+                &mut std::fs::File::open(bad_pkg.join("manifest.json")).unwrap(),
+                &mut zw,
+            )
+            .unwrap();
+            zw.finish().unwrap();
+        }
+        assert!(import_template_in(&bad_zip, &user_dir, &builtin).is_err());
     }
 
     #[test]

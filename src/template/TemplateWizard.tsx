@@ -164,7 +164,7 @@ export function TemplateWizard() {
   const backToLibrary = () => {
     const keep = selected || undefined;
     closeWizard();
-    openLibrary(false, keep);
+    openLibrary(keep);
   };
 
   return (

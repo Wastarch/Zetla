@@ -418,10 +418,10 @@ export const menuActions: Record<string, MenuActionDef> = {
     run: () => useProjectStore.getState().openLibrary(),
   },
   "template.save_as": {
-    label: "另存当前项目为模板…",
+    label: "根据本项目制作模板…",
     enabled: hasProject,
     hint: () => "未打开项目",
-    run: () => useProjectStore.getState().openLibrary(true),
+    run: () => useProjectStore.getState().openCraft(),
   },
 
   // ── 设置 ──
