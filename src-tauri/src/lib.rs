@@ -76,6 +76,8 @@ pub fn run() {
             commands::tikz_export::tikz_export,
             // M2 · 绘图模块：扫描项目内已有 TikZ 来源（.tikz / .tex / .ltx）
             commands::tikz_source::scan_tikz_sources,
+            // M2 · 绘图模块：解析用户从项目外手动导入的单个 TikZ 文件
+            commands::tikz_source::parse_tikz_file,
             // M2：编译流程（Recipe）枚举（设置页展示 / 选择）
             commands::compile::list_recipes,
             // 日志解析（M0-11）

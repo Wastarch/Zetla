@@ -37,6 +37,42 @@ pub struct TikzSourceCandidate {
     pub confidence: u32,
     pub reason: String,
     pub fingerprint: String,
+    /// "project" = 项目扫描发现；"external" = 用户从项目外手动导入的文件
+    pub origin: String,
+}
+
+/// 解析用户从系统文件对话框选出的单个外部文件（可在项目外）。
+/// 后缀 / 大小校验 + 编码探测 + 环境提取全部复用项目扫描口径；
+/// 返回的候选把 origin 标成 external，并给 id 加前缀避免与项目候选撞键。
+#[tauri::command]
+pub fn parse_tikz_file(path: String) -> Result<Vec<TikzSourceCandidate>, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("文件路径为空".into());
+    }
+    let file = PathBuf::from(trimmed);
+    if !file.is_file() {
+        return Err(format!("不是有效文件: {}", trimmed));
+    }
+    if !is_candidate_ext(&file) {
+        return Err("仅支持 .tikz / .tex / .ltx 文件".into());
+    }
+    let meta = std::fs::metadata(&file).map_err(|e| format!("读取文件信息失败: {}", e))?;
+    if meta.len() > MAX_FILE_BYTES {
+        return Err("文件过大（上限 2 MB）".into());
+    }
+    let abs = file.to_string_lossy().into_owned();
+    let doc = read_file_inner(&abs)?;
+    let text = doc.content.replace("\r\n", "\n").replace('\r', "\n");
+    // 外部文件通常不在项目根下：以父目录为 root，rel_path 退化为文件名本身。
+    let root = file.parent().unwrap_or(&file);
+    let mut out = candidates_from_text(root, &file, &text);
+    for c in &mut out {
+        c.id = format!("external:{}", c.id);
+        c.origin = "external".to_string();
+        c.reason = format!("外部文件 · {}", c.reason);
+    }
+    Ok(out)
 }
 
 /// 扫描项目根下的 TikZ 候选。空根 / 非目录返回 Err；无候选返回空数组（不是错误）。
@@ -219,6 +255,7 @@ fn make_candidate(
         confidence,
         reason,
         fingerprint: fp,
+        origin: "project".to_string(),
     }
 }
 
@@ -460,6 +497,38 @@ mod tests {
         assert!(found[0].source.ends_with("\\end{tikzpicture}"));
         assert_eq!(found[0].kind, "tikz-file");
 
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn parse_external_file_marks_origin_and_supports_tex_env() {
+        let root = temp_root();
+        write(
+            &root,
+            "outside.tex",
+            "\\documentclass{article}\n\\usetikzlibrary{positioning}\n\\begin{document}\n\\begin{tikzpicture}\n  \\node {X};\n\\end{tikzpicture}\n\\end{document}\n",
+        );
+        let path = root.join("outside.tex").to_string_lossy().into_owned();
+
+        let found = parse_tikz_file(path).unwrap();
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].origin, "external");
+        assert!(found[0].id.starts_with("external:"));
+        assert_eq!(found[0].rel_path, "outside.tex");
+        assert_eq!(found[0].kind, "tex-env");
+        assert_eq!(found[0].libraries, vec!["positioning"]);
+        assert!(found[0].source.contains("\\begin{tikzpicture}"));
+
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    #[test]
+    fn parse_external_file_rejects_bad_path_and_ext() {
+        let root = temp_root();
+        write(&root, "notes.md", "not tikz");
+        assert!(parse_tikz_file(root.join("missing.tikz").to_string_lossy().into_owned()).is_err());
+        assert!(parse_tikz_file(root.join("notes.md").to_string_lossy().into_owned()).is_err());
+        assert!(parse_tikz_file(String::new()).is_err());
         std::fs::remove_dir_all(&root).ok();
     }
 

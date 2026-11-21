@@ -358,6 +358,9 @@ export const diagramApi = {
   /** v1：扫描项目内 .tikz 整文件与 .tex/.ltx 的 tikzpicture 环境 */
   scanTikzSources: (root: string) =>
     call<TikzSourceCandidate[]>("scan_tikz_sources", { root }),
+  /** 解析用户从项目外手动导入的单个 TikZ 文件（.tikz/.tex/.ltx） */
+  parseTikzFile: (path: string) =>
+    call<TikzSourceCandidate[]>("parse_tikz_file", { path }),
 };
 
 // ── 用户自定义快捷输入片段（M2-5a，独立 snippets.json）──────

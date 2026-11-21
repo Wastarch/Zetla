@@ -745,37 +745,193 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   color: var(--warn, #a86a12);
 }
 
-/* ── v1：项目内 TikZ 来源下拉菜单（复用 .ctx/.mi，只补状态项与分隔线） ── */
-.ctx .mi.dg-source-status {
-  color: var(--txt-2, #6b6b6b);
-  opacity: 1;
-  cursor: default;
+/* ── v1：源码来源下拉面板（分区：状态 / 操作 / 候选） ───────── */
+.dg-src-pop {
+  position: fixed;
+  z-index: 210;
+  width: 300px;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 8px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+  box-shadow: 0 18px 42px rgb(0 0 0 / 26%);
+  animation: pop 0.12s ease;
 }
-.ctx .mi.dg-source-error {
-  max-width: 360px;
+.dg-src-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dg-src-pop-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+.dg-src-pop-badge {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  color: var(--accent, #2d7ff9);
+  background: color-mix(in srgb, var(--accent, #2d7ff9) 10%, transparent);
+}
+.dg-src-pop-badge.is-err {
   color: var(--warn, #a86a12);
-  opacity: 1;
+  background: color-mix(in srgb, var(--warn, #a86a12) 12%, transparent);
+}
+.dg-src-pop-summary {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--txt-2, #6b6b6b);
+  word-break: break-all;
+}
+.dg-src-pop-group {
+  margin-top: 9px;
+  padding-top: 9px;
+  border-top: 1px solid var(--line, #e0e0e0);
+}
+.dg-src-pop-actions {
+  display: flex;
+  gap: 6px;
+}
+.dg-src-pop-btn {
+  flex: 1;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 11px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg, #fff);
+  color: var(--txt, #353333);
+  cursor: pointer;
+}
+.dg-src-pop-btn:hover:not(:disabled) {
+  border-color: var(--accent, #2d7ff9);
+  color: var(--accent, #2d7ff9);
+}
+.dg-src-pop-btn:disabled {
+  opacity: 0.55;
   cursor: default;
-  line-height: 1.4;
 }
-.ctx .mi.dg-source-sep {
-  height: 1px;
+.dg-src-pop-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 7px;
+  padding: 3px 0;
+  border: 0;
+  background: transparent;
+  color: var(--txt, #353333);
+  font-size: 11px;
+  cursor: pointer;
+}
+.dg-src-switch {
+  flex: none;
+  position: relative;
+  width: 26px;
+  height: 14px;
+  border-radius: 8px;
+  background: var(--bg-2, #cfcfcf);
+  transition: background 0.15s;
+}
+.dg-src-switch.is-on {
+  background: var(--accent, #2d7ff9);
+}
+.dg-src-switch-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--bg-3, #fff);
+  transition: transform 0.15s;
+}
+.dg-src-switch.is-on .dg-src-switch-knob {
+  transform: translateX(12px);
+}
+.dg-src-pop-sectitle {
+  margin-bottom: 6px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--txt-3, #9a9a9a);
+}
+.dg-src-pop-empty {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-src-pop-list {
+  list-style: none;
+  margin: 0;
   padding: 0;
-  margin: 5px 6px;
-  background: var(--line, #e0e0e0);
-  pointer-events: none;
+  display: grid;
+  gap: 4px;
+  max-height: 240px;
+  overflow: auto;
 }
-.ctx .mi.dg-source-candidate {
-  max-width: 360px;
+.dg-src-pop-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  text-align: left;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 5px;
+  background: var(--bg, #fff);
+  color: var(--txt, #353333);
+  cursor: pointer;
 }
-.ctx .mi.dg-source-candidate span:first-child {
+.dg-src-pop-item:hover {
+  border-color: var(--accent, #2d7ff9);
+}
+.dg-src-pop-item.is-active {
+  border-color: var(--accent, #2d7ff9);
+  background: color-mix(in srgb, var(--accent, #2d7ff9) 8%, var(--bg, #fff));
+}
+.dg-src-pop-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.dg-src-pop-item-path {
   min-width: 0;
+  font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ctx .mi.dg-source-candidate .sc {
+.dg-src-pop-item-tags {
+  display: flex;
   flex: none;
+  gap: 4px;
+}
+.dg-src-pop-tag {
+  font-size: 10px;
+  padding: 0 4px;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 3px;
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-src-pop-tag.is-ext {
+  color: var(--accent, #2d7ff9);
+  border-color: color-mix(in srgb, var(--accent, #2d7ff9) 45%, transparent);
+}
+.dg-src-pop-item-preview {
+  font-size: 10px;
+  color: var(--txt-3, #9a9a9a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── M2 · 图片插入 TikZ · P2：暂存入口与同名冲突弹窗 ───────── */

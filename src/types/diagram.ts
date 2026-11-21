@@ -54,6 +54,8 @@ export interface TikzSourceCandidate {
   relPath: string;
   /** "tikz-file" = 整文件；"tex-env" = LaTeX 中的一个 tikzpicture 环境 */
   kind: "tikz-file" | "tex-env";
+  /** "project" = 项目扫描发现；"external" = 用户从项目外手动导入 */
+  origin: "project" | "external";
   /** 规范化后的片段（库声明 + tikzpicture），可直接进绘图源码栏 */
   source: string;
   /** 原始文本，供候选预览/排错 */

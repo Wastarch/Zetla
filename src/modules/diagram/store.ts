@@ -364,6 +364,11 @@ export interface DiagramState {
   refreshTikzSources: () => Promise<void>;
   /** 手动导入候选；整篇替换源码并清理选中/分组/渲染缓存 */
   applyTikzCandidate: (candidate: TikzSourceCandidate) => boolean;
+  /**
+   * 从项目外的单个文件导入：解析后若仅一张图直接应用；
+   * 多张图则并入候选列表交由用户挑选（不擅自选第一张）。
+   */
+  importTikzFileFromPath: (path: string) => Promise<number>;
 
   /**
    * F2-2：主选中项（属性面板按它定位语句）。F3-3 起与 selectedIds 保持同步：
@@ -561,6 +566,21 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       guideSeq: state.guideSeq + 1,
     });
     return true;
+  },
+  importTikzFileFromPath: async (path) => {
+    const found = await diagramApi.parseTikzFile(path);
+    if (found.length === 0) return 0;
+    if (found.length === 1) {
+      get().applyTikzCandidate(found[0]);
+      return 1;
+    }
+    // 多张图：外部候选排在最前，保留项目内候选，用户点选后再应用。
+    set((s) => ({
+      tikzCandidates: [...found, ...s.tikzCandidates.filter((c) => !found.some((f) => f.id === c.id))],
+      tikzScanStatus: "done",
+      tikzScanError: null,
+    }));
+    return found.length;
   },
 
   selectedId: null,
