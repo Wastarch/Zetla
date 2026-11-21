@@ -718,6 +718,70 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   color: var(--warn, #a86a12);
 }
 
+/* ── v1：项目内 TikZ 来源候选列表 ─────────────────────────── */
+.dg-source-actions {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.dg-source-actions .btn {
+  flex: 1;
+  font-size: 11px;
+}
+.dg-source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+}
+.dg-source-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  text-align: left;
+  border: 1px solid var(--line, #e0e0e0);
+  border-radius: 4px;
+  background: var(--bg-3, #fff);
+  color: var(--txt, #353333);
+  cursor: pointer;
+}
+.dg-source-item:hover {
+  border-color: var(--accent, #2d7ff9);
+}
+.dg-source-item.is-on {
+  border-color: var(--accent, #2d7ff9);
+  background: color-mix(in srgb, var(--accent, #2d7ff9) 8%, var(--bg-3, #fff));
+}
+.dg-source-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.dg-source-path {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-source-kind {
+  flex: none;
+  font-size: 10px;
+  color: var(--txt-2, #6b6b6b);
+}
+.dg-source-preview {
+  font-size: 10px;
+  color: var(--txt-3, #9a9a9a);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* ── M2 · 图片插入 TikZ · P2：暂存入口与同名冲突弹窗 ───────── */
 .dg-stage-btn {
   width: 100%;

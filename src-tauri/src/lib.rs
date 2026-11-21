@@ -74,6 +74,8 @@ pub fn run() {
             commands::tikz_export::tikz_preview,
             // M2 · 绘图模块 F5-1：把片段编译后导出 PNG / SVG / PDF 并落盘（复用同一内核）
             commands::tikz_export::tikz_export,
+            // M2 · 绘图模块：扫描项目内已有 TikZ 来源（.tikz / .tex / .ltx）
+            commands::tikz_source::scan_tikz_sources,
             // M2：编译流程（Recipe）枚举（设置页展示 / 选择）
             commands::compile::list_recipes,
             // 日志解析（M0-11）

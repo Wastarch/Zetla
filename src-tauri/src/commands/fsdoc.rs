@@ -104,7 +104,7 @@ fn apply_eol(text: &str, eol: &str) -> String {
 // ── 读取 ──────────────────────────────────────────────────
 
 /// 读取文件：自动探测编码（含 GBK），返回内容 + 元数据
-fn read_file_inner(path: &str) -> Result<FileDoc, String> {
+pub(crate) fn read_file_inner(path: &str) -> Result<FileDoc, String> {
     let p = Path::new(path);
     let bytes = std::fs::read(p).map_err(|e| format!("读取失败 {}: {}", p.display(), e))?;
     let (enc, bom_len) = detect(&bytes);

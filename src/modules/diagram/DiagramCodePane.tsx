@@ -88,6 +88,17 @@ export function DiagramCodePane() {
     () =>
       registerDiagramSourceBridge({
         getView: () => handle.current?.getView() ?? null,
+        replaceDocument(nextSource, expectedSource) {
+          const view = handle.current?.getView();
+          if (!view || view.state.doc.toString() !== expectedSource) return false;
+          view.dispatch({
+            changes: { from: 0, to: view.state.doc.length, insert: nextSource },
+            selection: { anchor: 0 },
+            effects: EditorView.scrollIntoView(0, { y: "nearest" }),
+            userEvent: "input.diagram.import",
+          });
+          return true;
+        },
         patch(patch, expectedSource) {
           const view = handle.current?.getView();
           return !!view && dispatchPatch(view, patch, expectedSource);

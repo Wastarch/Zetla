@@ -16,7 +16,10 @@
 // renderMeta / selectedId 是会话态，不持久化；renderMeta 自带 source 便于侧栏校验是否过期。
 // 后续切片扩展：F6 组件库插入。
 import { create } from "zustand";
-import type { ExportMode, PreviewMode } from "@/types/diagram";
+import type { ExportMode, PreviewMode, TikzSourceCandidate } from "@/types/diagram";
+import { diagramApi } from "@/ipc/invoke";
+import { useProjectStore } from "@/project/useProject";
+import { getDiagramSourceBridge } from "./sourceBridge.ts";
 import type { TikzStatement } from "./optionsEdit.ts";
 import type { CompatReport } from "./tikzEditor/compat.ts";
 import { DEFAULT_TOOL_MODE, isToolMode, type ToolMode } from "./shapeTools.ts";
@@ -58,6 +61,24 @@ const CANVAS_SIZE_KEY = "zetla.diagram.canvasSize";
 const CANVAS_AUTO_KEY = "zetla.diagram.canvasSizeAuto";
 const EXPORT_USE_CANVAS_KEY = "zetla.diagram.exportUseCanvas";
 const GROUPING_KEY = "zetla.diagram.grouping.v1";
+const AUTO_IMPORT_KEY = "zetla.diagram.autoImport.v1";
+
+/** 打开绘图模块时的自动导入策略：single = 仅唯一候选；always-top = 总是取最高分；off = 关闭 */
+export type DiagramAutoImportMode = "single" | "always-top" | "off";
+export type TikzScanStatus = "idle" | "scanning" | "done" | "error";
+
+interface AutoImportPrefs {
+  enabled: boolean;
+  mode: DiagramAutoImportMode;
+  /** projectRoot → 上次导入候选 fingerprint，避免重复导入同一张图 */
+  lastByProject: Record<string, string>;
+}
+
+const DEFAULT_AUTO_IMPORT: AutoImportPrefs = {
+  enabled: true,
+  mode: "single",
+  lastByProject: {},
+};
 
 export const MIN_SPLIT_RATIO = 0.2;
 export const MAX_SPLIT_RATIO = 0.8;
@@ -78,6 +99,9 @@ export const DIAGRAM_DEFAULTS = {
   canvasSizeAuto: true,
   /** F3-7：侧栏「按画布尺寸导出」开关，默认关 */
   exportUseCanvas: false,
+  /** v1：打开绘图模块时自动导入项目内 TikZ 来源 */
+  autoImportEnabled: DEFAULT_AUTO_IMPORT.enabled,
+  autoImportMode: DEFAULT_AUTO_IMPORT.mode,
 };
 
 function clampRatio(n: number): number {
@@ -248,6 +272,57 @@ function writeSetting(key: string, value: string): void {
   }
 }
 
+function readAutoImportPrefs(): AutoImportPrefs {
+  try {
+    const raw = localStorage.getItem(AUTO_IMPORT_KEY);
+    if (!raw) return { ...DEFAULT_AUTO_IMPORT, lastByProject: {} };
+    const parsed = JSON.parse(raw) as Partial<AutoImportPrefs> | null;
+    const mode =
+      parsed?.mode === "single" || parsed?.mode === "always-top" || parsed?.mode === "off"
+        ? parsed.mode
+        : DEFAULT_AUTO_IMPORT.mode;
+    const last: Record<string, string> = {};
+    if (parsed?.lastByProject && typeof parsed.lastByProject === "object") {
+      for (const [k, v] of Object.entries(parsed.lastByProject)) {
+        if (typeof v === "string" && v) last[k] = v;
+      }
+    }
+    return {
+      enabled: typeof parsed?.enabled === "boolean" ? parsed.enabled : DEFAULT_AUTO_IMPORT.enabled,
+      mode,
+      lastByProject: last,
+    };
+  } catch {
+    return { ...DEFAULT_AUTO_IMPORT, lastByProject: {} };
+  }
+}
+
+function writeAutoImportPrefs(prefs: AutoImportPrefs): void {
+  writeSetting(AUTO_IMPORT_KEY, JSON.stringify(prefs));
+}
+
+/** 当前 targetTex 里的片段降权：从文档导入后若再插回同一文档会产生重复图。 */
+function rankTikzCandidates(
+  candidates: TikzSourceCandidate[],
+  targetTex: string | null,
+): TikzSourceCandidate[] {
+  const target = targetTex?.toLowerCase() ?? "";
+  const weight = (c: TikzSourceCandidate): number =>
+    c.confidence - (target && c.path.toLowerCase() === target ? 50 : 0);
+  return [...candidates].sort((a, b) => {
+    const d = weight(b) - weight(a);
+    if (d !== 0) return d;
+    return a.relPath.localeCompare(b.relPath) || a.startLine - b.startLine;
+  });
+}
+
+function isSafeToAutoImport(source: string, importedSource: string | null): boolean {
+  return source === DEFAULT_DIAGRAM_SOURCE || (!!importedSource && source === importedSource);
+}
+
+let scanSeq = 0;
+const INITIAL_AUTO_IMPORT = readAutoImportPrefs();
+
 /** F2-3：一次本地渲染的派生元数据（会话态，不持久化）。 */
 export interface DiagramRenderMeta {
   source: string;
@@ -270,6 +345,26 @@ export interface DiagramState {
   /** 当前绘图源码（完整 tikzpicture 环境；由 Tab 内 LaTeXEditor 受控驱动） */
   source: string;
   setSource: (s: string) => void;
+
+  /** v1：项目内 TikZ 来源候选（会话态，不持久化） */
+  tikzCandidates: TikzSourceCandidate[];
+  tikzScanStatus: TikzScanStatus;
+  tikzScanError: string | null;
+  activeCandidateId: string | null;
+  /** 最近一次导入的基线源码；用户手改后不再等于 source，自动导入据此让位 */
+  importedSource: string | null;
+  importedPath: string | null;
+  importedFingerprint: string | null;
+  autoImportEnabled: boolean;
+  autoImportMode: DiagramAutoImportMode;
+  setAutoImportEnabled: (v: boolean) => void;
+  setAutoImportMode: (m: DiagramAutoImportMode) => void;
+  setActiveCandidateId: (id: string | null) => void;
+  /** 扫描当前项目；候选安全时按偏好自动导入 */
+  refreshTikzSources: () => Promise<void>;
+  /** 手动导入候选；整篇替换源码并清理选中/分组/渲染缓存 */
+  applyTikzCandidate: (candidate: TikzSourceCandidate) => boolean;
+
   /**
    * F2-2：主选中项（属性面板按它定位语句）。F3-3 起与 selectedIds 保持同步：
    * 始终等于 selectedIds[0] ?? null —— 既有的属性区 / 自动选中链路零改动。
@@ -375,6 +470,99 @@ export const DEFAULT_DIAGRAM_SOURCE = `\\begin{tikzpicture}
 export const useDiagramStore = create<DiagramState>((set, get) => ({
   source: DEFAULT_DIAGRAM_SOURCE,
   setSource: (s) => set({ source: s }),
+
+  tikzCandidates: [],
+  tikzScanStatus: "idle",
+  tikzScanError: null,
+  activeCandidateId: null,
+  importedSource: null,
+  importedPath: null,
+  importedFingerprint: null,
+  autoImportEnabled: INITIAL_AUTO_IMPORT.enabled,
+  autoImportMode: INITIAL_AUTO_IMPORT.mode,
+  setAutoImportEnabled: (v) => {
+    const prefs = readAutoImportPrefs();
+    writeAutoImportPrefs({ ...prefs, enabled: v });
+    set({ autoImportEnabled: v });
+  },
+  setAutoImportMode: (m) => {
+    const prefs = readAutoImportPrefs();
+    writeAutoImportPrefs({ ...prefs, mode: m });
+    set({ autoImportMode: m });
+  },
+  setActiveCandidateId: (id) => set({ activeCandidateId: id }),
+  refreshTikzSources: async () => {
+    const root = useProjectStore.getState().root;
+    const seq = ++scanSeq;
+    if (!root) {
+      set({
+        tikzCandidates: [],
+        tikzScanStatus: "done",
+        tikzScanError: null,
+        activeCandidateId: null,
+      });
+      return;
+    }
+    set({ tikzScanStatus: "scanning", tikzScanError: null });
+    try {
+      const found = await diagramApi.scanTikzSources(root);
+      if (seq !== scanSeq) return;
+      const ranked = rankTikzCandidates(found, get().targetTex);
+      set({
+        tikzCandidates: ranked,
+        tikzScanStatus: "done",
+        tikzScanError: null,
+      });
+      const prefs = readAutoImportPrefs();
+      if (!prefs.enabled || prefs.mode === "off" || ranked.length === 0) return;
+      if (prefs.mode === "single" && ranked.length !== 1) return;
+      const top = ranked[0];
+      if (get().targetTex && top.path.toLowerCase() === get().targetTex?.toLowerCase()) return;
+      if (!isSafeToAutoImport(get().source, get().importedSource)) return;
+      if (prefs.lastByProject[root] === top.fingerprint && get().source === get().importedSource) {
+        return;
+      }
+      get().applyTikzCandidate(top);
+    } catch (e) {
+      if (seq !== scanSeq) return;
+      set({
+        tikzCandidates: [],
+        tikzScanStatus: "error",
+        tikzScanError: e instanceof Error ? e.message : String(e),
+      });
+    }
+  },
+  applyTikzCandidate: (candidate) => {
+    const state = get();
+    const bridge = getDiagramSourceBridge();
+    if (bridge) bridge.replaceDocument(candidate.source, state.source);
+    else set({ source: candidate.source });
+    writeGrouping(EMPTY_GROUPING, [], candidate.source);
+    const root = useProjectStore.getState().root;
+    if (root) {
+      const prefs = readAutoImportPrefs();
+      writeAutoImportPrefs({
+        ...prefs,
+        lastByProject: { ...prefs.lastByProject, [root]: candidate.fingerprint },
+      });
+    }
+    set({
+      source: candidate.source,
+      importedSource: candidate.source,
+      importedPath: candidate.path,
+      importedFingerprint: candidate.fingerprint,
+      activeCandidateId: candidate.id,
+      selectedId: null,
+      selectedIds: [],
+      renderMeta: null,
+      pendingImage: null,
+      grouping: { ...EMPTY_GROUPING },
+      guides: [],
+      guideSeq: state.guideSeq + 1,
+    });
+    return true;
+  },
+
   selectedId: null,
   setSelectedId: (id) => set({ selectedId: id, selectedIds: id ? [id] : [] }),
   selectedIds: [],
@@ -508,6 +696,11 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
     writeSetting(CANVAS_SIZE_KEY, JSON.stringify(DIAGRAM_DEFAULTS.canvasSize));
     writeSetting(CANVAS_AUTO_KEY, DIAGRAM_DEFAULTS.canvasSizeAuto ? "1" : "0");
     writeSetting(EXPORT_USE_CANVAS_KEY, DIAGRAM_DEFAULTS.exportUseCanvas ? "1" : "0");
+    writeAutoImportPrefs({
+      enabled: DIAGRAM_DEFAULTS.autoImportEnabled,
+      mode: DIAGRAM_DEFAULTS.autoImportMode,
+      lastByProject: {},
+    });
     set({
       layoutMode: DIAGRAM_DEFAULTS.layoutMode,
       splitRatio: DIAGRAM_DEFAULTS.splitRatio,
@@ -521,6 +714,8 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       canvasSize: { ...DIAGRAM_DEFAULTS.canvasSize },
       canvasSizeAuto: DIAGRAM_DEFAULTS.canvasSizeAuto,
       exportUseCanvas: DIAGRAM_DEFAULTS.exportUseCanvas,
+      autoImportEnabled: DIAGRAM_DEFAULTS.autoImportEnabled,
+      autoImportMode: DIAGRAM_DEFAULTS.autoImportMode,
     });
   },
 }));

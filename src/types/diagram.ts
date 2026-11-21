@@ -44,6 +44,29 @@ export interface TikzExportPayload {
   projectRoot?: string | null;
 }
 
+/** 项目内 TikZ 来源候选（Rust src-tauri/src/commands/tikz_source.rs，camelCase） */
+export interface TikzSourceCandidate {
+  /** relPath + startLine + fingerprint 前缀 */
+  id: string;
+  /** 绝对路径 */
+  path: string;
+  /** 相对项目根的正斜杠路径 */
+  relPath: string;
+  /** "tikz-file" = 整文件；"tex-env" = LaTeX 中的一个 tikzpicture 环境 */
+  kind: "tikz-file" | "tex-env";
+  /** 规范化后的片段（库声明 + tikzpicture），可直接进绘图源码栏 */
+  source: string;
+  /** 原始文本，供候选预览/排错 */
+  rawSource: string;
+  startLine: number;
+  endLine: number;
+  /** 该文件声明的 \usetikzlibrary 库名（去重保序） */
+  libraries: string[];
+  confidence: number;
+  reason: string;
+  fingerprint: string;
+}
+
 /** F5-1：tikz_export 的返回结构（Rust TikzExportResult，camelCase） */
 export interface TikzExportResult {
   /** "ok" | "exists" | "error" */

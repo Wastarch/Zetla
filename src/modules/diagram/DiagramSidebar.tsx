@@ -130,8 +130,29 @@ export function DiagramSidebar() {
   // 图层面板默认展开状态（设置里的「图层面板」开关）：只作为手风琴的初始 open，
   // 之后的开合完全交给标题行三角，不再有第二个「收起 / 展开」按钮。
   const layersVisible = useDiagramStore((s) => s.layersVisible);
+  // v1：项目内 TikZ 来源自动发现 / 导入
+  const candidates = useDiagramStore((s) => s.tikzCandidates);
+  const scanStatus = useDiagramStore((s) => s.tikzScanStatus);
+  const scanError = useDiagramStore((s) => s.tikzScanError);
+  const activeCandidateId = useDiagramStore((s) => s.activeCandidateId);
+  const importedPath = useDiagramStore((s) => s.importedPath);
+  const autoImportEnabled = useDiagramStore((s) => s.autoImportEnabled);
+  const setAutoImportEnabled = useDiagramStore((s) => s.setAutoImportEnabled);
+  const setActiveCandidateId = useDiagramStore((s) => s.setActiveCandidateId);
+  const refreshTikzSources = useDiagramStore((s) => s.refreshTikzSources);
+  const applyTikzCandidate = useDiagramStore((s) => s.applyTikzCandidate);
 
   const lineCount = source.split("\n").length;
+  const scanHint =
+    scanStatus === "scanning"
+      ? "扫描中…"
+      : scanStatus === "error"
+        ? "扫描失败"
+        : importedPath
+          ? `已导入 ${basename(importedPath)}`
+          : candidates.length > 0
+            ? `发现 ${candidates.length} 个候选`
+            : "未发现候选";
 
   // F5-1：导出格式（PNG / SVG / PDF），仅在 image / file 模式出现
   const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
@@ -164,9 +185,11 @@ export function DiagramSidebar() {
 
   // 切到绘图侧栏时自动打开 / 聚焦绘图 Tab：Sidebar 按 view 条件渲染、折叠时整体卸载，
   // 因此「本组件挂载」正好对应「用户点开绘图侧栏」；不再需要手动点按钮。
+  // v1：同一次挂载顺便扫描项目里的 TikZ 来源；重复挂载由 store 的 scanSeq 抑制旧结果。
   useEffect(() => {
     openDiagramTab();
-  }, []);
+    void refreshTikzSources();
+  }, [refreshTikzSources]);
 
   /**
    * P3：落盘 + 登记 manifest → 进入「等待画布落点」。
@@ -276,6 +299,65 @@ export function DiagramSidebar() {
         <span className="dg-side-title">绘图 · 工具箱</span>
         <span className="dg-side-meta">{lineCount} 行源码</span>
       </div>
+
+      {/* v1：项目内 TikZ 来源。扫描 .tikz 整文件与 .tex/.ltx 的 tikzpicture 环境；
+          唯一高置信候选且源码未被手改时由 store 自动导入，其余情况在这里手动选。 */}
+      <Accordion title="源码来源" meta={scanHint}>
+        <div className="dg-source-actions">
+          <button
+            type="button"
+            className="btn"
+            disabled={scanStatus === "scanning"}
+            onClick={() => void refreshTikzSources()}
+            title="重新扫描当前项目中的 .tikz 文件与 .tex/.ltx 里的 tikzpicture 环境"
+          >
+            {scanStatus === "scanning" ? "扫描中…" : "重新扫描"}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setAutoImportEnabled(!autoImportEnabled)}
+            title={autoImportEnabled ? "关闭打开模块时的自动导入" : "开启打开模块时的自动导入"}
+          >
+            {autoImportEnabled ? "自动导入：开" : "自动导入：关"}
+          </button>
+        </div>
+        {scanError && <p className="dg-side-warn">扫描失败：{scanError}</p>}
+        {candidates.length === 0 && !scanError && scanStatus === "done" && (
+          <p className="dg-side-card-sub">项目里没有 .tikz 文件，也没有 .tex/.ltx 中的 tikzpicture。</p>
+        )}
+        {candidates.length > 0 && (
+          <ul className="dg-source-list">
+            {candidates.map((c) => (
+              <li key={c.id}>
+                <button
+                  type="button"
+                  className={`dg-source-item${activeCandidateId === c.id ? " is-on" : ""}`}
+                  onClick={() => {
+                    setActiveCandidateId(c.id);
+                    applyTikzCandidate(c);
+                    notify(`已导入 ${c.relPath}${c.kind === "tex-env" ? `:${c.startLine}` : ""}`, "ok");
+                  }}
+                  title={`${c.reason} · 置信度 ${c.confidence}`}
+                >
+                  <span className="dg-source-row">
+                    <span className="dg-source-path">
+                      {c.relPath}
+                      {c.kind === "tex-env" ? `:${c.startLine}` : ""}
+                    </span>
+                    <span className="dg-source-kind">
+                      {c.kind === "tikz-file" ? "文件" : "环境"}
+                    </span>
+                  </span>
+                  <span className="dg-source-preview">
+                    {c.rawSource.split("\n").slice(0, 2).join(" ").trim() || "（空片段）"}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Accordion>
 
       <Accordion title="组件库" meta="5 类模板">
         <ul className="dg-library-list">

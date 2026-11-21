@@ -64,7 +64,7 @@ fn is_tree_aux_file(name: &str) -> bool {
 /// 含 .git 与 node_modules；仅受 MAX_ENTRIES / MAX_DEPTH 兜底约束）。
 /// 默认口径跳过重型目录与所有点号项（含 .git）。
 /// 与前端 src/project/hiddenFiles.ts shouldSkipTreeName 同规则。
-fn skip_name(name: &str, show_hidden: bool) -> bool {
+pub(crate) fn skip_name(name: &str, show_hidden: bool) -> bool {
     if show_hidden {
         return false;
     }
@@ -480,7 +480,7 @@ pub fn update_project_config(root: String, config: ProjectConfigDoc) -> Result<(
 }
 
 /// 读取 exclude globs（.ltex/config.json 的 exclude 数组；非法项忽略）
-fn load_exclude(root: &Path) -> Vec<String> {
+pub(crate) fn load_exclude(root: &Path) -> Vec<String> {
     read_project_obj(root)
         .get("exclude")
         .and_then(|v| v.as_array())
@@ -494,7 +494,7 @@ fn load_exclude(root: &Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
-fn should_exclude(rel: &str, patterns: &[String]) -> bool {
+pub(crate) fn should_exclude(rel: &str, patterns: &[String]) -> bool {
     patterns.iter().any(|p| glob_match(p, rel))
 }
 

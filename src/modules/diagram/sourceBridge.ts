@@ -13,6 +13,8 @@ import type { SourceSpanPatch } from "./dragEdit.ts";
 
 export interface DiagramSourceBridge {
   getView: () => EditorView | null;
+  /** 整篇替换（导入项目来源用）；作为一次 CM6 事务，Ctrl+Z 可一次撤销 */
+  replaceDocument: (nextSource: string, expectedSource: string) => boolean;
   /** 应用最小补丁；返回 false 表示视图不可用或源码已过期 */
   patch: (patch: SourceSpanPatch, expectedSource: string) => boolean;
   /**

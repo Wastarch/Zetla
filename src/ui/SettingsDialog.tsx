@@ -41,6 +41,7 @@ import {
 import type { AppSettings, AppTheme, CompileEngine, PdfDefaultZoom } from "@/types/settings";
 import {
   useDiagramStore,
+  type DiagramAutoImportMode,
   type HandleSize,
   type LayoutMode,
 } from "@/modules/diagram/store";
@@ -309,6 +310,11 @@ export function SettingsDialog({ host = "modal", tabPane }: SettingsHostProps) {
   const setDiagramCanvasSize = useDiagramStore((s) => s.setCanvasSize);
   const diagramCanvasAuto = useDiagramStore((s) => s.canvasSizeAuto);
   const setDiagramCanvasAuto = useDiagramStore((s) => s.setCanvasSizeAuto);
+  // v1：项目内 TikZ 来源自动导入
+  const diagramAutoImportEnabled = useDiagramStore((s) => s.autoImportEnabled);
+  const setDiagramAutoImportEnabled = useDiagramStore((s) => s.setAutoImportEnabled);
+  const diagramAutoImportMode = useDiagramStore((s) => s.autoImportMode);
+  const setDiagramAutoImportMode = useDiagramStore((s) => s.setAutoImportMode);
   const resetDiagramPreferences = useDiagramStore((s) => s.resetDiagramPreferences);
   const moduleNames: Record<string, string> = {};
   for (const m of modules) moduleNames[m.id] = m.name;
@@ -1027,6 +1033,30 @@ export function SettingsDialog({ host = "modal", tabPane }: SettingsHostProps) {
                   </select>
                 </Fld>
                 <Fld
+                  label="打开时自动导入 TikZ"
+                  hint="扫描 .tikz 整文件与 .tex/.ltx 中的 tikzpicture；源码被手改时不会覆盖"
+                >
+                  <Switch
+                    checked={diagramAutoImportEnabled}
+                    onChange={(next) => setDiagramAutoImportEnabled(next)}
+                  />
+                </Fld>
+                <Fld
+                  label="自动导入策略"
+                  hint="仅唯一候选最保守；总是取最高分候选会在多图项目里直接替换默认源码"
+                >
+                  <select
+                    value={diagramAutoImportMode}
+                    disabled={!diagramAutoImportEnabled}
+                    onChange={(e) =>
+                      setDiagramAutoImportMode(e.target.value as DiagramAutoImportMode)
+                    }
+                  >
+                    <option value="single">仅唯一候选</option>
+                    <option value="always-top">总是取最高分候选</option>
+                  </select>
+                </Fld>
+                <Fld
                   label="控制点大小"
                   hint={`只改视觉半径，命中范围始终更大 · 当前${handleSizeSummary(diagramHandleSize)}`}
                 >
@@ -1142,7 +1172,7 @@ export function SettingsDialog({ host = "modal", tabPane }: SettingsHostProps) {
                     </button>
                   </div>
                 </Fld>
-                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 默认工具 / 控制点大小 / 图层面板 / 智能参考线 / 网格 / 吸附网格 / 画布尺寸 / 按画布导出一次性重置">
+                <Fld label="恢复默认" hint="布局 / 分屏比例 / 预览通道 / 自动导入 / 默认工具 / 控制点大小 / 图层面板 / 智能参考线 / 网格 / 吸附网格 / 画布尺寸 / 按画布导出一次性重置">
                   <button
                     type="button"
                     className="btn"

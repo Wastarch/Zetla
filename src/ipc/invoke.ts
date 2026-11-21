@@ -27,6 +27,7 @@ import type {
   TikzExportPayload,
   TikzExportResult,
   TikzImageAsset,
+  TikzSourceCandidate,
 } from "@/types/diagram";
 import type {
   ZoteroBinding,
@@ -354,6 +355,9 @@ export const diagramApi = {
   /** F5-1：编译片段 → 转 PNG/SVG/PDF → 落盘到 outPath；覆盖前先以 force:true 重试 */
   tikzExport: (payload: TikzExportPayload) =>
     call<TikzExportResult>("tikz_export", payload as unknown as Record<string, unknown>),
+  /** v1：扫描项目内 .tikz 整文件与 .tex/.ltx 的 tikzpicture 环境 */
+  scanTikzSources: (root: string) =>
+    call<TikzSourceCandidate[]>("scan_tikz_sources", { root }),
 };
 
 // ── 用户自定义快捷输入片段（M2-5a，独立 snippets.json）──────

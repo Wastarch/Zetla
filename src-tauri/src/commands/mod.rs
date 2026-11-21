@@ -20,6 +20,8 @@ pub mod synctex;
 pub mod template;
 pub mod terminal;
 pub mod tikz_export;
+// M2 · 绘图模块：项目内 TikZ 来源扫描（v1：.tikz / .tex / .ltx）
+pub mod tikz_source;
 pub mod updater;
 pub mod watch;
 // Zotero 联动 · P0：本地 API 只读客户端 / 能力探测；P1：同步 HTTP / 受管 .bib 写盘
