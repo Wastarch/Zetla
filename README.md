@@ -9,7 +9,7 @@
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?logo=windows&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-Supported-FCC624?logo=linux&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-Supported-000000?logo=apple&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
-[![Version](https://img.shields.io/badge/Version-v0.4.2-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v0.4.3-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-0E4C92)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
 [![Language](https://img.shields.io/badge/Language-Rust%20%2F%20TS-DEA584)](https://www.rust-lang.org)
@@ -53,7 +53,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 | 🧮 公式表格 | 🖼️ 图片拼图 | 📐 绘图（TikZ） |
 | 公式/符号面板 · 表格编辑 | 图片附件 · 拼图布局 | 画布 ↔ 源码双向 · 控制点编辑 · 导出插入 |
 | 📚 Zotero / 参考文献 | 💻 内置终端 | 🧩 模板库 |
-| Zotero 联动 · 插入即写 · BibTeX 管理 | 多会话 · 终端设置 · 复用编译环境 | 6 套内置 · 变量表单 · 导入导出 |
+| Zotero 联动 · 插入即写 · BibTeX 管理 | 多会话 · 终端设置 · 复用编译环境 | 7 套内置 · 制作向导 · zip 导入导出 |
 | 🔄 自动更新 | 🎨 主题外观 | 🖥️ 跨平台 |
 | 三平台自更新 · 双源回退 · TeX 环境引导 | 亮暗主题 · 自定义标题栏 | Windows · Linux · macOS |
 
