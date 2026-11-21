@@ -834,14 +834,17 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
 .dg-src-switch {
   flex: none;
   position: relative;
-  width: 26px;
-  height: 14px;
-  border-radius: 8px;
-  background: var(--bg-2, #cfcfcf);
+  width: 28px;
+  height: 16px;
+  border-radius: 9px;
+  /* 轨道取 txt/bg 混合出的中灰：亮色≈#909090、暗色≈#83868a，两套主题都明显。
+     直接用 --line 会亮色近白、用 --bg-3 会暗色融进面板；滑块用恒浅的 --paper 保证对比。 */
+  background: color-mix(in srgb, var(--txt-3, #9a9a9a) 48%, var(--bg-3, #fff));
+  box-sizing: border-box;
   transition: background 0.15s;
 }
 .dg-src-switch.is-on {
-  background: var(--accent, #2d7ff9);
+  background: var(--accent, #2b62cf);
 }
 .dg-src-switch-knob {
   position: absolute;
@@ -850,11 +853,13 @@ body.col-resizing .dg-tab-body .resizer.dg-splitter::after {
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--bg-3, #fff);
+  background: var(--paper, #fbfaf7);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 24%);
   transition: transform 0.15s;
 }
 .dg-src-switch.is-on .dg-src-switch-knob {
   transform: translateX(12px);
+  box-shadow: none;
 }
 .dg-src-pop-sectitle {
   margin-bottom: 6px;
