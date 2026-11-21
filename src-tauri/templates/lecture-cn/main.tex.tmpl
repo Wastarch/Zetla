@@ -1,0 +1,49 @@
+% ============================================================
+%  中文讲义模板（由 Zetla 生成 · lecture-cn）
+%
+%  文件结构速览：
+%    main.tex            本文件：编译入口；目录页与正文页码设置也在这里
+%    config/info.tex     书名 / 作者 / 日期 / 前言标题 / 落款（只在这一处改）
+%    config/foreword.tex 前言页（前言正文直接写在里面）
+%    config/cover.tex    封面 + 页眉页脚（twoside 双面版式）
+%    config/package.tex  宏包与全局版式（含 \cleardoublepage 重定义）；
+%                        theorem.tex 定理盒子；custom.tex 自定义命令
+%    chapters/*.tex      各章正文（纯内容文件）
+%    figures/            插图目录（\graphicspath 已指向此处）
+%
+%  用法：
+%    1. 新增一章：在 chapters/ 下新建 tex 文件，只写 \chapter/\section 与正文，
+%       不要写 \documentclass、\begin{document} 等导言区内容；
+%       然后在下方用普通 \input 引入。
+%    2. 改书名 / 作者 / 日期 / 前言标题 / 落款 → 编辑 config/info.tex；
+%       改前言正文 → 编辑 config/foreword.tex。
+% ============================================================
+\documentclass[12pt, a4paper, twoside, UTF8]{ctexbook}
+\input{config/_config}
+
+\begin{document}
+% 封面
+\input{config/cover}
+% 前言页
+\input{config/foreword}
+
+% 目录
+\cleardoublepage
+\pagestyle{plain}
+\setcounter{page}{1}
+\pagenumbering{Roman}
+\tableofcontents
+
+% 正文：阿拉伯数字页码从 1 开始，并保证第一章从奇数页起
+\cleardoublepage
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\pagestyle{fancy}      % 恢复被目录 plain 覆盖的页眉页脚
+
+% 章节（普通 \input 按顺序引入；需要分「部分」时，在对应章节前加 \part{...}）
+% \part{第一部分}
+\input{chapters/chapter1}
+\input{chapters/chapter2}
+\input{chapters/chapter3}
+
+\end{document}

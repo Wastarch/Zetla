@@ -1,0 +1,133 @@
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{mathrsfs}
+\usepackage{enumitem}
+\usepackage{geometry}
+\usepackage[colorlinks, linkcolor=black]{hyperref}
+\usepackage{stackengine}
+\usepackage{yhmath}
+\usepackage{extarrows}
+% \usepackage{unicode-math}
+\usepackage{esint}
+\usepackage{multicol} % 导入multicol包
+\usepackage{fancyhdr}
+\usepackage[dvipsnames, svgnames]{xcolor}
+\usepackage{listings}
+\usepackage{physics}
+
+\definecolor{mygreen}{rgb}{0,0.6,0}
+\definecolor{mygray}{rgb}{0.5,0.5,0.5}
+\definecolor{mymauve}{rgb}{0.58,0,0.82}
+\definecolor{NavyBlue}{RGB}{0,0,128}
+\definecolor{Rhodamine}{RGB}{255,0,255}
+\definecolor{PineGreen}{RGB}{0,128,0}
+
+\graphicspath{ {figures/},{../figures/}, {config/}, {../config/} }
+
+\linespread{1.6}
+
+
+\usepackage{float}    % 提供[H]参数
+\usepackage{adjustbox}% 提供垂直对齐控制
+
+% 设置页面布局，包括装订线
+% left=左边距, right=右边距, top=上边距, bottom=下边距
+% bindingoffset=装订线宽度，通常在1cm到1.5cm之间
+\geometry{
+    a4paper,
+    inner=3cm,     % 内侧边距（含装订线）
+    outer=2cm,     % 外侧边距
+    top=2.5cm,
+    bottom=2cm,
+    bindingoffset=1cm  % 从内侧边距中划分出装订线
+}
+\setenumerate[1]{itemsep=5pt,partopsep=0pt,parsep=\parskip,topsep=5pt}
+\setitemize[1]{itemsep=5pt,partopsep=0pt,parsep=\parskip,topsep=5pt}
+\setdescription{itemsep=5pt,partopsep=0pt,parsep=\parskip,topsep=5pt}
+
+\lstset{
+    language=Mathematica,
+    basicstyle=\ttfamily,
+    breaklines=true,
+    keywordstyle=\bfseries\color{NavyBlue}, 
+    emphstyle=\bfseries\color{Rhodamine},
+    commentstyle=\itshape\color{black!50!white}, 
+    stringstyle=\bfseries\color{PineGreen!90!black},
+    columns=flexible,
+    numbers=left,
+    numberstyle=\footnotesize,
+    frame=tb,
+    breakatwhitespace=false,
+} 
+
+\lstset{
+    language=TeX, % 设置语言为 TeX
+    basicstyle=\ttfamily, % 使用等宽字体
+    breaklines=true, % 自动换行
+    keywordstyle=\bfseries\color{NavyBlue}, % 关键字样式
+    emphstyle=\bfseries\color{Rhodamine}, % 强调样式
+    commentstyle=\itshape\color{black!50!white}, % 注释样式
+    stringstyle=\bfseries\color{PineGreen!90!black}, % 字符串样式
+    columns=flexible, % 列的灵活性
+    numbers=left, % 行号在左侧
+    numberstyle=\footnotesize, % 行号字体大小
+    frame=tb, % 顶部和底部边框
+    breakatwhitespace=false % 不在空白处断行
+}
+% 定义注意环境
+\newenvironment{note}{%
+  \par\noindent% 开始新段落，取消首行缩进
+  \textbf{注意：}% 注意前缀
+  \begin{list}{%
+    \arabic{enumi}.% 列表编号格式：1.、2.
+  }{%
+    \usecounter{enumi}% 使用默认计数器
+    \setlength{\labelwidth}{1.2em}% 编号宽度
+    \setlength{\labelsep}{0.3em}% 编号与文字间距
+    \setlength{\leftmargin}{\dimexpr\labelwidth + \labelsep\relax}% 整体缩进
+    \setlength{\itemindent}{0pt}% 取消项缩进
+    \setlength{\topsep}{0pt}% 取消顶部间距
+    \setlength{\partopsep}{0pt}% 取消顶部额外间距
+    \setlength{\parsep}{0pt}% 取消段落间距
+    \setlength{\itemsep}{0.5em}% 列表项之间的间距
+  }%
+  \let\olditem\item% 保存原始\item命令
+  \renewcommand{\item}{% 重定义\item命令
+    \ifnum\value{enumi}=0\relax% 判断是否为第一个列表项
+      \olditem% 第一个项正常显示（与"注意："同行）
+    \else%
+      \olditem% 后续项保持正常缩进
+    \fi%
+  }%
+}{%
+  \end{list}% 结束列表环境
+  \par% 结束段落
+}
+% \begin{lstlisting}[language=TeX] ... \end{lstlisting}
+
+\renewcommand{\eqref}[1]{%
+  \hyperref[#1]{式\ref*{#1}}%
+  % \ref* 避免重复生成跳转链接（仅 \hyperref 负责跳转）
+}
+
+% 封面标题排版所需的宏包（\maketitle 实现见 config/cover.tex）
+\usepackage{titling}
+
+% %%% 重定义 \cleardoublepage：空白页无页眉页脚，且不占用页码 %%%
+\newcounter{skippedpages}          % 记录"不占页码"的空白页数量
+\makeatletter
+\renewcommand{\cleardoublepage}{%
+  \clearpage
+  \if@twoside
+    \ifodd\numexpr\value{page}+\value{skippedpages}\relax
+    \else                                 % 下一个"物理页"是偶数页 → 补空白
+      \hbox{}\thispagestyle{empty}%       % 空白页：无页眉、无页脚、无页码
+      \newpage
+      \addtocounter{page}{-1}%            % 页码回退：空白页不占号
+      \stepcounter{skippedpages}%         % 补偿一次，保证后续奇偶判断正确
+    \fi
+  \fi
+}
+\makeatother

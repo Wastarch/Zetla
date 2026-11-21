@@ -1,0 +1,90 @@
+{
+  "schemaVersion": "1.0",
+  "id": "lecture-cn",
+  "name": "中文讲义（ctexbook）",
+  "description": "多文件中文讲义/课程笔记骨架：封面+前言+目录、彩色定理盒子（tcolorbox）、章节拆分（XeLaTeX）",
+  "category": "thesis",
+  "tags": ["讲义", "笔记", "ctex", "多文件", "tcolorbox"],
+  "version": "1.0",
+  "build": {
+    "engine": "xelatex",
+    "mainFile": "main.tex",
+    "outputDir": "build",
+    "synctex": true
+  },
+  "dependencies": {
+    "packages": [
+      "ctex",
+      "amsmath",
+      "amsthm",
+      "amssymb",
+      "graphicx",
+      "mathrsfs",
+      "enumitem",
+      "geometry",
+      "hyperref",
+      "stackengine",
+      "yhmath",
+      "extarrows",
+      "esint",
+      "multicol",
+      "fancyhdr",
+      "xcolor",
+      "listings",
+      "physics",
+      "tcolorbox",
+      "float",
+      "adjustbox",
+      "titling"
+    ],
+    "assets": []
+  },
+  "variables": [
+    {
+      "key": "title",
+      "label": "讲义标题",
+      "type": "string",
+      "required": true,
+      "default": "课程讲义",
+      "placeholder": "如：量子力学：理论与应用"
+    },
+    {
+      "key": "subtitle",
+      "label": "副标题（英文）",
+      "type": "string",
+      "default": "",
+      "placeholder": "英文副标题，可留空"
+    },
+    {
+      "key": "author",
+      "label": "作者",
+      "type": "string",
+      "default": "",
+      "placeholder": "作者姓名，可留空"
+    },
+    {
+      "key": "createDate",
+      "label": "创建日期",
+      "type": "string",
+      "default": "2026年1月1日",
+      "placeholder": "如：2026年1月1日"
+    }
+  ],
+  "structure": {
+    "dirs": ["figures"],
+    "files": [
+      { "target": "main.tex", "source": "main.tex.tmpl", "render": true },
+      { "target": "config/_config.tex", "source": "config/_config.tex.tmpl", "render": true },
+      { "target": "config/info.tex", "source": "config/info.tex.tmpl", "render": true },
+      { "target": "config/foreword.tex", "source": "config/foreword.tex.tmpl", "render": false },
+      { "target": "config/package.tex", "source": "config/package.tex.tmpl", "render": false },
+      { "target": "config/theorem.tex", "source": "config/theorem.tex.tmpl", "render": false },
+      { "target": "config/custom.tex", "source": "config/custom.tex.tmpl", "render": false },
+      { "target": "config/cover.tex", "source": "config/cover.tex.tmpl", "render": false },
+      { "target": "config/cover_package.jpg", "source": "config/cover_package.jpg", "render": false },
+      { "target": "chapters/chapter1.tex", "source": "chapters/chapter1.tex.tmpl", "render": false },
+      { "target": "chapters/chapter2.tex", "source": "chapters/chapter2.tex.tmpl", "render": false },
+      { "target": "chapters/chapter3.tex", "source": "chapters/chapter3.tex.tmpl", "render": false }
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+% ============================================================
+%  前言页（由 main.tex 通过 \input 引入）
+%  前言正文直接写在下方标注的位置；
+%  前言页标题与落款日期在 config/info.tex 中设置
+% ============================================================
+
+\newpage
+\thispagestyle{empty}
+\begin{center}
+    \Huge\textbf{\myForeword}
+\end{center}
+
+% ↓↓ 前言正文写在这里 ↓↓
+
+本讲义系统介绍本课程的核心概念、基本方法与典型应用，可作为课堂教学的讲义与课后复习的参考。
+
+全书各章正文直接写在 \texttt{chapters/} 目录对应的章节文件中；书名、作者、日期等信息在 \texttt{config/info.tex} 中统一设置，前言标题与落款日期也在该文件中修改。
+
+% ↑↑ 前言正文结束 ↑↑
+
+\begin{flushright}
+    \begin{tabular}{c}
+        \myDateForeword
+    \end{tabular}
+\end{flushright}

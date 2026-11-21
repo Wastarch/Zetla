@@ -1,0 +1,16 @@
+% ============================================================
+%  封面 / 前言信息设置 —— 书名、作者、日期只在这一处改
+%  （由 config/_config.tex 引入；封面版式在 cover.tex，前言正文在 foreword.tex）
+% ============================================================
+
+% ---------- 封面 ----------
+\def\myTitle{<%= title %>}                 % 主标题
+\def\mySubtitle{<%= subtitle %>}           % 副标题（英文，可留空）
+\def\myAuthor{<%= author %>}               % 作者
+\def\myCreateDateCover{<%= createDate %>}  % 创建日期
+\def\myUpdateDateCover{ \today}            % 更新日期（\today = 自动取编译当天）
+
+% ---------- 前言 ----------
+\def\myForeword{前言}                      % 前言页标题
+\def\myDateForeword{}                      % 前言落款日期（如：2026年11月）
+\def\mySubheading{}                        % 预留副标题位

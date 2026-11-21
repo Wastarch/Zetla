@@ -1,0 +1,44 @@
+\chapter{标题}
+
+% 考试内容 / 考试要求盒子（标题与标签均可留空 {}）
+\begin{examct}{}{}
+    本章主要内容的简要说明
+\end{examct}
+
+\begin{examrqm}{}{}
+    \begin{enumerate}
+        \item 学习要求一
+        \item 学习要求二
+    \end{enumerate}
+\end{examrqm}
+
+\section{标题}
+
+% 彩色定理盒子（config/theorem.tex 定义，{标题}{标签} 两参数；标签用于交叉引用）
+\begin{defn}{定义名称}{def-example}
+    定义内容：……
+\end{defn}
+
+\begin{them}{定理名称}{them-example}
+    定理内容：……
+\end{them}
+
+\begin{remark}{注意事项}{rem-example}
+    注意内容……（无边框灰色盒子）
+\end{remark}
+
+% 注意环境（config/package.tex 定义）
+\begin{note}
+    \item 注意事项一
+    \item 注意事项二
+\end{note}
+
+\section{标题}
+
+% 一个带编号的公式；在正文中用 \eqref{标签} 引用会显示为「式 (n)」并带跳转
+\begin{equation}
+    \label{eq:example}
+    f(x) = \int_{-\infty}^{+\infty} \psi^*(x) \hat{F} \psi(x) \d x
+\end{equation}
+
+由式 \eqref{eq:example} 可知……；交叉引用定理请用 \ref{them:them-example}。

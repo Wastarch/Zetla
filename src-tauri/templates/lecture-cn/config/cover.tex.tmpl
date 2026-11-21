@@ -1,0 +1,50 @@
+% ============================================================
+%  封面 + 页眉页脚（由 main.tex 通过 \input 引入）
+%  封面：定义并调用 \maketitle；封面文字（书名/作者/日期）在 config/info.tex
+%  页眉页脚：twoside 双面排版——奇数页眉右侧章标题、偶数页眉左侧节标题，页脚居中页码
+% ============================================================
+
+\renewcommand*{\maketitle}{
+    \begin{titlepage}
+        \newgeometry{margin = 0in}
+        \parindent=0pt
+        \includegraphics[width=\linewidth]{cover_package.jpg}
+        \vfill
+        \begin{center}
+            \parbox{0.618\textwidth}{
+                \hfill {\bfseries \Huge \thetitle} \\[0.6pt]
+                \rule{0.618\textwidth}{4pt}
+            }
+        \end{center}
+        \vfill
+        \begin{center}
+            \parbox{0.618\textwidth}{
+                \hfill\Large
+                \begin{tabular}{r|}
+                    \theauthor \\
+                    \thedate   \\
+                \end{tabular}
+            }
+        \end{center}
+        \vfill
+        \begin{center}
+            \parbox[t]{0.7\textwidth}{\centering  }
+        \end{center}
+        \vfill
+    \end{titlepage}
+    \restoregeometry
+    \thispagestyle{empty}
+}
+
+\title{\myTitle \\ \mySubtitle}
+\author{作者：\myAuthor}
+\date{更新日期：\myUpdateDateCover \\
+    创建日期：\myCreateDateCover}
+\thispagestyle{empty}
+\maketitle
+
+% 页眉页脚设置（twoside：OR=奇数页右，EL=偶数页左；CE/CO=页脚居中）
+\fancyhf{}
+\fancyhead[OR]{\leftmark}    % 奇数页页眉右侧：章标题
+\fancyhead[EL]{\rightmark}   % 偶数页页眉左侧：节标题
+\fancyfoot[CE,CO]{\thepage}  % 页脚居中：页码

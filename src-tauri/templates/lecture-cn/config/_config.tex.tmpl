@@ -1,0 +1,15 @@
+% ============================================================
+%  总配置：按顺序串联 config/ 下各配置文件
+%  ★ 改书名 / 作者 / 日期 / 前言标题 / 落款 → 编辑 config/info.tex
+%  ★ 改前言正文 → 编辑 config/foreword.tex
+% ============================================================
+\input{config/package.tex}   % 宏包与全局版式
+
+% 定理环境设置
+\input{config/theorem.tex}
+
+% 自定义命令
+\input{config/custom.tex}
+
+% 封面 / 前言信息设置（必须先于封面相关文件加载）
+\input{config/info.tex}
