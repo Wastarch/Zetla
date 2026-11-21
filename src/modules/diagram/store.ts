@@ -365,6 +365,12 @@ export interface DiagramState {
   /** 手动导入候选；整篇替换源码并清理选中/分组/渲染缓存 */
   applyTikzCandidate: (candidate: TikzSourceCandidate) => boolean;
   /**
+   * 源码里 tikzpicture 环境的 ✎ 反向编辑：把环境原文载入源码栏并锁定其 .tex 为 targetTex。
+   * 与 applyTikzCandidate 的区别：不写 importedSource/lastByProject（否则 Tab 挂载时的自动导入
+   * 会把刚载入的图覆盖掉）——这里按「手改保护」语义处理，视为用户主动内容，自动导入让位。
+   */
+  loadFromEditorEnv: (envText: string, texPath: string | null) => void;
+  /**
    * 从项目外的单个文件导入：解析后若仅一张图直接应用；
    * 多张图则并入候选列表交由用户挑选（不擅自选第一张）。
    */
@@ -566,6 +572,31 @@ export const useDiagramStore = create<DiagramState>((set, get) => ({
       guideSeq: state.guideSeq + 1,
     });
     return true;
+  },
+  loadFromEditorEnv: (envText, texPath) => {
+    const state = get();
+    const source = envText.trim();
+    const bridge = getDiagramSourceBridge();
+    if (bridge) bridge.replaceDocument(source, state.source);
+    else set({ source });
+    writeGrouping(EMPTY_GROUPING, [], source);
+    // 不写 importedSource/lastByProject：让 isSafeToAutoImport 判 false，
+    // Tab 挂载后的 refreshTikzSources 不会把从编辑器点入的图换成扫描候选。
+    set({
+      source,
+      targetTex: texPath,
+      importedSource: null,
+      importedPath: texPath,
+      importedFingerprint: null,
+      activeCandidateId: null,
+      selectedId: null,
+      selectedIds: [],
+      renderMeta: null,
+      pendingImage: null,
+      grouping: { ...EMPTY_GROUPING },
+      guides: [],
+      guideSeq: state.guideSeq + 1,
+    });
   },
   importTikzFileFromPath: async (path) => {
     const found = await diagramApi.parseTikzFile(path);
