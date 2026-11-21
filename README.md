@@ -4,12 +4,12 @@
 
 ### 跨平台的桌面 LaTeX 工作台
 
-> Windows 已发布 · Linux / macOS 安装包与自更新均可用（适配阶段，欢迎反馈）
+> Windows / Linux / macOS 安装包与自更新均已发布（欢迎反馈）
 
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?logo=windows&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
-[![Linux](https://img.shields.io/badge/Linux-Preview-FCC624?logo=linux&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
-[![macOS](https://img.shields.io/badge/macOS-Preview-000000?logo=apple&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
-[![Version](https://img.shields.io/badge/Version-v0.4.1-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
+[![Linux](https://img.shields.io/badge/Linux-Supported-FCC624?logo=linux&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-Supported-000000?logo=apple&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v0.4.2-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-0E4C92)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
 [![Language](https://img.shields.io/badge/Language-Rust%20%2F%20TS-DEA584)](https://www.rust-lang.org)
@@ -35,7 +35,7 @@
 2. **准备 TeX 环境** 🧰：首次启动自动检测；未安装可在引导面板一键安装 TeX Live，或接管已有安装（见[使用指南 · 首次启动](docs/使用指南.md#首次启动准备-tex-环境)）。
 3. **新建或打开项目** 📂：`Ctrl+Shift+N` 从模板新建，或 `Ctrl+Shift+O` 打开项目文件夹。
 4. **编写文档** ✍️：在 `.tex` 中用模板、代码片段、公式 / 符号面板高效写作。
-5. **一键编译** ⚡：`Ctrl+B` 或点 ▶ 编译，内置 `latexmk` / `engine-direct`。
+5. **一键编译** ⚡：`Ctrl+B` 或点 ▶ 编译，内置 `latexmk` / `engine-direct`；可设独立「输出目录」收纳 PDF 与日志，产物在大纲的「构建文件」面板里一点即开。
 6. **查看 PDF** 👁️：编译后右侧自动预览，支持源码 ↔ PDF 双向跳转。
 7. **插图与画图** 📐：拖入图片自动生成 `figure` 环境；需要示意图时切到侧栏「绘图」，在 TikZ 画布上拖图元、调样式，导出 PNG / SVG / PDF 或直接插入正文（见[使用指南 · 绘图](docs/使用指南.md#绘图tikz)）。
 8. **管文献** 📚：有 Zotero 的话在设置里开启联动，题录自动同步进项目 `.bib`；`Ctrl+Alt+K` 唤起引用浮层搜索、多选、插入，没进 `.bib` 的条目自动补写，项目里还没有 `.bib` 也会自动新建 `references.bib`（见[使用指南 · Zotero 联动](docs/使用指南.md#zotero-联动)）。
@@ -49,7 +49,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 
 | 🗂️ 项目管理 | ✍️ 编辑器 | ⚙️ 可编排编译 |
 | :---: | :---: | :---: |
-| 最近项目 · 置顶归档 · 项目设置 · 新建任意后缀 | 语法高亮 · 代码片段 · 查找替换 · 全项目搜索 | Tool/Recipe · 实时预览 · 双向跳转 |
+| 最近项目 · 置顶归档 · 项目设置 · 拖拽排序 · 新建任意后缀 | 语法高亮 · 代码片段 · 查找替换 · 折叠 / 括号匹配 · 全项目搜索 | Tool/Recipe · 输出目录 · 构建文件面板 · 双向跳转 |
 | 🧮 公式表格 | 🖼️ 图片拼图 | 📐 绘图（TikZ） |
 | 公式/符号面板 · 表格编辑 | 图片附件 · 拼图布局 | 画布 ↔ 源码双向 · 控制点编辑 · 导出插入 |
 | 📚 Zotero / 参考文献 | 💻 内置终端 | 🧩 模板库 |
@@ -76,6 +76,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 | 内置项目模板库（一键新建） | ✅ 内置 | ✅ 模板 | ⚠️ 较弱 | ⚠️ 插件 |
 | 中文 / GBK 编码零乱码（自动处理） | ✅ 自动 | ⚠️ | ⚠️ 手动 | ⚠️ 手动 |
 | 代码片段面板（可复用块管理） | ✅ 内置 | ⚠️ | ✅ | ✅ snippets |
+| 拖拽排序（标签页 / 项目树）· 编译输出目录 | ✅ 内置 | ❌ | ❌ | ⚠️ 需插件 |
 
 > [!TIP]
 > Zetla 的核心差异：**把公式、符号、拼图、绘图、编译、参考文献都做成开箱即用的面板**，加上首次启动自动引导 TeX 环境、中文 / GBK 零乱码——专为"不想折腾环境、又要桌面级体验"的中文 LaTeX 用户设计。绘图模块的 TikZ 源码始终是唯一真源：画布上的每一次拖拽都以最小补丁写回源码，与键盘编辑共用同一条撤销栈。文献侧则直接读 Zotero 本地 API（只读，不写回你的文献库）：题录改了 `.bib` 跟着变，插入引用时缺条目自动补写，`\cite` 还能反查回 Zotero。
@@ -100,7 +101,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 欢迎通过 [GitHub Issues](https://github.com/Wastarch/Zetla/issues) 反馈问题或提出建议。提交代码前请先确认改动符合项目当前阶段的范围。
 
 > [!NOTE]
-> Linux / macOS 目前处于**适配阶段**（本版首次提供安装包与自更新）。反馈时请附发行版或 macOS 版本（如 Ubuntu 24.04 / Fedora 41 / macOS 14 Apple Silicon）、安装方式（AppImage / deb / rpm / dmg）与 Zetla 版本号，能显著加快定位。
+> 反馈时请附发行版或 macOS 版本（如 Ubuntu 24.04 / Fedora 41 / macOS 14 Apple Silicon）、安装方式（AppImage / deb / rpm / dmg）与 Zetla 版本号，能显著加快定位。
 
 
 QQ交流群:1129325600
