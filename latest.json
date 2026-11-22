@@ -1,16 +1,16 @@
 {
-    "version": "0.4.3",
-    "notes": "# 更新日志\r\n## [0.4.3] - 2026-11-21\r\n\r\n### 🎉 新增\r\n- 新增内置模板「中文讲义」：多文件课程讲义 / 笔记骨架，带封面、前言、目录与彩色定理盒子，章节独立成文件，新建项目时即可选用\r\n- 新增「根据本项目制作模板」三步向导（菜单「模板 → 根据本项目制作模板…」）：勾选要带走的文件 → 自动把标题、作者、日期提取成可填变量 → 一键导出 zip 并可选装进模板库，做好的模板可直接用来新建项目\r\n\r\n### 🔧 优化\r\n- 模板交换统一为 zip：导入模板现在只认 zip 包（zip 里多套一层文件夹也能识别），含非法变量（重名、数字开头、保留字）或 manifest 缺失的坏包在导入时就会被拦下并明确报错，不会再导入到一半才失败\r\n- 制作模板时会保留原项目的换行格式与文件结尾，编译配置（引擎、主文件、输出目录）也会一并带进新项目\r\n\r\n### ⚠️ 重要变更 / 不兼容更新\r\n- 菜单「另存当前项目为模板」已移除，改用「根据本项目制作模板…」向导；之前用旧入口保存的模板仍可正常使用\r\n- 「导入文件夹…」入口已移除，模板导入只支持 zip 包；旧版导出的模板目录请先打包成 zip 再导入",
-    "pubDate": "2026-11-21T21:32:31+08:00",
-    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.4.3",
+    "version": "0.4.4",
+    "notes": "# 更新日志\r\n## [0.4.4] - 2026-11-22\r\n\r\n### 🎉 新增\r\n- 项目树支持多选：`Ctrl` 加减选、`Shift` 范围选、`Ctrl+A` 全选、`Esc` 清空，复制 / 剪切 / 删除可对整组文件一次完成，多选拖拽时影像上会显示数量徽标\r\n- 标签页新增右键菜单：关闭其他 / 关闭右侧 / 关闭已保存 / 全部关闭、复制路径与相对路径、在系统文件管理器中显示（macOS 为「在访达中显示」）、侧栏树定位\r\n- `\\input` 类命令一键跳转与创建：`\\input` / `\\include` / `\\subfile` / `\\lstinputlisting` / `\\verbatiminput` / `\\bibliography` / `\\addbibresource` 的目标路径 `Ctrl+点击` 直接打开；文件不存在时确认后一键创建（缺失的父目录自动补齐）\r\n- `\\input{}` 花括号内路径补全：目录逐级下钻（空目录也会列出）、文件名按命令类型自动匹配后缀；键入 `{` 或光标点进空括号都会自动拉起候选\r\n\r\n### 🔧 优化\r\n- 大纲更准：注释里的章节命令不再收录；`\\part` 与 `\\input` 子文件的章节按文档真实位置交错排序，不再整体前置\r\n- 链接提示更清爽：按住 `Ctrl` 时只有鼠标悬停的那一条命令显示下划线，不再全篇标线\r\n- 引用补全支持 biblatex 的 `\\footcite` / `\\smartcite` / `\\fullcite` 等命令\r\n- 项目树空白处点击取消选中；新建文件 / 文件夹的目标目录跟随当前选中项\r\n- 新建文件与删除的确认改为应用内弹窗，风格与全局一致\r\n\r\n### 🐛 修复\r\n- 修复按住 `Ctrl` 时链接下划线不显示的问题\r\n- 修复项目树多选时 `Ctrl` / `Shift` 点击被拖拽改选抵消的问题\r\n- 修复大纲中 `\\part` 被整体排到子文件章节之前的问题",
+    "pubDate": "2026-11-22T22:17:04+08:00",
+    "releaseUrl": "https://github.com/Wastarch/Zetla/releases/tag/v0.4.4",
     "installers": [
         {
-            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_x64-setup.exe",
-            "sha256": "7E493B0AC7C62306B58A38509B9C9B03C413C06AA43120375566EB198858D518"
+            "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_x64-setup.exe",
+            "sha256": "C4CE0A0B3A90CA0E4882997DCFAE51B5E9564E152830611D2DE5DEED14F1F178"
         },
         {
-            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_x64-setup.exe",
-            "sha256": "7E493B0AC7C62306B58A38509B9C9B03C413C06AA43120375566EB198858D518"
+            "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_x64-setup.exe",
+            "sha256": "C4CE0A0B3A90CA0E4882997DCFAE51B5E9564E152830611D2DE5DEED14F1F178"
         }
     ],
     "platforms": {
@@ -18,12 +18,12 @@
             "kind": "app-tar-gz",
             "installers": [
                 {
-                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_universal.app.tar.gz",
-                    "sha256": "C67DE63D32528D2C514BBF5B2A8AF91930D1B99E848160A21202632FDBFD4266"
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_universal.app.tar.gz",
+                    "sha256": "E02448EFE0E94580C5C5A68CCB925F34E08141D78F4783E53199A7D8558DA943"
                 },
                 {
-                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_universal.app.tar.gz",
-                    "sha256": "C67DE63D32528D2C514BBF5B2A8AF91930D1B99E848160A21202632FDBFD4266"
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_universal.app.tar.gz",
+                    "sha256": "E02448EFE0E94580C5C5A68CCB925F34E08141D78F4783E53199A7D8558DA943"
                 }
             ]
         },
@@ -31,30 +31,30 @@
             "kind": "appimage",
             "installers": [
                 {
-                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_amd64.AppImage",
-                    "sha256": "F757999BC83FEF2E55ED0E469B92970F9DBAB2BEE537A2E85687403467292739"
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_amd64.AppImage",
+                    "sha256": "4D32D54E15E08A6878AFC90BC164777D385A8370D8DBC7820DD0E544BFEF1921"
                 },
                 {
-                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_amd64.AppImage",
-                    "sha256": "F757999BC83FEF2E55ED0E469B92970F9DBAB2BEE537A2E85687403467292739"
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_amd64.AppImage",
+                    "sha256": "4D32D54E15E08A6878AFC90BC164777D385A8370D8DBC7820DD0E544BFEF1921"
                 }
             ],
             "packages": [
                 {
-                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla-0.4.3-1.x86_64.rpm",
-                    "sha256": "0F82663BBD91C9551EA0A90F2241D2C70FF43DAAF7D8A10C2AD79D155CCB5224"
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla-0.4.4-1.x86_64.rpm",
+                    "sha256": "F9A56030AC5C37E8A7D3D613FA3BB94B05C93E58074F747BEA152ABDD6A33873"
                 },
                 {
-                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla-0.4.3-1.x86_64.rpm",
-                    "sha256": "0F82663BBD91C9551EA0A90F2241D2C70FF43DAAF7D8A10C2AD79D155CCB5224"
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla-0.4.4-1.x86_64.rpm",
+                    "sha256": "F9A56030AC5C37E8A7D3D613FA3BB94B05C93E58074F747BEA152ABDD6A33873"
                 },
                 {
-                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_amd64.deb",
-                    "sha256": "97282DA90D1A0B710FF911DD16683E83EDC72911AEBFCC7F124872F4EC314948"
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_amd64.deb",
+                    "sha256": "03B1DBA9871CAED0E2C1A126893FED21F774DA20947F69002ADDFE19E6C89D07"
                 },
                 {
-                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_amd64.deb",
-                    "sha256": "97282DA90D1A0B710FF911DD16683E83EDC72911AEBFCC7F124872F4EC314948"
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_amd64.deb",
+                    "sha256": "03B1DBA9871CAED0E2C1A126893FED21F774DA20947F69002ADDFE19E6C89D07"
                 }
             ]
         },
@@ -62,12 +62,12 @@
             "kind": "exe",
             "installers": [
                 {
-                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_x64-setup.exe",
-                    "sha256": "7E493B0AC7C62306B58A38509B9C9B03C413C06AA43120375566EB198858D518"
+                    "url": "https://gitee.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_x64-setup.exe",
+                    "sha256": "C4CE0A0B3A90CA0E4882997DCFAE51B5E9564E152830611D2DE5DEED14F1F178"
                 },
                 {
-                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.3/Zetla_0.4.3_x64-setup.exe",
-                    "sha256": "7E493B0AC7C62306B58A38509B9C9B03C413C06AA43120375566EB198858D518"
+                    "url": "https://github.com/Wastarch/Zetla/releases/download/v0.4.4/Zetla_0.4.4_x64-setup.exe",
+                    "sha256": "C4CE0A0B3A90CA0E4882997DCFAE51B5E9564E152830611D2DE5DEED14F1F178"
                 }
             ]
         }

@@ -9,7 +9,7 @@
 [![Windows](https://img.shields.io/badge/Windows-Supported-0078D6?logo=windows&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![Linux](https://img.shields.io/badge/Linux-Supported-FCC624?logo=linux&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-Supported-000000?logo=apple&logoColor=white)](https://github.com/Wastarch/Zetla/releases/latest)
-[![Version](https://img.shields.io/badge/Version-v0.4.3-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
+[![Version](https://img.shields.io/badge/Version-v0.4.4-FF6B6B)](https://github.com/Wastarch/Zetla/releases/latest)
 [![License](https://img.shields.io/badge/License-AGPL--3.0-0E4C92)](LICENSE)
 [![Built with Tauri](https://img.shields.io/badge/Built%20with-Tauri-24C8D8?logo=tauri&logoColor=white)](https://tauri.app)
 [![Language](https://img.shields.io/badge/Language-Rust%20%2F%20TS-DEA584)](https://www.rust-lang.org)
@@ -49,7 +49,7 @@ Zetla 把 LaTeX 写作拆成一组**可视化面板**，覆盖项目管理、编
 
 | 🗂️ 项目管理 | ✍️ 编辑器 | ⚙️ 可编排编译 |
 | :---: | :---: | :---: |
-| 最近项目 · 置顶归档 · 项目设置 · 拖拽排序 · 新建任意后缀 | 语法高亮 · 代码片段 · 查找替换 · 折叠 / 括号匹配 · 全项目搜索 | Tool/Recipe · 输出目录 · 构建文件面板 · 双向跳转 |
+| 最近项目 · 置顶归档 · 项目树多选 · 拖拽排序 · 新建任意后缀 | 语法高亮 · 代码片段 · 路径补全与文件跳转 · 折叠 / 括号匹配 · 全项目搜索 | Tool/Recipe · 输出目录 · 构建文件面板 · 双向跳转 |
 | 🧮 公式表格 | 🖼️ 图片拼图 | 📐 绘图（TikZ） |
 | 公式/符号面板 · 表格编辑 | 图片附件 · 拼图布局 | 画布 ↔ 源码双向 · 控制点编辑 · 导出插入 |
 | 📚 Zotero / 参考文献 | 💻 内置终端 | 🧩 模板库 |
