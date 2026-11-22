@@ -15,6 +15,7 @@ import { useCurrentRecipe } from "@/compile/recipePicker";
 import { useBuffersStore } from "./useBuffers";
 import { insertionIndex, type TabSpan } from "./bufferOrder";
 import { createDragGhost, type DragGhost } from "@/ui/dragGhost";
+import { TabCtxMenu, type TabCtxState } from "./TabCtxMenu";
 
 export interface TabBarProps {
   onFind: () => void;
@@ -39,6 +40,8 @@ export function TabBar({ onFind }: TabBarProps) {
 
   // M2：▾ 流程菜单（菜单是 fixed 定位，放在 .tabbar 外避免被 overflow 裁切）
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  // M1-45：标签页右键菜单（关闭族 + 复制路径族 + 双资源管理器定位）
+  const [tabCtx, setTabCtx] = useState<TabCtxState | null>(null);
   const engineSetting = useSettingsStore((s) => s.settings.build.engine);
   const defaultRecipe = useSettingsStore((s) => s.settings.build.defaultRecipe);
   const currentRecipe = useCurrentRecipe();
@@ -177,6 +180,10 @@ export function TabBar({ onFind }: TabBarProps) {
                 title={`${title} · 拖动可调整顺序`}
                 className={cls}
                 onPointerDown={(e) => startDrag(e, b.path)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setTabCtx({ x: e.clientX, y: e.clientY, path: b.path });
+                }}
                 onClick={() => {
                   if (suppressClick.current) return;
                   setActive(b.path);
@@ -286,6 +293,7 @@ export function TabBar({ onFind }: TabBarProps) {
           </button>
         </div>
       </div>
+      {tabCtx && <TabCtxMenu ctx={tabCtx} onClose={() => setTabCtx(null)} />}
       {menu && (
         <RecipeMenu
           x={menu.x}

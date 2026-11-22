@@ -267,6 +267,8 @@ interface ProjectState {
   /** M1-40：批量删除（一次确认；关闭受影响缓冲） */
   removeEntries: (paths: string[]) => Promise<void>;
   revealInExplorer: (path: string) => Promise<void>;
+  /** M1-45：在侧栏资源管理器树中定位（展开祖先目录 + 单选 + 滚动到可见）；标签页右键菜单用 */
+  revealInTree: (path: string) => void;
 
   /** 复制到剪贴板（粘贴时用 copy_entry 实际复制） */
   copyPaths: (paths: string[]) => void;
@@ -622,6 +624,33 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
+  // M1-45：在侧栏资源管理器树中定位（标签页右键菜单「在资源管理器视图中显示」）：
+  // 展开路径上全部祖先目录 → 单选置中，等 React 渲染展开后再 scrollIntoView。
+  revealInTree: (path) => {
+    const root = get().root;
+    if (!root || !path) return;
+    const ancestors: string[] = [];
+    let dir = parentOf(path);
+    const rootLower = root.toLowerCase();
+    while (dir) {
+      ancestors.push(dir);
+      if (dir.toLowerCase() === rootLower) break;
+      const up = parentOf(dir);
+      if (!up || up === dir) break;
+      dir = up;
+    }
+    set((s) => ({
+      openDirs: new Set([...s.openDirs, ...ancestors]),
+      selected: [path],
+      anchor: path,
+      ctx: null,
+    }));
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-tree-path="${CSS.escape(path)}"]`)
+        ?.scrollIntoView({ block: "nearest" });
+    }, 60);
+  },
   copyPaths: (paths) => {
     if (paths.length === 0) return;
     set({ clip: { mode: "copy", paths }, ctx: null });
