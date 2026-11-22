@@ -16,9 +16,11 @@ import {
   collectRelDirs,
   collectRelPaths,
   completionCandidatesFor,
+  dropExactFiles,
   filterByPrefix,
   inComment,
   matchInputTargetBefore,
+  targetPointsToFile,
 } from "./inputSpec";
 import { parentOf, useProjectStore } from "@/project/useProject";
 
@@ -61,6 +63,14 @@ export function inputPathCompletionSource(
   const baseDir = st.tree?.mainFile ? parentOf(st.tree.mainFile) : st.root;
   if (!nodes || !baseDir) return null;
 
+  // M1-44 追改6（用户指令 2026-11-22）：先看花括号内的**完整路径**（到闭合 `}`；
+  // 未闭合则取到光标）是否已指向真实存在的文件——完整就不弹，光标在 {} 里
+  // 任意位置均如此；指向目录/名字存在但不完整照旧走前缀候选，不存在也不弹。
+  const localIdx = pos - line.from;
+  const closeIdx = line.text.indexOf("}", localIdx);
+  const fullTarget = closeIdx >= 0 ? hit.typed + line.text.slice(localIdx, closeIdx) : hit.typed;
+  if (targetPointsToFile(nodes, baseDir, hit.cmd, fullTarget)) return null;
+
   const rels = collectRelPaths(nodes, baseDir);
   const cands = completionCandidatesFor(hit.cmd, rels);
   // 目录候选用树目录节点直采（含空目录，用户指令 2026-11-22）：\input{fig 也能弹 figures/
@@ -69,11 +79,14 @@ export function inputPathCompletionSource(
 
   // 过滤用 / 归一（用户可能敲 \）；插入回 from..pos 的 from 按 typed 原样长度算
   const { files, dirs } = filterByPrefix(cands, hit.typed, dirs0);
-  if (files.length === 0 && dirs.length === 0) return null;
+  // M1-44 追改5（用户指令 2026-11-22）：刚成功插入的目标不再作候选——
+  // 接受补全后 CM 会对新状态复查一次，typed 恰等于刚插入值，弹出来纯噪音
+  const filesRest = dropExactFiles(files, hit.typed);
+  if (filesRest.length === 0 && dirs.length === 0) return null;
 
   const options = [
     ...dirs.map((d) => ({ label: d, detail: "目录", apply: d })),
-    ...files.map((f) => ({ label: f, detail: `\\${hit.cmd} 目标`, apply: f })),
+    ...filesRest.map((f) => ({ label: f, detail: `\\${hit.cmd} 目标`, apply: f })),
   ];
   return { from: pos - hit.typed.length, options, filter: true };
 }

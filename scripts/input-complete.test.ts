@@ -4,7 +4,9 @@ import {
   collectRelDirs,
   collectRelPaths,
   completionCandidatesFor,
+  dropExactFiles,
   filterByPrefix,
+  targetPointsToFile,
   inComment,
   matchInputTargetBefore,
 } from "../src/editor/inputSpec.ts";
@@ -181,6 +183,30 @@ check(
 {
   const { files } = filterByPrefix(cands, "zzz");
   check(files.length === 0 && filterByPrefix(cands, "zzz").dirs.length === 0, "无命中 → 双空");
+}
+
+console.log("\n== 接受补全后不再弹已插入值 dropExactFiles ==");
+{
+  check(dropExactFiles(["chapters/chapter0","chapters/chapter1"], "chapters/chapter0").join("|") === "chapters/chapter1", "typed 全等的候选被剔除");
+  check(dropExactFiles(["chapters/chapter0"], "chapters/chapter0").length === 0, "唯一候选即已插入值 → 过滤后为空（源返回 null 不弹）");
+  check(dropExactFiles(["chapters/chapter0"], "chapters\\chapter0").length === 0, "反斜杠写法归一后同样剔除");
+  check(dropExactFiles(["main"], "MAIN").length === 0, "大小写不敏感剔除");
+  check(dropExactFiles(["main","main2"], "main").join("|") === "main2", "仍共享前缀的其它候选保留");
+}
+
+console.log("\n== 完整路径判定 targetPointsToFile（追改6） ==");
+{
+  check(targetPointsToFile(tree, "P:\\proj", "input", "sections/exps"), "缺 .tex 后缀按规格补全后命中");
+  check(targetPointsToFile(tree, "P:\\proj", "input", "sections/exps.tex"), "已带后缀原样命中");
+  check(targetPointsToFile(tree, "P:\\proj", "input", "sections\\exps"), "反斜杠写法归一后命中");
+  check(!targetPointsToFile(tree, "P:\\proj", "input", "sections/"), "指向目录 → 不完整（要弹）");
+  check(!targetPointsToFile(tree, "P:\\proj", "input", "sections/exp"), "前缀存在但名字不完整 → 要弹");
+  check(!targetPointsToFile(tree, "P:\\proj", "input", "sections/nope"), "指向不存在的文件名 → 不弹");
+  check(!targetPointsToFile(tree, "P:\\proj", "input", ""), "空目标不判完整");
+  check(targetPointsToFile(tree, "P:\\proj", "includegraphics", "figs/a"), "图片命令缺后缀按规格命中 a.png");
+  check(targetPointsToFile(tree, "P:\\proj", "includegraphics", "figs/b"), "图片命令缺后缀按规格命中 b.eps");
+  check(!targetPointsToFile(tree, "P:\\proj", "includegraphics", "figs/a.svg"), "后缀不在规格内 → 不完整");
+  check(targetPointsToFile(tree, "P:\\proj", "addbibresource", "refs"), "bib 命令缺后缀命中 refs.bib");
 }
 
 console.log(

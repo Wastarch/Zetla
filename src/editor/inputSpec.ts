@@ -182,6 +182,39 @@ export function collectRelDirs(nodes: TreeNodeLite[], baseDir: string): string[]
 }
 
 /**
+ * 过滤掉与已输入目标「全等」的文件候选（\→/ 归一、大小写不敏感）。
+ * 场景（用户指令 2026-11-22：文件成功插入后不要再弹提示）：CM 接受补全后会对
+ * 新状态再查询一次（目录候选下钻连弹靠它），但接受文件候选时 typed 恰等于
+ * 刚插入的完整目标——此时弹出的「候选」就是已插入内容本身，纯噪音。
+ */
+export function dropExactFiles(files: string[], typed: string): string[] {
+  const t = typed.replace(/\\/g, "/").toLowerCase();
+  return files.filter((f) => f.toLowerCase() !== t);
+}
+
+/**
+ * 花括号内完整路径是否已指向一个真实存在的文件（用户指令 2026-11-22：
+ * 「先检查 {} 中的路径是否完整——指向最终的某个具体文件就不弹；指向目录、
+ * 或指向的文件名存在但不完整就弹；指向的文件名不存在就不弹」）。
+ * 完整判定按命令规格逐个后缀试（\input 的 `chapters/chapter1` 等效
+ * `chapter1.tex`、\includegraphics 的 `fig1` 可对应 `fig1.png`；已带后缀原样命中）。
+ * \→/ 归一、去 `./` 前缀、大小写不敏感；空串/不在树内 → 不完整。
+ */
+export function targetPointsToFile(
+  nodes: TreeNodeLite[],
+  baseDir: string,
+  cmd: string,
+  target: string,
+): boolean {
+  const spec = inputCmdSpec(cmd);
+  if (!spec) return false;
+  const norm = target.trim().replace(/\\/g, "/").replace(/^\.\//, "");
+  if (!norm) return false;
+  const set = new Set(collectRelPaths(nodes, baseDir).map((s) => s.toLowerCase()));
+  return spec.suffixes.some((suf) => set.has((norm + suf).toLowerCase()));
+}
+
+/**
  * 前缀过滤（路径补全惯例，模仿 VS Code）：
  * - files：typed 之后不再有 / 的直接命中（typed="sections/e" → sections/exps）；
  * - dirs：typed 当前层的下一级目录（带尾 /；typed="" → 第一层，typed="sec" → section/，
