@@ -161,25 +161,46 @@ export function completionCandidatesFor(cmd: string, rels: string[]): string[] {
  * 前缀过滤（路径补全惯例，模仿 VS Code）：
  * - files：typed 之后不再有 / 的直接命中（typed="sections/e" → sections/exps）；
  * - dirs：typed 可继续下钻的目录前缀（带尾 /；typed="sec" → sections/）。
- * 两端都以 typed 前缀为界，typed 为空时给出第一层文件 + 第一层目录。
+ * dirs 参数是**全量目录前缀**（不按命令后缀过滤——用户指令 2026-11-22：
+ * \input{fig 也要能弹 figures/ 目录先下钻，文件候选仍按命令规格过滤）。
  */
 export function filterByPrefix(
-  cands: string[],
+  files: string[],
   typed: string,
+  dirs: string[] = [],
 ): { files: string[]; dirs: string[] } {
-  const t = typed.toLowerCase();
-  const dirs = new Set<string>();
-  const files: string[] = [];
-  for (const c of cands) {
-    const lc = c.toLowerCase();
+  // typed 里的 \ 视为 /（用户可能敲反斜杠）；files/dirs 已是 / 归一形式
+  const norm = typed.replace(/\\/g, "/");
+  const t = norm.toLowerCase();
+  const outDirs = new Set<string>();
+  const outFiles: string[] = [];
+  for (const f of files) {
+    const lc = f.toLowerCase();
     if (!lc.startsWith(t)) continue;
-    const rest = c.slice(typed.length);
+    const rest = f.slice(norm.length);
     const slash = rest.indexOf("/");
-    if (slash === -1) files.push(c);
-    else dirs.add(c.slice(0, typed.length + slash + 1));
+    if (slash === -1) outFiles.push(f);
+    else outDirs.add(f.slice(0, norm.length + slash + 1));
+  }
+  for (const d of dirs) {
+    // 长度须大于 typed：typed="section/" 时不把 section/ 自己再列一遍
+    if (d.toLowerCase().startsWith(t) && d.length > norm.length) outDirs.add(d);
   }
   return {
-    files: [...new Set(files)].sort((a, b) => a.localeCompare(b)),
-    dirs: [...dirs].sort((a, b) => a.localeCompare(b)),
+    files: [...new Set(outFiles)].sort((a, b) => a.localeCompare(b)),
+    dirs: [...outDirs].sort((a, b) => a.localeCompare(b)),
   };
+}
+
+/** 全量目录前缀（所有文件的父目录链，带尾 /，去重有序）——目录候选的数据源 */
+export function allDirPrefixes(rels: string[]): string[] {
+  const set = new Set<string>();
+  for (const r of rels) {
+    let i = r.indexOf("/");
+    while (i >= 0) {
+      set.add(r.slice(0, i + 1));
+      i = r.indexOf("/", i + 1);
+    }
+  }
+  return [...set].sort((a, b) => a.localeCompare(b));
 }

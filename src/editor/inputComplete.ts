@@ -8,6 +8,7 @@ import type {
   CompletionResult,
 } from "@codemirror/autocomplete";
 import {
+  allDirPrefixes,
   collectRelPaths,
   completionCandidatesFor,
   filterByPrefix,
@@ -55,11 +56,14 @@ export function inputPathCompletionSource(
   const baseDir = st.tree?.mainFile ? parentOf(st.tree.mainFile) : st.root;
   if (!nodes || !baseDir) return null;
 
-  const cands = completionCandidatesFor(hit.cmd, collectRelPaths(nodes, baseDir));
-  if (cands.length === 0) return null;
+  const rels = collectRelPaths(nodes, baseDir);
+  const cands = completionCandidatesFor(hit.cmd, rels);
+  // 目录候选用全量目录前缀（不按命令后缀过滤）：\input{fig 也能弹 figures/ 先下钻
+  const allDirs = allDirPrefixes(rels);
+  if (cands.length === 0 && allDirs.length === 0) return null;
 
   // 过滤用 / 归一（用户可能敲 \）；插入回 from..pos 的 from 按 typed 原样长度算
-  const { files, dirs } = filterByPrefix(cands, hit.typed.replace(/\\/g, "/"));
+  const { files, dirs } = filterByPrefix(cands, hit.typed, allDirs);
   if (files.length === 0 && dirs.length === 0) return null;
 
   const options = [
