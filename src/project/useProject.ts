@@ -2,7 +2,7 @@
 // 职责：打开/刷新项目、树展开与选中、右键菜单与新建/重命名/删除、资源管理器定位
 // 反馈复用编辑域 toast（EditorWorkspace 渲染 useBuffersStore.notice）
 import { create } from "zustand";
-import { confirm, open as openFileDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { open as openFileDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { configApi, projectApi } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
@@ -196,6 +196,8 @@ interface ProjectState {
   entryDialog: EntryDialog | null;
   /** M1-43：引入文件跳转未找到 → 应用内「创建文件」确认（自建 modal，不走系统原生） */
   createFileAsk: CreateFileAsk | null;
+  /** M1-46：删除确认（应用内 modal，DeleteAskDialog 消费） */
+  deleteAsk: { paths: string[] } | null;
   /** 树剪贴板（复制/剪切，会话级） */
   clip: Clip | null;
   /** M0-7：从模板新建向导 */
@@ -258,14 +260,19 @@ interface ProjectState {
   /** M1-43：创建文件确认（应用内 modal） */
   openCreateFileAsk: (a: CreateFileAsk) => void;
   closeCreateFileAsk: () => void;
+  /** M1-46：打开/关闭删除确认弹窗 */
+  openDeleteAsk: (paths: string[]) => void;
+  closeDeleteAsk: () => void;
 
   /** 树/右键点击文件：tex 系打开到标签，PDF/图片给出查看器提示 */
   openFromTree: (path: string) => void;
   /** M0-6b：新建条目（kind=file 时按 ext 合并后缀；文本类建完自动开标签，图片/PDF 只建不打开） */
   createEntry: (dir: string, kind: EntryKind, name: string, ext?: string) => Promise<void>;
   renameEntry: (from: string, name: string) => Promise<void>;
-  /** M1-40：批量删除（一次确认；关闭受影响缓冲） */
+  /** M1-40：批量删除（改为打开应用内删除确认弹窗，不再用系统原生 confirm） */
   removeEntries: (paths: string[]) => Promise<void>;
+  /** M1-46：删除确认弹窗点「删除」后执行实际删除（关闭受影响缓冲） */
+  confirmRemoveEntries: (paths: string[]) => Promise<void>;
   revealInExplorer: (path: string) => Promise<void>;
   /** M1-45：在侧栏资源管理器树中定位（展开祖先目录 + 单选 + 滚动到可见）；标签页右键菜单用 */
   revealInTree: (path: string) => void;
@@ -297,6 +304,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   ctx: null,
   entryDialog: null,
   createFileAsk: null,
+  deleteAsk: null,
   clip: null,
   wizardOpen: false,
   wizardDir: null,
@@ -429,6 +437,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       ctx: null,
       entryDialog: null,
       createFileAsk: null,
+      deleteAsk: null,
       clip: null,
     });
     // 项目关闭后旧的 PDF / 编译结果 / 日志都不再有效
@@ -502,6 +511,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   closeEntryDialog: () => set({ entryDialog: null }),
   openCreateFileAsk: (a) => set({ createFileAsk: a, ctx: null }),
   closeCreateFileAsk: () => set({ createFileAsk: null }),
+  openDeleteAsk: (paths) => set({ deleteAsk: { paths }, ctx: null }),
+  closeDeleteAsk: () => set({ deleteAsk: null }),
 
   openFromTree: (path) => {
     set({ selected: [path], anchor: path, ctx: null });
@@ -568,25 +579,18 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  // M1-40：批量删除（一次确认列出全部名称；逐项删除，关闭受影响缓冲）
+  // M1-46：批量删除改为应用内「删除确认」modal（DeleteAskDialog），不再用系统原生 confirm；
+  // 一次确认列出全部名称，确认后逐项删除并关闭受影响缓冲（confirmRemoveEntries）
   removeEntries: async (paths) => {
     if (paths.length === 0) return;
-    const label =
-      paths.length === 1
-        ? `「${base(paths[0])}」`
-        : `${paths.length} 项（${paths
-            .slice(0, 5)
-            .map(base)
-            .join("、")}${paths.length > 5 ? " 等" : ""}）`;
+    get().openDeleteAsk(paths);
+  },
+
+  // M1-46：删除确认弹窗点「删除」后执行实际删除（M1-40 逻辑原样迁移）
+  confirmRemoveEntries: async (paths) => {
+    if (paths.length === 0) return;
+    set({ deleteAsk: null });
     try {
-      const ok = await confirm(
-        `确定删除${label}？\n此操作不可撤销（不进回收站）。`,
-        { title: "删除", kind: "warning", okLabel: "删除", cancelLabel: "取消" },
-      );
-      if (!ok) {
-        set({ ctx: null });
-        return;
-      }
       for (const path of paths) {
         await projectApi.removeEntry(path);
       }

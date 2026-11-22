@@ -11,6 +11,7 @@ import { ActivityBar } from "@/project/ActivityBar";
 import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
 import { CreateFileAskDialog } from "@/project/CreateFileAskDialog";
+import { DeleteAskDialog } from "@/project/DeleteAskDialog";
 import { ProjectSwitcher } from "@/project/ProjectSwitcher";
 import { ProjectActionDialog } from "@/project/ProjectActionDialog";
 import { ToastHost } from "@/ui/ToastHost";
@@ -231,6 +232,7 @@ function App() {
       <CtxMenu />
       <EntryDialog />
       <CreateFileAskDialog />
+      <DeleteAskDialog />
       <ProjectSwitcher />
       <ProjectActionDialog />
       <TemplateWizard />
