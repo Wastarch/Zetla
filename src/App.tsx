@@ -10,6 +10,7 @@ import { Sidebar } from "@/project/Sidebar";
 import { ActivityBar } from "@/project/ActivityBar";
 import { CtxMenu } from "@/project/CtxMenu";
 import { EntryDialog } from "@/project/EntryDialog";
+import { CreateFileAskDialog } from "@/project/CreateFileAskDialog";
 import { ProjectSwitcher } from "@/project/ProjectSwitcher";
 import { ProjectActionDialog } from "@/project/ProjectActionDialog";
 import { ToastHost } from "@/ui/ToastHost";
@@ -229,6 +230,7 @@ function App() {
       <ToastHost />
       <CtxMenu />
       <EntryDialog />
+      <CreateFileAskDialog />
       <ProjectSwitcher />
       <ProjectActionDialog />
       <TemplateWizard />

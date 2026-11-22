@@ -43,6 +43,20 @@ export type EntryDialog =
     }
   | { mode: "rename"; from: string; initial: string };
 
+/** M1-43：引入文件跳转未找到时的「创建文件」确认（应用内自建 modal，CreateFileAskDialog 消费） */
+export interface CreateFileAsk {
+  /** 创建目录（绝对路径） */
+  dir: string;
+  /** 最终段名（可含后缀；ext 决定是否补） */
+  name: string;
+  /** 目标未写后缀时补的后缀（".tex" / ".bib"） */
+  ext?: string;
+  /** 确认框展示用的项目相对完整路径 */
+  displayPath: string;
+  /** 目标带子目录时提示「缺失的父目录会一并创建」 */
+  withParentHint: boolean;
+}
+
 /** 输入名是否已带后缀（`a.md` → true；`a` / `a.` / `a.b/c` → false） */
 export function hasExt(name: string): boolean {
   return /\.[^./\\]+$/.test(name);
@@ -180,6 +194,8 @@ interface ProjectState {
   openDirs: Set<string>;
   ctx: CtxState | null;
   entryDialog: EntryDialog | null;
+  /** M1-43：引入文件跳转未找到 → 应用内「创建文件」确认（自建 modal，不走系统原生） */
+  createFileAsk: CreateFileAsk | null;
   /** 树剪贴板（复制/剪切，会话级） */
   clip: Clip | null;
   /** M0-7：从模板新建向导 */
@@ -239,6 +255,9 @@ interface ProjectState {
   closeCtx: () => void;
   openEntryDialog: (d: EntryDialog) => void;
   closeEntryDialog: () => void;
+  /** M1-43：创建文件确认（应用内 modal） */
+  openCreateFileAsk: (a: CreateFileAsk) => void;
+  closeCreateFileAsk: () => void;
 
   /** 树/右键点击文件：tex 系打开到标签，PDF/图片给出查看器提示 */
   openFromTree: (path: string) => void;
@@ -275,6 +294,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   openDirs: new Set<string>(),
   ctx: null,
   entryDialog: null,
+  createFileAsk: null,
   clip: null,
   wizardOpen: false,
   wizardDir: null,
@@ -406,6 +426,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       openDirs: new Set<string>(),
       ctx: null,
       entryDialog: null,
+      createFileAsk: null,
       clip: null,
     });
     // 项目关闭后旧的 PDF / 编译结果 / 日志都不再有效
@@ -477,6 +498,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   closeCtx: () => set({ ctx: null }),
   openEntryDialog: (d) => set({ entryDialog: d, ctx: null }),
   closeEntryDialog: () => set({ entryDialog: null }),
+  openCreateFileAsk: (a) => set({ createFileAsk: a, ctx: null }),
+  closeCreateFileAsk: () => set({ createFileAsk: null }),
 
   openFromTree: (path) => {
     set({ selected: [path], anchor: path, ctx: null });

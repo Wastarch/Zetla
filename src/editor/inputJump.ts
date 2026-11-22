@@ -21,7 +21,6 @@ import {
   splitTargetDir,
   type InputCmdSpec,
 } from "./inputSpec";
-import { confirm } from "@tauri-apps/plugin-dialog";
 import { notify, parentOf, useProjectStore } from "@/project/useProject";
 import { isCtrlHeld } from "@/modules/reference/citeSupport";
 
@@ -129,15 +128,15 @@ export function resolveInputPath(
 }
 
 /**
- * M1-43 · 目标未找到 → 弹窗二次确认后在主文件目录（编译工作目录）下创建，
- * 建完走 createEntry 自动补缺失父目录、开标签、树中选中。取消则什么都不发生。
+ * M1-43 · 目标未找到 → 打开应用内「创建文件」确认对话框（CreateFileAskDialog，
+ * 用户指令不用系统原生 confirm），确认后走 createEntry：自动补缺失父目录、开标签、树中选中。
  */
-async function offerCreateMissing(
+function offerCreateMissing(
   hit: InputRef,
   rel: string,
   spec: InputCmdSpec,
   curPath?: string,
-): Promise<void> {
+): void {
   const st = useProjectStore.getState();
   const mainDir = st.tree?.mainFile ? parentOf(st.tree.mainFile) : null;
   const baseDir = mainDir ?? (curPath ? parentOf(curPath) : null) ?? st.root;
@@ -148,15 +147,13 @@ async function offerCreateMissing(
   const { dirRel, name } = splitTargetDir(rel);
   const dir = dirRel ? toProjectSep(`${baseDir}/${dirRel}`) : baseDir;
   const full = toProjectSep(`${dir}/${name}`);
-  const sub = dirRel ? "\n（缺失的父目录会一并创建）" : "";
-  const ok = await confirm(`文件 ${displayPath(full)} 不存在，是否创建？${sub}`, {
-    title: "创建文件",
-    kind: "info",
-    okLabel: "创建",
-    cancelLabel: "取消",
+  st.openCreateFileAsk({
+    dir,
+    name,
+    ext: spec.createExt,
+    displayPath: displayPath(full),
+    withParentHint: !!dirRel,
   });
-  if (!ok) return;
-  await st.createEntry(dir, spec.createKind ?? "file", name, spec.createExt);
 }
 
 /** 定位光标所在的引入文件命令（pos 需落在整条命令内，供点击与悬浮判定） */
@@ -201,7 +198,7 @@ export function inputJumpAtCursor(
   }
   const rel = createTargetFor(hit.target, spec);
   if (rel) {
-    void offerCreateMissing(hit, rel, spec, curPath);
+    offerCreateMissing(hit, rel, spec, curPath);
   } else {
     const why = hit.target.includes(",") ? "（多目标暂不支持跳转）" : "";
     notify(`未找到 \\${hit.cmd} 目标文件：${hit.target}${why}`, "err");
