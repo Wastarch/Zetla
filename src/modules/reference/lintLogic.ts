@@ -73,7 +73,7 @@ export function collectDuplicateKeyDiags(
  * 否则 Picker 插入的 biblatex 命令会被反向引用索引与缺失引用校验漏掉。
  */
 const CITE_SCAN_RE =
-  /\\(?:autocite|parencite|textcite|citeyearpar|citetext|citeauthor|citeyear|nocite|citep|citet|cite)(\*)?(?:\[[^\]]*\])*\{([^{}]*)\}/g;
+  /\\(?:footfullcite|footcitep|footcitet|footcite|smartcite|fullcite|autocite|parencite|textcite|citeyearpar|citetext|citeauthor|citeyear|nocite|citep|citet|cite)(\*)?(?:\[[^\]]*\])*\{([^{}]*)\}/g;
 
 /**
  * 扫描一段 .tex 文本，抽取其中所有 \cite* 引用的 {key, line}（纯字符串，可在 Node 直接单测）。

@@ -396,7 +396,7 @@ export function applyKeyMigration(text: string, migrations: KeyMigration[]): str
   if (migrations.length === 0) return text;
   const map = new Map(migrations.map((m) => [m.from, m.to]));
   return text.replace(
-    /(\\(?:nocite|cite|citep|citet|citeauthor|citeyear|citeyearpar|citetext|autocite|parencite|textcite)\*?(?:\[[^\]]*\])*\{)([^{}]*)(\})/g,
+    /(\\(?:footfullcite|footcitep|footcitet|footcite|smartcite|fullcite|nocite|cite|citep|citet|citeauthor|citeyear|citeyearpar|citetext|autocite|parencite|textcite)\*?(?:\[[^\]]*\])*\{)([^{}]*)(\})/g,
     (_all, prefix: string, keys: string, suffix: string) =>
       prefix +
       keys

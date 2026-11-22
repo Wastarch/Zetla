@@ -39,6 +39,7 @@ import {
   missingCiteLinter,
 } from "@/modules/reference/lint";
 import { importAndInsert, imagesFromDataTransfer } from "./image/importImage";
+import { inputPathCompletionSource } from "./inputComplete";
 import {
   inputJumpAtCursor,
   inputJumpHint,
@@ -389,6 +390,7 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
                   override: [
                     latexCompletionSource(true),
                     citeCompletionSource,
+                    inputPathCompletionSource,
                     snippetCompletionSource,
                   ],
                   defaultKeymap: true,

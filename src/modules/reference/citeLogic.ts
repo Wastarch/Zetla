@@ -9,9 +9,11 @@ import type { BibEntry } from "./bibParser";
  * P2 Citation Picker 会插入 \autocite / \parencite / \textcite，且可能带两个可选参数
  * （`\cite[see][p.~10]{key}`），故这里的正则必须同时补命令与 `[...]*`。
  * 否则补全 / 悬浮预览 / Ctrl+点击跳转 / lint 一致性校验都会看不见这些引用。
+ * M1-44：补 biblatex 脚注/全条目族 footcite / footcitep / footcitet / smartcite /
+ * fullcite / footfullcite（仅识别面，ZOTERO_COMMANDS 插入白名单不动）。
  */
 const CITE_COMMANDS =
-  "autocite|parencite|textcite|citeyearpar|citetext|citeauthor|citeyear|nocite|citep|citet|cite";
+  "footfullcite|footcitep|footcitet|footcite|smartcite|fullcite|autocite|parencite|textcite|citeyearpar|citetext|citeauthor|citeyear|nocite|citep|citet|cite";
 
 /** 匹配引用命令且光标处于 { 之后（仍在 key 列表内），支持星号与多个 [可选参数] */
 export const CITE_PREFIX_RE = new RegExp(

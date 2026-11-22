@@ -14,6 +14,7 @@ import { type EditorState, type Text } from "@codemirror/state";
 import { jumpToFile } from "./jump";
 import {
   createTargetFor,
+  inComment,
   inputCmdKeys,
   inputCmdSpec,
   splitTargetDir,
@@ -82,13 +83,7 @@ function fileInTree(path: string): boolean {
   return walk(nodes);
 }
 
-/** 行内偏移 idx 之前是否有未转义的 `%`（注释掉的命令不参与跳转） */
-function inComment(text: string, idx: number): boolean {
-  for (let i = 0; i < idx; i++) {
-    if (text[i] === "%" && text[i - 1] !== "\\") return true;
-  }
-  return false;
-}
+// inComment 已上移到 inputSpec.ts（M1-44 补全触发也用它做注释判定），此处直接复用
 
 /**
  * 解析引入文件目标 → 项目内绝对路径（找不到返回 null）。
