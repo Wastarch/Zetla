@@ -39,7 +39,7 @@ import {
   missingCiteLinter,
 } from "@/modules/reference/lint";
 import { importAndInsert, imagesFromDataTransfer } from "./image/importImage";
-import { inputPathCompletionSource } from "./inputComplete";
+import { inputPathCompletionSource, notInsideInputBraces } from "./inputComplete";
 import {
   inputJumpAtCursor,
   inputJumpHint,
@@ -388,10 +388,11 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
                 // latex() 已设 enableAutocomplete:false，不会再有第二个 override 冲突。
                 autocompletion({
                   override: [
-                    latexCompletionSource(true),
+                    // M1-44：\input 类花括号内只弹文件路径——命令/片段补全让位（互斥守卫）
+                    notInsideInputBraces(latexCompletionSource(true)),
                     citeCompletionSource,
                     inputPathCompletionSource,
-                    snippetCompletionSource,
+                    notInsideInputBraces(snippetCompletionSource),
                   ],
                   defaultKeymap: true,
                   activateOnTyping: true,

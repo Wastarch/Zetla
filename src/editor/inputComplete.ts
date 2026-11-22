@@ -17,6 +17,25 @@ import {
 import { parentOf, useProjectStore } from "@/project/useProject";
 
 /**
+ * 互斥守卫（用户指令 2026-11-22：光标在 \input 类花括号里「只弹文件路径」）：
+ * 光标处于引入文件命令的花括号内（且不在注释里）时让被包装的补全源沉默，
+ * 否则原样转发。用于包住 latexCompletionSource 与 snippetCompletionSource——
+ * 前者会在 \input{sec 里弹 \section 等命令候选，后者会被 typed 前缀误撞触发词。
+ */
+export function notInsideInputBraces(
+  base: (context: CompletionContext) => CompletionResult | null,
+): (context: CompletionContext) => CompletionResult | null {
+  return (context) => {
+    const { state, pos } = context;
+    const line = state.doc.lineAt(pos);
+    const textBefore = line.text.slice(0, pos - line.from);
+    const hit = matchInputTargetBefore(textBefore);
+    if (hit && !inComment(textBefore, hit.slashIdx)) return null;
+    return base(context);
+  };
+}
+
+/**
  * 补全源：光标处于 \input/\include/\subfile/\lstinputlisting/\verbatiminput/
  * \bibliography/\addbibresource/\includegraphics 的花括号内时，按命令规格给出
  * 项目内文件路径候选（tex 目标不带 .tex 后缀插入；目录候选带尾 / 供逐级下钻）。
