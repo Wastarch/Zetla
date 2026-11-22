@@ -1,7 +1,7 @@
 // M1-44 · \input 类命令文件路径补全纯逻辑单测（仅依赖零 import 的 inputSpec.ts）
 // 运行：node --experimental-strip-types scripts/input-complete.test.ts
 import {
-  allDirPrefixes,
+  collectRelDirs,
   collectRelPaths,
   completionCandidatesFor,
   filterByPrefix,
@@ -90,6 +90,7 @@ const tree = [
     ],
   },
   { name: "refs.bib", path: "P:\\proj\\refs.bib", type: "file" as const },
+  { name: "empty", path: "P:\\proj\\empty", type: "dir" as const, children: [] },
 ];
 {
   const rels = collectRelPaths(tree, "P:\\proj");
@@ -130,10 +131,17 @@ check(completionCandidatesFor("usepackage", rels).length === 0, "未收录命令
 
 console.log("\n== 前缀过滤 filterByPrefix ==");
 const cands = completionCandidatesFor("input", rels);
-const allDirs = allDirPrefixes(rels);
+const allDirs = collectRelDirs(tree, "P:\\proj");
+check(
+  allDirs.join(",") === "empty/,figs/,sections/,sections/sub/",
+  "目录节点直采：空目录 empty/ 也收集，嵌套目录全链收集",
+);
 {
   const { files, dirs } = filterByPrefix(cands, "", allDirs);
-  check(dirs.includes("sections/") && dirs.includes("figs/"), "空 typed → 第一层目录全给（不按命令后缀过滤）");
+  check(
+    dirs.join(",") === "empty/,figs/,sections/",
+    "空 typed → 只给第一层目录（含空目录 empty/；sections/sub/ 不出现）",
+  );
   check(files.includes("main"), "空 typed → 第一层文件直接给（tex 候选只有 main）");
   check(!files.some((f) => f.includes("/")), "深层文件不直接出现（先给目录）");
 }
@@ -144,7 +152,11 @@ const allDirs = allDirPrefixes(rels);
   check(files.length === 0, "typed=fig → 无直接文件命中");
 }
 {
-  const { files, dirs } = filterByPrefix(cands, "sec");
+  const { files, dirs } = filterByPrefix(cands, "emp", allDirs);
+  check(dirs.length === 1 && dirs[0] === "empty/", "typed=emp → 空目录 empty/ 也弹");
+}
+{
+  const { files, dirs } = filterByPrefix(cands, "sec", allDirs);
   check(dirs.length === 1 && dirs[0] === "sections/", "typed=sec → 只有 sections/ 目录");
   check(files.length === 0, "typed=sec → 无直接文件命中");
 }

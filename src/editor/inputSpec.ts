@@ -158,11 +158,36 @@ export function completionCandidatesFor(cmd: string, rels: string[]): string[] {
 }
 
 /**
+ * 收集 baseDir 下的全部目录相对路径（/ 分隔、带尾 /；**目录节点直采**——
+ * 用户指令 2026-11-22：不管目录里有没有文件都弹，空目录也能下钻）。
+ * baseDir 自身不收。
+ */
+export function collectRelDirs(nodes: TreeNodeLite[], baseDir: string): string[] {
+  const out: string[] = [];
+  const base = baseDir.replace(/[\\/]+$/, "");
+  if (!base) return out;
+  const sep = base.includes("\\") || /^[A-Za-z]:/.test(base) ? "\\" : "/";
+  const lowerPrefix = (base + sep).toLowerCase();
+  const walk = (arr: TreeNodeLite[]) => {
+    for (const n of arr) {
+      if (n.type !== "dir") continue;
+      if (n.path.toLowerCase().startsWith(lowerPrefix)) {
+        out.push(n.path.slice(lowerPrefix.length).replace(/\\/g, "/") + "/");
+      }
+      if (n.children) walk(n.children);
+    }
+  };
+  walk(nodes);
+  return [...new Set(out)].sort((a, b) => a.localeCompare(b));
+}
+
+/**
  * 前缀过滤（路径补全惯例，模仿 VS Code）：
  * - files：typed 之后不再有 / 的直接命中（typed="sections/e" → sections/exps）；
- * - dirs：typed 可继续下钻的目录前缀（带尾 /；typed="sec" → sections/）。
- * dirs 参数是**全量目录前缀**（不按命令后缀过滤——用户指令 2026-11-22：
- * \input{fig 也要能弹 figures/ 目录先下钻，文件候选仍按命令规格过滤）。
+ * - dirs：typed 当前层的下一级目录（带尾 /；typed="" → 第一层，typed="sec" → section/，
+ *   typed="sections/" → section/sub/）。**层级式**：深一层目录下钻后才出现。
+ * dirs 参数来自 collectRelDirs（目录节点直采，含空目录；用户指令 2026-11-22）；
+ * files 仍按命令规格过滤。
  */
 export function filterByPrefix(
   files: string[],
@@ -184,23 +209,14 @@ export function filterByPrefix(
   }
   for (const d of dirs) {
     // 长度须大于 typed：typed="section/" 时不把 section/ 自己再列一遍
-    if (d.toLowerCase().startsWith(t) && d.length > norm.length) outDirs.add(d);
+    if (d.length <= norm.length) continue;
+    if (!d.toLowerCase().startsWith(t)) continue;
+    // 层级式：去掉尾 / 后，typed 之后的段不得再含 /（深一层目录下钻后才出现）
+    const inner = d.slice(norm.length, -1);
+    if (!inner.includes("/")) outDirs.add(d);
   }
   return {
     files: [...new Set(outFiles)].sort((a, b) => a.localeCompare(b)),
     dirs: [...outDirs].sort((a, b) => a.localeCompare(b)),
   };
-}
-
-/** 全量目录前缀（所有文件的父目录链，带尾 /，去重有序）——目录候选的数据源 */
-export function allDirPrefixes(rels: string[]): string[] {
-  const set = new Set<string>();
-  for (const r of rels) {
-    let i = r.indexOf("/");
-    while (i >= 0) {
-      set.add(r.slice(0, i + 1));
-      i = r.indexOf("/", i + 1);
-    }
-  }
-  return [...set].sort((a, b) => a.localeCompare(b));
 }
