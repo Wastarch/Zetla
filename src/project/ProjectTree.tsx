@@ -215,12 +215,15 @@ export function ProjectTree() {
     window.addEventListener("pointercancel", onCancel);
   };
 
-  /** M1-40：拖拽入口。按在未选中项上 → 只拖它；按在已选多项之一 → 拖整组（顶层去重） */
+  /** M1-40：拖拽入口。按在未选中项上 → 只拖它；按在已选多项之一 → 拖整组（顶层去重）。
+   *  注意：无修饰键按下未选中项才「立即改选」；带 Ctrl/Shift 时必须不动选择态，
+   *  否则 pointerdown 先选中、click 再 toggle/范围会互相抵消（Ctrl 加选变成空选、
+   *  Shift 范围锚点被改成目标自身）。 */
   const beginDrag = (e: ReactPointerEvent<HTMLElement>, path: string) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest("button")) return;
     const st = useProjectStore.getState();
-    if (!st.selected.includes(path)) {
+    if (!e.ctrlKey && !e.metaKey && !e.shiftKey && !st.selected.includes(path)) {
       st.setSelection([path], path); // 原生语义：按下未选中项即改选
     }
     const srcs =
@@ -239,7 +242,7 @@ export function ProjectTree() {
 
   // 键盘操作（树容器获得焦点时）：
   // Ctrl+A 全选可见行 / Ctrl+C 复制 / Ctrl+X 剪切 / Ctrl+V 粘贴 /
-  // Delete 删除选中 / Esc 清空选择
+  // Delete（macOS 为 Backspace）删除选中 / Esc 清空选择
   function handleKeyDown(e: React.KeyboardEvent) {
     const st = useProjectStore.getState();
     const sel = st.selected;
@@ -273,7 +276,9 @@ export function ProjectTree() {
       }
       return;
     }
-    if (e.key === "Delete" && sel.length > 0) {
+    // Windows/Linux 用 Delete；macOS 主键盘删除键发 Backspace（Finder 语义），同样触发批量删除
+    const mac = document.documentElement.dataset.platform === "darwin";
+    if ((e.key === "Delete" || (mac && e.key === "Backspace")) && sel.length > 0) {
       e.preventDefault();
       void removeEntries(sel);
     } else if (e.key === "Escape") {
