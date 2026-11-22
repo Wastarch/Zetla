@@ -3,6 +3,7 @@
 import {
   isRealFileTab,
   relativePathOf,
+  revealInFileManagerLabel,
   tabCloseSets,
 } from "../src/editor/tabCtx.ts";
 
@@ -58,6 +59,14 @@ const tabs = [
     "目标不在集合中 → 四组全空",
   );
 }
+
+console.log("\n[revealInFileManagerLabel]");
+eq(revealInFileManagerLabel("windows"), "在文件资源管理器中显示", "Windows 文案");
+eq(revealInFileManagerLabel("darwin"), "在访达中显示", "macOS（darwin）→ 访达");
+eq(revealInFileManagerLabel("macos"), "在访达中显示", "macOS（macos）→ 访达");
+eq(revealInFileManagerLabel("linux"), "在文件管理器中显示", "Linux 文案");
+eq(revealInFileManagerLabel(undefined), "在文件资源管理器中显示", "未知回退 Windows 文案");
+eq(revealInFileManagerLabel("ios"), "在文件资源管理器中显示", "非桌面平台回退");
 
 console.log(`\n${failures === 0 ? "✅" : "❌"} 全部断言${failures === 0 ? "通过" : `失败 ${failures}/${total}`}：标签右键菜单纯逻辑（伪 Tab 判定/相对路径/关闭集合）。`);
 if (failures > 0) process.exit(1);

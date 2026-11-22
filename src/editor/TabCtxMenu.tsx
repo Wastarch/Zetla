@@ -9,7 +9,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { confirm } from "@tauri-apps/plugin-dialog";
 import { Icon } from "@/ui/Icon";
 import { notify, useProjectStore } from "@/project/useProject";
-import { isRealFileTab, relativePathOf, tabCloseSets } from "./tabCtx";
+import { isRealFileTab, relativePathOf, revealInFileManagerLabel, tabCloseSets } from "./tabCtx";
 import { useBuffersStore } from "./useBuffers";
 
 export interface TabCtxState {
@@ -145,7 +145,7 @@ export function TabCtxMenu({ ctx, onClose }: { ctx: TabCtxState; onClose: () => 
     },
     { label: "", icon: "", onClick: () => {} },
     {
-      label: "在文件资源管理器中显示",
+      label: revealInFileManagerLabel(document.documentElement.dataset.platform),
       icon: "external",
       disabled: !real,
       onClick: () => void revealInExplorer(ctx.path),

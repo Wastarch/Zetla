@@ -6,6 +6,19 @@ export function isRealFileTab(kind: string): boolean {
 }
 
 /**
+ * 「在文件资源管理器中显示」的平台文案（用户指令 2026-11-22）：
+ * Windows=文件资源管理器、macOS=访达（Finder）、Linux=文件管理器。
+ * platform 取 document.documentElement.dataset.platform（__TAURI_PLATFORM__；
+ * 兼容 macos/darwin 两种取值），空/未知回退 Windows 文案。
+ */
+export function revealInFileManagerLabel(platform: string | undefined): string {
+  const p = (platform ?? "").toLowerCase();
+  if (p === "darwin" || p === "macos") return "在访达中显示";
+  if (p === "linux") return "在文件管理器中显示";
+  return "在文件资源管理器中显示";
+}
+
+/**
  * 复制相对路径：项目根之下取相对形式（保留原大小写与分隔符）；
  * 无项目根 / 不在根之下 → 原样返回绝对路径（与跳转/补全的基准目录口径一致）。
  */

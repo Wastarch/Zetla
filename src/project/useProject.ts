@@ -629,6 +629,10 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   revealInTree: (path) => {
     const root = get().root;
     if (!root || !path) return;
+    // M1-45 追改（用户指令 2026-11-22）：侧栏没开/不在资源管理器视图时，先开侧栏并
+    // 切到资源管理器视图，再展开定位
+    const app = useAppStore.getState();
+    if (!app.sidebarVisible || app.sidebarView !== "explorer") app.setSidebarView("explorer");
     const ancestors: string[] = [];
     let dir = parentOf(path);
     const rootLower = root.toLowerCase();
@@ -645,11 +649,14 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       anchor: path,
       ctx: null,
     }));
-    window.setTimeout(() => {
+    // 两段重试：侧栏刚从关闭态挂载时，树行可能要等一帧才在 DOM 里
+    const scrollToTreePath = () => {
       document
         .querySelector(`[data-tree-path="${CSS.escape(path)}"]`)
         ?.scrollIntoView({ block: "nearest" });
-    }, 60);
+    };
+    window.setTimeout(scrollToTreePath, 80);
+    window.setTimeout(scrollToTreePath, 200);
   },
   copyPaths: (paths) => {
     if (paths.length === 0) return;
