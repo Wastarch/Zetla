@@ -295,6 +295,25 @@ export function ProjectTree() {
     useProjectStore
       .getState()
       .openEntryDialog({ mode: "create", kind, dir, initial: "", ext: kind === "file" ? ".tex" : undefined });
+    // 目标目录折叠时先展开，否则建完看不见
+    if (dir !== root && !openDirs.has(dir)) toggleDir(dir);
+  }
+
+  /** M1-47：头部图标新建的目标目录——选中目录=该目录；选中文件=其父目录；无选中/根外=项目根。
+   *  多选取 anchor（最后一次普通点击项）。 */
+  function newEntryDir(): string {
+    const st = useProjectStore.getState();
+    const r = st.root;
+    if (!r) return ""; // 仅在未打开项目时可空，此时头部按钮不渲染
+    const sel = st.anchor ?? st.selected[0];
+    if (!sel) return r;
+    if (findNode(st.tree?.nodes, sel)?.type === "dir") return sel;
+    const parent = parentOf(sel);
+    // 须是 root 自身或 root 的直接子路径（防前缀同形目录如 proj2 误判）
+    const under =
+      !!parent &&
+      (parent === r || parent.startsWith(r + "/") || parent.startsWith(r + "\\"));
+    return under && parent ? parent : r;
   }
 
   /** 右键行：若目标不在当前选中集合内 → 改选为它；在集合内（含多选）→ 保持集合 */
@@ -379,8 +398,13 @@ export function ProjectTree() {
       className="tree"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      onClick={() => treeRef.current?.focus()}
-      onContextMenu={(e) => {
+      onClick={(e) => {
+        treeRef.current?.focus();
+        // M1-47：点空白区（非树行）取消选中；拖拽尾随的 click 不清空
+        if (!(e.target as HTMLElement).closest(".tnode") && !suppressClick.current) {
+          useProjectStore.getState().setSelection([]);
+        }
+      }}      onContextMenu={(e) => {
         // 空白区右键（节点已 stopPropagation）
         e.preventDefault();
         if (!root) return;
@@ -434,7 +458,7 @@ export function ProjectTree() {
                 title="新建文件"
                 onClick={(e) => {
                   e.stopPropagation();
-                  createEntry("file", root);
+                  createEntry("file", newEntryDir());
                 }}
               >
                 <Icon name="file-plus" size={14} />
@@ -445,7 +469,7 @@ export function ProjectTree() {
                 title="新建文件夹"
                 onClick={(e) => {
                   e.stopPropagation();
-                  createEntry("dir", root);
+                  createEntry("dir", newEntryDir());
                 }}
               >
                 <Icon name="folder-plus" size={14} />
