@@ -18,11 +18,13 @@ export interface DragGhost {
  * - 保留抓取相对位置：记下指针在元素内的偏移，影像不会跳到鼠标左上角。
  * - 清掉 data-tree-* 与拖拽态 class：落点测试用 elementFromPoint +
  *   [data-tree-path]，且影像应是实心的"原物"，不能半透明或带落点高亮。
+ * - count > 1 时右下角加数字徽标（M1-40 项目树多选拖拽）。
  */
 export function createDragGhost(
   node: HTMLElement,
   clientX: number,
   clientY: number,
+  count = 0,
 ): DragGhost {
   const rect = node.getBoundingClientRect();
   const clone = node.cloneNode(true) as HTMLElement;
@@ -43,6 +45,13 @@ export function createDragGhost(
   badge.className = "drag-ghost-badge";
   badge.textContent = "+";
   inner.appendChild(badge);
+
+  if (count > 1) {
+    const cnt = document.createElement("span");
+    cnt.className = "drag-ghost-count";
+    cnt.textContent = count > 99 ? "99+" : String(count);
+    inner.appendChild(cnt);
+  }
 
   const wrap = document.createElement("div");
   wrap.className = "drag-ghost";

@@ -4,6 +4,8 @@
 // M0-13 前移：树首行改为「根目录行」（资源管理器头部的图标组移入该行，始终显示）
 // M1-26：树内拖拽条目到目录（移动；Ctrl / macOS Option 拖拽复制），指针事件实现
 // M1-38：根目录图标组加「显示隐藏文件」眼睛开关（点号项，.git/重型目录始终跳过）
+// M1-40：多选（系统原生语义）——普通点击单选、Ctrl+点击加减选、Shift+点击范围选、
+//        Ctrl+A 全选、Esc 清空、Delete 批量删除；右键/复制/剪切/删除/拖拽均作用于多选集合
 import {
   useMemo,
   useRef,
@@ -16,7 +18,13 @@ import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import type { ProjectNode } from "@/types";
 import { EXT_IMG, base, extOf, findNode, notify, parentOf, useProjectStore } from "./useProject";
-import { dropProblem, resolveDropDir, type TreeDropHit } from "./treeDrop";
+import {
+  dropHoverProblem,
+  filterTopLevel,
+  rangeSelect,
+  resolveDropDir,
+  type TreeDropHit,
+} from "./treeDrop";
 import { createDragGhost, type DragGhost } from "@/ui/dragGhost";
 
 /** 拖拽复制修饰键文案（macOS 用 Option，其余平台用 Ctrl） */
@@ -40,17 +48,17 @@ export function ProjectTree() {
   const root = useProjectStore((s) => s.root);
   const nodes = useProjectStore((s) => s.tree?.nodes);
   const openDirs = useProjectStore((s) => s.openDirs);
-  const selected = useProjectStore((s) => s.selected);
+  const selectedPaths = useProjectStore((s) => s.selected);
   const toggleDir = useProjectStore((s) => s.toggleDir);
   const collapseAll = useProjectStore((s) => s.collapseAll);
   const openCtx = useProjectStore((s) => s.openCtx);
   const refresh = useProjectStore((s) => s.refresh);
-  const openFromTree = useProjectStore((s) => s.openFromTree);
   const openProjectDialog = useProjectStore((s) => s.openProjectDialog);
   const copyPaths = useProjectStore((s) => s.copyPaths);
   const cutPaths = useProjectStore((s) => s.cutPaths);
   const pasteInto = useProjectStore((s) => s.pasteInto);
-  const dropEntry = useProjectStore((s) => s.dropEntry);
+  const removeEntries = useProjectStore((s) => s.removeEntries);
+  const dropEntries = useProjectStore((s) => s.dropEntries);
   const setShowHiddenFiles = useProjectStore((s) => s.setShowHiddenFiles);
   const showHiddenFiles = useSettingsStore((s) => s.settings.layout.showHiddenFiles);
   const clip = useProjectStore((s) => s.clip);
@@ -62,8 +70,47 @@ export function ProjectTree() {
     [buffers],
   );
 
+  // ── M1-40 多选 ──
+  const selectedSet = useMemo(() => new Set(selectedPaths), [selectedPaths]);
+  /** 树可见行的路径顺序（根行不参与选择；Shift 范围 / Ctrl+A 用） */
+  const visiblePaths = useMemo(() => {
+    const out: string[] = [];
+    const walk = (list: ProjectNode[]) => {
+      for (const n of list) {
+        out.push(n.path);
+        if (n.type === "dir" && openDirs.has(n.path) && n.children) walk(n.children);
+      }
+    };
+    if (nodes) walk(nodes);
+    return out;
+  }, [nodes, openDirs]);
+
+  /** 多选行点击（系统原生语义） */
+  function handleRowClick(e: React.MouseEvent, path: string, kind: "file" | "dir") {
+    if (suppressClick.current) return;
+    const st = useProjectStore.getState();
+    if (e.ctrlKey || e.metaKey) {
+      // Ctrl+点击：加减选；不打开文件、不展开目录
+      st.toggleSelect(path);
+      return;
+    }
+    if (e.shiftKey) {
+      // Shift+点击：从锚点（最后一次单选）到目标行的闭区间；锚点不动
+      const anchor = st.anchor ?? path;
+      st.setSelection(rangeSelect(visiblePaths, anchor, path) ?? [path], anchor);
+      return;
+    }
+    // 普通点击：单选；文件打开到标签、目录展开/折叠
+    if (kind === "file") {
+      st.openFromTree(path); // 内部置单选
+    } else {
+      st.setSelection([path], path);
+      st.toggleDir(path);
+    }
+  }
+
   // ── M1-26 拖拽：pointer 事件（Tauri Windows 的 HTML5 拖放会被原生文件拖入拦截） ──
-  const [dragPath, setDragPath] = useState<string | null>(null);
+  const [dragSrcs, setDragSrcs] = useState<string[]>([]);
   const [hover, setHover] = useState<{ targetDir: string; valid: boolean } | null>(null);
   const suppressClick = useRef(false);
 
@@ -79,7 +126,7 @@ export function ProjectTree() {
     };
   };
 
-  const startDrag = (e: ReactPointerEvent<HTMLElement>, src: string) => {
+  const startDrag = (e: ReactPointerEvent<HTMLElement>, srcs: string[]) => {
     if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest("button")) return;
     // currentTarget 在 React 合成事件返回后会清空，同步保存供阈值触发时克隆
@@ -94,14 +141,17 @@ export function ProjectTree() {
     let raf = 0;
     let ghost: DragGhost | null = null;
     const rootDir = root ?? "";
-    const isDir = findNode(nodes, src)?.type === "dir";
     const mac = document.documentElement.dataset.platform === "darwin";
 
     const updateHover = (x: number, y: number) => {
       const hit = hitAt(x, y);
       const targetDir = resolveDropDir(hit, rootDir);
-      const problem = dropProblem(src, targetDir, copy ? "copy" : "move", !!isDir);
-      setHover({ targetDir, valid: !problem });
+      // 多选：只有「目录拖进自身/子目录」非法；原地移动的项由 dropEntries 逐项跳过
+      const valid = srcs.every((s) => {
+        const isDir = findNode(nodes, s)?.type === "dir";
+        return !dropHoverProblem(s, targetDir, isDir);
+      });
+      setHover({ targetDir, valid });
     };
 
     const autoScroll = () => {
@@ -116,9 +166,9 @@ export function ProjectTree() {
       if (!active) {
         if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
         active = true;
-        // 过了阈值才造影像：点击时不会出现一闪而过的幽灵
-        ghost = createDragGhost(srcEl, ev.clientX, ev.clientY);
-        setDragPath(src);
+        // 过了阈值才造影像：点击时不会出现一闪而过的幽灵；多项拖拽带计数徽标
+        ghost = createDragGhost(srcEl, ev.clientX, ev.clientY, srcs.length);
+        setDragSrcs(srcs);
         raf = requestAnimationFrame(autoScroll);
       }
       lastX = ev.clientX;
@@ -144,14 +194,14 @@ export function ProjectTree() {
       cancelAnimationFrame(raf);
       ghost?.hide();
       ghost = null;
-      setDragPath(null);
+      setDragSrcs([]);
       setHover(null);
     };
     const onUp = (ev: PointerEvent) => {
       if (active) {
         const hit = hitAt(ev.clientX, ev.clientY);
         const targetDir = resolveDropDir(hit, rootDir);
-        void dropEntry(src, targetDir, copy ? "copy" : "move");
+        void dropEntries(srcs, targetDir, copy ? "copy" : "move");
         // 拖拽尾随的 click 不应再触发打开/展开
         suppressClick.current = true;
         window.setTimeout(() => (suppressClick.current = false), 0);
@@ -165,36 +215,69 @@ export function ProjectTree() {
     window.addEventListener("pointercancel", onCancel);
   };
 
-  /** 拖拽时的行样式：源行半透明；目标目录行高亮（合法 accent / 非法 warn） */
+  /** M1-40：拖拽入口。按在未选中项上 → 只拖它；按在已选多项之一 → 拖整组（顶层去重） */
+  const beginDrag = (e: ReactPointerEvent<HTMLElement>, path: string) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("button")) return;
+    const st = useProjectStore.getState();
+    if (!st.selected.includes(path)) {
+      st.setSelection([path], path); // 原生语义：按下未选中项即改选
+    }
+    const srcs =
+      st.selected.includes(path) && st.selected.length > 1
+        ? filterTopLevel(st.selected)
+        : [path];
+    startDrag(e, srcs);
+  };
+
+  /** 拖拽时的行样式：被拖的源行（整组）半透明；目标目录行高亮（合法 accent / 非法 warn） */
   function dragClass(path: string): string {
-    if (dragPath === path) return "is-dragging";
+    if (dragSrcs.includes(path)) return "is-dragging";
     if (!hover || hover.targetDir !== path) return "";
     return hover.valid ? "drop-ok" : "drop-bad";
   }
 
-  // Ctrl+C / Ctrl+X / Ctrl+V（树容器获得焦点时；粘贴目标=选中目录 / 选中文件的父目录 / 项目根）
+  // 键盘操作（树容器获得焦点时）：
+  // Ctrl+A 全选可见行 / Ctrl+C 复制 / Ctrl+X 剪切 / Ctrl+V 粘贴 /
+  // Delete 删除选中 / Esc 清空选择
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (!(e.ctrlKey || e.metaKey)) return;
-    const k = e.key.toLowerCase();
-    if (k === "c" && selected) {
-      e.preventDefault();
-      copyPaths([selected]);
-    } else if (k === "x" && selected) {
-      e.preventDefault();
-      cutPaths([selected]);
-    } else if (k === "v") {
-      e.preventDefault();
-      const st = useProjectStore.getState();
-      if (!st.clip) {
-        notify("剪贴板为空", "err");
+    const st = useProjectStore.getState();
+    const sel = st.selected;
+    if (e.ctrlKey || e.metaKey) {
+      const k = e.key.toLowerCase();
+      if (k === "a") {
+        e.preventDefault();
+        st.setSelection([...visiblePaths]);
         return;
       }
-      let target: string | null = root ?? null;
-      if (selected) {
-        const node = findNode(nodes, selected);
-        target = node?.type === "dir" ? selected : parentOf(selected) || root;
+      if (k === "c" && sel.length > 0) {
+        e.preventDefault();
+        copyPaths(sel);
+      } else if (k === "x" && sel.length > 0) {
+        e.preventDefault();
+        cutPaths(sel);
+      } else if (k === "v") {
+        e.preventDefault();
+        if (!st.clip) {
+          notify("剪贴板为空", "err");
+          return;
+        }
+        // 粘贴目标跟随焦点项（锚点）：目录=自身，文件=父目录，无选中=项目根
+        const focus = st.anchor ?? sel[sel.length - 1] ?? null;
+        let target: string | null = root ?? null;
+        if (focus) {
+          const node = findNode(nodes, focus);
+          target = node?.type === "dir" ? focus : parentOf(focus) || root;
+        }
+        if (target) void pasteInto(target);
       }
-      if (target) void pasteInto(target);
+      return;
+    }
+    if (e.key === "Delete" && sel.length > 0) {
+      e.preventDefault();
+      void removeEntries(sel);
+    } else if (e.key === "Escape") {
+      st.setSelection([]);
     }
   }
 
@@ -209,12 +292,25 @@ export function ProjectTree() {
       .openEntryDialog({ mode: "create", kind, dir, initial: "", ext: kind === "file" ? ".tex" : undefined });
   }
 
+  /** 右键行：若目标不在当前选中集合内 → 改选为它；在集合内（含多选）→ 保持集合 */
+  function ctxSelect(kind: "file" | "dir", path: string, x: number, y: number) {
+    const st = useProjectStore.getState();
+    if (!st.selected.includes(path)) st.setSelection([path], path);
+    openCtx({ x, y, kind, path });
+  }
+
   function renderNodes(list: ProjectNode[], depth: number): ReactNode {
     const pad = 8 + depth * 15;
     return list.map((n) => {
       if (n.type === "dir") {
         const open = openDirs.has(n.path);
-        const cls = [open ? "open-dir" : "", dragClass(n.path)].filter(Boolean).join(" ");
+        const cls = [
+          selectedSet.has(n.path) ? "sel" : "",
+          open ? "open-dir" : "",
+          dragClass(n.path),
+        ]
+          .filter(Boolean)
+          .join(" ");
         return (
           <div key={n.path}>
             <div
@@ -223,15 +319,12 @@ export function ProjectTree() {
               title={`${n.path} · 拖动可移动，按住 ${macModifierLabel()} 拖动可复制`}
               data-tree-path={n.path}
               data-tree-kind="dir"
-              onPointerDown={(e) => startDrag(e, n.path)}
-              onClick={() => {
-                if (suppressClick.current) return;
-                toggleDir(n.path);
-              }}
+              onPointerDown={(e) => beginDrag(e, n.path)}
+              onClick={(e) => handleRowClick(e, n.path, "dir")}
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                openCtx({ x: e.clientX, y: e.clientY, kind: "dir", path: n.path });
+                ctxSelect("dir", n.path, e.clientX, e.clientY);
               }}
             >
               <Icon name="chev" className="chev" size={12} />
@@ -243,7 +336,7 @@ export function ProjectTree() {
         );
       }
       const { icon, cls } = iconFor(n.name);
-      const isSel = selected === n.path;
+      const isSel = selectedSet.has(n.path);
       const rowCls = [isSel ? "sel" : "", "file", dragClass(n.path)]
         .filter(Boolean)
         .join(" ");
@@ -255,15 +348,12 @@ export function ProjectTree() {
           title={`${n.path} · 拖动可移动，按住 ${macModifierLabel()} 拖动可复制`}
           data-tree-path={n.path}
           data-tree-kind="file"
-          onPointerDown={(e) => startDrag(e, n.path)}
-          onClick={() => {
-            if (suppressClick.current) return;
-            openFromTree(n.path);
-          }}
+          onPointerDown={(e) => beginDrag(e, n.path)}
+          onClick={(e) => handleRowClick(e, n.path, "file")}
           onContextMenu={(e) => {
             e.preventDefault();
             e.stopPropagation();
-            openCtx({ x: e.clientX, y: e.clientY, kind: "file", path: n.path });
+            ctxSelect("file", n.path, e.clientX, e.clientY);
           }}
         >
           <Icon name={icon} size={15} className={cls} />

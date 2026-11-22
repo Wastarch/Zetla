@@ -2,9 +2,12 @@
 // 文件：打开/重命名/复制/剪切/资源管理器/删除
 // 目录：新建 .tex/新建文件夹/重命名/复制/剪切/粘贴/资源管理器/删除
 // 空白：新建 .tex/新建文件夹/粘贴/刷新
+// M1-40：多选感知——右键目标在选中集合内且为多选时，复制/剪切/删除/资源管理器
+//        作用于整组（顶层去重），重命名/打开文件仅单选可用
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Icon } from "@/ui/Icon";
 import { base, useProjectStore } from "./useProject";
+import { filterTopLevel } from "./treeDrop";
 
 interface CtxItem {
   label: string;
@@ -20,7 +23,7 @@ export function CtxMenu() {
   const ctx = useProjectStore((s) => s.ctx);
   const closeCtx = useProjectStore((s) => s.closeCtx);
   const openEntryDialog = useProjectStore((s) => s.openEntryDialog);
-  const removeEntry = useProjectStore((s) => s.removeEntry);
+  const removeEntries = useProjectStore((s) => s.removeEntries);
   const revealInExplorer = useProjectStore((s) => s.revealInExplorer);
   const refresh = useProjectStore((s) => s.refresh);
   const openFromTree = useProjectStore((s) => s.openFromTree);
@@ -29,6 +32,7 @@ export function CtxMenu() {
   const pasteInto = useProjectStore((s) => s.pasteInto);
   const clip = useProjectStore((s) => s.clip);
   const root = useProjectStore((s) => s.root);
+  const sel = useProjectStore((s) => s.selected);
 
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x: 0, y: 0 });
@@ -73,25 +77,47 @@ export function CtxMenu() {
     onClick: () => void pasteInto(dir),
   });
 
+  // M1-40：右键目标在选中集合内且为多选 → 操作对象是整组（顶层去重），否则就是目标本身
+  const groupSel = ctx && ctx.path && sel.includes(ctx.path) && sel.length > 1;
+  const targets = ctx && ctx.path && groupSel ? filterTopLevel(sel) : ctx?.path ? [ctx.path] : [];
+  const n = targets.length;
+  /** 在资源管理器中逐项定位（系统无「多选单窗口」接口可走，逐项 reveal） */
+  const revealAll = () => targets.forEach((t) => void revealInExplorer(t));
+
   let items: CtxItem[] = [];
 
-  if (ctx.kind === "file" && ctx.path) {
+  if (ctx?.kind === "file" && ctx.path) {
     const p = ctx.path;
-    items = [
-      { label: "打开文件", icon: "file", onClick: () => openFromTree(p) },
-      {
-        label: "重命名",
-        icon: "edit",
-        onClick: () => openEntryDialog({ mode: "rename", from: p, initial: base(p) }),
-      },
-      { label: "复制", icon: "copy", sc: "Ctrl+C", onClick: () => copyPaths([p]) },
-      { label: "剪切", icon: "cut", sc: "Ctrl+X", onClick: () => cutPaths([p]) },
-      { label: "", icon: "", onClick: () => {} },
-      { label: "在资源管理器中打开", icon: "external", onClick: () => void revealInExplorer(p) },
-      { label: "", icon: "", onClick: () => {} },
-      { label: "删除", icon: "trash", danger: true, onClick: () => void removeEntry(p) },
-    ];
-  } else if (ctx.kind === "dir" && ctx.path) {
+    if (n > 1) {
+      items = [
+        { label: `复制（${n} 项）`, icon: "copy", sc: "Ctrl+C", onClick: () => copyPaths(targets) },
+        { label: `剪切（${n} 项）`, icon: "cut", sc: "Ctrl+X", onClick: () => cutPaths(targets) },
+        { label: "", icon: "", onClick: () => {} },
+        { label: `在资源管理器中打开（${n} 项）`, icon: "external", onClick: revealAll },
+        { label: "", icon: "", onClick: () => {} },
+        {
+          label: `删除（${n} 项）`,
+          icon: "trash",
+          danger: true,
+          onClick: () => void removeEntries(targets),
+        },
+      ];
+    } else
+      items = [
+        { label: "打开文件", icon: "file", onClick: () => openFromTree(p) },
+        {
+          label: "重命名",
+          icon: "edit",
+          onClick: () => openEntryDialog({ mode: "rename", from: p, initial: base(p) }),
+        },
+        { label: "复制", icon: "copy", sc: "Ctrl+C", onClick: () => copyPaths([p]) },
+        { label: "剪切", icon: "cut", sc: "Ctrl+X", onClick: () => cutPaths([p]) },
+        { label: "", icon: "", onClick: () => {} },
+        { label: "在资源管理器中打开", icon: "external", onClick: () => void revealInExplorer(p) },
+        { label: "", icon: "", onClick: () => {} },
+        { label: "删除", icon: "trash", danger: true, onClick: () => void removeEntries([p]) },
+      ];
+  } else if (ctx?.kind === "dir" && ctx.path) {
     const d = ctx.path;
     items = [
       {
@@ -111,18 +137,42 @@ export function CtxMenu() {
         onClick: () => useProjectStore.getState().openWizard(d),
       },
       { label: "", icon: "", onClick: () => {} },
+      // 重命名仅单选可用（多选没有统一语义）
+      ...(n > 1
+        ? []
+        : [
+            {
+              label: "重命名",
+              icon: "edit",
+              onClick: () => openEntryDialog({ mode: "rename", from: d, initial: base(d) }),
+            },
+          ]),
       {
-        label: "重命名",
-        icon: "edit",
-        onClick: () => openEntryDialog({ mode: "rename", from: d, initial: base(d) }),
+        label: n > 1 ? `复制（${n} 项）` : "复制",
+        icon: "copy",
+        sc: "Ctrl+C",
+        onClick: () => copyPaths(targets),
       },
-      { label: "复制", icon: "copy", sc: "Ctrl+C", onClick: () => copyPaths([d]) },
-      { label: "剪切", icon: "cut", sc: "Ctrl+X", onClick: () => cutPaths([d]) },
+      {
+        label: n > 1 ? `剪切（${n} 项）` : "剪切",
+        icon: "cut",
+        sc: "Ctrl+X",
+        onClick: () => cutPaths(targets),
+      },
       pasteItem(d),
       { label: "", icon: "", onClick: () => {} },
-      { label: "在资源管理器中打开", icon: "external", onClick: () => void revealInExplorer(d) },
+      {
+        label: n > 1 ? `在资源管理器中打开（${n} 项）` : "在资源管理器中打开",
+        icon: "external",
+        onClick: revealAll,
+      },
       { label: "", icon: "", onClick: () => {} },
-      { label: "删除", icon: "trash", danger: true, onClick: () => void removeEntry(d) },
+      {
+        label: n > 1 ? `删除（${n} 项）` : "删除",
+        icon: "trash",
+        danger: true,
+        onClick: () => void removeEntries(targets),
+      },
     ];
   } else if (root) {
     items = [

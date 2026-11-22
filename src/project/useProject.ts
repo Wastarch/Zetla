@@ -9,7 +9,9 @@ import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import {
-  dropProblem,
+  filterTopLevel,
+  isSameOrInside,
+  parentDir,
   pathKey,
   uniqueCopyName,
   type TreeDropMode,
@@ -170,7 +172,10 @@ function validateName(name: string): string | null {
 interface ProjectState {
   root: string | null;
   tree: ProjectTree | null;
-  selected: string | null;
+  /** 树多选集合（M1-40，系统原生语义：单选/Ctrl 加减选/Shift 范围） */
+  selected: string[];
+  /** Shift 范围选择的锚点（最后一次普通点击/范围点击的起点） */
+  anchor: string | null;
   /** 展开的目录（Set） */
   openDirs: Set<string>;
   ctx: CtxState | null;
@@ -225,6 +230,10 @@ interface ProjectState {
   /** 全部折叠（资源管理器头部「全部折叠」按钮） */
   collapseAll: () => void;
   select: (path: string) => void;
+  /** M1-40：写入多选集合（anchor 缺省取集合最后一项） */
+  setSelection: (paths: string[], anchor?: string | null) => void;
+  /** M1-40：Ctrl+点击切换某项选中态（不动 anchor） */
+  toggleSelect: (path: string) => void;
 
   openCtx: (ctx: CtxState) => void;
   closeCtx: () => void;
@@ -236,7 +245,8 @@ interface ProjectState {
   /** M0-6b：新建条目（kind=file 时按 ext 合并后缀；文本类建完自动开标签，图片/PDF 只建不打开） */
   createEntry: (dir: string, kind: EntryKind, name: string, ext?: string) => Promise<void>;
   renameEntry: (from: string, name: string) => Promise<void>;
-  removeEntry: (path: string) => Promise<void>;
+  /** M1-40：批量删除（一次确认；关闭受影响缓冲） */
+  removeEntries: (paths: string[]) => Promise<void>;
   revealInExplorer: (path: string) => Promise<void>;
 
   /** 复制到剪贴板（粘贴时用 copy_entry 实际复制） */
@@ -245,9 +255,9 @@ interface ProjectState {
   cutPaths: (paths: string[]) => void;
   /** 粘贴到目标目录（冲突报错中止；剪切成功后清空剪贴板） */
   pasteInto: (targetDir: string) => Promise<void>;
-  /** M1-26：树内拖拽落点。move=移动，copy=复制（同名自动加「 - 副本」后缀）；
+  /** M1-26/M1-40：树内多选拖拽落点。move=移动，copy=复制（同名自动加「 - 副本」后缀）；
    *  移动后同步已打开缓冲/展开目录/剪贴板里的旧路径，再重扫树。 */
-  dropEntry: (src: string, targetDir: string, mode: TreeDropMode) => Promise<void>;
+  dropEntries: (srcs: string[], targetDir: string, mode: TreeDropMode) => Promise<void>;
 
   /** 打开/关闭「从模板新建」向导（dir 缺省用项目根；templateId 预选模板） */
   openWizard: (dir?: string, templateId?: string) => void;
@@ -260,7 +270,8 @@ interface ProjectState {
 export const useProjectStore = create<ProjectState>((set, get) => ({
   root: null,
   tree: null,
-  selected: null,
+  selected: [],
+  anchor: null,
   openDirs: new Set<string>(),
   ctx: null,
   entryDialog: null,
@@ -312,7 +323,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       set({
         root,
         tree,
-        selected: tree.mainFile || null,
+        selected: tree.mainFile ? [tree.mainFile] : [],
+        anchor: tree.mainFile ?? null,
         // 根行作为树的第一层节点，默认展开
         openDirs: new Set<string>([root]),
         ctx: null,
@@ -389,7 +401,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set({
       root: null,
       tree: null,
-      selected: null,
+      selected: [],
+      anchor: null,
       openDirs: new Set<string>(),
       ctx: null,
       entryDialog: null,
@@ -441,15 +454,32 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   // 全部折叠：只折叠根以下目录，根行保持展开；根行被收起时点它会先展开根行
   collapseAll: () => set((s) => ({ openDirs: s.root ? new Set<string>([s.root]) : new Set<string>() })),
 
-  select: (path) => set({ selected: path }),
+  select: (path) => set({ selected: [path], anchor: path }),
 
-  openCtx: (ctx) => set({ ctx, selected: ctx.path ?? get().selected }),
+  // M1-40：多选集合写入；anchor 缺省取集合最后一项（Shift 后续范围以此为起点）
+  setSelection: (paths, anchor) =>
+    set({
+      selected: paths,
+      anchor: anchor === undefined ? (paths[paths.length - 1] ?? null) : anchor,
+    }),
+
+  // M1-40：Ctrl+点击切换选中态；anchor 不动（Windows 原生语义，Shift 范围仍从原锚点展开）
+  toggleSelect: (path) =>
+    set((s) => {
+      const has = s.selected.includes(path);
+      const selected = has
+        ? s.selected.filter((p) => p !== path)
+        : [...s.selected, path];
+      return { selected, anchor: s.anchor };
+    }),
+
+  openCtx: (ctx) => set({ ctx }),
   closeCtx: () => set({ ctx: null }),
   openEntryDialog: (d) => set({ entryDialog: d, ctx: null }),
   closeEntryDialog: () => set({ entryDialog: null }),
 
   openFromTree: (path) => {
-    set({ selected: path, ctx: null });
+    set({ selected: [path], anchor: path, ctx: null });
     // 一律进代码标签页：openFiles 内部按扩展名分流为文本 / 图片查看器 / PDF 查看器。
     // 右侧 PDF 预览仅由编译完成（compile_finished → showPdf）自动弹出，
     // 用户手动打开的文件（含 LaTeX 编译产物）不抢占右侧预览。
@@ -478,7 +508,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       if (kind !== "dir" && ext2 !== "pdf" && !EXT_IMG.has(ext2)) {
         await useBuffersStore.getState().openFiles([created]);
       }
-      set({ selected: created });
+      set({ selected: [created], anchor: created });
       notify(`已新建 ${base(created)}`, "ok");
     } catch (e) {
       notify(String(e), "err");
@@ -495,7 +525,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     try {
       const to = joinPath(parentOf(from), clean);
       const newPath = await projectApi.renameEntry(from, to);
-      set({ entryDialog: null, selected: newPath });
+      set({ entryDialog: null, selected: [newPath], anchor: newPath });
       // 同步已打开缓冲的 path/name（撤销栈与内容保持不变）
       const buf = useBuffersStore.getState().buffers.find((b) => b.path === from);
       if (buf) {
@@ -513,32 +543,48 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  removeEntry: async (path) => {
-    const name = base(path);
+  // M1-40：批量删除（一次确认列出全部名称；逐项删除，关闭受影响缓冲）
+  removeEntries: async (paths) => {
+    if (paths.length === 0) return;
+    const label =
+      paths.length === 1
+        ? `「${base(paths[0])}」`
+        : `${paths.length} 项（${paths
+            .slice(0, 5)
+            .map(base)
+            .join("、")}${paths.length > 5 ? " 等" : ""}）`;
     try {
       const ok = await confirm(
-        `确定删除「${name}」？\n此操作不可撤销（不进回收站）。`,
+        `确定删除${label}？\n此操作不可撤销（不进回收站）。`,
         { title: "删除", kind: "warning", okLabel: "删除", cancelLabel: "取消" },
       );
       if (!ok) {
         set({ ctx: null });
         return;
       }
-      await projectApi.removeEntry(path);
-      set((s) => ({
-        ctx: null,
-        selected: s.selected === path ? null : s.selected,
-      }));
+      for (const path of paths) {
+        await projectApi.removeEntry(path);
+      }
+      const dropped = new Set(paths);
+      set((s) => {
+        const selected = s.selected.filter((p) => !dropped.has(p));
+        return { ctx: null, selected, anchor: selected[selected.length - 1] ?? null };
+      });
       // 关闭受影响缓冲（被删文件本身及其子路径）
       const bs = useBuffersStore.getState();
       const affected = bs.buffers
-        .filter((b) => b.path === path || b.path.startsWith(path + "/") || b.path.startsWith(path + "\\"))
+        .filter((b) =>
+          paths.some(
+            (p) =>
+              b.path === p || b.path.startsWith(p + "/") || b.path.startsWith(p + "\\"),
+          ),
+        )
         .map((b) => b.path);
       for (const p of affected) {
         await useBuffersStore.getState().closeBuffer(p, true);
       }
       await get().refresh();
-      notify(`已删除 ${name}`, "ok");
+      notify(`已删除 ${paths.length} 项`, "ok");
     } catch (e) {
       notify(String(e), "err");
     }
@@ -598,7 +644,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     set((s) => ({
       ctx: null,
       clip: clip.mode === "cut" ? null : s.clip,
-      selected: created[created.length - 1] ?? s.selected,
+      selected: created,
+      anchor: created[created.length - 1] ?? s.anchor,
     }));
     await get().refresh();
     if (created.length > 0) {
@@ -611,66 +658,107 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
   },
 
-  dropEntry: async (src, targetDir, mode) => {
+  // M1-40：多选拖拽落点。顶层去重后逐项移动/复制；
+  // 「目录拖进自身/子目录」整组拒绝，「移动回原目录」的项跳过；
+  // 移动会改前缀：已打开缓冲、展开目录、剪贴板一起迁（与原单条 dropEntry 同口径）。
+  dropEntries: async (srcs, targetDir, mode) => {
     const st = get();
     const root = st.root;
-    if (!root) return;
-    const isDir = findNode(st.tree?.nodes, src)?.type === "dir";
-    const problem = dropProblem(src, targetDir, mode, isDir);
-    if (problem) {
-      notify(problem, "err");
+    if (!root || srcs.length === 0) return;
+    const tops = filterTopLevel(srcs);
+    const movable: string[] = [];
+    let selfProblem: string | null = null;
+    for (const src of tops) {
+      const isDir = findNode(st.tree?.nodes, src)?.type === "dir";
+      if (isDir && isSameOrInside(targetDir, src)) {
+        selfProblem ??= "不能把文件夹放进它自己或它的子目录";
+        continue;
+      }
+      // 原地移动（已在目标目录下）的项跳过
+      if (mode === "move" && pathKey(targetDir) === pathKey(parentDir(src))) continue;
+      movable.push(src);
+    }
+    if (movable.length === 0) {
+      if (selfProblem) notify(selfProblem, "err");
       return;
     }
 
-    // 复制时按目标目录现有名字生成不冲突的副本名；移动保持原名（重名由后端拒绝）
-    const taken =
+    // 复制避让基名：目标目录现有条目 + 本批已生成的副本名（逐项累积防重名）
+    const inTarget =
       pathKey(targetDir) === pathKey(root)
-        ? (st.tree?.nodes ?? []).map((n) => n.name)
-        : (findNode(st.tree?.nodes, targetDir)?.children ?? []).map((n) => n.name);
-    const name = mode === "copy" ? uniqueCopyName(base(src), taken) : base(src);
-    const to = joinPath(targetDir, name);
-
-    try {
-      const created =
-        mode === "copy"
-          ? await projectApi.copyEntry(src, to)
-          : await projectApi.renameEntry(src, to);
-
-      // 移动会把源及其所有子路径改前缀：已打开标签、展开目录、剪贴板一起迁。
-      // 只改 store 中的 path 字符串，不动 buffer 内容与脏状态（编辑器实例随 React key 重建一次）。
-      const remap = (p: string): string => {
-        if (mode !== "move") return p;
-        if (pathKey(p) === pathKey(src)) return created;
-        if (p.startsWith(`${src}/`) || p.startsWith(`${src}\\`)) {
-          return created + p.slice(src.length);
+        ? (st.tree?.nodes ?? [])
+        : (findNode(st.tree?.nodes, targetDir)?.children ?? []);
+    const taken = new Set(inTarget.map((n) => n.name));
+    const results: { src: string; to: string }[] = [];
+    let failed: string | null = null;
+    for (const src of movable) {
+      const name = mode === "copy" ? uniqueCopyName(base(src), taken) : base(src);
+      const to = joinPath(targetDir, name);
+      try {
+        if (mode === "copy") {
+          await projectApi.copyEntry(src, to);
+          taken.add(base(to));
+        } else {
+          await projectApi.renameEntry(src, to);
         }
-        return p;
-      };
-      set((s) => {
-        const openDirs = new Set([...s.openDirs].map(remap));
-        openDirs.add(targetDir); // 拖进折叠目录后直接展开，立刻看到落点
-        return {
-          selected: created,
-          openDirs,
-          clip: s.clip ? { ...s.clip, paths: s.clip.paths.map(remap) } : s.clip,
-        };
-      });
-      if (mode === "move") {
-        useBuffersStore.setState((s) => ({
-          buffers: s.buffers.map((b) => {
-            const np = remap(b.path);
-            return np === b.path ? b : { ...b, path: np, name: base(np) };
-          }),
-          activePath: s.activePath ? remap(s.activePath) : s.activePath,
-        }));
+        results.push({ src, to });
+      } catch (e) {
+        // 冲突/失败：中止后续（已完成的保留）
+        failed = String(e);
+        break;
       }
-      await get().refresh();
+    }
+    if (results.length === 0) {
       notify(
-        `${mode === "copy" ? "已复制" : "已移动"} ${base(created)} → ${base(targetDir)}`,
+        `${mode === "copy" ? "复制" : "移动"}失败 ${base(movable[0])}：${failed ?? ""}`,
+        "err",
+      );
+      return;
+    }
+
+    const remap = (p: string): string => {
+      if (mode !== "move") return p;
+      for (const { src, to } of results) {
+        if (pathKey(p) === pathKey(src)) return to;
+        if (p.startsWith(`${src}/`) || p.startsWith(`${src}\\`)) {
+          return to + p.slice(src.length);
+        }
+      }
+      return p;
+    };
+    set((s) => {
+      const openDirs = new Set([...s.openDirs].map(remap));
+      openDirs.add(targetDir); // 拖进折叠目录后直接展开，立刻看到落点
+      return {
+        selected: results.map((r) => r.to),
+        anchor: results[results.length - 1].to,
+        openDirs,
+        clip: s.clip ? { ...s.clip, paths: s.clip.paths.map(remap) } : s.clip,
+      };
+    });
+    if (mode === "move") {
+      useBuffersStore.setState((s) => ({
+        buffers: s.buffers.map((b) => {
+          const np = remap(b.path);
+          return np === b.path ? b : { ...b, path: np, name: base(np) };
+        }),
+        activePath: s.activePath ? remap(s.activePath) : s.activePath,
+      }));
+    }
+    await get().refresh();
+    const verb = mode === "copy" ? "已复制" : "已移动";
+    if (failed) {
+      notify(
+        `${verb} ${results.length} 项到 ${base(targetDir)}，其余失败：${failed}`,
+        "err",
+      );
+    } else {
+      notify(
+        results.length === 1
+          ? `${verb} ${base(results[0].to)} → ${base(targetDir)}`
+          : `${verb} ${results.length} 项 → ${base(targetDir)}`,
         "ok",
       );
-    } catch (e) {
-      notify(`${mode === "copy" ? "复制" : "移动"}失败 ${base(src)}：${String(e)}`, "err");
     }
   },
 

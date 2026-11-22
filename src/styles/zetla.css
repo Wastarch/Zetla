@@ -9833,3 +9833,20 @@ body.row-resizing {
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 .drag-ghost.is-copy .drag-ghost-badge { display: flex; }
+/* M1-40 多选拖拽计数徽标（右上角；与复制 ＋ 角标互不遮挡） */
+.drag-ghost-count {
+  position: absolute;
+  right: -7px;
+  top: -7px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--bg-1);
+  font: 700 11px/1 var(--font-mono);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
