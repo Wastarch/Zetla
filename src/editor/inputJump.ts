@@ -4,15 +4,13 @@
 // 纯前端（零 Rust 改动），只读 useProjectStore 的树，不落盘。
 // M1-43：命令面扩到引入文件全家桶（规格表见 ./inputSpec）；目标未找到时弹窗二次确认后
 //   在主文件目录（编译工作目录）下创建缺失的 .tex/.bib，取消则什么都不发生。
-import { RangeSetBuilder, type Text } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
-  ViewPlugin,
   type DecorationSet,
   type Tooltip,
-  type ViewUpdate,
 } from "@codemirror/view";
+import { type EditorState, type Text } from "@codemirror/state";
 import { jumpToFile } from "./jump";
 import {
   createTargetFor,
@@ -22,7 +20,7 @@ import {
   type InputCmdSpec,
 } from "./inputSpec";
 import { notify, parentOf, useProjectStore } from "@/project/useProject";
-import { isCtrlHeld } from "@/modules/reference/citeSupport";
+import { hoverPosField, isCtrlHeld } from "@/modules/reference/citeSupport";
 
 /**
  * \input 类命令全家桶（可选参数 [...] 也认，如 \includegraphics[width=3cm]{fig}）。
@@ -206,41 +204,24 @@ export function inputJumpAtCursor(
   return true;
 }
 
-/** 扫描可见范围，把 \input{...} 整体标为 .cm-input-link（仅 ctrl-held 时由 CSS 呈现链接态） */
-function buildInputLinkDecos(view: EditorView): DecorationSet {
-  const builder = new RangeSetBuilder<Decoration>();
-  for (const r of view.visibleRanges) {
-    let pos = r.from;
-    while (pos <= r.to) {
-      const line = view.state.doc.lineAt(pos);
-      INPUT_RE.lastIndex = 0;
-      let m: RegExpExecArray | null;
-      while ((m = INPUT_RE.exec(line.text))) {
-        const from = line.from + m.index;
-        const to = from + m[0].length;
-        if (to > r.from && from < r.to && !inComment(line.text, m.index)) {
-          builder.add(from, to, Decoration.mark({ class: "cm-input-link" }));
-        }
-      }
-      pos = line.to + 1;
-      if (line.to + 1 > view.state.doc.length) break;
-    }
-  }
-  return builder.finish();
+/** 悬停于引入文件命令上时给该命令整体挂 .cm-input-link（悬停不在命令上 → 空集） */
+function buildInputLinkDecos(state: EditorState): DecorationSet {
+  const pos = state.field(hoverPosField, false);
+  if (pos == null) return Decoration.none;
+  const hit = findInputAt(state.doc, pos);
+  if (!hit) return Decoration.none;
+  return Decoration.set([
+    Decoration.mark({ class: "cm-input-link" }).range(hit.from, hit.to),
+  ]);
 }
 
-/** \input{...} 可点链接装饰（与 citeLinkDecorations 同款：平时无样式，Ctrl 按住才显链接） */
-export const inputLinkDecorations = ViewPlugin.fromClass(
-  class {
-    decorations: DecorationSet;
-    constructor(view: EditorView) {
-      this.decorations = buildInputLinkDecos(view);
-    }
-    update(u: ViewUpdate) {
-      if (u.docChanged || u.viewportChanged) this.decorations = buildInputLinkDecos(u.view);
-    }
-  },
-  { decorations: (v) => v.decorations },
+/**
+ * \input 类命令可点链接装饰（M1-43 追改为悬停命中式：只标鼠标所在的那一条命令，
+ * 与 \cite 一致；平时无样式，仅 ctrl-held 下由 CSS 呈现链接态）。
+ */
+export const inputLinkDecorations = EditorView.decorations.compute(
+  [hoverPosField],
+  buildInputLinkDecos,
 );
 
 /**

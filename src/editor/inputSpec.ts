@@ -31,10 +31,9 @@ const IMG: InputCmdSpec = {
   suffixes: ["", ".png", ".jpg", ".jpeg", ".pdf", ".eps"],
   createable: false,
 };
-const CLS: InputCmdSpec = { suffixes: ["", ".cls"], createable: false };
 
-// 注意（用户指令 2026-11-22）：\usepackage 不参与文件跳转——未收录即返回 null，
-// 点击会交还上层继续判定 \cite / synctex，不会误弹创建框。
+// 注意（用户指令 2026-11-22）：\usepackage / \documentclass 均不参与文件跳转——
+// 未收录即返回 null，点击交还上层继续判定 \cite / synctex，不会误弹创建框。
 const SPECS: Record<string, InputCmdSpec> = {
   input: TEX,
   include: TEX,
@@ -44,7 +43,6 @@ const SPECS: Record<string, InputCmdSpec> = {
   bibliography: BIB,
   addbibresource: BIB,
   includegraphics: IMG,
-  documentclass: CLS,
 };
 
 /** 引入文件命令规格；未收录命令返回 null */

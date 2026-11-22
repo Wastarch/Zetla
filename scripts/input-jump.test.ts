@@ -28,8 +28,8 @@ eq(inputCmdSpec("verbatiminput")?.createable, true, "\\verbatiminput 可创建")
 eq(inputCmdSpec("bibliography")?.createExt, ".bib", "\\bibliography 补 .bib");
 eq(inputCmdSpec("addbibresource")?.createable, true, "\\addbibresource 可创建");
 eq(inputCmdSpec("includegraphics")?.createable, false, "\\includegraphics 不可创建");
-eq(inputCmdSpec("documentclass")?.createable, false, "\\documentclass 不可创建");
 eq(inputCmdSpec("usepackage"), null, "\\usepackage 不参与跳转（用户指令去除）");
+eq(inputCmdSpec("documentclass"), null, "\\documentclass 不参与跳转（用户指令去除）");
 eq(inputCmdSpec("unknowncmd"), null, "未收录命令返回 null");
 eq(inputCmdSpec("INPUT")?.createable, true, "命令名大小写不敏感");
 eq(
