@@ -39,7 +39,7 @@ import {
   missingCiteLinter,
 } from "@/modules/reference/lint";
 import { importAndInsert, imagesFromDataTransfer } from "./image/importImage";
-import { inputPathCompletionSource, notInsideInputBraces } from "./inputComplete";
+import { inputPathAutoTrigger, inputPathCompletionSource, notInsideInputBraces } from "./inputComplete";
 import {
   inputJumpAtCursor,
   inputJumpHint,
@@ -398,6 +398,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
                   activateOnTyping: true,
                   icons: true,
                 }),
+                // M1-44 追改：光标点进 \input 类花括号（无输入发生）也自动拉起补全
+                inputPathAutoTrigger(),
                 keymap.of(completionKeymap),
                 // M2-5b：显式唤起补全的备用键位（Ctrl+Space 被中文输入法占用）
                 snippetExplicitKeymap,

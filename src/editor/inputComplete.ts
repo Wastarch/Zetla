@@ -8,6 +8,11 @@ import type {
   CompletionResult,
 } from "@codemirror/autocomplete";
 import {
+  completionStatus,
+  startCompletion,
+} from "@codemirror/autocomplete";
+import { EditorView } from "@codemirror/view";
+import {
   collectRelDirs,
   collectRelPaths,
   completionCandidatesFor,
@@ -71,4 +76,29 @@ export function inputPathCompletionSource(
     ...files.map((f) => ({ label: f, detail: `\\${hit.cmd} 目标`, apply: f })),
   ];
   return { from: pos - hit.typed.length, options, filter: true };
+}
+
+/**
+ * M1-44 追改 · 光标落进引入命令花括号即自动拉起补全。
+ * CM6 补全默认只在「输入字符」时激活（activateOnTyping）：空括号第一次弹是敲
+ * `{` 那一刻触发的，之后光标点进花括号、或关掉弹窗再进来，因为没有输入发生，
+ * 补全不会再查询。这里挂 updateListener：纯移动光标（doc 未变、selection 变了）
+ * 落到 \input 类花括号内且补全未激活时，dispatch startCompletion 主动拉起。
+ */
+export function inputPathAutoTrigger() {
+  return EditorView.updateListener.of((update) => {
+    if (update.docChanged || !update.selectionSet) return;
+    const status = completionStatus(update.state);
+    if (status === "active" || status === "pending") return;
+    const { state } = update;
+    const pos = state.selection.main.head;
+    const line = state.doc.lineAt(pos);
+    const textBefore = line.text.slice(0, pos - line.from);
+    const hit = matchInputTargetBefore(textBefore);
+    if (!hit || inComment(textBefore, hit.slashIdx)) return;
+    // update 事务内不能再 dispatch，推到下一帧拉起（startCompletion 是 Command，直接调）
+    setTimeout(() => {
+      startCompletion(update.view);
+    });
+  });
 }
