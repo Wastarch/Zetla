@@ -32,6 +32,7 @@ import {
   citeJumpAtCursor,
   citeLinkDecorations,
   ctrlHeldPlugin,
+  hoverPosField,
 } from "@/modules/reference/citeSupport";
 import {
   duplicateKeyLinter,
@@ -401,6 +402,8 @@ export const LaTeXEditor = forwardRef<LaTeXEditorHandle, LaTeXEditorProps>(
                 snippetTabKeymap,
                 hoverTooltip(citeHoverSource),
                 // M1-14d+：Ctrl 按住时 \cite 显示可点链接提示 + 跳转提示气泡
+                // M1-43 追改：hoverPosField 是链接装饰的数据源，必须挂进扩展（否则装饰恒为空集）
+                hoverPosField,
                 citeLinkDecorations,
                 ctrlHeldPlugin,
                 hoverTooltip(citeJumpHint),
