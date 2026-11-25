@@ -50,8 +50,10 @@ pub struct DragOutResult {
     pub error: Option<String>,
 }
 
-/// 开始一次系统拖出。立即返回：真正的拖放循环跑在独立线程上（DoDragDrop 会阻塞到松手），
-/// 结束后由 EV_DRAG_OUT_DONE 事件把落地效果推回前端。
+/// 开始一次系统拖出。命令立即返回；真正的 DoDragDrop 循环**调度到主线程**上跑
+/// （它依赖调用线程持有鼠标捕获：webview 的窗口与捕获都在主线程，从 std::thread 里调用
+///  ole32 会立刻返回 DRAGDROP_S_CANCEL —— 成功码 + effect=0，前端看起来就是「毫无反应」），
+/// 跑完由 EV_DRAG_OUT_DONE 回执落地效果。
 #[tauri::command]
 pub async fn start_drag_out(
     app: tauri::AppHandle,
@@ -60,29 +62,13 @@ pub async fn start_drag_out(
 ) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        use tauri::Emitter;
-
         let list = crate::commands::clipboard_fs::clean_paths(&paths);
         if list.is_empty() {
             return Err("没有可拖出的条目".into());
         }
-        std::thread::spawn(move || {
-            let (effect, error) = match win::drag(&list, copy) {
-                Ok(e) => (e, None),
-                Err(e) => {
-                    eprintln!("[drag_out] {e}");
-                    (0, Some(e))
-                }
-            };
-            let _ = app.emit(
-                EV_DRAG_OUT_DONE,
-                DragOutResult {
-                    effect: effect_name(effect).to_string(),
-                    paths: list,
-                    error,
-                },
-            );
-        });
+        let reporter = app.clone();
+        app.run_on_main_thread(move || win::drag_and_report(reporter, list, copy))
+            .map_err(|e| format!("无法把拖放调度到主线程: {e}"))?;
         Ok(())
     }
     #[cfg(not(target_os = "windows"))]
@@ -291,21 +277,80 @@ mod win {
         }
     }
 
-    /// 跑一次原生拖放循环，返回落地效果位标志（0 = 取消/失败）
-    pub fn drag(paths: &[String], copy: bool) -> Result<u32, String> {
-        unsafe {
-            // 必须用 OleInitialize 而不是 CoInitializeEx：DoDragDrop 属于 OLE 拖放，
-            // 只初始化 COM 而没有 OLE 状态时它会直接返回 CO_E_NOTINITIALIZED(0x800401F0)。
-            // 本线程是 std::thread 新建的，S_FALSE（已初始化）同样要配对 OleUninitialize。
-            OleInitialize(None)
-                .map_err(|e| format!("初始化 OLE 失败: 0x{:08X}", e.code().0 as u32))?;
-            let result = run_drag(paths, copy);
-            OleUninitialize();
-            result
-        }
+    /// 一次拖放循环的执行结果（诊断用：失败时也要知道 DoDragDrop 到底返回了什么）
+    pub struct DragRun {
+        /// 落地效果位标志（0 = 取消/没落地）
+        pub effect: u32,
+        /// DoDragDrop 的原始返回值（成功码也可能带信息）
+        pub hr: i32,
+        /// 拖放循环耗时：<200ms 且无效果 = 根本没跑起来
+        pub elapsed_ms: u128,
     }
 
-    fn run_drag(paths: &[String], copy: bool) -> Result<u32, String> {
+    /// 在主线程上跑一次拖放，然后把回执推给前端。
+    /// DoDragDrop 会阻塞主线程到松手为止，但它自己带消息循环（内部 PeekMessage/DispatchMessage），
+    /// 所以窗口不会卡死 —— 原生拖放本来就是这个模型。
+    pub fn drag_and_report(app: tauri::AppHandle, list: Vec<String>, copy: bool) {
+        use tauri::Emitter;
+
+        let (effect, hr, elapsed_ms, mut error) = match drag(&list, copy) {
+            Ok(run) => (run.effect, run.hr, run.elapsed_ms, None),
+            Err(e) => (0, 0, 0, Some(e)),
+        };
+        eprintln!(
+            "[drag_out] {} 项 copy={copy} hr=0x{:08X} effect={effect} elapsed={elapsed_ms}ms",
+            list.len(),
+            hr as u32
+        );
+        // 「瞬间结束且没有效果」= 循环没跑起来（捕获/线程/OLE 状态问题）。
+        // 这种 DoDragDrop 也返回成功码，前端会当成用户取消 → 必须显式报出来，否则就是静默失败。
+        if error.is_none() && effect == 0 && elapsed_ms < 200 {
+            error = Some(format!(
+                "拖放没能开始（DoDragDrop 在 {elapsed_ms}ms 内返回 0x{:08X}）",
+                hr as u32
+            ));
+        }
+        let _ = app.emit(
+            EV_DRAG_OUT_DONE,
+            DragOutResult {
+                effect: effect_name(effect).to_string(),
+                paths: list,
+                error,
+            },
+        );
+    }
+
+    /// 跑一次原生拖放循环。OLE 状态「按需」建立：主线程通常已由 wry 注册拖放目标时初始化过，
+    /// 只有拿到 CO_E_NOTINITIALIZED 才自己初始化（并配对释放，避免动到别人的引用计数）。
+    pub fn drag(paths: &[String], copy: bool) -> Result<DragRun, String> {
+        let started = std::time::Instant::now();
+        let (mut hr, mut effect) = run_drag(paths, copy);
+        if hr == windows::Win32::Foundation::CO_E_NOTINITIALIZED.0 {
+            unsafe {
+                OleInitialize(None)
+                    .map_err(|e| format!("初始化 OLE 失败: 0x{:08X}", e.code().0 as u32))?;
+            }
+            let again = run_drag(paths, copy);
+            unsafe { OleUninitialize() };
+            hr = again.0;
+            effect = again.1;
+        }
+        if hr < 0 {
+            let hint = if hr == windows::Win32::Foundation::CO_E_NOTINITIALIZED.0 {
+                "（当前线程没有初始化 OLE）"
+            } else {
+                ""
+            };
+            return Err(format!("拖出失败: 0x{:08X}{hint}", hr as u32));
+        }
+        Ok(DragRun {
+            effect,
+            hr,
+            elapsed_ms: started.elapsed().as_millis(),
+        })
+    }
+
+    fn run_drag(paths: &[String], copy: bool) -> (i32, u32) {
         unsafe {
             let data: IDataObject = FileDataObject::new(paths, copy).into();
             let source: IDropSource = FileDropSource.into();
@@ -316,16 +361,7 @@ mod win {
                 DROPEFFECT(allowed_effects(copy)),
                 &mut effect,
             );
-            // DRAGDROP_S_DROP / DRAGDROP_S_CANCEL 也是成功码，故只看 is_err
-            if hr.is_err() {
-                let hint = if hr == windows::Win32::Foundation::CO_E_NOTINITIALIZED {
-                    "（当前线程没有初始化 OLE）"
-                } else {
-                    ""
-                };
-                return Err(format!("拖出失败: 0x{:08X}{}", hr.0 as u32, hint));
-            }
-            Ok(effect.0)
+            (hr.0, effect.0)
         }
     }
 }
