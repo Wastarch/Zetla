@@ -31,6 +31,7 @@ export function CtxMenu() {
   const cutPaths = useProjectStore((s) => s.cutPaths);
   const pasteInto = useProjectStore((s) => s.pasteInto);
   const clip = useProjectStore((s) => s.clip);
+  const osClip = useProjectStore((s) => s.osClip);
   const root = useProjectStore((s) => s.root);
   const sel = useProjectStore((s) => s.selected);
 
@@ -69,13 +70,18 @@ export function CtxMenu() {
 
   if (!ctx) return null;
 
-  const pasteItem = (dir: string): CtxItem => ({
-    label: "粘贴",
-    icon: "copy",
-    sc: "Ctrl+V",
-    disabled: !clip || clip.paths.length === 0,
-    onClick: () => void pasteInto(dir),
-  });
+  const pasteItem = (dir: string): CtxItem => {
+    // 应用内剪贴板为空、但系统剪贴板里有文件（资源管理器复制的）时，粘贴同样可用：
+    // 文案点明是「复制/move 外部 N 项」，避免用户以为会粘贴树内复制过的东西
+    const ext = !clip || clip.paths.length === 0 ? osClip : null;
+    return {
+      label: ext ? `粘贴（${ext.cut ? "移动" : "复制"}外部 ${ext.paths.length} 项）` : "粘贴",
+      icon: "copy",
+      sc: "Ctrl+V",
+      disabled: ext ? false : !clip || clip.paths.length === 0,
+      onClick: () => void pasteInto(dir),
+    };
+  };
 
   // M1-40：右键目标在选中集合内且为多选 → 操作对象是整组（顶层去重），否则就是目标本身
   const groupSel = ctx && ctx.path && sel.includes(ctx.path) && sel.length > 1;

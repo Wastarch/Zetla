@@ -7,6 +7,7 @@ import {
   isSameOrInside,
   parentDir,
   pathKey,
+  planExternalImport,
   rangeSelect,
   resolveDropDir,
   toggleInList,
@@ -134,6 +135,53 @@ eq(
 );
 eq(dropHoverProblem("E:/P/a.tex", "E:/P", false), null, "文件拖回父目录 → 悬停合法（原地移动项会被跳过）");
 eq(dropHoverProblem("E:/P/a", "E:/Q", true), null, "目录拖到兄弟目录 → 合法");
+
+console.log("\n[M1-48 planExternalImport 系统拖入/外部粘贴]");
+{
+  // 复制重名 → 追加「 - 副本」；同批第二个同名再顺延
+  const a = planExternalImport(
+    ["E:/other/a.tex", "E:/another/a.tex"],
+    "E:/P/figs",
+    "copy",
+    ["a.tex"],
+  );
+  eq(a.skipped.length, 0, "无可跳过项");
+  eq(a.steps[0].name, "a - 副本.tex", "复制重名 → 副本名");
+  eq(a.steps[1].name, "a - 副本2.tex", "同批第二条同名继续顺延");
+
+  // 不重名时保持原名
+  const b = planExternalImport(["E:/other/b.png"], "E:/P/figs", "copy", ["a.tex"]);
+  eq(b.steps[0].name, "b.png", "不重名保持原名");
+
+  // 移动重名：不偷偷改名（交给调用方按冲突报错）
+  const c = planExternalImport(["E:/other/a.tex"], "E:/P/figs", "move", ["a.tex"]);
+  eq(c.steps[0].name, "a.tex", "移动重名沿用原名");
+}
+eq(
+  planExternalImport(["E:/P/figs"], "E:/P/figs/sub", "copy", []).skipped[0]?.why,
+  "self",
+  "目录放进自己的子目录 → self（复制会无限套娃）",
+);
+eq(
+  planExternalImport(["E:/P"], "E:/P/figs", "copy", []).skipped[0]?.why,
+  "self",
+  "把项目根拖进项目内 → self",
+);
+eq(
+  planExternalImport(["E:/P/figs/a.tex"], "E:/P/figs", "move", []).skipped[0]?.why,
+  "inPlace",
+  "原地剪切粘贴 → inPlace（静默空操作）",
+);
+eq(
+  planExternalImport(["E:/P/figs/a.tex"], "E:/P/figs", "copy", []).steps[0]?.name,
+  "a.tex",
+  "同目录复制不算 inPlace（照常生成副本）",
+);
+eq(
+  planExternalImport(["E:/other/dir/"], "E:/P", "copy", []).steps[0]?.name,
+  "dir",
+  "尾部带分隔符的目录也能取到名字",
+);
 
 console.log(`\n${total - failures}/${total} passed`);
 if (failures > 0) process.exit(1);

@@ -6,18 +6,22 @@
 // M1-38：根目录图标组加「显示隐藏文件」眼睛开关（点号项，.git/重型目录始终跳过）
 // M1-40：多选（系统原生语义）——普通点击单选、Ctrl+点击加减选、Shift+点击范围选、
 //        Ctrl+A 全选、Esc 清空、Delete 批量删除；右键/复制/剪切/删除/拖拽均作用于多选集合
+// M1-48（外部文件互操作）：Ctrl+V 可粘贴**在系统里复制/剪切**的文件（Rust 读系统剪贴板 CF_HDROP），
+//        系统文件可直接拖进树（Tauri 窗口级 drag-drop，落点由视口坐标命中树行）
 import {
+  useEffect,
   useMemo,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import { listen, TauriEvent, type UnlistenFn } from "@tauri-apps/api/event";
 import { Icon } from "@/ui/Icon";
 import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
 import type { ProjectNode } from "@/types";
-import { EXT_IMG, base, extOf, findNode, notify, parentOf, useProjectStore } from "./useProject";
+import { EXT_IMG, base, extOf, findNode, parentOf, useProjectStore } from "./useProject";
 import {
   dropHoverProblem,
   filterTopLevel,
@@ -42,6 +46,30 @@ function iconFor(name: string): { icon: string; cls: string } {
   if (ext === "bib") return { icon: "bib", cls: "file-bib" };
   if (["tex", "cls", "sty", "ltx"].includes(ext)) return { icon: "tex", cls: "file-tex" };
   return { icon: "file", cls: "" };
+}
+
+/** Tauri 原生拖放负载（enter/over/drop 带 position；drop 带 paths；position 是物理像素） */
+interface DragPayload {
+  paths?: string[];
+  position?: { x: number; y: number };
+}
+
+/** 系统拖入可能被 Tauri 与 HTML5 两条通道同时上报：短时间内只消费一次 */
+let lastExternalDropAt = 0;
+function claimExternalDrop(): boolean {
+  const now = Date.now();
+  if (now - lastExternalDropAt < 400) return false;
+  lastExternalDropAt = now;
+  return true;
+}
+
+/**
+ * dragover 阶段 dataTransfer.files 恒为空，只能用 types 判断是否为文件拖入。
+ * Chromium/WebView2 给 "Files"；WKWebView(macOS) 也可能给 "public.file-url" 等 UTI。
+ */
+function isFileDrag(dt: DataTransfer | null): boolean {
+  if (!dt) return false;
+  return Array.from(dt.types).some((t) => t === "Files" || /file|public\./i.test(t));
 }
 
 export function ProjectTree() {
@@ -240,6 +268,91 @@ export function ProjectTree() {
     return hover.valid ? "drop-ok" : "drop-bad";
   }
 
+  // ── M1-48：系统文件拖入（资源管理器 / 桌面 → 项目树）──
+  // Tauri 默认接管窗口级文件拖放（dragDropEnabled 未关闭），webview 内 HTML5 drop 通常收不到，
+  // 主通道是 tauri://drag-enter|over|leave|drop；position 是**物理像素**，须 ÷ devicePixelRatio
+  // 再比 DOM 坐标（与图拼贴 FigureDropZone 同口径，少数平台已给逻辑像素时用原值兜底）。
+  useEffect(() => {
+    const treeEl = treeRef.current;
+    if (!treeEl) return;
+    let disposed = false;
+    let unlisten: UnlistenFn[] = [];
+
+    /** 视口坐标命中树行；指针不在树上 → null（不抢别处的拖放） */
+    const rowAt = (pos?: { x: number; y: number }): TreeDropHit | null => {
+      if (!pos) return null;
+      const at = (x: number, y: number): TreeDropHit | null => {
+        const el = document.elementFromPoint(x, y);
+        if (!el || !treeEl.contains(el)) return null;
+        const row = el.closest<HTMLElement>("[data-tree-path]");
+        const path = row?.dataset.treePath;
+        if (!path) return { path: "", kind: "blank" }; // 树空白区 = 项目根
+        const kind = row?.dataset.treeKind;
+        return { path, kind: kind === "dir" || kind === "file" ? kind : "blank" };
+      };
+      const dpr = window.devicePixelRatio || 1;
+      return at(pos.x / dpr, pos.y / dpr) ?? at(pos.x, pos.y);
+    };
+
+    /** 落点 → 目标目录（空白区=项目根；文件行=其父目录；目录行=自身） */
+    const targetAt = (pos?: { x: number; y: number }): string | null => {
+      const rootDir = useProjectStore.getState().root;
+      if (!rootDir) return null;
+      const hit = rowAt(pos);
+      return hit ? resolveDropDir(hit, rootDir) : null;
+    };
+
+    // over 时缓存落点：少数平台/版本的 drop 事件可能缺 position，用它兜底
+    let lastDir: string | null = null;
+    const onOver = (e: { payload?: DragPayload }) => {
+      const dir = targetAt(e.payload?.position);
+      lastDir = dir;
+      // over 事件高频触发：落点未变时返回同一 state 对象，React 直接跳过重渲染
+      setHover((prev) => {
+        if (!dir) return prev === null ? prev : null;
+        if (prev && prev.targetDir === dir && prev.valid) return prev;
+        return { targetDir: dir, valid: true };
+      });
+    };
+    const onDrop = (e: { payload?: DragPayload }) => {
+      const dir = targetAt(e.payload?.position) ?? lastDir;
+      const paths = e.payload?.paths ?? [];
+      lastDir = null;
+      setHover(null);
+      // 系统拖入恒为复制（剪切请在资源管理器里 Ctrl+X 后到树里粘贴）
+      if (!dir || paths.length === 0 || !claimExternalDrop()) return;
+      void useProjectStore.getState().importPaths(paths, dir, "copy");
+    };
+
+    void Promise.all([
+      listen<DragPayload>(TauriEvent.DRAG_ENTER, onOver),
+      listen<DragPayload>(TauriEvent.DRAG_OVER, onOver),
+      listen(TauriEvent.DRAG_LEAVE, () => {
+        lastDir = null;
+        setHover(null);
+      }),
+      listen<DragPayload>(TauriEvent.DRAG_DROP, onDrop),
+    ])
+      .then((fns) => {
+        if (disposed) fns.forEach((u) => void u());
+        else unlisten = fns;
+      })
+      .catch((e) => console.warn("[tree] 拖放监听注册失败", e));
+
+    return () => {
+      disposed = true;
+      unlisten.forEach((u) => void u());
+    };
+  }, []);
+
+  // 窗口重新获得焦点时刷新系统剪贴板探测：用户常在资源管理器里复制后才切回本应用，
+  // 右键菜单的「粘贴」可用态要随之变化
+  useEffect(() => {
+    const onFocus = () => void useProjectStore.getState().probeOsClipboard();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+
   // 键盘操作（树容器获得焦点时）：
   // Ctrl+A 全选可见行 / Ctrl+C 复制 / Ctrl+X 剪切 / Ctrl+V 粘贴 /
   // Delete（macOS 为 Backspace）删除选中 / Esc 清空选择
@@ -261,10 +374,6 @@ export function ProjectTree() {
         cutPaths(sel);
       } else if (k === "v") {
         e.preventDefault();
-        if (!st.clip) {
-          notify("剪贴板为空", "err");
-          return;
-        }
         // 粘贴目标跟随焦点项（锚点）：目录=自身，文件=父目录，无选中=项目根
         const focus = st.anchor ?? sel[sel.length - 1] ?? null;
         let target: string | null = root ?? null;
@@ -272,6 +381,8 @@ export function ProjectTree() {
           const node = findNode(nodes, focus);
           target = node?.type === "dir" ? focus : parentOf(focus) || root;
         }
+        // 来源由 pasteInto 判定：系统剪贴板里若有文件（资源管理器复制/剪切）优先，
+        // 否则回落到应用内剪贴板；两者都空时才提示
         if (target) void pasteInto(target);
       }
       return;
@@ -396,8 +507,39 @@ export function ProjectTree() {
     <div
       ref={treeRef}
       className="tree"
+      data-project-tree="1"
       tabIndex={0}
       onKeyDown={handleKeyDown}
+      // HTML5 兜底通道：Tauri 关闭窗口级拖放、或平台仍派发 webview drop 时由此生效
+      // （与 Tauri 通道经 claimExternalDrop 去重，路径来自 File.path）
+      onDragOver={(e) => {
+        if (!isFileDrag(e.dataTransfer)) return;
+        e.preventDefault(); // 不 preventDefault 就不会派发 drop
+      }}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setHover(null);
+      }}
+      onDrop={(e) => {
+        const files = e.dataTransfer?.files;
+        if (!files || files.length === 0) return;
+        e.preventDefault();
+        setHover(null);
+        const paths = Array.from(files)
+          .map((f) => (f as File & { path?: string }).path)
+          .filter((p): p is string => typeof p === "string" && p.length > 0);
+        if (paths.length === 0) return;
+        const rootDir = useProjectStore.getState().root;
+        if (!rootDir || !claimExternalDrop()) return;
+        const row = (e.target as HTMLElement).closest<HTMLElement>("[data-tree-path]");
+        const kind = row?.dataset.treeKind;
+        const hit: TreeDropHit | null = row?.dataset.treePath
+          ? {
+              path: row.dataset.treePath,
+              kind: kind === "dir" || kind === "file" ? kind : "blank",
+            }
+          : null;
+        void useProjectStore.getState().importPaths(paths, resolveDropDir(hit, rootDir), "copy");
+      }}
       onClick={(e) => {
         treeRef.current?.focus();
         // M1-47：点空白区（非树行）取消选中；拖拽尾随的 click 不清空

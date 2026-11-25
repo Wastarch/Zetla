@@ -3,6 +3,7 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type {
   AppSettings,
+  ClipboardFiles,
   EntryKind,
   BuildArtifact,
   FileDoc,
@@ -205,6 +206,17 @@ export const projectApi = {
   /** M0-9a：监听项目根的文件增减（重复调用即换根） */
   watchProject: (root: string) => call<void>("watch_project", { root }),
   unwatchProject: () => call<void>("unwatch_project"),
+};
+
+// ── 资源管理器 · 系统剪贴板文件互操作 ───────────────────────
+// 用于「资源管理器里复制/剪切 → 项目树粘贴」「项目树复制 → 资源管理器粘贴」。
+// 仅 Windows 有原生 CF_HDROP 实现：读在其它平台返回空列表，写返回错误（前端忽略）。
+export const clipboardApi = {
+  /** 读取系统剪贴板中的文件列表（无文件时 paths 为空；cut=true 表示这次是剪切） */
+  readFiles: () => call<ClipboardFiles>("read_clipboard_files"),
+  /** 把路径列表写入系统剪贴板（cut=true 标记为移动，资源管理器粘贴后会删除源） */
+  writeFiles: (paths: string[], cut: boolean) =>
+    call<void>("write_clipboard_files", { paths, cut }),
 };
 
 // ── 应用配置 / 偏好设置（M0-14a）──────────────────────────

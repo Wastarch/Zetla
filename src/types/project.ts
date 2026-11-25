@@ -128,3 +128,14 @@ export interface ProjectEntry {
   /** 最近一次打开时间（ISO-8601；无则 null） */
   lastOpened?: string | null;
 }
+
+/**
+ * 系统剪贴板中的文件列表（与 Rust clipboard_fs::ClipboardFiles 对齐）
+ * 用于「在资源管理器里复制/剪切 → 回到项目树粘贴」；仅 Windows 提供原生读取。
+ */
+export interface ClipboardFiles {
+  /** 绝对路径列表（已去空、去重） */
+  paths: string[];
+  /** 是否为剪切（资源管理器里 Ctrl+X）→ 粘贴时应移动而非复制 */
+  cut: boolean;
+}

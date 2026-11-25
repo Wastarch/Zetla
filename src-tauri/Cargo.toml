@@ -53,6 +53,15 @@ base64 = "0.22"
 # M0-15a：读注册表里的用户/系统 PATH（检测合并用，只读不改）—— 仅 Windows
 [target.'cfg(windows)'.dependencies]
 winreg = "0.55"
+# 资源管理器 · 外部文件互操作：系统剪贴板 CF_HDROP / Preferred DropEffect 读写
+# （read_clipboard_files / write_clipboard_files，见 commands/clipboard_fs.rs）
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_UI_Shell",
+] }
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

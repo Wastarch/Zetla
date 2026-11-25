@@ -121,3 +121,48 @@ export function dropProblem(
   }
   return null;
 }
+
+/** 外部路径（系统拖入 / 系统剪贴板粘贴）导入的一步：目标文件名已按需避让重名 */
+export interface ExternalImportStep {
+  src: string;
+  name: string;
+}
+
+/** 跳过的外部条目：self=目录放进自己/子目录（应报错）；inPlace=原地剪切（静默空操作） */
+export interface ExternalImportSkip {
+  src: string;
+  why: "self" | "inPlace";
+}
+
+/**
+ * 外部导入规划：把一批项目外的绝对路径映射成「在 targetDir 下落到哪个文件名」。
+ * - 目录放进它自己/它的子目录 → self（含「把项目根拖进项目」，复制会无限套娃）
+ * - 已在目标目录里做「移动」→ inPlace（原地剪切粘贴是空操作）
+ * - 复制重名 → 追加「 - 副本」；移动重名沿用原名（由调用方按冲突报错，不偷偷改名）
+ * taken 是目标目录现有条目名，函数内部按顺序累积（同批多个副本互不撞名）。
+ */
+export function planExternalImport(
+  srcs: string[],
+  targetDir: string,
+  mode: TreeDropMode,
+  taken: Iterable<string>,
+): { steps: ExternalImportStep[]; skipped: ExternalImportSkip[] } {
+  const used = new Set([...taken].map((n) => n.toLowerCase()));
+  const steps: ExternalImportStep[] = [];
+  const skipped: ExternalImportSkip[] = [];
+  for (const src of srcs) {
+    const name = src.split(/[\\/]/).filter(Boolean).pop() ?? src;
+    if (isSameOrInside(targetDir, src)) {
+      skipped.push({ src, why: "self" });
+      continue;
+    }
+    if (mode === "move" && pathKey(targetDir) === pathKey(parentDir(src))) {
+      skipped.push({ src, why: "inPlace" });
+      continue;
+    }
+    const finalName = mode === "copy" ? uniqueCopyName(name, used) : name;
+    used.add(finalName.toLowerCase());
+    steps.push({ src, name: finalName });
+  }
+  return { steps, skipped };
+}

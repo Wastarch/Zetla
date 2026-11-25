@@ -4,7 +4,7 @@
 import { create } from "zustand";
 import { open as openFileDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { configApi, projectApi } from "@/ipc/invoke";
+import { configApi, clipboardApi, projectApi } from "@/ipc/invoke";
 import { useAppStore } from "@/core/store";
 import { useSettingsStore } from "@/core/settings";
 import { useBuffersStore } from "@/editor/useBuffers";
@@ -13,10 +13,11 @@ import {
   isSameOrInside,
   parentDir,
   pathKey,
+  planExternalImport,
   uniqueCopyName,
   type TreeDropMode,
 } from "./treeDrop";
-import type { EntryKind, ProjectNode, ProjectTree } from "@/types";
+import type { ClipboardFiles, EntryKind, ProjectNode, ProjectTree } from "@/types";
 
 /** 统一 toast 反馈（写入编辑域 notice） */
 export function notify(text: string, kind: "ok" | "err" = "ok"): void {
@@ -79,6 +80,31 @@ export type ProjectAction =
   | { kind: "rename"; path: string; name: string }
   | { kind: "delete"; path: string; name: string };
 
+/** 把树内复制/剪切同步到系统剪贴板：资源管理器里可直接粘贴；
+ *  同时让 pasteInto 能区分「外部刚复制」与「应用内剪贴板」，避免用到旧路径列表。 */
+function syncClipboardToSystem(paths: string[], cut: boolean): void {
+  void clipboardApi
+    .writeFiles(paths, cut)
+    .catch((e) => console.warn("[clipboard]", e));
+}
+
+/** 系统剪贴板读取失败/无文件时统一返回 null（走应用内剪贴板） */
+async function readOsClip(): Promise<ClipboardFiles | null> {
+  try {
+    const files = await clipboardApi.readFiles();
+    return files.paths.length > 0 ? files : null;
+  } catch (e) {
+    console.warn("[clipboard]", e);
+    return null;
+  }
+}
+
+/** 剪切粘贴落地后清一次系统剪贴板：否则资源管理器再粘一次会去找已移动的源 */
+function clearOsClipboard(): void {
+  useProjectStore.setState({ osClip: null });
+  void clipboardApi.writeFiles([], false).catch(() => {});
+}
+
 /** 在树节点中递归查找（键盘粘贴需要判断选中是文件还是目录） */
 export function findNode(
   nodes: ProjectNode[] | undefined,
@@ -118,6 +144,24 @@ export function parentOf(p: string): string {
 function joinPath(dir: string, name: string): string {
   const sep = dir.includes("\\") ? "\\" : "/";
   return dir.endsWith(sep) || dir.endsWith("/") ? dir + name : dir + sep + name;
+}
+
+/**
+ * 剪切式的跨目录移动：同盘 rename 一步完成；跨盘（Windows 无法 rename 到另一分区）
+ * 回退成「复制 + 删除源」——与资源管理器一致。复制成功但删源失败时报错，不静默留双份。
+ */
+async function moveExternal(src: string, to: string): Promise<void> {
+  try {
+    await projectApi.renameEntry(src, to);
+    return;
+  } catch {
+    await projectApi.copyEntry(src, to);
+    try {
+      await projectApi.removeEntry(src);
+    } catch (e) {
+      throw new Error(`${base(src)} 已复制到目标，但删除源失败：${String(e)}`);
+    }
+  }
 }
 
 /**
@@ -200,6 +244,8 @@ interface ProjectState {
   deleteAsk: { paths: string[] } | null;
   /** 树剪贴板（复制/剪切，会话级） */
   clip: Clip | null;
+  /** 系统剪贴板里的文件（外部复制/剪切；探测结果，仅用于 UI 可用态） */
+  osClip: ClipboardFiles | null;
   /** M0-7：从模板新建向导 */
   wizardOpen: boolean;
   /** 向导目标目录默认值（右键目录进入时指定） */
@@ -287,6 +333,12 @@ interface ProjectState {
    *  移动后同步已打开缓冲/展开目录/剪贴板里的旧路径，再重扫树。 */
   dropEntries: (srcs: string[], targetDir: string, mode: TreeDropMode) => Promise<void>;
 
+  /** 探测系统剪贴板文件列表（右键菜单打开/窗口获得焦点时刷新，供「粘贴」可用态与提示） */
+  probeOsClipboard: () => Promise<void>;
+  /** 把项目外的路径导入目标目录（系统拖入 / 系统剪贴板粘贴）。
+   *  copy=复制（同名自动加「 - 副本」），move=剪切移动（跨盘回退复制+删源）。 */
+  importPaths: (paths: string[], targetDir: string, mode: TreeDropMode) => Promise<void>;
+
   /** 打开/关闭「从模板新建」向导（dir 缺省用项目根；templateId 预选模板） */
   openWizard: (dir?: string, templateId?: string) => void;
   closeWizard: () => void;
@@ -306,6 +358,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   createFileAsk: null,
   deleteAsk: null,
   clip: null,
+  osClip: null,
   wizardOpen: false,
   wizardDir: null,
   wizardTemplateId: null,
@@ -439,6 +492,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       createFileAsk: null,
       deleteAsk: null,
       clip: null,
+      osClip: null,
     });
     // 项目关闭后旧的 PDF / 编译结果 / 日志都不再有效
     useAppStore.setState({
@@ -505,7 +559,11 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       return { selected, anchor: s.anchor };
     }),
 
-  openCtx: (ctx) => set({ ctx }),
+  // 打开右键菜单时顺带探测系统剪贴板：菜单里的「粘贴」要能反映「刚在资源管理器复制过」
+  openCtx: (ctx) => {
+    set({ ctx });
+    void get().probeOsClipboard();
+  },
   closeCtx: () => set({ ctx: null }),
   openEntryDialog: (d) => set({ entryDialog: d, ctx: null }),
   closeEntryDialog: () => set({ entryDialog: null }),
@@ -665,17 +723,129 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   copyPaths: (paths) => {
     if (paths.length === 0) return;
     set({ clip: { mode: "copy", paths }, ctx: null });
+    syncClipboardToSystem(paths, false);
     notify(`已复制 ${paths.length} 项 · 右键目标处粘贴`, "ok");
   },
 
   cutPaths: (paths) => {
     if (paths.length === 0) return;
     set({ clip: { mode: "cut", paths }, ctx: null });
+    syncClipboardToSystem(paths, true);
     notify(`已剪切 ${paths.length} 项 · 右键目标处粘贴`, "ok");
+  },
+
+  probeOsClipboard: async () => {
+    set({ osClip: await readOsClip() });
+  },
+
+  importPaths: async (paths, targetDir, mode) => {
+    const st = get();
+    const root = st.root;
+    if (!root || paths.length === 0) return;
+    const tops = filterTopLevel(paths);
+    // 目标目录现有条目名（同名复制要避让；移动时同名直接报错，不偷偷改名）
+    const inTarget =
+      pathKey(targetDir) === pathKey(root)
+        ? (st.tree?.nodes ?? [])
+        : (findNode(st.tree?.nodes, targetDir)?.children ?? []);
+    const taken = new Set(inTarget.map((n) => n.name));
+    const plan = planExternalImport(tops, targetDir, mode, taken);
+    const results: { src: string; to: string }[] = [];
+    const selfSkip = plan.skipped.find((s) => s.why === "self");
+    let failed: string | null = selfSkip
+      ? `不能把「${base(selfSkip.src)}」放进它自己或它的子目录`
+      : null;
+    const skipped = plan.skipped.filter((s) => s.why === "inPlace").length;
+    for (const step of plan.steps) {
+      const to = joinPath(targetDir, step.name);
+      try {
+        if (mode === "copy") {
+          await projectApi.copyEntry(step.src, to);
+        } else {
+          await moveExternal(step.src, to);
+        }
+        results.push({ src: step.src, to });
+      } catch (e) {
+        // 冲突/失败：中止后续（已完成的保留）
+        failed = String(e);
+        break;
+      }
+    }
+
+    // 移动会改前缀：展开目录、剪贴板、已打开缓冲一起迁（与 dropEntries 同口径）
+    const remap = (p: string): string => {
+      if (mode !== "move") return p;
+      for (const { src, to } of results) {
+        if (pathKey(p) === pathKey(src)) return to;
+        if (p.startsWith(`${src}/`) || p.startsWith(`${src}\\`)) {
+          return to + p.slice(src.length);
+        }
+      }
+      return p;
+    };
+    set((s) => {
+      const openDirs = new Set([...s.openDirs].map(remap));
+      openDirs.add(targetDir); // 落到折叠目录时直接展开，立刻看到结果
+      const clip =
+        mode === "move" && s.clip?.mode === "cut"
+          ? null // 剪切已落地，置灰态随之消失
+          : s.clip
+            ? { ...s.clip, paths: s.clip.paths.map(remap) }
+            : null;
+      return {
+        selected: results.map((r) => r.to),
+        anchor: results.length > 0 ? results[results.length - 1].to : s.anchor,
+        openDirs,
+        clip,
+      };
+    });
+    if (mode === "move" && results.length > 0) {
+      useBuffersStore.setState((s) => ({
+        buffers: s.buffers.map((b) => {
+          const np = remap(b.path);
+          return np === b.path ? b : { ...b, path: np, name: base(np) };
+        }),
+        activePath: s.activePath ? remap(s.activePath) : s.activePath,
+      }));
+      // 剪切粘贴已落地：清掉系统剪贴板，免得资源管理器再粘一次已移动的源
+      clearOsClipboard();
+    }
+
+    await get().refresh();
+    if (results.length === 0) {
+      if (failed) notify(failed, "err");
+      else if (skipped > 0) notify("已在目标目录中，无需粘贴", "ok");
+      return;
+    }
+    const verb = mode === "copy" ? "已复制" : "已移动";
+    if (failed) {
+      notify(`${verb} ${results.length} 项到 ${base(targetDir)}，其余失败：${failed}`, "err");
+    } else {
+      notify(
+        results.length === 1
+          ? `${verb} ${base(results[0].to)} → ${base(targetDir)}`
+          : `${verb} ${results.length} 项 → ${base(targetDir)}`,
+        "ok",
+      );
+    }
   },
 
   pasteInto: async (targetDir) => {
     const clip = get().clip;
+    // 先问系统剪贴板：有文件、且与「应用内剪贴板」不是同一批 → 视为外部复制/剪切
+    const os = await readOsClip();
+    const osPaths = os?.paths ?? [];
+    const sameAsClip =
+      !!clip &&
+      osPaths.length === clip.paths.length &&
+      osPaths.every((p) => clip.paths.some((q) => pathKey(q) === pathKey(p)));
+    set({ osClip: os });
+    if (os && osPaths.length > 0 && !sameAsClip) {
+      // 系统剪贴板是唯一的「当前剪贴板」事实：外部复制已取代应用内剪贴板，清掉置灰态
+      set({ ctx: null, clip: null });
+      await get().importPaths(osPaths, targetDir, os.cut ? "move" : "copy");
+      return;
+    }
     if (!clip || clip.paths.length === 0) {
       notify("剪贴板为空", "err");
       return;
@@ -710,6 +880,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       selected: created,
       anchor: created[created.length - 1] ?? s.anchor,
     }));
+    if (clip.mode === "cut" && created.length > 0) clearOsClipboard();
     await get().refresh();
     if (created.length > 0) {
       notify(

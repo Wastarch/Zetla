@@ -1,4 +1,6 @@
 // Tauri 命令模块集合 —— 按域拆分（后续：compile / template / project / fsdoc / symbols / config）
+// 资源管理器 · 外部文件互操作：系统剪贴板文件列表读写（Windows CF_HDROP）
+pub mod clipboard_fs;
 pub mod compile;
 pub mod config;
 pub mod placeholders;

@@ -103,6 +103,9 @@ pub fn run() {
             commands::project::remove_entry,
             commands::project::rename_entry,
             commands::project::copy_entry,
+            // 资源管理器 · 系统剪贴板互操作（外部文件复制/剪切后粘贴进树、树内复制后可粘到资源管理器）
+            commands::clipboard_fs::read_clipboard_files,
+            commands::clipboard_fs::write_clipboard_files,
             // R5 图片目录设置（M1-7）
             commands::project::save_project_config,
             // M1-15c：项目配置读写（可视化设置面板）
