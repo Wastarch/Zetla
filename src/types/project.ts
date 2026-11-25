@@ -139,3 +139,14 @@ export interface ClipboardFiles {
   /** 是否为剪切（资源管理器里 Ctrl+X）→ 粘贴时应移动而非复制 */
   cut: boolean;
 }
+
+/**
+ * 从项目树拖出到系统的结束回执（与 Rust drag_out::DragOutResult 对齐）
+ * effect="move" 表示资源管理器已经把文件移走（源已不在项目里）→ 树需要刷新。
+ */
+export interface DragOutResult {
+  /** 落地效果：copy=复制、move=移动、none=取消/拖到不接受的位置 */
+  effect: "copy" | "move" | "none";
+  /** 本次拖出的条目绝对路径 */
+  paths: string[];
+}

@@ -13,7 +13,8 @@ import { useBuffersStore } from "@/editor/useBuffers";
 import { shouldReloadOnExternalChange } from "@/editor/externalReload";
 import { pathKey } from "@/modules/zotero/zoteroSync";
 import { useProjectStore } from "./useProject";
-import type { FileChanged, ProjectChanged } from "@/types";
+import { finishDragOut } from "./dragOut";
+import type { DragOutResult, FileChanged, ProjectChanged } from "@/types";
 
 /** 同一文件的 file_changed 合并窗口（原子写一次落盘会触发多条 notify 事件） */
 const FILE_RELOAD_DEBOUNCE_MS = 250;
@@ -55,6 +56,30 @@ export function useProjectWatch(): void {
       if (alive) unlisteners.push(un);
       else un();
     });
+
+    // M1-49：从树里拖到系统后，Rust 的 DoDragDrop 线程在松手时回执落地效果；
+    // move 说明文件已被搬出项目 → afterDragOut 重扫树并摘掉失效的选中/展开项
+    void onKernelEvent<DragOutResult>(RustEvents.dragOutDone, (e) => {
+      if (!alive) return;
+      finishDragOut();
+      void useProjectStore.getState().afterDragOut(e.effect, e.paths);
+    }).then((un) => {
+      if (alive) unlisteners.push(un);
+      else un();
+    });
+
+    // M1-49：从系统资源管理器剪走/粘走项目里的文件时（非本应用操作），
+    // 目录监听与编译期静默都会漏掉刷新；切回窗口时补扫一次（800ms 内合并多次 focus）
+    let lastFocusRefreshAt = 0;
+    const onFocus = () => {
+      const now = Date.now();
+      if (now - lastFocusRefreshAt < 800) return;
+      lastFocusRefreshAt = now;
+      const st = useProjectStore.getState();
+      if (st.root) void st.refresh(true);
+    };
+    window.addEventListener("focus", onFocus);
+    unlisteners.push(() => window.removeEventListener("focus", onFocus));
 
     // 外部改动 → 自动重载已打开的文本标签（静默；脏缓冲不覆盖）
     const reloadTimers = new Map<string, number>();

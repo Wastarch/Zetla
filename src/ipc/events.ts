@@ -13,6 +13,8 @@ export const RustEvents = {
   projectChanged: "project_changed",
   /** 文件被外部改动（notify） */
   fileChanged: "file_changed",
+  /** 从项目树拖出到系统结束（payload = DragOutResult，落地效果 copy/move/none） */
+  dragOutDone: "drag_out_done",
   /** 文档结构索引变更 */
   symbolsUpdated: "symbols_updated",
   /** TeX 自动安装进度（M0-15b） */

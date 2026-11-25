@@ -5,6 +5,8 @@ pub mod compile;
 pub mod config;
 pub mod placeholders;
 pub mod core;
+// 资源管理器 · 外部文件互操作：从项目树拖出到系统（Windows OLE 拖放源）
+pub mod drag_out;
 pub mod envsetup;
 pub mod fsdoc;
 pub mod image;

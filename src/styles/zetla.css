@@ -9850,3 +9850,70 @@ body.row-resizing {
   font: 700 11px/1 var(--font-mono);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
+
+/* M1-49 系统文件拖入的应用内落点提示（HUD）。
+   系统拖拽时 Windows 只画它自己的缩略图，应用内原本只有目标行描边：
+   看不出「一共拖了几项」「松手会落到哪个目录」。这块小卡由 dropHud.ts 命令式生成，
+   跟随指针（只改 transform，不触发重排），松手/离开即移除。 */
+.drop-hud {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2147483001;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 7px 10px 7px 8px;
+  border-radius: var(--r-md, 8px);
+  background: var(--bg-2);
+  border: 1px solid var(--accent);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35), 0 0 0 3px var(--accent-soft);
+  color: var(--txt);
+  will-change: transform;
+  animation: drop-hud-in 110ms ease-out both;
+}
+@keyframes drop-hud-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.drop-hud-icon { display: flex; flex: none; color: var(--accent); }
+.drop-hud-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.drop-hud-title {
+  font: 600 12px/1.3 var(--font-ui);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.drop-hud-hint {
+  font: 11px/1.3 var(--font-ui);
+  color: var(--txt-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 指针不在树上：提示改成「拖到左侧资源管理器内松手」，配色退一档 */
+.drop-hud.is-away {
+  border-color: var(--line);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+.drop-hud.is-away .drop-hud-icon { color: var(--txt-3); }
+
+/* 树正在接收系统拖入：整体虚线描边 + 淡底，和单行的 drop-ok 高亮叠加使用 */
+.tree[data-drop-active="1"] {
+  outline: 2px dashed var(--accent);
+  outline-offset: -3px;
+  background: var(--accent-soft);
+}
+
+/* 刚导入 / 粘贴 / 拖入的行闪一下（明确告知「东西真的进来了」） */
+@keyframes tree-flash-in {
+  0%   { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  70%  { background: var(--accent-soft); box-shadow: inset 0 0 0 1px var(--accent); }
+  100% { background: transparent; box-shadow: none; }
+}
+.tnode.is-flash {
+  border-radius: 4px;
+  animation: tree-flash-in 1.15s ease-out both;
+}

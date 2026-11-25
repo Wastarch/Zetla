@@ -166,3 +166,22 @@ export function planExternalImport(
   }
   return { steps, skipped };
 }
+
+/**
+ * M1-49：系统拖入时应用内浮层的两行文案（纯函数，便于测试）。
+ *   title = 拖的是谁（单条目给文件名，多条目给数量）
+ *   hint  = 松手会怎样（落在哪个目录；指针不在树上则提示拖到树里/资源管理器）
+ */
+export function externalDropHint(
+  count: number,
+  first: string | null,
+  targetDir: string | null,
+): { title: string; hint: string } {
+  const single = first ? (first.split(/[\\/]/).filter(Boolean).pop() ?? first) : null;
+  const title = count > 1 ? `${Math.max(count, 1)} 个项目` : (single ?? "1 个文件");
+  const name = targetDir
+    ? (targetDir.split(/[\\/]/).filter(Boolean).pop() ?? targetDir)
+    : "";
+  const hint = targetDir ? `松手复制到 ${name}` : "拖到左侧资源管理器内松手";
+  return { title, hint };
+}

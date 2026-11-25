@@ -62,6 +62,21 @@ windows-sys = { version = "0.61", features = [
     "Win32_System_Ole",
     "Win32_UI_Shell",
 ] }
+# 资源管理器 · 从项目树拖出到系统（OLE 拖放源：IDataObject + IDropSource + DoDragDrop）
+# 需要 COM 实现宏与 StructuredStorage（STGMEDIUM/FORMATETC），见 commands/drag_out.rs
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_UI_Shell",
+] }
+# COM 实现宏（#[implement]）展开后按 `windows_core::` 路径引用，需显式可见
+windows-core = "0.62"
 
 
 # Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration

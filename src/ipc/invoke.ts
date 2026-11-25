@@ -159,6 +159,10 @@ export const projectApi = {
   renameEntry: (from: string, to: string) => call<string>("rename_entry", { from, to }),
   /** 复制文件/目录（M0-6 补充），返回新绝对路径；目标已存在会报错 */
   copyEntry: (from: string, to: string) => call<string>("copy_entry", { from, to }),
+  /** M1-49：从项目树拖出到系统。命令立即返回，拖放循环在 Rust 线程上跑到松手，
+   *  落地效果由 drag_out_done 事件回执（copy/move/none），move 后源文件已不在项目里 */
+  startDragOut: (paths: string[], copy: boolean) =>
+    call<void>("start_drag_out", { paths, copy }),
   /** R5 拖拽图片：图片字节落盘到项目图片目录（imageDir），返回落盘信息 */
   importImage: (root: string, imageDir: string, fileName: string, bytes: Uint8Array) =>
     call<ImportImageResult>("import_image", { root, imageDir, fileName, bytes }),

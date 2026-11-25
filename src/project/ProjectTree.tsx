@@ -30,6 +30,8 @@ import {
   type TreeDropHit,
 } from "./treeDrop";
 import { createDragGhost, type DragGhost } from "@/ui/dragGhost";
+import { beginDragOut, isOwnDragOut } from "./dragOut";
+import { createDropHud, hideDropHud, type DropHud } from "./dropHud";
 
 /** 拖拽复制修饰键文案（macOS 用 Option，其余平台用 Ctrl） */
 function macModifierLabel(): string {
@@ -159,6 +161,7 @@ export function ProjectTree() {
     if ((e.target as HTMLElement).closest("button")) return;
     // currentTarget 在 React 合成事件返回后会清空，同步保存供阈值触发时克隆
     const srcEl = e.currentTarget as HTMLElement;
+    const pointerId = e.pointerId;
     const startX = e.clientX;
     const startY = e.clientY;
     let lastX = startX;
@@ -190,10 +193,23 @@ export function ProjectTree() {
       if (active) raf = requestAnimationFrame(autoScroll);
     };
 
+    /** 指针是否已跑到窗口外（拖出到资源管理器/桌面的触发条件）。
+     *  左/上看负坐标；右/下取「距边界 1px」——窗口最大化时指针压不到负坐标，
+     *  只认负值会让最大化状态下永远拖不出去。树的左边缘贴窗口左边，
+     *  故左边界仍只认负值，避免「往左拖一行」被误判成拖出。 */
+    const outsideWindow = (x: number, y: number): boolean =>
+      x < 0 || y < 0 || x >= window.innerWidth - 1 || y >= window.innerHeight - 1;
+
     const onMove = (ev: PointerEvent) => {
       if (!active) {
         if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
         active = true;
+        // 显式捕获指针：拖出窗口后仍能收到 pointermove（否则「何时算拖到系统」无从判断）
+        try {
+          srcEl.setPointerCapture(pointerId);
+        } catch {
+          /* 指针已释放/不被支持：退回不捕获，仍可靠窗口内拖动 */
+        }
         // 过了阈值才造影像：点击时不会出现一闪而过的幽灵；多项拖拽带计数徽标
         ghost = createDragGhost(srcEl, ev.clientX, ev.clientY, srcs.length);
         setDragSrcs(srcs);
@@ -206,6 +222,15 @@ export function ProjectTree() {
       ghost?.setCopy(copy);
       ghost?.move(ev.clientX, ev.clientY);
       ev.preventDefault();
+      // M1-49：指针拖出窗口 = 拖到系统。应用内拖拽到此结束（否则松手时树里还会落一次），
+      // 改由 Rust 的 OLE 拖放源接管，之后图标/落点提示都由 Windows 画。
+      if (outsideWindow(lastX, lastY)) {
+        cleanup();
+        suppressClick.current = true;
+        window.setTimeout(() => (suppressClick.current = false), 0);
+        void beginDragOut(srcs, copy);
+        return;
+      }
       updateHover(lastX, lastY);
       const box = treeRef.current?.getBoundingClientRect();
       if (box) {
@@ -217,6 +242,11 @@ export function ProjectTree() {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
+      try {
+        if (srcEl.hasPointerCapture(pointerId)) srcEl.releasePointerCapture(pointerId);
+      } catch {
+        /* 指针已释放：忽略 */
+      }
       active = false;
       edgeY = 0;
       cancelAnimationFrame(raf);
@@ -304,9 +334,37 @@ export function ProjectTree() {
 
     // over 时缓存落点：少数平台/版本的 drop 事件可能缺 position，用它兜底
     let lastDir: string | null = null;
+
+    // M1-49：拖入时应用内的落点提示（系统只画它自己的缩略图，应用内原本只有行描边）
+    let hud: DropHud | null = null;
+    let hudTarget: string | null = null;
+    const setDropActive = (dir: string | null) => {
+      if (!dir) delete treeEl.dataset.dropActive;
+      else treeEl.dataset.dropActive = "1";
+      if (hud && dir !== hudTarget) hud.setTarget(dir);
+      hudTarget = dir;
+    };
+    const closeHud = () => {
+      hud?.hide();
+      hud = null;
+      hudTarget = null;
+      delete treeEl.dataset.dropActive;
+    };
+    /** position 是物理像素 → 换成 CSS 视口坐标给浮层定位 */
+    const hudPoint = (pos?: { x: number; y: number }) => {
+      if (!pos) return null;
+      const dpr = window.devicePixelRatio || 1;
+      return { x: pos.x / dpr, y: pos.y / dpr };
+    };
+
     const onOver = (e: { payload?: DragPayload }) => {
       const dir = targetAt(e.payload?.position);
       lastDir = dir;
+      if (hud) {
+        const pt = hudPoint(e.payload?.position);
+        if (pt) hud.move(pt.x, pt.y);
+      }
+      setDropActive(dir);
       // over 事件高频触发：落点未变时返回同一 state 对象，React 直接跳过重渲染
       setHover((prev) => {
         if (!dir) return prev === null ? prev : null;
@@ -314,21 +372,34 @@ export function ProjectTree() {
         return { targetDir: dir, valid: true };
       });
     };
+    const onEnter = (e: { payload?: DragPayload }) => {
+      // 自己拖出去又拖回窗口：这是我们的文件，不能当外部拖入（否则会复制成「- 副本」）
+      if (isOwnDragOut()) return;
+      const paths = e.payload?.paths ?? [];
+      closeHud(); // 清掉上一次可能残留的浮层
+      hud = createDropHud(Math.max(1, paths.length), paths);
+      const pt = hudPoint(e.payload?.position);
+      if (pt) hud.move(pt.x, pt.y);
+      onOver(e);
+    };
     const onDrop = (e: { payload?: DragPayload }) => {
       const dir = targetAt(e.payload?.position) ?? lastDir;
       const paths = e.payload?.paths ?? [];
       lastDir = null;
+      closeHud();
       setHover(null);
+      if (isOwnDragOut()) return; // 拖出后又被拖回窗口，项目内不该有任何变化
       // 系统拖入恒为复制（剪切请在资源管理器里 Ctrl+X 后到树里粘贴）
       if (!dir || paths.length === 0 || !claimExternalDrop()) return;
       void useProjectStore.getState().importPaths(paths, dir, "copy");
     };
 
     void Promise.all([
-      listen<DragPayload>(TauriEvent.DRAG_ENTER, onOver),
+      listen<DragPayload>(TauriEvent.DRAG_ENTER, onEnter),
       listen<DragPayload>(TauriEvent.DRAG_OVER, onOver),
       listen(TauriEvent.DRAG_LEAVE, () => {
         lastDir = null;
+        closeHud();
         setHover(null);
       }),
       listen<DragPayload>(TauriEvent.DRAG_DROP, onDrop),
@@ -342,6 +413,8 @@ export function ProjectTree() {
     return () => {
       disposed = true;
       unlisten.forEach((u) => void u());
+      closeHud();
+      hideDropHud();
     };
   }, []);
 
@@ -451,7 +524,7 @@ export function ProjectTree() {
             <div
               className={cls ? `tnode ${cls}` : "tnode"}
               style={{ paddingLeft: pad, opacity: isCut(n.path) ? 0.55 : undefined }}
-              title={`${n.path} · 拖动可移动，按住 ${macModifierLabel()} 拖动可复制`}
+              title={`${n.path} · 拖动可移动，按住 ${macModifierLabel()} 拖动可复制，拖到窗口外可交给系统`}
               data-tree-path={n.path}
               data-tree-kind="dir"
               onPointerDown={(e) => beginDrag(e, n.path)}
@@ -480,7 +553,7 @@ export function ProjectTree() {
           key={n.path}
           className={`tnode ${rowCls}`}
           style={{ paddingLeft: pad, opacity: isCut(n.path) ? 0.55 : undefined }}
-          title={`${n.path} · 拖动可移动，按住 ${macModifierLabel()} 拖动可复制`}
+          title={`${n.path} · 拖动可移动，按住 ${macModifierLabel()} 拖动可复制，拖到窗口外可交给系统`}
           data-tree-path={n.path}
           data-tree-kind="file"
           onPointerDown={(e) => beginDrag(e, n.path)}
@@ -524,6 +597,7 @@ export function ProjectTree() {
         if (!files || files.length === 0) return;
         e.preventDefault();
         setHover(null);
+        if (isOwnDragOut()) return; // 自己的拖出被拖回窗口：不是外部导入
         const paths = Array.from(files)
           .map((f) => (f as File & { path?: string }).path)
           .filter((p): p is string => typeof p === "string" && p.length > 0);

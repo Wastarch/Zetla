@@ -227,6 +227,38 @@ function validateName(name: string): string | null {
   return null;
 }
 
+/** 树扫描序号：并发扫描只认最后一次（见 refresh 注释） */
+let scanSeq = 0;
+
+/**
+ * 应用自己刚改了磁盘（导入/粘贴/拖拽/拖出）之后的收尾（调用方已 await 过一次 refresh）：
+ *   1) 260ms 后再补扫一次 —— Rust 目录监听的 500ms 防抖刷新可能与本函数交错，
+ *      补扫保证最终态一定是最新磁盘内容（多扫一次的成本远小于「文件没出现」的困惑）；
+ *   2) 把落地的行滚进视野并闪一下高亮，明确告诉用户「东西进来了」。
+ */
+function refreshAfterChange(paths: string[] = []): void {
+  window.setTimeout(() => void useProjectStore.getState().refresh(true), 260);
+  flashTreePaths(paths);
+}
+
+/** 新落地行的高亮闪烁 + 滚动到可见（DOM 直接操作：行是下一帧才渲染出来的） */
+function flashTreePaths(paths: string[]): void {
+  if (paths.length === 0) return;
+  const tick = () => {
+    let first: HTMLElement | null = null;
+    for (const p of paths) {
+      const el = document.querySelector<HTMLElement>(`[data-tree-path="${CSS.escape(p)}"]`);
+      if (!el) continue;
+      first ??= el;
+      el.classList.add("is-flash");
+      window.setTimeout(() => el.classList.remove("is-flash"), 1200);
+    }
+    first?.scrollIntoView({ block: "nearest" });
+  };
+  window.setTimeout(tick, 60);
+  window.setTimeout(tick, 280);
+}
+
 interface ProjectState {
   root: string | null;
   tree: ProjectTree | null;
@@ -338,6 +370,9 @@ interface ProjectState {
   /** 把项目外的路径导入目标目录（系统拖入 / 系统剪贴板粘贴）。
    *  copy=复制（同名自动加「 - 副本」），move=剪切移动（跨盘回退复制+删源）。 */
   importPaths: (paths: string[], targetDir: string, mode: TreeDropMode) => Promise<void>;
+  /** 系统拖出（拖到资源管理器/桌面）落地后的收尾：move 表示源已离开项目 →
+   *  重扫树并把已消失的选中项摘掉；copy 只提示、不动树。 */
+  afterDragOut: (effect: "copy" | "move" | "none", paths: string[]) => Promise<void>;
 
   /** 打开/关闭「从模板新建」向导（dir 缺省用项目根；templateId 预选模板） */
   openWizard: (dir?: string, templateId?: string) => void;
@@ -509,8 +544,12 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
   refresh: async (silent = false) => {
     const root = get().root;
     if (!root) return;
+    // 同一时刻可能有多份扫描在飞（导入后主动刷新 + 目录监听 500ms 防抖刷新）：
+    // 旧结果后到会把刚导入的行「刷掉」，表现得像「资源管理器没自动刷新」→ 只认最后一次
+    const seq = ++scanSeq;
     try {
       const tree = await projectApi.scanProject(root, treeShowHidden());
+      if (seq !== scanSeq) return; // 已有更新的扫描（成功/在飞）→ 丢弃这次结果
       set({ tree }); // 保留 selected / openDirs
     } catch (e) {
       if (silent) console.warn("[refresh]", e);
@@ -812,6 +851,8 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }
 
     await get().refresh();
+    // 补扫 + 把新行滚进视野并闪一下：外部拖入/粘贴最容易「看不见结果」
+    if (results.length > 0) refreshAfterChange(results.map((r) => r.to));
     if (results.length === 0) {
       if (failed) notify(failed, "err");
       else if (skipped > 0) notify("已在目标目录中，无需粘贴", "ok");
@@ -828,6 +869,46 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
         "ok",
       );
     }
+  },
+
+  // M1-49：从项目树拖到资源管理器/桌面后的收尾。
+  // move = 目标把文件搬走了：重扫树 + 摘掉已不存在的选中项（否则选中/右键会指向幽灵路径）；
+  // copy = 项目内没有任何变化，只给一条轻提示（用户常需要确认「真的复制出去了」）。
+  afterDragOut: async (effect, paths) => {
+    if (effect === "none" || paths.length === 0) return;
+    if (effect === "copy") {
+      // 项目内没有任何变化，只确认一句「确实复制出去了」
+      notify(
+        paths.length === 1
+          ? `已复制 ${base(paths[0])} 到系统`
+          : `已复制 ${paths.length} 项到系统`,
+        "ok",
+      );
+      return;
+    }
+    await get().refresh();
+    refreshAfterChange();
+    const gone = (p: string): boolean =>
+      paths.some((src) => {
+        const a = pathKey(p);
+        const b = pathKey(src);
+        return a === b || a.startsWith(`${b}/`) || a.startsWith(`${b}\\`);
+      });
+    set((s) => {
+      const selected = s.selected.filter((p) => !gone(p));
+      return {
+        selected,
+        anchor: selected[selected.length - 1] ?? null,
+        // 展开目录也剔掉已搬走的条目，避免折叠到不存在的路径
+        openDirs: new Set([...s.openDirs].filter((p) => !gone(p))),
+      };
+    });
+    notify(
+      paths.length === 1
+        ? `已移出 ${base(paths[0])} 到系统`
+        : `已移出 ${paths.length} 项到系统`,
+      "ok",
+    );
   },
 
   pasteInto: async (targetDir) => {
@@ -882,6 +963,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
     }));
     if (clip.mode === "cut" && created.length > 0) clearOsClipboard();
     await get().refresh();
+    refreshAfterChange(created);
     if (created.length > 0) {
       notify(
         clip.mode === "copy"
@@ -980,6 +1062,7 @@ export const useProjectStore = create<ProjectState>((set, get) => ({
       }));
     }
     await get().refresh();
+    if (results.length > 0) refreshAfterChange(results.map((r) => r.to));
     const verb = mode === "copy" ? "已复制" : "已移动";
     if (failed) {
       notify(

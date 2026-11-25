@@ -106,6 +106,8 @@ pub fn run() {
             // 资源管理器 · 系统剪贴板互操作（外部文件复制/剪切后粘贴进树、树内复制后可粘到资源管理器）
             commands::clipboard_fs::read_clipboard_files,
             commands::clipboard_fs::write_clipboard_files,
+            // 资源管理器 · 从项目树拖出到系统（OLE 拖放源，结束后推 drag_out_done）
+            commands::drag_out::start_drag_out,
             // R5 图片目录设置（M1-7）
             commands::project::save_project_config,
             // M1-15c：项目配置读写（可视化设置面板）

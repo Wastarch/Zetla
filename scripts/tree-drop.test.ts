@@ -3,6 +3,7 @@
 import {
   dropHoverProblem,
   dropProblem,
+  externalDropHint,
   filterTopLevel,
   isSameOrInside,
   parentDir,
@@ -182,6 +183,25 @@ eq(
   "dir",
   "尾部带分隔符的目录也能取到名字",
 );
+
+console.log("\n[M1-49 系统拖入浮层文案]");
+{
+  const one = externalDropHint(1, "E:/other/a.png", "E:/P/figures");
+  eq(one.title, "a.png", "单条目标题只显示文件名（不带目录）");
+  eq(one.hint, "松手复制到 figures", "副标题说明落点目录名");
+
+  const many = externalDropHint(3, "E:/other/a.png", "E:/P");
+  eq(many.title, "3 个项目", "多条目标题显示数量");
+  eq(many.hint, "松手复制到 P", "落点是项目根时显示根目录名");
+
+  const away = externalDropHint(2, null, null);
+  eq(away.title, "2 个项目", "指针不在树上仍显示数量");
+  eq(away.hint, "拖到左侧资源管理器内松手", "指针不在树上时提示拖进树");
+
+  eq(externalDropHint(0, null, null).title, "1 个文件", "数量未知按 1 个文件兜底");
+  eq(externalDropHint(1, null, null).title, "1 个文件", "无文件名时给「1 个文件」");
+  eq(externalDropHint(1, "a.png", "E:/P/figs/").hint, "松手复制到 figs", "尾部带分隔符也能取到目录名");
+}
 
 console.log(`\n${total - failures}/${total} passed`);
 if (failures > 0) process.exit(1);

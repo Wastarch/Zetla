@@ -29,7 +29,7 @@ const DROPEFFECT_COPY: u32 = 1;
 const DROPEFFECT_MOVE: u32 = 2;
 
 /// 去空 + 去重（Windows 路径不区分大小写，且 / 与 \ 等价）
-fn clean_paths(paths: &[String]) -> Vec<String> {
+pub(crate) fn clean_paths(paths: &[String]) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut out: Vec<String> = Vec::new();
     for raw in paths {
