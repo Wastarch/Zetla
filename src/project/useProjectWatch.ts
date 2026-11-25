@@ -12,7 +12,7 @@ import { useAppStore } from "@/core/store";
 import { useBuffersStore } from "@/editor/useBuffers";
 import { shouldReloadOnExternalChange } from "@/editor/externalReload";
 import { pathKey } from "@/modules/zotero/zoteroSync";
-import { useProjectStore } from "./useProject";
+import { notify, useProjectStore } from "./useProject";
 import { finishDragOut } from "./dragOut";
 import type { DragOutResult, FileChanged, ProjectChanged } from "@/types";
 
@@ -62,6 +62,8 @@ export function useProjectWatch(): void {
     void onKernelEvent<DragOutResult>(RustEvents.dragOutDone, (e) => {
       if (!alive) return;
       finishDragOut();
+      // 拖放循环本身失败（如系统层拒绝）：让用户看到原因，而不是只在控制台留一行
+      if (e.error) notify(e.error, "err");
       void useProjectStore.getState().afterDragOut(e.effect, e.paths);
     }).then((un) => {
       if (alive) unlisteners.push(un);

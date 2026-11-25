@@ -45,6 +45,9 @@ pub struct DragOutResult {
     pub effect: String,
     /// 本次拖出的条目（绝对路径，顺序与请求一致）
     pub paths: Vec<String>,
+    /// 拖放循环本身失败时的原因（效果一定是 none）；成功/用户取消时为空
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 /// 开始一次系统拖出。立即返回：真正的拖放循环跑在独立线程上（DoDragDrop 会阻塞到松手），
@@ -64,15 +67,19 @@ pub async fn start_drag_out(
             return Err("没有可拖出的条目".into());
         }
         std::thread::spawn(move || {
-            let effect = win::drag(&list, copy).unwrap_or_else(|e| {
-                eprintln!("[drag_out] {e}");
-                0
-            });
+            let (effect, error) = match win::drag(&list, copy) {
+                Ok(e) => (e, None),
+                Err(e) => {
+                    eprintln!("[drag_out] {e}");
+                    (0, Some(e))
+                }
+            };
             let _ = app.emit(
                 EV_DRAG_OUT_DONE,
                 DragOutResult {
                     effect: effect_name(effect).to_string(),
                     paths: list,
+                    error,
                 },
             );
         });
@@ -94,14 +101,14 @@ mod win {
         E_NOTIMPL, OLE_E_ADVISENOTSUPPORTED, S_OK,
     };
     use windows::Win32::System::Com::{
-        CoInitializeEx, CoUninitialize, IAdviseSink, IDataObject, IDataObject_Impl,
-        IEnumFORMATETC, IEnumSTATDATA, DATADIR_GET, DVASPECT_CONTENT, FORMATETC, STGMEDIUM,
-        STGMEDIUM_0, TYMED_HGLOBAL, COINIT_APARTMENTTHREADED,
+        IAdviseSink, IDataObject, IDataObject_Impl, IEnumFORMATETC, IEnumSTATDATA, DATADIR_GET,
+        DVASPECT_CONTENT, FORMATETC, STGMEDIUM, STGMEDIUM_0, TYMED_HGLOBAL,
     };
     use windows::Win32::System::DataExchange::RegisterClipboardFormatW;
     use windows::Win32::System::Memory::{GlobalAlloc, GlobalLock, GlobalUnlock, GMEM_MOVEABLE};
     use windows::Win32::System::Ole::{
-        DoDragDrop, IDropSource, IDropSource_Impl, CF_HDROP, DROPEFFECT, DROPEFFECT_NONE,
+        DoDragDrop, IDropSource, IDropSource_Impl, OleInitialize, OleUninitialize, CF_HDROP,
+        DROPEFFECT, DROPEFFECT_NONE,
     };
     use windows::Win32::System::SystemServices::MODIFIERKEYS_FLAGS;
     use windows::Win32::UI::Shell::SHCreateStdEnumFmtEtc;
@@ -287,13 +294,13 @@ mod win {
     /// 跑一次原生拖放循环，返回落地效果位标志（0 = 取消/失败）
     pub fn drag(paths: &[String], copy: bool) -> Result<u32, String> {
         unsafe {
-            // OLE 拖放源要求 STA；S_FALSE 表示本线程已初始化（同样需要配对 CoUninitialize）
-            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-            if hr.is_err() {
-                return Err(format!("初始化 COM 失败: 0x{:08X}", hr.0 as u32));
-            }
+            // 必须用 OleInitialize 而不是 CoInitializeEx：DoDragDrop 属于 OLE 拖放，
+            // 只初始化 COM 而没有 OLE 状态时它会直接返回 CO_E_NOTINITIALIZED(0x800401F0)。
+            // 本线程是 std::thread 新建的，S_FALSE（已初始化）同样要配对 OleUninitialize。
+            OleInitialize(None)
+                .map_err(|e| format!("初始化 OLE 失败: 0x{:08X}", e.code().0 as u32))?;
             let result = run_drag(paths, copy);
-            CoUninitialize();
+            OleUninitialize();
             result
         }
     }
@@ -311,7 +318,12 @@ mod win {
             );
             // DRAGDROP_S_DROP / DRAGDROP_S_CANCEL 也是成功码，故只看 is_err
             if hr.is_err() {
-                return Err(format!("拖出失败: 0x{:08X}", hr.0 as u32));
+                let hint = if hr == windows::Win32::Foundation::CO_E_NOTINITIALIZED {
+                    "（当前线程没有初始化 OLE）"
+                } else {
+                    ""
+                };
+                return Err(format!("拖出失败: 0x{:08X}{}", hr.0 as u32, hint));
             }
             Ok(effect.0)
         }

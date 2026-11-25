@@ -149,4 +149,6 @@ export interface DragOutResult {
   effect: "copy" | "move" | "none";
   /** 本次拖出的条目绝对路径 */
   paths: string[];
+  /** 拖放循环本身失败的原因（此时 effect 必为 none）；成功或用户取消时不带该字段 */
+  error?: string;
 }
